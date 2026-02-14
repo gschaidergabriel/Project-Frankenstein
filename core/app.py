@@ -658,16 +658,18 @@ class Handler(BaseHTTPRequestHandler):
             enrichment_parts = []
 
             # Extract the actual user question (for regex matching on user text only,
-            # NOT on injected context like [INNENWELT] from overlay)
+            # NOT on injected context like [INNER_WORLD] from overlay)
             user_text_for_matching = text
-            if "User fragt:" in text:
+            if "User asks:" in text:
+                user_text_for_matching = text.split("User asks:")[-1].strip()
+            elif "User fragt:" in text:
                 user_text_for_matching = text.split("User fragt:")[-1].strip()
 
             # Visual channel: desktop/screen queries get context hint (not canned response)
             if SEE_Q_RE.search(user_text_for_matching):
                 enrichment_parts.append(
-                    "[Visueller Kanal: Desktop nicht aktiv sichtbar. "
-                    "Screenshot moeglich via 'mach screenshot'.]"
+                    "[Visual channel: Desktop not currently visible. "
+                    "Screenshot possible via 'take screenshot'.]"
                 )
 
             # Body sensors: hardware queries get real metrics as grounded context
@@ -677,7 +679,7 @@ class Handler(BaseHTTPRequestHandler):
                     hw_summary = render_sys_summary(j)
                     if hw_summary:
                         enrichment_parts.append(
-                            "[Koerper-Sensorik (VERIFIZIERT - nutze diese exakten Werte): "
+                            "[Body sensors (VERIFIED - use these exact values): "
                             + hw_summary + "]"
                         )
 
@@ -729,7 +731,7 @@ class Handler(BaseHTTPRequestHandler):
             if reflection_text:
                 grounded_text = (
                     (ctx_block + "\n" if ctx_block else "")
-                    + "[Eigene Ueberlegung: " + reflection_text + "]\n"
+                    + "[Own reflection: " + reflection_text + "]\n"
                     + text
                 )
 

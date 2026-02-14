@@ -2248,10 +2248,10 @@ class SelfKnowledge:
 
         # Service status (quick checks)
         services = self.services.check_all()
-        voice_status = "aktiv" if services.get("voice", ServiceInfo("", 0, "stopped", "")).status == "running" else "aus"
+        voice_status = "on" if services.get("voice", ServiceInfo("", 0, "stopped", "")).status == "running" else "off"
 
         # Gaming mode check (simplified)
-        gaming_status = "aus"
+        gaming_status = "off"
         try:
             import subprocess
             result = subprocess.run(
@@ -2259,7 +2259,7 @@ class SelfKnowledge:
                 capture_output=True, timeout=1
             )
             if result.returncode == 0:
-                gaming_status = "aktiv"
+                gaming_status = "on"
         except Exception:
             pass
 
@@ -2320,7 +2320,7 @@ class SelfKnowledge:
         except Exception:
             pass
 
-        return f"[{current_date} {current_time} ({location_str}) | {subsystem_count} Systeme aktiv | Voice {voice_status} | Gaming {gaming_status} | Genesis {genesis_state} | Tag {age_days}]"
+        return f"[{current_date} {current_time} ({location_str}) | {subsystem_count} subsystems active | Voice {voice_status} | Gaming {gaming_status} | Genesis {genesis_state} | Day {age_days}]"
 
     def get_explicit_knowledge(self, topic: str = None) -> str:
         """

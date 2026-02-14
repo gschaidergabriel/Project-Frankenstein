@@ -218,7 +218,7 @@ class ChatMemoryDB:
                     lines.append(line)
                     chars += len(line) + 1
                 if lines:
-                    block = "[Relevanter Kontext aus frueheren Gespraechen:\n" + "\n".join(lines) + "]"
+                    block = "[Relevant context from previous conversations:\n" + "\n".join(lines) + "]"
                     parts.append(block)
                     budget -= len(block)
 

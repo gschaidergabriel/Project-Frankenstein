@@ -4,6 +4,8 @@ Built by one person in 2 months with zero programming experience. [Read the full
 
 A fully local, privacy-first AI system for Linux. Frank runs as a desktop companion with voice interaction, agentic task execution, and a dynamic personality — all powered by local LLMs with no cloud dependencies.
 
+![Frank Desktop](assets/screenshot.png)
+
 ## Features
 
 - **100% Local Inference** — Llama 3.1, Qwen 2.5 Coder, LLaVA (vision) via llama.cpp and Ollama

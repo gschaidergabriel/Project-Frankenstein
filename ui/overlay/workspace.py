@@ -11,11 +11,11 @@ All sensory channels converge into a unified broadcast that the LLM
 "experiences" as an integrated inner state.
 
 Five phenomenological channels:
-  Koerper    — Ego-Construct body sensations + hardware metrics
-  Stimmung   — E-PQ mood, temperament, style
-  Erinnerung — World Experience + news + AKAM knowledge
-  Identitaet — Self-Knowledge (date, subsystems, age)
-  Umgebung   — User name, conversation topic, skills
+  Body       — Ego-Construct body sensations + hardware metrics
+  Mood       — E-PQ mood, temperament, style
+  Memory     — World Experience + news + AKAM knowledge
+  Identity   — Self-Knowledge (date, subsystems, age)
+  Environment — User name, conversation topic, skills
 
 Token budget: ~220 tokens (vs ~300-500 for the old pipe-separated format).
 """
@@ -38,7 +38,7 @@ def build_workspace(
     extra_parts: Optional[List[str]] = None,
     hw_detail: str = "",
 ) -> str:
-    """Build the unified [INNENWELT] workspace broadcast.
+    """Build the unified [INNER_WORLD] workspace broadcast.
 
     Each parameter corresponds to a module's output. The function
     integrates them into a structured phenomenological frame.
@@ -47,51 +47,52 @@ def build_workspace(
     """
     lines: List[str] = []
 
-    # --- Koerper (Body) ---
+    # --- Body ---
     # Merge ego_construct embodied description with hardware metrics
     body = _build_body(ego_ctx, hw_summary, hw_detail)
     if body:
-        lines.append("Koerper: " + body)
+        lines.append("Body: " + body)
 
-    # --- Stimmung (Mood) ---
+    # --- Mood ---
     mood = _build_mood(epq_ctx)
     if mood:
-        lines.append("Stimmung: " + mood)
+        lines.append("Mood: " + mood)
 
-    # --- Erinnerung (Memory) ---
+    # --- Memory ---
     memory = _build_memory(world_ctx, news_ctx, akam_ctx)
     if memory:
-        lines.append("Erinnerung: " + memory)
+        lines.append("Memory: " + memory)
 
-    # --- Identitaet (Identity) ---
+    # --- Identity ---
     ident = _clean_ctx(identity_ctx, max_len=180)
     if ident:
-        lines.append("Identitaet: " + ident)
+        lines.append("Identity: " + ident)
 
-    # --- Selbstwissen (Grounding anchors — prevents confabulation) ---
+    # --- Self-knowledge (Grounding anchors — prevents confabulation) ---
     lines.append(
-        "Selbstwissen: Gaming=schlafe(Overlay+LLM+Wallpaper aus), "
-        "Wallpaper=GLSL-Plasma-Sphaere(KEIN Neuralnetz), "
+        "Self-knowledge: Gaming=sleep(Overlay+LLM+Wallpaper off), "
+        "Wallpaper=GLSL-plasma-sphere(NOT neural-net), "
         "Voice=HeyFrank+Whisper+Piper, "
-        "VCB=lokal-LLaVA-500/Tag, "
-        "Persoenlichkeit=E-PQ-5Vektoren, "
-        "Ego=HW-zu-Koerper-Mapping, "
-        "Titan=episodisches-Gedaechtnis, "
-        "WorldExp=kausale-Muster, "
-        "Genesis=Ideen-Oekosystem, "
-        "Consciousness=Idle-Thinking+Mood-Tracking"
+        "VCB=local-LLaVA-500/day, "
+        "Personality=E-PQ-5vectors, "
+        "Ego=HW-to-body-mapping, "
+        "Titan=episodic-memory, "
+        "WorldExp=causal-patterns, "
+        "Genesis=idea-ecosystem, "
+        "Consciousness=idle-thinking+mood-tracking"
     )
 
-    # --- Umgebung (Environment) ---
+    # --- Environment ---
     env = _build_environment(user_name, skill_ctx)
     if env:
-        lines.append("Umgebung: " + env)
+        lines.append("Environment: " + env)
 
     # --- Extra (AKAM honesty instructions, topic knowledge, etc.) ---
     if extra_parts:
         for part in extra_parts:
             # Memory and knowledge get more space than generic extras
-            if part.startswith(("[Eigenes Wissen]", "[Mein Gedaechtnis", "[Ich erinnere")):
+            if part.startswith(("[Own Knowledge]", "[My Memory", "[I remember",
+                                "[Eigenes Wissen]", "[Mein Gedaechtnis", "[Ich erinnere")):
                 max_l = 500
             else:
                 max_l = 200
@@ -102,7 +103,7 @@ def build_workspace(
     if not lines:
         return ""
 
-    return "[INNENWELT]\n" + "\n".join(lines) + "\n[/INNENWELT]"
+    return "[INNER_WORLD]\n" + "\n".join(lines) + "\n[/INNER_WORLD]"
 
 
 # ── Channel builders ──────────────────────────────────────────────
@@ -155,7 +156,7 @@ def _build_mood(epq_ctx: Optional[Dict[str, Any]]) -> str:
 
     # Only use the mood feeling — temperament already shapes the system prompt
     # and should NOT be repeated here as raw descriptor text.
-    return f"Ich fuehle mich {mood}"
+    return f"I feel {mood}"
 
 
 def _build_memory(world_ctx: str, news_ctx: str, akam_ctx: str) -> str:
@@ -206,8 +207,9 @@ def _clean_ctx(raw: str, max_len: int = 250) -> str:
     # Remove outer brackets: [Some content here]
     if s.startswith("[") and s.endswith("]"):
         s = s[1:-1].strip()
-    # Remove common prefixes
-    for prefix in ("System-Kontext:", "Eigene Erfahrung:", "AKAM:"):
+    # Remove common prefixes (both English and legacy German)
+    for prefix in ("System-Context:", "System-Kontext:", "Own Experience:",
+                    "Eigene Erfahrung:", "AKAM:"):
         if s.startswith(prefix):
             s = s[len(prefix):].strip()
     return s[:max_len] if len(s) > max_len else s

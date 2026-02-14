@@ -1437,14 +1437,14 @@ class FrankWriterWindow(Adw.ApplicationWindow):
 
         # Show progress
         self.sidebar.chat_panel.add_system_message(
-            "Grammatik wird geprüft..."
+            "Checking grammar..."
         )
 
         def do_check():
             prompt = (
-                "Prüfe den folgenden Text auf Grammatik-, Rechtschreib- und Stilfehler. "
-                "Liste jeden Fehler mit Zeilenbezug und Korrekturvorschlag auf. "
-                "Antworte auf Deutsch, kurz und strukturiert:\n\n"
+                "Check the following text for grammar, spelling and style errors. "
+                "List each error with line reference and suggested correction. "
+                "Answer briefly and in a structured format:\n\n"
                 f"{text[:4000]}"
             )
             response = self.frank_bridge.chat(prompt)

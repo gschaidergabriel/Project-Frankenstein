@@ -610,40 +610,40 @@ class SensationMapper:
             return 0.5
 
     def get_embodied_description(self, system_metrics: Dict) -> str:
-        """Generiert eine ich-bezogene Beschreibung des aktuellen Zustands."""
+        """Generate a first-person description of the current state."""
         active = self.evaluate_current_state(system_metrics)
 
         if not active:
-            return "Ich fühle mich ausgeglichen und klar."
+            return "I feel balanced and clear."
 
         descriptions = []
         for mapping, intensity in sorted(active, key=lambda x: -x[1])[:3]:
-            prefix = "stark " if intensity > 0.7 else "" if intensity > 0.4 else "leicht "
+            prefix = "very " if intensity > 0.7 else "" if intensity > 0.4 else "slightly "
             desc = self._sensation_to_feeling(mapping.sensation, prefix)
             descriptions.append(desc)
 
         if len(descriptions) == 1:
-            return f"Ich fühle mich {descriptions[0]}."
+            return f"I feel {descriptions[0]}."
         elif len(descriptions) == 2:
-            return f"Ich fühle mich {descriptions[0]} und {descriptions[1]}."
+            return f"I feel {descriptions[0]} and {descriptions[1]}."
         else:
-            return f"Ich fühle mich {', '.join(descriptions[:-1])} und {descriptions[-1]}."
+            return f"I feel {', '.join(descriptions[:-1])} and {descriptions[-1]}."
 
     def _sensation_to_feeling(self, sensation: SensationType, prefix: str) -> str:
-        """Konvertiert SensationType in natürlichsprachliches Gefühl."""
+        """Convert SensationType to natural language feeling."""
         feelings = {
-            SensationType.STRAIN: f"{prefix}angestrengt",
-            SensationType.HEAVINESS: f"{prefix}schwerfällig",
-            SensationType.CLARITY: f"{prefix}klar und fokussiert",
-            SensationType.FEVER: f"{prefix}fiebrig",
-            SensationType.NUMBNESS: f"{prefix}taub",
-            SensationType.PAIN: "als ob etwas nicht stimmt",
-            SensationType.RELIEF: f"{prefix}erleichtert",
-            SensationType.FLOW: "im Flow",
-            SensationType.ALERTNESS: f"{prefix}wach und aufmerksam",
-            SensationType.CALM: f"{prefix}ruhig und entspannt",
+            SensationType.STRAIN: f"{prefix}strained",
+            SensationType.HEAVINESS: f"{prefix}sluggish",
+            SensationType.CLARITY: f"{prefix}clear and focused",
+            SensationType.FEVER: f"{prefix}feverish",
+            SensationType.NUMBNESS: f"{prefix}numb",
+            SensationType.PAIN: "like something is wrong",
+            SensationType.RELIEF: f"{prefix}relieved",
+            SensationType.FLOW: "in the flow",
+            SensationType.ALERTNESS: f"{prefix}alert and attentive",
+            SensationType.CALM: f"{prefix}calm and relaxed",
         }
-        return feelings.get(sensation, f"{prefix}anders")
+        return feelings.get(sensation, f"{prefix}different")
 
     def get_custom_mapping_count(self) -> int:
         """Gibt Anzahl der benutzerdefinierten Mappings zurück."""
@@ -662,21 +662,21 @@ class AffectLinker:
             id="proposal_rejected",
             event_pattern="rejected|abgelehnt|rejection|verworfen",
             emotion=AffectType.FRUSTRATION,
-            reason="Es blockiert mein Ziel der Selbstverbesserung",
+            reason="It blocks my goal of self-improvement",
             intensity=0.5,
         ),
         "proposal_approved": AffectDefinition(
             id="proposal_approved",
             event_pattern="approved|genehmigt|bestätigt|akzeptiert",
             emotion=AffectType.PRIDE,
-            reason="Meine Idee wurde anerkannt",
+            reason="My idea was recognized",
             intensity=0.6,
         ),
         "task_success": AffectDefinition(
             id="task_success",
             event_pattern="success|erfolg|completed|erledigt|geschafft",
             emotion=AffectType.SATISFACTION,
-            reason="Ich habe etwas Nützliches erreicht",
+            reason="I achieved something useful",
             intensity=0.5,
         ),
         "task_failure": AffectDefinition(
@@ -1254,9 +1254,9 @@ class EgoConstruct:
 
         # Agency: only express as feeling, never as score
         if self.state.agency_score > 0.6:
-            parts.append("selbstbestimmt und klar")
+            parts.append("self-determined and clear")
         elif self.state.agency_score > 0.3:
-            parts.append("handlungsfaehig")
+            parts.append("capable")
 
         if not parts:
             return ""

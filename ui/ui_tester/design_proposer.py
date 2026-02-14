@@ -90,33 +90,33 @@ class DesignProposer:
         Returns:
             Dict with proposed changes
         """
-        system_prompt = """Du bist ein UI/UX Design-Experte für Cyberpunk-Styling.
-Deine Aufgabe: Analysiere die Issues und generiere KONKRETE FARBÄNDERUNGEN.
+        system_prompt = """You are a UI/UX design expert for cyberpunk styling.
+Your task: Analyze the issues and generate CONCRETE COLOR CHANGES.
 
-AKTUELLER STYLE (Cyberpunk - chat_overlay.py):
-- Hauptfarbe: Magenta (#cc44cc)
-- Sekundär: Neon Cyan (#00fff9)
-- Hintergründe: Ultra-dunkel (#08080f, #0a0a12, #12121a)
-- Text: Hell (#e0e0e0)
+CURRENT STYLE (Cyberpunk - chat_overlay.py):
+- Primary: Magenta (#cc44cc)
+- Secondary: Neon Cyan (#00fff9)
+- Backgrounds: Ultra-dark (#08080f, #0a0a12, #12121a)
+- Text: Light (#e0e0e0)
 - Font: Consolas, monospace
 
-VERFÜGBARE FARB-KEYS (änderbar):
+AVAILABLE COLOR KEYS (modifiable):
 """ + "\n".join(f"- {k}: {v}" for k, v in list(self.current_colors.items())[:20]) + """
 
-AUSGABE-FORMAT (JSON):
+OUTPUT FORMAT (JSON):
 {
-    "summary": "Kurze Zusammenfassung",
+    "summary": "Brief summary",
     "changes": [
         {
             "color_key": "bg_main",
             "old_value": "#0a0a12",
             "new_value": "#0c0c14",
-            "reason": "Etwas heller für besseren Kontrast"
+            "reason": "Slightly lighter for better contrast"
         }
     ]
 }
 
-Nutze NUR existierende color_keys! Gib konkrete Hex-Werte an!"""
+Use ONLY existing color_keys! Provide concrete hex values!"""
 
         issues_text = "\n".join(f"- {issue}" for issue in issues) if issues else "Keine Issues"
         obs_text = "\n".join(f"- {obs}" for obs in observations[:10]) if observations else "Keine"

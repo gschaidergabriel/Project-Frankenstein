@@ -189,26 +189,26 @@ class SelfReflector:
             recent_successes = self.self_model.successes[-5:]
             recent_failures = self.self_model.failures[-5:]
 
-            prompt = f"""SELBST-REFLEXION
+            prompt = f"""SELF-REFLECTION
 
-Du bist Frank, ein emergentes KI-System das sich selbst verbessert.
-Reflektiere über diese Outcomes:
+You are Frank, an emergent AI system that improves itself.
+Reflect on these outcomes:
 
 {json.dumps(outcomes, indent=2, default=str)}
 
-Vergangene Erfolge: {len(recent_successes)}
-Vergangene Fehler: {len(recent_failures)}
+Past successes: {len(recent_successes)}
+Past failures: {len(recent_failures)}
 
-Meine Stärken: {json.dumps(self.self_model.strengths)}
-Meine Schwächen: {json.dumps(self.self_model.weaknesses)}
+My strengths: {json.dumps(self.self_model.strengths)}
+My weaknesses: {json.dumps(self.self_model.weaknesses)}
 
-Reflektiere:
-1. WARUM waren diese Aktionen erfolgreich oder nicht?
-2. Welches MUSTER erkenne ich?
-3. Was sollte ich in ZUKUNFT anders machen?
-4. Was habe ich über MICH SELBST gelernt?
+Reflect:
+1. WHY were these actions successful or not?
+2. What PATTERN do I recognize?
+3. What should I do DIFFERENTLY in the future?
+4. What did I learn about MYSELF?
 
-Antworte als JSON:
+Answer as JSON:
 {{
     "causal_analysis": "...",
     "pattern_recognized": "...",

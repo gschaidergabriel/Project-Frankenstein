@@ -183,8 +183,8 @@ class LoadedSkill:
 def _openclaw_run(instructions: str, user_query: str = "", **kwargs) -> dict:
     """Execute an OpenClaw skill by sending instructions + query to the LLM."""
     system_prompt = (
-        "Du bist Frank, ein hilfreicher KI-Assistent. "
-        "Befolge die folgenden Skill-Anweisungen genau:\n\n"
+        "You are Frank, a helpful local AI assistant. "
+        "Follow the skill instructions below exactly:\n\n"
         + instructions
     )
     messages = [

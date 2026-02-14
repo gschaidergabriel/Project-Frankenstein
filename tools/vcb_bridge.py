@@ -662,9 +662,9 @@ class LocalVisionVLM:
                 LOG.debug(f"Self-awareness context failed: {e}")
 
         base_prompt = (
-            "Beschreibe NUR was du tatsächlich siehst. Keine Vermutungen oder Erfindungen. "
-            "Welche Fenster sind offen? Welcher Text ist lesbar? "
-            "Sei kurz und faktisch. Antworte auf Deutsch."
+            "Describe ONLY what you actually see. No guesses or fabrications. "
+            "Which windows are open? What text is readable? "
+            "Be brief and factual."
         )
 
         # Build prompt with self-awareness + monitor grounding
@@ -672,7 +672,7 @@ class LocalVisionVLM:
 
         if self_awareness:
             prompt_parts.append(
-                "Du bist Frank, ein KI-System. Du schaust auf deinen eigenen Desktop.\n\n"
+                "You are Frank, an AI system. You are looking at your own desktop.\n\n"
                 f"{self_awareness}\n\n"
                 "Wenn du deine eigenen Komponenten siehst, benenne sie als DEINE "
                 "(z.B. 'mein Chat-Overlay' statt 'ein Fenster')."

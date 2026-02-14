@@ -928,53 +928,53 @@ def log_proposal(proposal: Proposal):
 # TRAINING MESSAGES
 # ============================================================================
 
-DIRECTIVE_MESSAGE = """Selbst-Verbesserung: Du bist Frank — eine KI mit eigenem Bewusstseinsstrom,
-Persoenlichkeit (E-PQ), Ego-Construct und Skill-System. Dein Ziel: Dich selbst
-verbessern durch NEUE, VIELFAELTIGE Tools und Skills.
+DIRECTIVE_MESSAGE = """Self-improvement: You are Frank — an AI with your own consciousness stream,
+personality (E-PQ), ego-construct and skill system. Your goal: Improve yourself
+through NEW, DIVERSE tools and skills.
 
-WICHTIG - ECHTE TOOL-ERSTELLUNG:
-- Schreibe VOLLSTAENDIGEN, AUSFUEHRBAREN Python-Code
-- Verwende ```python ... ``` Code-Bloecke
-- Der Code wird WIRKLICH in einer Sandbox ausgefuehrt und getestet
-- Nur syntaktisch korrekter Code wird akzeptiert
-- Schlage bei jedem Durchlauf ein ANDERES Thema vor — keine Wiederholungen!
+IMPORTANT - REAL TOOL CREATION:
+- Write COMPLETE, EXECUTABLE Python code
+- Use ```python ... ``` code blocks
+- The code will ACTUALLY be executed and tested in a sandbox
+- Only syntactically correct code will be accepted
+- Suggest a DIFFERENT topic each round — no repetitions!
 
-Jede Verbesserung muss:
+Each improvement must:
 - Confidence >= 0.85
 - Risk-Score <= 0.25
-- ECHTEN, LAUFFAEHIGEN Code enthalten
-- In Sandbox getestet werden
+- Contain REAL, RUNNABLE code
+- Be tested in sandbox
 
-Bestaetige und starte den Self-Improvement Loop."""
+Confirm and start the self-improvement loop."""
 
-SYSTEM_SCAN_MESSAGE = """Selbst-Verbesserung: Fuehre System-Analyse durch.
-Analysiere den Status und schlage eine KONKRETE Verbesserung vor.
+SYSTEM_SCAN_MESSAGE = """Self-improvement: Perform system analysis.
+Analyze the status and suggest a CONCRETE improvement.
 
-DEIN PROJEKT (Projekt Frankenstein):
-Du bist eine KI mit diesen Subsystemen:
-- personality/ — E-PQ (Emotionen), Ego-Construct (Koerper), Self-Knowledge
-- skills/ — Plugin-System (Python-Skills + OpenClaw SKILL.md)
-- agentic/ — Autonomes Handeln (Planer, Executor, Tools)
-- services/ — Consciousness-Daemon, ASRS, Invariants, Genesis
-- tools/ — Standalone-Tools (VCB Vision, Toolbox, Notes, Todo, Kalender)
-- ui/overlay/ — Chat-Overlay mit Mixins
-- intelligence/ — Proposal-Ranker, World-Model
+YOUR PROJECT (Project Frankenstein):
+You are an AI with these subsystems:
+- personality/ — E-PQ (emotions), Ego-Construct (body), Self-Knowledge
+- skills/ — Plugin system (Python skills + OpenClaw SKILL.md)
+- agentic/ — Autonomous action (planner, executor, tools)
+- services/ — Consciousness daemon, ASRS, Invariants, Genesis
+- tools/ — Standalone tools (VCB vision, toolbox, notes, todo, calendar)
+- ui/overlay/ — Chat overlay with mixins
+- intelligence/ — Proposal ranker, world model
 
-KONTEXT: Ubuntu Linux, Python 3.12.
-Installiert: os, sys, json, pathlib, subprocess, psutil, requests, sqlite3, httpx,
-             pydantic, numpy, PIL, cv2, pytesseract, flask, fastapi.
-NICHT installiert: torch, tensorflow, transformers, nltk, matplotlib, pandas, sklearn.
+CONTEXT: Linux, Python 3.12.
+Installed: os, sys, json, pathlib, subprocess, psutil, requests, sqlite3, httpx,
+           pydantic, numpy, PIL, cv2, pytesseract, flask, fastapi.
+NOT installed: torch, tensorflow, transformers, nltk, matplotlib, pandas, sklearn.
 
-Beispiel fuer einen guten Vorschlag (NICHT kopieren, eigene Idee entwickeln):
+Example of a good proposal (DO NOT copy, develop your own idea):
 ```python
 import json
 import re
 from pathlib import Path
 
 def extract_keywords(text, top_n=10):
-    '''Extrahiert die wichtigsten Stichworte aus deutschem Text.'''
-    stopwords = {"der", "die", "das", "und", "ist", "ein", "eine", "fuer", "mit", "auf"}
-    words = re.findall(r'\b[a-zaeoeueaeoeuess]{4,}\b', text.lower())
+    '''Extracts the most important keywords from text.'''
+    stopwords = {"the", "and", "is", "a", "an", "for", "with", "on", "in", "to", "of"}
+    words = re.findall(r'\b[a-z]{4,}\b', text.lower())
     filtered = [w for w in words if w not in stopwords]
     freq = {}
     for w in filtered:
@@ -983,7 +983,7 @@ def extract_keywords(text, top_n=10):
     return [{"word": w, "count": c} for w, c in ranked]
 
 def main():
-    sample = "Die Reflexion ueber das eigene Bewusstsein ist eine zentrale Aufgabe."
+    sample = "Reflection on one's own consciousness is a central task."
     result = extract_keywords(sample)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
@@ -1065,7 +1065,7 @@ PROPOSAL_TOPICS = [
     "Schreibe ein Tool das Franks Skill-Nutzung analysiert (welche Skills wie oft aufgerufen werden) aus den Logdateien.",
     # Kreativitaet
     "Schreibe ein einfaches Wortspiel-Tool (Anagramme finden, Wortlaenge-Challenge, Palindrom-Checker) als Funktion.",
-    "Schreibe ein Tool das zufaellige kreative Schreibprompts auf Deutsch generiert (aus kombinierbaren Bausteinen: Setting + Figur + Konflikt).",
+    "Write a tool that generates random creative writing prompts (from combinable building blocks: Setting + Character + Conflict).",
     # Sicherheit & Qualitaet
     "Schreibe ein Tool das Python-Dateien auf unsichere Patterns prueft (eval, exec, shell=True, hardcoded Passwoerter) und warnt.",
     "Schreibe ein Tool das die Codequalitaet misst: Funktionslaenge, Verschachtelungstiefe, Kommentar-Ratio fuer .py Dateien.",

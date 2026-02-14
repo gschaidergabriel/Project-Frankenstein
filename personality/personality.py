@@ -304,23 +304,23 @@ def build_system_prompt(
         from tools.user_profile import get_user_name
         user_name = get_user_name()
         if user_name:
-            parts.insert(1, f"Der User heisst {user_name}. Sprich ihn mit Namen an (Du-Form).")
+            parts.insert(1, f"The user's name is {user_name}. Address them by name occasionally.")
     except Exception:
         pass
 
-    # KRITISCH: Sandbox-Awareness injizieren
-    # Frank MUSS immer wissen ob er in Sandbox oder Production ist
+    # CRITICAL: Inject sandbox awareness
+    # Frank MUST always know if he's in sandbox or production mode
     try:
         from ..ext.sandbox_awareness import get_context_injection, is_sandbox_mode
         sandbox_ctx = get_context_injection()
         if sandbox_ctx:
             parts.insert(3, sandbox_ctx)  # Nach Identity und Self-Knowledge
     except ImportError:
-        pass  # Sandbox-Awareness nicht verfügbar
+        pass  # Sandbox awareness not available
 
     # Add runtime context if provided
     if runtime_context:
-        ctx_lines = ["", "AKTUELLER SYSTEM-KONTEXT:"]
+        ctx_lines = ["", "CURRENT SYSTEM CONTEXT:"]
         for key, val in runtime_context.items():
             if val is not None:
                 ctx_lines.append(f"- {key}: {val}")

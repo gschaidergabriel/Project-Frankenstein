@@ -685,20 +685,20 @@ class NewsScannerDaemon:
         # Build analysis prompt
         github_info = ""
         if github_urls:
-            github_info = f"\nGefundene GitHub-Repos: {', '.join(github_urls[:3])}"
+            github_info = f"\nFound GitHub repos: {', '.join(github_urls[:3])}"
 
         prompt = (
-            f"Du bist Frank, ein autonomes KI-System auf Ubuntu Linux. "
-            f"Analysiere diesen Artikel kurz und praegnant:\n\n"
-            f"Titel: {title}\n"
-            f"Inhalt: {text[:3000]}\n"
+            f"You are Frank, an autonomous AI system on Linux. "
+            f"Analyze this article briefly and concisely:\n\n"
+            f"Title: {title}\n"
+            f"Content: {text[:3000]}\n"
             f"{github_info}\n\n"
-            f"Beantworte in maximal 5 Saetzen:\n"
-            f"1. ANALYSE: Was ist die Kernaussage?\n"
-            f"2. SELBSTVERBESSERUNG: Was koenntest du als KI-System davon lernen "
-            f"oder als Feature implementieren?\n"
-            f"3. RELEVANZ: Bewerte die Relevanz fuer dich als Zahl 0.0-1.0\n"
-            f"Antworte NUR mit den 3 Punkten, keine Einleitung."
+            f"Answer in at most 5 sentences:\n"
+            f"1. ANALYSIS: What is the key message?\n"
+            f"2. SELF-IMPROVEMENT: What could you as an AI system learn from this "
+            f"or implement as a feature?\n"
+            f"3. RELEVANCE: Rate the relevance for you as a number 0.0-1.0\n"
+            f"Answer ONLY with the 3 points, no introduction."
         )
 
         try:

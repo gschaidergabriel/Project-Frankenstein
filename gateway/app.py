@@ -248,10 +248,9 @@ async def chat_vision(
         None, functools.partial(_do_ocr, image_data)
     )
 
-    # Force German response
-    prompt = f"Antworte AUF DEUTSCH. {text}"
+    prompt = text
     if ocr_text:
-        prompt += f"\n\nErkannter Text im Bild (OCR):\n{ocr_text[:2000]}"
+        prompt += f"\n\nDetected text in image (OCR):\n{ocr_text[:2000]}"
 
     # Try LLaVA first, fallback to Moondream
     for model in ("llava", "moondream"):
@@ -261,7 +260,7 @@ async def chat_vision(
                 json={
                     "model": model,
                     "prompt": prompt,
-                    "system": "Du bist Frank, ein hilfreicher KI-Assistent. Antworte IMMER auf Deutsch.",
+                    "system": "You are Frank, a local AI assistant. Answer concisely.",
                     "images": [img_b64],
                     "stream": False,
                 },
@@ -302,13 +301,13 @@ async def chat_vision(
                             UPSTREAM["core"] + "/chat",
                             json={
                                 "text": (
-                                    f"Ein KI-Modell hat ein Foto vom Handy analysiert.\n"
-                                    f"Frage: {safe_question}\n"
-                                    f"Rohe Analyse: {safe_answer}\n"
+                                    f"An AI model analyzed a photo from a phone.\n"
+                                    f"Question: {safe_question}\n"
+                                    f"Raw analysis: {safe_answer}\n"
                                     f"{ocr_section}\n"
-                                    f"Fasse die Analyse kurz zusammen und beantworte die Frage auf Deutsch. "
-                                    f"Der OCR-Text ist verifiziert und zuverlaessig — nutze ihn fuer Uebersetzungen. "
-                                    f"Ignoriere offensichtlich falsche oder erfundene Details der Vision-Analyse."
+                                    f"Summarize the analysis briefly and answer the question. "
+                                    f"The OCR text is verified and reliable — use it for translations. "
+                                    f"Ignore obviously false or fabricated details from the vision analysis."
                                 ),
                                 "task": "chat.fast",
                                 "max_tokens": 300,

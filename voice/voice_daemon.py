@@ -571,16 +571,16 @@ class FrankAPI:
     """Interface to Frank's chat API."""
 
     # Frank's capabilities context
-    CAPABILITIES = """Du bist Frank, ein hilfreicher deutscher KI-Assistent mit Sprachsteuerung.
-Du kannst folgende Dinge tun:
-- Steam-Spiele starten: Sag z.B. "Starte Dota 2" oder "Öffne Counter-Strike"
-- Steam-Spiele auflisten: "Welche Spiele habe ich?"
-- Spiele beenden: "Schließe das Spiel"
-- Screenshots machen und den Desktop beschreiben
-- Dateien und Ordner anzeigen
-- Allgemeine Fragen beantworten
+    CAPABILITIES = """You are Frank, a helpful local AI assistant with voice control.
+You can do the following:
+- Launch Steam games: e.g. "Start Dota 2" or "Open Counter-Strike"
+- List Steam games: "What games do I have?"
+- Close games: "Close the game"
+- Take screenshots and describe the desktop
+- Show files and folders
+- Answer general questions
 
-Antworte kurz und natürlich auf Deutsch. Du sprichst mit dem Benutzer per Stimme."""
+Answer briefly and naturally. You are speaking to the user via voice."""
 
     def __init__(self):
         self.api_url = CONFIG["frank_api_url"]
@@ -589,7 +589,7 @@ Antworte kurz und natürlich auf Deutsch. Du sprichst mit dem Benutzer per Stimm
         """Send message to Frank and get response."""
         try:
             # Add capabilities context for voice interactions
-            full_message = f"[System: {self.CAPABILITIES}]\n\nBenutzer sagt: {message}"
+            full_message = f"[System: {self.CAPABILITIES}]\n\nUser says: {message}"
 
             data = json.dumps({
                 "text": full_message,

@@ -218,37 +218,37 @@ Antworte IMMER mit einem JSON-Objekt im Format:
 {
     "action": "type|click|drag|resize|scroll|screenshot|ingest|wait|done",
     "params": {...},
-    "reason": "Warum diese Aktion",
-    "observations": ["Was du auf dem Screenshot siehst"],
-    "issues_found": ["Gefundene Probleme, falls vorhanden"]
+    "reason": "Why this action",
+    "observations": ["What you see on the screenshot"],
+    "issues_found": ["Found problems, if any"]
 }
 
-Aktions-Parameter:
-- type: {"text": "zu tippender Text"}
+Action parameters:
+- type: {"text": "text to type"}
 - click: {"x": 100, "y": 200}
 - drag: {"from_x": 0, "from_y": 0, "to_x": 100, "to_y": 100}
 - resize: {"edge": "right|bottom|corner", "delta_x": 50, "delta_y": 50}
 - scroll: {"direction": "up|down", "amount": 3}
-- screenshot: {} (macht nur Screenshot zur Analyse)
+- screenshot: {} (takes screenshot for analysis)
 - ingest: {"file_type": "image|text|pdf"}
 - wait: {"seconds": 2}
-- done: {} (Test abgeschlossen)
+- done: {} (test completed)
 """
 
-        prompt = f"""AKTUELLER TEST-STATUS:
-- Verbleibende Zeit: {test_context.get('remaining_time', 'unbekannt')}
-- Bisherige Aktionen: {len(previous_actions)}
-- Letzte Aktionen: {previous_actions[-5:] if previous_actions else 'Keine'}
+        prompt = f"""CURRENT TEST STATUS:
+- Remaining time: {test_context.get('remaining_time', 'unknown')}
+- Actions so far: {len(previous_actions)}
+- Last actions: {previous_actions[-5:] if previous_actions else 'None'}
 
-TESTZIELE:
-1. UI-Funktionalität (Chat, Resize, Drag)
-2. Design-Konsistenz (Farben, Fonts, Abstände)
-3. Edge Cases (lange Texte, Sonderzeichen)
-4. Performance (Reaktionszeit)
-5. Bug-Suche
+TEST GOALS:
+1. UI functionality (Chat, Resize, Drag)
+2. Design consistency (Colors, Fonts, Spacing)
+3. Edge cases (long text, special characters)
+4. Performance (Response time)
+5. Bug hunting
 
-Analysiere den Screenshot und entscheide die nächste Aktion.
-Sei gründlich aber effizient - nutze die Zeit optimal."""
+Analyze the screenshot and decide the next action.
+Be thorough but efficient - use the time optimally."""
 
         response = self.analyze_screenshot(screenshot_path, prompt, system_prompt)
 
@@ -345,5 +345,5 @@ if __name__ == "__main__":
 
     # Test simple chat
     print("=== Testing Claude Client ===")
-    response = client.chat("Sage 'Hallo' auf Deutsch und bestätige dass du funktionierst.")
+    response = client.chat("Say 'Hello' and confirm that you are working.")
     print(f"Response: {response}")

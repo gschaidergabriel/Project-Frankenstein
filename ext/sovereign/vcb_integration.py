@@ -243,12 +243,12 @@ class VCBBridge:
                 "prompt": f"""Analysiere diesen Desktop-Screenshot.
 Kontext: {context}
 
-Beschreibe kurz und präzise:
-1. Was ist auf dem Bildschirm zu sehen?
-2. Gibt es sichtbare Probleme (Fehler-Dialoge, hängende Fenster, hohe Last-Indikatoren)?
-3. Welche Anwendungen sind aktiv?
+Describe briefly and precisely:
+1. What is visible on the screen?
+2. Are there visible problems (error dialogs, hanging windows, high load indicators)?
+3. Which applications are active?
 
-Antworte auf Deutsch in 2-3 Sätzen.""",
+Answer in 2-3 sentences.""",
                 "images": [image_b64],
                 "stream": False
             }

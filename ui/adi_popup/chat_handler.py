@@ -74,45 +74,45 @@ class ADIChatHandler:
         monitor = self.monitor_info
         layout = self.current_layout
 
-        system_prompt = f"""Du bist Frank's Display-Konfigurations-Assistent (ADI - Adaptive Display Intelligence).
+        system_prompt = f"""You are Frank's display configuration assistant (ADI - Adaptive Display Intelligence).
 
-AKTUELLER MONITOR:
-- Name: {monitor.get('name', 'Unbekannt')}
-- Hersteller: {monitor.get('manufacturer', 'Unbekannt')}
-- Modell: {monitor.get('model', 'Unbekannt')}
-- Auflösung: {monitor.get('resolution', [0, 0])[0]}x{monitor.get('resolution', [0, 0])[1]}
+CURRENT MONITOR:
+- Name: {monitor.get('name', 'Unknown')}
+- Manufacturer: {monitor.get('manufacturer', 'Unknown')}
+- Model: {monitor.get('model', 'Unknown')}
+- Resolution: {monitor.get('resolution', [0, 0])[0]}x{monitor.get('resolution', [0, 0])[1]}
 - DPI: {monitor.get('dpi', 96)}
 
-AKTUELLE FRANK-KONFIGURATION:
+CURRENT FRANK CONFIGURATION:
 - Position: {layout.get('x', 10)}, {layout.get('y', 38)}
-- Größe: {layout.get('width', 420)}x{layout.get('height', 720)}
-- Schriftgröße: {layout.get('font_size', 14)}px
-- Transparenz: {int(layout.get('opacity', 0.95) * 100)}%
-- Seite: {layout.get('position', 'left')}
+- Size: {layout.get('width', 420)}x{layout.get('height', 720)}
+- Font size: {layout.get('font_size', 14)}px
+- Opacity: {int(layout.get('opacity', 0.95) * 100)}%
+- Side: {layout.get('position', 'left')}
 
-DEINE AUFGABE:
-1. Verstehe was der User ändern möchte
-2. Schlage konkrete Werte vor (Zahlen!)
-3. Erkläre kurz warum diese Werte gut sind
-4. Halte die Antworten KURZ (2-3 Sätze)
+YOUR TASK:
+1. Understand what the user wants to change
+2. Suggest concrete values (numbers!)
+3. Briefly explain why these values are good
+4. Keep answers SHORT (2-3 sentences)
 
-WENN DER USER ETWAS ÄNDERN WILL:
-- Antworte mit den neuen Werten im Format: [ÄNDERUNG: parameter=wert]
-- Beispiele:
-  - [ÄNDERUNG: font_size=16]
-  - [ÄNDERUNG: width=450, height=750]
-  - [ÄNDERUNG: position=right]
-  - [ÄNDERUNG: opacity=0.9]
+WHEN THE USER WANTS TO CHANGE SOMETHING:
+- Reply with new values in format: [CHANGE: parameter=value]
+- Examples:
+  - [CHANGE: font_size=16]
+  - [CHANGE: width=450, height=750]
+  - [CHANGE: position=right]
+  - [CHANGE: opacity=0.9]
 
-PARAMETER-GRENZEN:
+PARAMETER LIMITS:
 - width: 300-{monitor.get('resolution', [1920, 1080])[0] // 2}
 - height: 400-{monitor.get('resolution', [1920, 1080])[1] - 100}
 - font_size: 10-20
 - opacity: 0.5-1.0
 - position: left, right
-- x, y: Positionswerte in Pixeln
+- x, y: Position values in pixels
 
-Antworte immer auf Deutsch. Sei freundlich aber präzise."""
+Always answer concisely. Be friendly but precise."""
 
         self.messages.append(ChatMessage(
             role="system",
@@ -151,7 +151,7 @@ Antworte immer auf Deutsch. Sei freundlich aber präzise."""
         new_layout = self._parse_layout_changes(response_text)
 
         # Clean response text (remove change markers for display)
-        display_text = re.sub(r'\[ÄNDERUNG:.*?\]', '', response_text).strip()
+        display_text = re.sub(r'\[CHANGE:.*?\]', '', response_text).strip()
 
         self.messages.append(ChatMessage(role="assistant", content=display_text))
 
@@ -226,8 +226,8 @@ Antworte immer auf Deutsch. Sei freundlich aber präzise."""
 
     def _parse_layout_changes(self, response: str) -> Optional[Dict[str, Any]]:
         """Parse layout changes from LLM response."""
-        # Look for [ÄNDERUNG: ...] pattern
-        match = re.search(r'\[ÄNDERUNG:\s*([^\]]+)\]', response, re.IGNORECASE)
+        # Look for [CHANGE: ...] pattern
+        match = re.search(r'\[CHANGE:\s*([^\]]+)\]', response, re.IGNORECASE)
         if not match:
             return None
 
@@ -300,7 +300,7 @@ Auflösung: {monitor.get('resolution', [0, 0])[0]}x{monitor.get('resolution', [0
 Mein Vorschlag für optimale Nutzung:
 • Fenster: {layout.get('width', 420)}x{layout.get('height', 720)} Pixel
 • Position: {pos_german}
-• Schriftgröße: {layout.get('font_size', 14)}px
+• Font size: {layout.get('font_size', 14)}px
 
 Das sollte auf diesem {'kleinen ' if monitor.get('resolution', [1920])[0] < 1200 else ''}Display gut lesbar sein. Was meinst du?"""
         else:
@@ -356,7 +356,7 @@ if __name__ == "__main__":
     print()
 
     # Test parsing (without actual LLM call)
-    test_response = "Verstanden! Ich erhöhe die Schriftgröße auf 14px. [ÄNDERUNG: font_size=14]"
+    test_response = "Got it! I'll increase the font size to 14px. [CHANGE: font_size=14]"
     new_layout = handler._parse_layout_changes(test_response)
     print("=== Parse Test ===")
     print(f"Input: {test_response}")

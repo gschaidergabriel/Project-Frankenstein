@@ -35,9 +35,9 @@ def test_load():
     """Test loading persona from file."""
     persona = load(force=True)
     assert persona is not None
-    assert persona["id"] == "frank.v1"
+    assert persona["id"] == "frank.v2"
     assert persona["name"] == "Frank"
-    assert persona["language"] == "de"
+    assert persona["language"] == "en"
     print("✓ test_load")
 
 

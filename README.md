@@ -123,8 +123,11 @@ opt/aicore/
 ├── ingestd/         # Document ingestion service
 ├── webd/            # Web search service
 ├── desktopd/        # Desktop automation service
-└── modeld/          # Model lifecycle service
+├── modeld/          # Model lifecycle service
+└── writer/          # AI-assisted document editor (EXPERIMENTAL)
 ```
+
+> **Note:** The `writer/` module is experimental and not fully developed. It may contain incomplete features or rough edges.
 
 ## Privacy
 

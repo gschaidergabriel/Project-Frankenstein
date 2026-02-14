@@ -56,9 +56,14 @@ LLAMA_COMPLETION_PATH = os.environ.get("AICORE_LLAMA_COMPLETION_PATH", "/complet
 QWEN_COMPLETION_PATH = os.environ.get("AICORE_QWEN_COMPLETION_PATH", "/completion")
 
 QWEN_SERVICE = os.environ.get("AICORE_QWEN_SERVICE", "aicore-qwen-gpu.service")
+LLAMA_SERVICE = os.environ.get("AICORE_LLAMA_SERVICE", "aicore-llama3-gpu.service")
 
 QWEN_IDLE_STOP_SEC = int(os.environ.get("AICORE_QWEN_IDLE_STOP_SEC", "180"))
 QWEN_STARTUP_WAIT_SEC = float(os.environ.get("AICORE_QWEN_STARTUP_WAIT_SEC", "20.0"))
+LLAMA_STARTUP_WAIT_SEC = float(os.environ.get("AICORE_LLAMA_STARTUP_WAIT_SEC", "20.0"))
+
+# Memory pressure control: mutual exclusion for heavy models (only one loaded at a time)
+MEMORY_PRESSURE_CONTROL = os.environ.get("AICORE_MEMORY_PRESSURE_CONTROL", "1").strip() in ("1", "true", "yes")
 
 # CRITICAL: Default token limit for response generation
 # Must be high enough for complete answers (German text ~1.3 chars/token)
@@ -100,6 +105,10 @@ _qwen_inflight: int = 0
 _qwen_monitor_started = False
 _qwen_started_at: float = 0.0
 _lock = threading.Lock()
+
+# Memory pressure control state
+_active_heavy_model: str = "llama"  # which heavy model is currently loaded in VRAM
+_llama_parked: bool = False         # True when llama was intentionally stopped for qwen
 
 # ---- models -----------------------------------------------------------------
 
@@ -221,6 +230,157 @@ def _start_qwen_if_needed() -> bool:
                 return True
             time.sleep(0.25)
         return False
+
+# ---- memory pressure control ------------------------------------------------
+
+def _rollback_to_llama():
+    """Emergency rollback: unmask and restart Llama after a failed swap."""
+    global _active_heavy_model, _llama_parked
+    LOG.info("[MPC] Rolling back to Llama...")
+    _systemctl_user(["stop", QWEN_SERVICE], timeout=8.0)
+    _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+    _systemctl_user(["start", LLAMA_SERVICE], timeout=10.0)
+
+    deadline = time.time() + LLAMA_STARTUP_WAIT_SEC
+    while time.time() < deadline:
+        if _is_llama_up():
+            with _lock:
+                _active_heavy_model = "llama"
+                _llama_parked = False
+            LOG.info("[MPC] Rollback successful, Llama restored")
+            return
+        time.sleep(0.25)
+
+    # Even if health check fails, unmask so watchdog can fix it
+    with _lock:
+        _llama_parked = False
+    LOG.error("[MPC] Rollback: Llama not healthy yet, watchdog should recover")
+
+
+def _swap_to_qwen() -> bool:
+    """
+    Memory-pressure-aware Qwen startup.
+    Stops Llama first to free VRAM, then starts Qwen.
+    Returns True if Qwen is up and ready.
+    """
+    global _active_heavy_model, _llama_parked, _qwen_started_at
+
+    if not MEMORY_PRESSURE_CONTROL:
+        return _start_qwen_if_needed()
+
+    # Fast path: Qwen already up
+    if _is_qwen_up():
+        with _lock:
+            _active_heavy_model = "qwen"
+        return True
+
+    # Serialize swap operations
+    with _qwen_startup_lock:
+        # Re-check after acquiring lock
+        if _is_qwen_up():
+            with _lock:
+                _active_heavy_model = "qwen"
+            return True
+
+        try:
+            # Step 1: Park Llama (mask prevents watchdog restart)
+            if _is_llama_up():
+                LOG.info("[MPC] Masking Llama to prevent watchdog restart")
+                _systemctl_user(["mask", LLAMA_SERVICE], timeout=5.0)
+                LOG.info("[MPC] Stopping Llama to free VRAM...")
+                rc, out = _systemctl_user(["stop", LLAMA_SERVICE], timeout=12.0)
+                if rc != 0:
+                    LOG.error(f"[MPC] Llama stop failed (rc={rc}): {out}")
+                    _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+                    return _start_qwen_if_needed()  # fallback: try without swap
+
+                with _lock:
+                    _llama_parked = True
+
+                # Wait for Llama to fully release VRAM
+                deadline = time.time() + 5.0
+                while time.time() < deadline:
+                    if not _is_llama_up():
+                        break
+                    time.sleep(0.25)
+                LOG.info("[MPC] Llama stopped, VRAM freed")
+
+            # Step 2: Start Qwen
+            LOG.info("[MPC] Starting Qwen...")
+            _systemctl_user(["start", QWEN_SERVICE], timeout=10.0)
+
+            deadline = time.time() + QWEN_STARTUP_WAIT_SEC
+            while time.time() < deadline:
+                if _is_qwen_up():
+                    with _lock:
+                        _active_heavy_model = "qwen"
+                        _qwen_started_at = time.time()
+                    LOG.info("[MPC] Swap complete: llama -> qwen")
+                    return True
+                time.sleep(0.25)
+
+            # Qwen failed to start — rollback
+            LOG.error("[MPC] Qwen failed to start, rolling back to Llama")
+            _rollback_to_llama()
+            return False
+
+        except Exception as e:
+            LOG.error(f"[MPC] Exception during swap: {e}")
+            _rollback_to_llama()
+            return False
+
+
+def _swap_to_llama() -> bool:
+    """
+    Restore Llama after Qwen idle-out.
+    Stops Qwen, unmasks and starts Llama.
+    Returns True if Llama is up.
+    """
+    global _active_heavy_model, _llama_parked
+
+    if not MEMORY_PRESSURE_CONTROL:
+        _systemctl_user(["stop", QWEN_SERVICE], timeout=12.0)
+        return True
+
+    with _qwen_startup_lock:
+        try:
+            # Step 1: Stop Qwen
+            if _is_qwen_up():
+                LOG.info("[MPC] Stopping Qwen (idle out)...")
+                _systemctl_user(["stop", QWEN_SERVICE], timeout=12.0)
+                deadline = time.time() + 5.0
+                while time.time() < deadline:
+                    if not _is_qwen_up():
+                        break
+                    time.sleep(0.25)
+
+            # Step 2: Unmask and start Llama
+            LOG.info("[MPC] Unmasking and starting Llama...")
+            _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+            _systemctl_user(["start", LLAMA_SERVICE], timeout=10.0)
+
+            deadline = time.time() + LLAMA_STARTUP_WAIT_SEC
+            while time.time() < deadline:
+                if _is_llama_up():
+                    with _lock:
+                        _active_heavy_model = "llama"
+                        _llama_parked = False
+                    LOG.info("[MPC] Swap complete: qwen -> llama")
+                    return True
+                time.sleep(0.25)
+
+            LOG.error("[MPC] Llama failed to start after Qwen stop")
+            with _lock:
+                _llama_parked = False
+            return False
+
+        except Exception as e:
+            LOG.error(f"[MPC] Exception during swap-to-llama: {e}")
+            _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+            with _lock:
+                _llama_parked = False
+            return False
+
 
 # ---- heuristics -------------------------------------------------------------
 
@@ -366,16 +526,22 @@ def _qwen_monitor_thread():
         # Check if qwen is up before stopping (outside lock to avoid blocking)
         qwen_is_up = _is_qwen_up()
 
+        should_stop = False
         with _lock:
             # Re-check conditions under lock to avoid race
             if _qwen_inflight > 0 or _qwen_last_used != last:
                 continue  # State changed, skip this iteration
-
-            if qwen_is_up:
-                _systemctl_user(["stop", QWEN_SERVICE], timeout=12.0)
-
+            should_stop = True
             _qwen_started_at = 0.0
             _qwen_last_used = 0.0
+
+        # Execute stop/swap OUTSIDE _lock to avoid deadlock
+        # (_swap_to_llama acquires _qwen_startup_lock internally)
+        if should_stop and qwen_is_up:
+            if MEMORY_PRESSURE_CONTROL:
+                _swap_to_llama()
+            else:
+                _systemctl_user(["stop", QWEN_SERVICE], timeout=12.0)
 
 def _ensure_monitor():
     global _qwen_monitor_started
@@ -390,7 +556,7 @@ def health() -> Dict[str, Any]:
     global _last_ts
     _last_ts = time.time()
     _ensure_monitor()
-    return {
+    result = {
         "ok": True,
         "mode": ROUTER_MODE,
         "last_model": _last_model,
@@ -398,6 +564,11 @@ def health() -> Dict[str, Any]:
         "qwen_up": _is_qwen_up(),
         "ts": _last_ts,
     }
+    if MEMORY_PRESSURE_CONTROL:
+        result["memory_pressure_control"] = True
+        result["active_heavy_model"] = _active_heavy_model
+        result["llama_parked"] = _llama_parked
+    return result
 
 @app.post("/ingest")
 async def ingest(
@@ -476,9 +647,9 @@ def route(req: RouteRequest) -> RouteResponse:
     # llama: wrap as instruct to prevent "random continuation"
     llama_prompt = _llama3_instruct_prompt(text, llama_sys)
 
-    # --- on-demand start for qwen
+    # --- on-demand start for qwen (with memory pressure swap if enabled)
     if want_qwen:
-        ok = _start_qwen_if_needed()
+        ok = _swap_to_qwen()
         if not ok:
             model = "llama"
             want_qwen = False
@@ -533,6 +704,12 @@ def route(req: RouteRequest) -> RouteResponse:
         # If qwen failed, fallback to llama once
         if want_qwen:
             try:
+                # If Llama was parked for swap, restore it first
+                if MEMORY_PRESSURE_CONTROL and _llama_parked:
+                    LOG.info("[MPC] Restoring Llama for fallback...")
+                    _rollback_to_llama()
+                if not _is_llama_up():
+                    raise RuntimeError("Llama not available for fallback")
                 out = _llama_completion(
                     LLAMA_URL,
                     LLAMA_COMPLETION_PATH,
@@ -627,9 +804,9 @@ def route_stream(req: RouteRequest):
     qwen_sys = req.system if req.system else None
     llama_sys = req.system if req.system else LLAMA_SYSTEM_PROMPT
 
-    # Start qwen if needed
+    # Start qwen if needed (with memory pressure swap if enabled)
     if want_qwen:
-        ok = _start_qwen_if_needed()
+        ok = _swap_to_qwen()
         if not ok:
             model = "llama"
             want_qwen = False
@@ -656,6 +833,9 @@ def route_stream(req: RouteRequest):
             yield f"data: {json.dumps({'content': '', 'stop': True, 'model': model})}\n\n"
         except Exception as e:
             LOG.error(f"Stream error [{model}]: {e}")
+            # If Llama is parked and stream failed, restore it in background
+            if want_qwen and MEMORY_PRESSURE_CONTROL and _llama_parked:
+                threading.Thread(target=_rollback_to_llama, daemon=True).start()
             yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': model})}\n\n"
         finally:
             if want_qwen:
@@ -667,4 +847,25 @@ def route_stream(req: RouteRequest):
             LOG.info(f"✅ STREAM DONE [{model}]")
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ---- startup ---------------------------------------------------------------
+
+@app.on_event("startup")
+def on_startup():
+    """Initialize memory pressure state based on what is currently running."""
+    global _active_heavy_model
+    if not MEMORY_PRESSURE_CONTROL:
+        LOG.info("[MPC] Memory pressure control DISABLED")
+        return
+    if _is_qwen_up():
+        _active_heavy_model = "qwen"
+        LOG.info("[MPC] Init: Qwen detected as active heavy model")
+    elif _is_llama_up():
+        _active_heavy_model = "llama"
+        LOG.info("[MPC] Init: Llama detected as active heavy model")
+    else:
+        _active_heavy_model = "llama"
+        LOG.info("[MPC] Init: No heavy model detected, defaulting to llama")
+    LOG.info("[MPC] Memory pressure control ENABLED (mutual exclusion)")
 

@@ -9,10 +9,11 @@
 #   2. Installs system dependencies (apt)
 #   3. Detects your GPU and configures the backend
 #   4. Creates a Python venv and installs pip packages
-#   5. Downloads default LLM models (unless --no-models)
+#   5. Creates data directories
 #   6. Installs Ollama (for vision models)
-#   7. Creates data directories
+#   7. Downloads default LLM models (unless --no-models)
 #   8. Installs systemd user services
+#   9. Creates desktop entries and dock icons
 # ============================================================================
 
 set -euo pipefail
@@ -83,7 +84,7 @@ download_model() {
 }
 
 # --- 1. System requirements check ---
-echo "[1/8] Checking system requirements..."
+echo "[1/9] Checking system requirements..."
 RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 # Check disk on the models target mountpoint (may differ from $HOME)
 MODELS_PARENT="$(dirname "$MODELS_DIR")"
@@ -104,7 +105,7 @@ if ! $NO_MODELS && [ "$DISK_FREE_MB" -lt 15000 ]; then
 fi
 
 # --- 2. System dependencies ---
-echo "[2/8] Installing system dependencies..."
+echo "[2/9] Installing system dependencies..."
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
     python3 python3-venv python3-pip python3-tk \
@@ -117,7 +118,7 @@ sudo apt-get install -y -qq \
 echo "  Done."
 
 # --- 3. GPU detection ---
-echo "[3/8] Detecting GPU..."
+echo "[3/9] Detecting GPU..."
 GPU_NAME="none"
 if $CPU_ONLY; then
     echo "  CPU-only mode (forced)"
@@ -145,7 +146,7 @@ else
 fi
 
 # --- 4. Python venv ---
-echo "[4/8] Setting up Python virtual environment..."
+echo "[4/9] Setting up Python virtual environment..."
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
 fi
@@ -155,7 +156,7 @@ pip install -r "$SCRIPT_DIR/requirements.txt" -q
 echo "  Done. ($(python3 --version))"
 
 # --- 5. Create data directories ---
-echo "[5/8] Creating data directories..."
+echo "[5/9] Creating data directories..."
 python3 -c "
 import sys
 sys.path.insert(0, '$SCRIPT_DIR')
@@ -172,7 +173,7 @@ if [ ! -f "$CONFIG_DIR/config.yaml" ] && [ -f "$SCRIPT_DIR/config.yaml.example" 
 fi
 
 # --- 6. Install Ollama ---
-echo "[6/8] Installing Ollama (local LLM inference)..."
+echo "[6/9] Installing Ollama (local LLM inference)..."
 if command -v ollama &>/dev/null; then
     echo "  Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown version'))"
 else
@@ -212,9 +213,9 @@ fi
 
 # --- 7. Download models ---
 if $NO_MODELS; then
-    echo "[7/8] Skipping model download (--no-models)"
+    echo "[7/9] Skipping model download (--no-models)"
 else
-    echo "[7/8] Downloading default models..."
+    echo "[7/9] Downloading default models..."
     mkdir -p "$MODELS_DIR"
 
     # Pull Ollama models (for vision)
@@ -232,7 +233,7 @@ else
 fi
 
 # --- 8. Install systemd user services ---
-echo "[8/8] Installing systemd user services..."
+echo "[8/9] Installing systemd user services..."
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_USER_DIR"
 
@@ -296,6 +297,78 @@ UNIT
 done
 
 systemctl --user daemon-reload
+echo "  Done."
+
+# --- 9. Desktop entries & dock icons ---
+echo "[9/9] Creating desktop entries..."
+APPS_DIR="$HOME/.local/share/applications"
+ICONS_DIR="$HOME/.local/share/icons/hicolor"
+mkdir -p "$APPS_DIR" "$ICONS_DIR/48x48/apps" "$ICONS_DIR/256x256/apps"
+
+# Install icons
+cp "$SCRIPT_DIR/assets/icons/frank-overlay.svg" "$ICONS_DIR/48x48/apps/frank-overlay.svg"
+cp "$SCRIPT_DIR/assets/icons/frank-writer.png"  "$ICONS_DIR/256x256/apps/frank-writer.png"
+
+# Make launcher scripts executable
+chmod +x "$SCRIPT_DIR/ui/frank_overlay_launcher.sh"
+chmod +x "$SCRIPT_DIR/writer/start_writer.sh"
+
+# Frank Overlay .desktop
+cat > "$APPS_DIR/frank-overlay.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Frank
+Comment=Frank AI Overlay — local AI desktop companion
+Exec=$SCRIPT_DIR/ui/frank_overlay_launcher.sh
+Icon=$ICONS_DIR/48x48/apps/frank-overlay.svg
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=false
+DESKTOP
+echo "  Created frank-overlay.desktop"
+
+# Frank Writer .desktop
+cat > "$APPS_DIR/frank-writer.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Frank Writer
+Comment=AI-native document and code editor
+Exec=$SCRIPT_DIR/writer/start_writer.sh
+Icon=$ICONS_DIR/256x256/apps/frank-writer.png
+Terminal=false
+Type=Application
+Categories=Office;TextEditor;Development;
+StartupNotify=true
+StartupWMClass=org.frank.writer
+DESKTOP
+echo "  Created frank-writer.desktop"
+
+# Update icon cache
+gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+
+# Pin to GNOME dock/dash (add to favorites if not already present)
+if command -v gsettings &>/dev/null; then
+    CURRENT_FAVS=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "[]")
+    NEEDS_UPDATE=false
+
+    if ! echo "$CURRENT_FAVS" | grep -q "frank-overlay.desktop"; then
+        CURRENT_FAVS=$(echo "$CURRENT_FAVS" | sed "s/]$/, 'frank-overlay.desktop']/; s/\[, /[/")
+        NEEDS_UPDATE=true
+    fi
+    if ! echo "$CURRENT_FAVS" | grep -q "frank-writer.desktop"; then
+        CURRENT_FAVS=$(echo "$CURRENT_FAVS" | sed "s/]$/, 'frank-writer.desktop']/; s/\[, /[/")
+        NEEDS_UPDATE=true
+    fi
+
+    if $NEEDS_UPDATE; then
+        gsettings set org.gnome.shell favorite-apps "$CURRENT_FAVS" 2>/dev/null && \
+            echo "  Pinned Frank & Writer to dock." || \
+            echo "  Note: Could not pin to dock (not running GNOME Shell?)."
+    else
+        echo "  Already pinned to dock."
+    fi
+else
+    echo "  Note: gsettings not found. Pin apps to dock manually."
+fi
 echo "  Done."
 
 # --- Summary ---

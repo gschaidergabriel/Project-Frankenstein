@@ -1,12 +1,16 @@
 #!/bin/bash
 # Start Frank Writer
 
-cd /home/ai-core-node/aicore/opt/aicore/writer
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AICORE_DIR="$(dirname "$SCRIPT_DIR")"
+VENV_SITE="$(dirname "$AICORE_DIR")/venv/lib/python3.12/site-packages"
 
 # Set environment — use system Python (gi/GTK4 not in venv)
-export DISPLAY=:0
+export DISPLAY="${DISPLAY:-:0}"
 export GDK_BACKEND=x11
-export PYTHONPATH=/home/ai-core-node/aicore/opt/aicore:/home/ai-core-node/aicore/venv/lib/python3.12/site-packages
+export PYTHONPATH="$AICORE_DIR:$VENV_SITE"
+
+cd "$SCRIPT_DIR"
 
 # Tell watchdog NOT to restart overlay while Writer is open
 echo '{"reason":"frank-writer active","timestamp":"'"$(date -Iseconds)"'"}' > /tmp/frank_user_closed

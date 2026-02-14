@@ -1,0 +1,24 @@
+{
+  "api_key_hash": "REPLACE_WITH_SHA256_HASH_OF_YOUR_API_KEY",
+  "rate_limit_per_minute": 60,
+  "chat_rate_limit_per_minute": 10,
+  "max_body_bytes": 1048576,
+  "allowed_endpoints": [
+    "/health", "/chat", "/chat/voice",
+    "/system/summary", "/system/status",
+    "/calendar/today", "/calendar/week", "/calendar/events",
+    "/calendar/create", "/calendar/delete",
+    "/email/unread", "/email/list", "/email/read",
+    "/todo/list", "/todo/create", "/todo/complete", "/todo/delete",
+    "/notes/list", "/notes/create", "/notes/search", "/notes/delete",
+    "/contacts/list", "/contacts/search",
+    "/search", "/notifications"
+  ],
+  "upstream": {
+    "core": "http://127.0.0.1:8088",
+    "toolbox": "http://127.0.0.1:8096",
+    "webd": "http://127.0.0.1:8093",
+    "router": "http://127.0.0.1:8091",
+    "desktopd": "http://127.0.0.1:8092"
+  }
+}

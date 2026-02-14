@@ -1,0 +1,146 @@
+"""
+Centralized path configuration for AI-Core / Frank.
+
+All modules MUST import paths from here instead of hardcoding them.
+
+Resolution order:
+1. Environment variable (if set)
+2. Auto-detect from this file's location
+
+Directory structure:
+    AICORE_ROOT/    = source code root (this repo)
+    AICORE_DATA/    = ~/.local/share/frank  (databases, state, models)
+    AICORE_CONFIG/  = ~/.config/frank        (user overrides)
+    AICORE_LOG/     = ~/.local/share/frank/logs
+"""
+
+import os
+from pathlib import Path
+
+# === Root paths ===
+
+# Source code root (where this repo lives)
+AICORE_ROOT = Path(os.environ.get(
+    "AICORE_ROOT",
+    str(Path(__file__).resolve().parents[1])
+))
+
+# Data directory (databases, state, models)
+AICORE_DATA = Path(os.environ.get(
+    "AICORE_DATA",
+    str(Path.home() / ".local" / "share" / "frank")
+))
+
+# User config overrides
+AICORE_CONFIG = Path(os.environ.get(
+    "AICORE_CONFIG",
+    str(Path.home() / ".config" / "frank")
+))
+
+# Logs
+AICORE_LOG = Path(os.environ.get(
+    "AICORE_LOG",
+    str(AICORE_DATA / "logs")
+))
+
+# === Derived paths ===
+
+DB_DIR = AICORE_DATA / "db"
+STATE_DIR = AICORE_DATA / "state"
+
+# Individual database paths
+DB_PATHS = {
+    "frank": DB_DIR / "frank.db",
+    "titan": DB_DIR / "titan.db",
+    "titan_shadow": DB_DIR / "titan_shadow.db",
+    "consciousness": DB_DIR / "consciousness.db",
+    "world_experience": DB_DIR / "world_experience.db",
+    "chat_memory": DB_DIR / "chat_memory.db",
+    "agent_state": DB_DIR / "agent_state.db",
+    "e_sir": DB_DIR / "e_sir.db",
+    "e_cpmm": DB_DIR / "e_cpmm.db",
+    "e_wish": DB_DIR / "e_wish.db",
+    "fas_scavenger": DB_DIR / "fas_scavenger.db",
+    "system_bridge": DB_DIR / "system_bridge.db",
+    "notes": DB_DIR / "notes.db",
+    "todos": DB_DIR / "todos.db",
+    "passwords": DB_DIR / "passwords.db",
+    "clipboard_history": DB_DIR / "clipboard_history.db",
+    "news_scanner": DB_DIR / "news_scanner.db",
+    "sandbox_awareness": DB_DIR / "sandbox_awareness.db",
+    "akam_cache": DB_DIR / "akam_cache.db",
+    "intelligence_hub": DB_DIR / "intelligence_hub.db",
+    "sovereign": DB_DIR / "sovereign.db",
+    "invariants": DB_DIR / "invariants.db",
+    "titan_validator": DB_DIR / "titan_validator.db",
+}
+
+# State files (JSON)
+STATE_PATHS = {
+    "chat_history": STATE_DIR / "chat_history.json",
+    "frank_session": STATE_DIR / "frank_session.json",
+    "system_core": STATE_DIR / "system_core.json",
+    "user_profile": STATE_DIR / "user_profile.json",
+    "vcb_state": STATE_DIR / "vcb_state.json",
+    "security_log": STATE_DIR / "security_log.json",
+    "network_health": STATE_DIR / "network_health.json",
+    "network_map": STATE_DIR / "network_map.json",
+    "device_cache": STATE_DIR / "device_cache.json",
+    "genesis_self_model": STATE_DIR / "genesis_self_model.json",
+    "genesis_state": STATE_DIR / "genesis_state.json",
+}
+
+# Special data directories
+ADI_PROFILES_DIR = AICORE_DATA / "adi_profiles"
+ASRS_BACKUP_DIR = AICORE_DATA / "asrs_backups"
+INVARIANTS_DIR = AICORE_DATA / "invariants"
+ERROR_SCREENSHOTS_DIR = AICORE_DATA / "error_screenshots"
+SYSTEM_CONTROL_DIR = AICORE_DATA / "system_control"
+TRAINING_LOG_DIR = AICORE_LOG / "training"
+SANDBOX_DIR = AICORE_DATA / "sandbox"
+
+# Models and voices (downloaded by install.sh)
+MODELS_DIR = Path(os.environ.get(
+    "AICORE_MODELS_DIR",
+    str(AICORE_DATA / "models")
+))
+VOICES_DIR = Path(os.environ.get(
+    "AICORE_VOICES_DIR",
+    str(AICORE_DATA / "voices")
+))
+
+# Source subdirectories
+TOOLS_DIR = AICORE_ROOT / "tools"
+SERVICES_DIR = AICORE_ROOT / "services"
+UI_DIR = AICORE_ROOT / "ui"
+PERSONALITY_DIR = AICORE_ROOT / "personality"
+SOUNDS_DIR = UI_DIR / "sounds"
+
+
+def ensure_dirs():
+    """Create all required data directories. Called by install.sh and on first run."""
+    for d in [
+        AICORE_DATA, AICORE_CONFIG, AICORE_LOG, DB_DIR, STATE_DIR,
+        ADI_PROFILES_DIR, ASRS_BACKUP_DIR, INVARIANTS_DIR,
+        ERROR_SCREENSHOTS_DIR, SYSTEM_CONTROL_DIR, MODELS_DIR, VOICES_DIR,
+        TRAINING_LOG_DIR, SANDBOX_DIR,
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+
+def get_db(name: str) -> Path:
+    """Get database path by name. Creates parent dir if needed."""
+    p = DB_PATHS.get(name)
+    if p is None:
+        p = DB_DIR / f"{name}.db"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def get_state(name: str) -> Path:
+    """Get state file path by name. Creates parent dir if needed."""
+    p = STATE_PATHS.get(name)
+    if p is None:
+        p = STATE_DIR / f"{name}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p

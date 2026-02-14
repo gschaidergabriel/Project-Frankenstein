@@ -1,0 +1,49 @@
+schema:
+  name: "Python Script"
+  category: code
+  output_formats: [py]
+  language: python
+
+structure:
+  - section: shebang
+    required: false
+    content: "#!/usr/bin/env python3"
+
+  - section: docstring
+    required: true
+    ai_help: "Module-level Docstring mit Beschreibung"
+
+  - section: imports
+    required: true
+    ai_help: "Imports gruppiert: stdlib, third-party, local"
+
+  - section: constants
+    required: false
+    ai_help: "Konstanten in UPPER_CASE"
+
+  - section: classes
+    required: false
+    ai_help: "Klassen mit Docstrings und Type Hints"
+
+  - section: functions
+    required: true
+    ai_help: "Funktionen mit Docstrings und Type Hints"
+
+  - section: main
+    required: true
+    ai_help: "if __name__ == '__main__' Block"
+
+style:
+  tone: technical
+  formatting: pep8
+  type_hints: true
+  docstring_style: google
+
+coding:
+  linter: ruff
+  formatter: black
+  type_checker: mypy
+
+export:
+  py:
+    template: null

@@ -1,0 +1,163 @@
+/* Frank Writer - Dark Theme (Catppuccin Mocha, passend zu Libadwaita Dark / GNOME) */
+
+/* Main window */
+.background {
+    background-color: #1e1e2e;
+}
+
+/* Sidebar */
+.sidebar {
+    background-color: #181825;
+    border-right: 1px solid #313244;
+}
+
+.sidebar label {
+    color: #cdd6f4;
+}
+
+/* Editor */
+.sourceview {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+    font-family: "Cantarell", sans-serif;
+    font-size: 12pt;
+}
+
+.sourceview text {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+}
+
+/* Line numbers */
+.sourceview .line-numbers {
+    background-color: #181825;
+    color: #6c7086;
+    padding-right: 8px;
+    border-right: 1px solid #313244;
+}
+
+/* Current line highlight */
+.sourceview .current-line {
+    background-color: #2a2b3d;
+}
+
+/* Status bar */
+.statusbar {
+    background-color: #181825;
+    border-top: 1px solid #313244;
+    padding: 4px 8px;
+}
+
+.statusbar label {
+    color: #a6adc8;
+    font-size: 10pt;
+}
+
+/* Toolbar */
+.toolbar {
+    background-color: #181825;
+    border-bottom: 1px solid #313244;
+}
+
+/* Mode buttons */
+togglebutton {
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #cdd6f4;
+}
+
+togglebutton:checked {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+}
+
+/* Chat panel */
+.chat-message-frank {
+    background-color: #313244;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #cdd6f4;
+}
+
+.chat-message-user {
+    background-color: #45475a;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #cdd6f4;
+}
+
+/* Headings */
+.heading {
+    font-weight: bold;
+    font-size: 11pt;
+    color: #cdd6f4;
+}
+
+/* Dim label */
+.dim-label {
+    color: #6c7086;
+    font-size: 10pt;
+}
+
+/* Accent text */
+.accent {
+    color: #89b4fa;
+}
+
+/* Success */
+.success {
+    color: #a6e3a1;
+}
+
+/* Warning */
+.warning {
+    color: #f9e2af;
+}
+
+/* Error */
+.error {
+    color: #f38ba8;
+}
+
+/* Selection */
+.sourceview text selection {
+    background-color: #45475a;
+}
+
+/* Tabs */
+notebook tab {
+    color: #cdd6f4;
+}
+
+notebook tab:checked {
+    color: #89b4fa;
+}
+
+/* Scrollbar */
+scrollbar slider {
+    background-color: #45475a;
+    border-radius: 4px;
+    min-width: 6px;
+    min-height: 6px;
+}
+
+/* Entry / Search */
+entry {
+    background-color: #313244;
+    color: #cdd6f4;
+    border-color: #45475a;
+}
+
+/* Buttons */
+button {
+    color: #cdd6f4;
+}
+
+.suggested-action {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+}
+
+.suggested-action:hover {
+    background-color: #b4d0fb;
+}

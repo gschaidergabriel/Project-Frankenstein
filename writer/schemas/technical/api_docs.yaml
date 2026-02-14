@@ -1,0 +1,51 @@
+schema:
+  name: "API-Dokumentation"
+  description: "REST/HTTP API-Referenz mit Endpunkten und Beispielen"
+  category: technical
+  output_formats: [html, md, pdf]
+
+structure:
+  - section: overview
+    required: true
+    ai_help: "API-Übersicht: Zweck, Basis-URL, Versionierung"
+
+  - section: authentication
+    required: true
+    ai_help: "Authentifizierung: API-Keys, OAuth, Token-Format"
+
+  - section: rate_limits
+    required: false
+    ai_help: "Rate-Limits und Quotas dokumentieren"
+
+  - section: endpoints
+    required: true
+    ai_help: "Endpunkte: Methode, Pfad, Parameter, Request/Response-Body, Beispiele"
+
+  - section: data_models
+    required: true
+    ai_help: "Datenmodelle: Felder, Typen, Validierung, Beziehungen"
+
+  - section: error_codes
+    required: true
+    ai_help: "Fehlercodes: HTTP-Status, Error-Body, Beschreibung, Lösung"
+
+  - section: examples
+    required: true
+    ai_help: "Vollständige Request/Response-Beispiele mit curl und Code"
+
+  - section: changelog
+    required: false
+    ai_help: "Versionshistorie: Änderungen, Deprecations, Breaking Changes"
+
+style:
+  tone: technical
+  person: second
+  tense: present
+  language: precise
+
+export:
+  html:
+    template: "templates/html/api_docs.html.jinja"
+    css: "styles/technical.css"
+  md:
+    template: "templates/md/api_docs.md.jinja"

@@ -1,0 +1,396 @@
+"""
+AgenticMixin -- Agentic execution integration for ChatOverlay.
+
+Detects complex multi-step queries and routes them through the
+agentic execution loop instead of single-turn LLM calls.
+
+Features:
+- Automatic detection of agentic vs. simple queries
+- Real-time progress display during agent execution
+- Approval handling for risky actions
+- Cancel/pause support
+"""
+
+from __future__ import annotations
+
+import json
+import queue
+import threading
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+
+from overlay.constants import LOG, COLORS
+
+
+class AgenticMixin:
+    """Mixin for agentic execution in ChatOverlay."""
+
+    def _init_agentic(self):
+        """Initialize agentic execution support."""
+        self._agentic_active = False
+        self._agentic_state_id: Optional[str] = None
+        self._agentic_cancel_requested = False
+        self._agentic_lock = threading.Lock()  # Thread safety for flags
+
+        # Event queue for agent updates
+        self._agent_event_queue: "queue.Queue" = queue.Queue()
+
+        # Start polling for agent events
+        self.after(500, self._poll_agent_events)
+
+        LOG.info("Agentic execution support initialized")
+
+    def _is_agentic_query(self, query: str) -> bool:
+        """
+        Determine if query should use agentic execution.
+
+        Uses heuristics to detect complex multi-step tasks.
+        """
+        import re as _re
+        query_lower = query.lower()
+
+        # ── Early exit: discussion/opinion/explanation queries are NEVER agentic ──
+        discussion_patterns = [
+            "meinung", "denkst du", "was hältst du", "was haeltst du",
+            "reflektier", "erkläre", "erklaere", "erklär", "erklaer",
+            "was sagst du", "wie findest du", "bewerte", "beurteile",
+            "zusammenfassung", "zusammenfass", "was denkst",
+            "deine sicht", "dein eindruck", "deine einschätzung",
+            "deine einschaetzung", "kommentiere", "kommentar",
+            # English
+            "opinion", "what do you think", "explain", "summarize",
+            "summary", "your view", "your impression", "comment on",
+            "how do you feel", "what's your take",
+        ]
+        if any(p in query_lower for p in discussion_patterns):
+            return False
+
+        # Explicit agentic triggers (exact substring match)
+        explicit_triggers = [
+            "führe aus", "automatisch", "erledige", "mach das",
+            "schrittweise", "analysiere und", "finde und",
+            "suche und", "lies und", "erstelle und",
+            "konfiguriere", "code schreiben",
+            "schreib mir ein", "baue mir", "bau mir", "erstelle mir",
+            # English
+            "execute", "automatically", "do this", "step by step",
+            "analyze and", "find and", "search and", "read and",
+            "create and", "configure", "write code",
+            "write me a", "build me", "create me",
+        ]
+
+        for trigger in explicit_triggers:
+            if trigger in query_lower:
+                return True
+
+        # Regex-based triggers — imperative/infinitive ONLY, not past participle
+        # programmiere/programmieren → agentic (requesting action)
+        # implementiert/programmiert → NOT agentic (describing past action)
+        agentic_verb_re = _re.compile(
+            r"\b(programmier(?:e|en|st)?|entwickle(?:n|st)?|implementier(?:e|en|st)?"
+            r"|installier(?:e|en|st)?|codier(?:e|en|st)?"
+            r"|skript\w*\s+schreib\w*|code\w*\s+schreib\w*)\b",
+            _re.IGNORECASE,
+        )
+        if agentic_verb_re.search(query_lower):
+            return True
+
+        # Multi-step indicators
+        multi_step_patterns = [
+            " und dann ", " danach ", " anschließend ",
+            " als nächstes ", ", dann ",
+            # English
+            " and then ", " after that ", " afterwards ",
+            " next ", ", then ",
+        ]
+
+        step_count = sum(1 for p in multi_step_patterns if p in query_lower)
+        if step_count >= 1:
+            return True
+
+        # Length + action heuristic (long requests with action verbs)
+        if len(query) > 150 and any(w in query_lower for w in [
+            "kannst du", "könntest du", "ich will", "ich möchte",
+            "ich brauche", "mach mir", "wenn du fertig",
+            "can you", "could you", "i want", "i need",
+            "make me", "when you're done",
+        ]):
+            return True
+
+        return False
+
+    def _start_agentic_execution(self, query: str) -> None:
+        """
+        Start agentic execution for a query.
+
+        Runs in background thread with progress updates.
+        """
+        with self._agentic_lock:
+            if self._agentic_active:
+                self._add_message(
+                    "Frank",
+                    "An agent is already running. Please wait or say 'cancel'.",
+                    is_system=True
+                )
+                return
+
+            self._agentic_active = True
+            self._agentic_cancel_requested = False
+
+        # Show initial status
+        self._add_message(
+            "Frank",
+            "🤖 **Agentic Mode activated**\nAnalyzing task and creating execution plan...",
+            is_system=True
+        )
+
+        # Run in background
+        threading.Thread(
+            target=self._agentic_worker,
+            args=(query,),
+            daemon=True
+        ).start()
+
+    def _agentic_worker(self, query: str) -> None:
+        """Background worker for agentic execution."""
+        try:
+            # Import here to avoid circular imports
+            from agentic import AgentLoop, AgentEvent
+
+            def event_callback(event: AgentEvent):
+                """Handle agent events."""
+                self._agent_event_queue.put(event)
+
+            # Get session ID from overlay constants
+            from overlay.constants import SESSION_ID
+            session_id = SESSION_ID
+
+            # Create and run agent
+            loop = AgentLoop(event_callback=event_callback)
+            response, state = loop.run(
+                goal=query,
+                session_id=session_id,
+                initial_context=self._get_conversation_context(),
+            )
+
+            # Store state ID for potential continuation
+            self._agentic_state_id = state.id
+
+            # Queue final response
+            self._agent_event_queue.put({
+                "type": "final",
+                "response": response,
+                "state": state.to_dict() if state else None,
+            })
+
+        except Exception as e:
+            LOG.exception(f"Agentic execution failed: {e}")
+            self._agent_event_queue.put({
+                "type": "error",
+                "error": str(e),
+            })
+
+        finally:
+            with self._agentic_lock:
+                self._agentic_active = False
+
+    def _poll_agent_events(self) -> None:
+        """Poll and process agent events."""
+        try:
+            while True:
+                try:
+                    event = self._agent_event_queue.get_nowait()
+                    self._handle_agent_event(event)
+                except queue.Empty:
+                    break
+        except Exception as e:
+            LOG.error(f"Error polling agent events: {e}")
+
+        # Schedule next poll
+        self.after(200, self._poll_agent_events)
+
+    def _handle_agent_event(self, event: Any) -> None:
+        """Handle an agent event."""
+        if isinstance(event, dict):
+            event_type = event.get("type", "")
+        else:
+            # AgentEvent dataclass
+            event_type = event.event_type
+            event = {"type": event_type, **event.data}
+
+        if event_type == "planning":
+            self._update_agent_status("📋 Creating execution plan...")
+
+        elif event_type == "started":
+            steps = event.get("steps", 0)
+            self._update_agent_status(f"🚀 Plan created: {steps} steps")
+
+        elif event_type == "thinking":
+            iteration = event.get("iteration", 0)
+            self._update_agent_status(f"🧠 Analyzing... (step {iteration})")
+
+        elif event_type == "acting":
+            tool = event.get("tool", "?")
+            self._update_agent_status(f"⚡ Executing: {tool}")
+
+        elif event_type == "observing":
+            tool = event.get("tool", "?")
+            success = "✓" if event.get("success") else "✗"
+            self._update_agent_status(f"{success} {tool} completed")
+
+        elif event_type == "replanning":
+            reason = event.get("reason", "")[:50]
+            self._update_agent_status(f"🔄 Replanning: {reason}...")
+
+        elif event_type == "waiting_approval":
+            tool = event.get("tool", "?")
+            self._show_approval_request(tool, event.get("risk", 0.5))
+
+        elif event_type == "completed":
+            response = event.get("response", "Task completed.")
+            self._add_message("Frank", f"✅ **Done**\n\n{response}")
+
+        elif event_type == "failed":
+            error = event.get("error", "Unknown error")
+            self._add_message("Frank", f"❌ **Failed**\n\n{error}", is_system=True)
+
+        elif event_type == "final":
+            response = event.get("response", "")
+            if response:
+                self._add_message("Frank", response)
+
+        elif event_type == "error":
+            error = event.get("error", "Unknown error")
+            self._add_message("Frank", f"⚠️ Error: {error}", is_system=True)
+
+    def _update_agent_status(self, status: str) -> None:
+        """Update the agent status display."""
+        # Use UI queue for thread safety
+        def update():
+            # Update the last system message or add new one
+            # For now, just add to chat
+            LOG.info(f"Agent status: {status}")
+            # Could update a status bar here instead
+
+        self._ui_queue.put(update)
+
+    def _show_approval_request(self, tool: str, risk: float) -> None:
+        """Show approval request for risky action."""
+        risk_level = "⚠️ Medium" if risk < 0.7 else "🔴 High"
+
+        def show():
+            self._add_message(
+                "Frank",
+                f"**Approval required**\n\n"
+                f"Tool: `{tool}`\n"
+                f"Risk: {risk_level} ({risk:.0%})\n\n"
+                f"Say 'yes' to execute or 'no' to skip.",
+                is_system=True
+            )
+
+        self._ui_queue.put(show)
+
+    def _get_conversation_context(self) -> str:
+        """Get recent conversation context for agent."""
+        if not hasattr(self, '_chat_history'):
+            return ""
+
+        recent = self._chat_history[-5:]
+        lines = []
+        for msg in recent:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")[:200]
+            lines.append(f"{role}: {content}")
+
+        return "\n".join(lines)
+
+    def _cancel_agentic_execution(self) -> bool:
+        """Cancel running agentic execution."""
+        if not self._agentic_active:
+            return False
+
+        self._agentic_cancel_requested = True
+
+        if self._agentic_state_id:
+            try:
+                from agentic import AgentLoop
+                loop = AgentLoop()
+                loop.cancel(self._agentic_state_id)
+            except Exception as e:
+                LOG.error(f"Failed to cancel agent: {e}")
+
+        self._add_message("Frank", "🛑 Cancelling agent...", is_system=True)
+        return True
+
+    def _handle_agentic_response(self, user_input: str) -> bool:
+        """
+        Handle user input during agentic execution.
+
+        Returns True if input was handled (approval response, cancel, etc.)
+        """
+        input_lower = user_input.lower().strip()
+
+        # Cancel commands
+        if input_lower in ("abbrechen", "stop", "cancel", "stopp"):
+            return self._cancel_agentic_execution()
+
+        # Approval responses
+        if self._agentic_active:
+            if input_lower in ("ja", "yes", "ok", "genehmigt", "approved"):
+                self._respond_to_approval(True)
+                return True
+            elif input_lower in ("nein", "no", "ablehnen", "deny", "skip"):
+                self._respond_to_approval(False)
+                return True
+
+        return False
+
+    def _respond_to_approval(self, approved: bool) -> None:
+        """Respond to an approval request."""
+        # Write to approval response file
+        response_file = Path("/tmp/frank_approval_responses.json")
+        try:
+            responses = []
+            if response_file.exists():
+                with open(response_file, "r") as f:
+                    responses = json.load(f)
+
+            # Add response for latest request
+            responses.append({
+                "id": self._agentic_state_id or "unknown",
+                "approved": approved,
+                "timestamp": time.time(),
+            })
+
+            with open(response_file, "w") as f:
+                json.dump(responses, f)
+
+            status = "approved" if approved else "denied"
+            self._add_message("Frank", f"Action {status}.", is_system=True)
+
+        except Exception as e:
+            LOG.error(f"Failed to write approval response: {e}")
+
+
+# ============ Integration Helper ============
+
+def should_use_agentic(query: str) -> bool:
+    """
+    Quick check if a query should use agentic execution.
+
+    Can be called before creating overlay instance.
+    """
+    query_lower = query.lower()
+
+    triggers = [
+        "führe aus", "automatisch", "erledige", "schrittweise",
+        " und dann ", " danach ", " anschließend ",
+        "installiere", "konfiguriere", "analysiere und",
+        # English
+        "execute", "automatically", "step by step",
+        " and then ", " after that ",
+        "install", "configure", "analyze and",
+    ]
+
+    return any(t in query_lower for t in triggers)

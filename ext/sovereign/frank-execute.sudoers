@@ -1,0 +1,22 @@
+# =============================================================================
+# Sudoers configuration for frank-execute
+# =============================================================================
+#
+# Installation:
+#   sudo cp frank-execute.sudoers /etc/sudoers.d/frank-execute
+#   sudo chmod 440 /etc/sudoers.d/frank-execute
+#   sudo visudo -c  # Verify syntax
+#
+# SECURITY:
+# - Only allows execution of /usr/local/bin/frank-execute
+# - The wrapper script implements strict whitelists
+# - All operations are logged
+#
+# =============================================================================
+
+# Allow ai-core-node to run frank-execute without password
+ai-core-node ALL=(root) NOPASSWD: /usr/local/bin/frank-execute
+
+# No environment variables passed (security)
+Defaults!/usr/local/bin/frank-execute env_reset
+Defaults!/usr/local/bin/frank-execute !env_keep

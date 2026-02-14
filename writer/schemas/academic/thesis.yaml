@@ -1,0 +1,85 @@
+schema:
+  name: "Abschlussarbeit"
+  description: "Bachelor-/Masterarbeit mit vollständiger akademischer Struktur"
+  category: academic
+  output_formats: [pdf, docx, tex]
+
+structure:
+  - section: titlepage
+    required: true
+    ai_help: "Titelseite mit Titel, Autor, Betreuer, Institution, Datum"
+
+  - section: abstract
+    required: true
+    max_words: 500
+    ai_help: "Zusammenfassung: Kontext, Ziel, Methodik, Ergebnisse, Fazit"
+
+  - section: declaration
+    required: true
+    ai_help: "Eidesstattliche Erklärung zur Eigenständigkeit"
+
+  - section: table_of_contents
+    required: true
+    auto_generate: true
+
+  - section: list_of_figures
+    required: false
+    auto_generate: true
+
+  - section: list_of_tables
+    required: false
+    auto_generate: true
+
+  - section: abbreviations
+    required: false
+    ai_help: "Abkürzungsverzeichnis alphabetisch sortiert"
+
+  - section: introduction
+    required: true
+    ai_help: "Einleitung: Motivation, Problemstellung, Forschungsfrage, Aufbau der Arbeit"
+
+  - section: theoretical_background
+    required: true
+    ai_help: "Theoretische Grundlagen und Stand der Forschung"
+
+  - section: methodology
+    required: true
+    ai_help: "Forschungsdesign, Datenerhebung, Analysemethoden"
+
+  - section: implementation
+    required: false
+    ai_help: "Technische Umsetzung (bei Informatik-Arbeiten)"
+
+  - section: results
+    required: true
+    ai_help: "Ergebnisse objektiv und strukturiert darstellen"
+
+  - section: discussion
+    required: true
+    ai_help: "Interpretation, Vergleich mit Literatur, Limitationen"
+
+  - section: conclusion
+    required: true
+    ai_help: "Fazit und Ausblick auf weiterführende Forschung"
+
+  - section: references
+    required: true
+    format: "APA7"
+    ai_help: "Literaturverzeichnis nach Zitierstandard"
+
+  - section: appendix
+    required: false
+    ai_help: "Anhang: Zusätzliche Daten, Fragebögen, Code"
+
+style:
+  tone: formal
+  person: third
+  tense: past
+  language: academic
+
+export:
+  pdf:
+    template: "templates/pdf/thesis.html"
+    css: "styles/academic.css"
+  tex:
+    template: "templates/latex/thesis.tex.jinja"

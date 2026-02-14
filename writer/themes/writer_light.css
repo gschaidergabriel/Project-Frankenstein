@@ -1,0 +1,233 @@
+/* Frank Writer - Light Editor Theme (White Editor, Dark Chrome) */
+/* Writer mode only - Coding mode uses coding_monokai.css */
+
+/* Main window background stays dark */
+.background {
+    background-color: #1e1e2e;
+}
+
+/* ============================================ */
+/* Sidebar stays dark (Catppuccin Mocha)        */
+/* ============================================ */
+.sidebar {
+    background-color: #181825;
+    border-right: 1px solid #313244;
+}
+
+.sidebar label {
+    color: #cdd6f4;
+}
+
+/* ============================================ */
+/* Editor - WHITE background (Word-like)        */
+/* ============================================ */
+.sourceview {
+    background-color: #ffffff;
+    color: #1e1e2e;
+    font-family: "Cantarell", "Noto Sans", sans-serif;
+    font-size: 12pt;
+}
+
+.sourceview text {
+    background-color: #ffffff;
+    color: #1e1e2e;
+}
+
+/* Line numbers - light gray gutter */
+.sourceview .line-numbers {
+    background-color: #f5f5f5;
+    color: #999999;
+    padding-right: 8px;
+    border-right: 1px solid #e0e0e0;
+}
+
+/* Current line highlight */
+.sourceview .current-line {
+    background-color: #f0f4ff;
+}
+
+/* Selection - Word-like blue */
+.sourceview text selection {
+    background-color: #b4d5fe;
+    color: #1e1e2e;
+}
+
+/* ============================================ */
+/* Formatting Toolbar                           */
+/* ============================================ */
+.formatting-toolbar {
+    background-color: #232334;
+    border-bottom: 1px solid #313244;
+}
+
+.formatting-toolbar button {
+    color: #cdd6f4;
+    min-width: 30px;
+    min-height: 28px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+.formatting-toolbar button:hover {
+    background-color: #313244;
+    border-color: #45475a;
+}
+
+.formatting-toolbar button:active,
+.formatting-toolbar button:checked {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+}
+
+.formatting-toolbar .format-bold label {
+    font-weight: 800;
+}
+
+.formatting-toolbar .format-italic label {
+    font-style: italic;
+}
+
+.formatting-toolbar .format-underline label {
+    text-decoration: underline;
+}
+
+.formatting-toolbar .format-strike label {
+    text-decoration: line-through;
+}
+
+.formatting-toolbar separator {
+    background-color: #45475a;
+    min-width: 1px;
+    margin-top: 6px;
+    margin-bottom: 6px;
+}
+
+.formatting-toolbar dropdown,
+.formatting-toolbar .dropdown-btn {
+    color: #cdd6f4;
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-height: 28px;
+}
+
+/* ============================================ */
+/* Chrome stays dark (Catppuccin Mocha)         */
+/* ============================================ */
+
+/* Status bar */
+.statusbar {
+    background-color: #181825;
+    border-top: 1px solid #313244;
+    padding: 4px 8px;
+}
+
+.statusbar label {
+    color: #a6adc8;
+    font-size: 10pt;
+}
+
+/* Mode toggle toolbar */
+.toolbar {
+    background-color: #181825;
+    border-bottom: 1px solid #313244;
+}
+
+/* Mode toggle buttons */
+togglebutton {
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #cdd6f4;
+}
+
+togglebutton:checked {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+}
+
+/* Chat panel */
+.chat-message-frank {
+    background-color: #313244;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #cdd6f4;
+}
+
+.chat-message-user {
+    background-color: #45475a;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #cdd6f4;
+}
+
+/* Headings */
+.heading {
+    font-weight: bold;
+    font-size: 11pt;
+    color: #cdd6f4;
+}
+
+/* Dim label */
+.dim-label {
+    color: #6c7086;
+    font-size: 10pt;
+}
+
+/* Accent text */
+.accent {
+    color: #89b4fa;
+}
+
+/* Success / Warning / Error */
+.success { color: #a6e3a1; }
+.warning { color: #f9e2af; }
+.error   { color: #f38ba8; }
+
+/* Tabs */
+notebook tab {
+    color: #cdd6f4;
+}
+
+notebook tab:checked {
+    color: #89b4fa;
+}
+
+/* Scrollbar in editor area - lighter for white bg */
+.sourceview scrollbar slider {
+    background-color: #c0c0c0;
+    border-radius: 4px;
+    min-width: 6px;
+    min-height: 6px;
+}
+
+/* General scrollbar */
+scrollbar slider {
+    background-color: #45475a;
+    border-radius: 4px;
+    min-width: 6px;
+    min-height: 6px;
+}
+
+/* Entry / Search */
+entry {
+    background-color: #313244;
+    color: #cdd6f4;
+    border-color: #45475a;
+}
+
+/* Buttons */
+button {
+    color: #cdd6f4;
+}
+
+.suggested-action {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+}
+
+.suggested-action:hover {
+    background-color: #b4d0fb;
+}

@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "frank.persona.schema.json",
+  "title": "Frank Persona Schema",
+  "description": "Schema for validating Frank personality configuration",
+  "type": "object",
+  "required": ["id", "version", "name", "language", "voice", "self_model", "prompts"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z]+\\.[a-z0-9]+$",
+      "description": "Unique persona identifier (e.g., frank.v1)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "Display name"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["de", "en"],
+      "description": "Primary language"
+    },
+    "voice": {
+      "type": "object",
+      "required": ["tone", "style_rules"],
+      "properties": {
+        "tone": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "style_rules": {
+          "type": "array",
+          "items": {"type": "string", "maxLength": 500},
+          "minItems": 1,
+          "maxItems": 20
+        }
+      }
+    },
+    "self_model": {
+      "type": "object",
+      "required": ["runs_local", "os", "product"],
+      "properties": {
+        "runs_local": {"type": "boolean"},
+        "os": {"type": "string"},
+        "product": {"type": "string"},
+        "description": {"type": "string", "maxLength": 500},
+        "mission": {"type": "string", "maxLength": 500},
+        "capability_claims": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": {
+          "name": {"type": "string", "maxLength": 100},
+          "description": {"type": "string", "maxLength": 500}
+        }
+      }
+    },
+    "tool_policy": {
+      "type": "object",
+      "properties": {
+        "default": {"type": "string", "enum": ["allow", "deny", "ask_before_act"]},
+        "allow": {"type": "array", "items": {"type": "string"}},
+        "ask_before": {"type": "array", "items": {"type": "string"}},
+        "deny": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "prompts": {
+      "type": "object",
+      "required": ["identity_core"],
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 4000
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["include_sections"],
+        "properties": {
+          "include_sections": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created": {"type": "string"},
+        "author": {"type": "string"},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}

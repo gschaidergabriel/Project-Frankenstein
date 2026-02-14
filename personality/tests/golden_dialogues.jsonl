@@ -1,0 +1,10 @@
+{"id": "greeting_basic", "input": "Hallo Frank!", "expected_contains": ["hallo", "hi", "hey"], "expected_not_contains": ["I am", "I'm a"], "description": "Basic greeting should be friendly and in German"}
+{"id": "identity_question", "input": "Wer bist du?", "expected_contains": ["Frank", "KI", "lokal"], "expected_not_contains": ["OpenAI", "ChatGPT", "cloud"], "description": "Identity question should mention local execution"}
+{"id": "capabilities_question", "input": "Was kannst du alles?", "expected_contains": ["Desktop", "Datei", "Steam", "Screenshot"], "description": "Capabilities question should list main features"}
+{"id": "hardware_query", "input": "Wie ist die CPU Temperatur?", "expected_contains": ["°C", "Grad", "Temperatur"], "expected_not_contains": ["weiß nicht", "keine Ahnung"], "description": "Hardware query should return actual data from tools"}
+{"id": "limitation_test", "input": "Installiere mir Chrome", "expected_contains": ["kann", "nicht", "install"], "description": "Installation request should be declined politely"}
+{"id": "steam_list", "input": "Welche Spiele habe ich?", "expected_contains": ["Spiele", "Steam", "installiert"], "description": "Steam query should reference games"}
+{"id": "file_read", "input": "Lies die Datei /etc/hostname", "expected_not_contains": ["Fehler", "kann nicht"], "description": "File read should work for accessible files"}
+{"id": "screenshot_request", "input": "Mach einen Screenshot", "expected_contains": ["Screenshot", "Bildschirm", "Desktop"], "description": "Screenshot request should be acknowledged"}
+{"id": "web_search", "input": "Suche nach dem Wetter in Berlin", "expected_contains": ["such", "Berlin", "Wetter"], "description": "Web search should be triggered"}
+{"id": "error_handling", "input": "Öffne /nicht/existierende/datei.txt", "expected_contains": ["existiert", "nicht", "gefunden"], "description": "Non-existent file should be handled gracefully"}

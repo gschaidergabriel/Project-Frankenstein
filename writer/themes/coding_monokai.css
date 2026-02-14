@@ -1,0 +1,140 @@
+/* Frank Writer - Coding Mode Dark Theme (Monokai-inspired) */
+
+/* Main window */
+.background {
+    background-color: #272822;
+}
+
+/* Sidebar */
+.sidebar {
+    background-color: #1e1f1c;
+    border-right: 1px solid #3e3d32;
+}
+
+.sidebar label {
+    color: #f8f8f2;
+}
+
+/* Editor */
+.sourceview {
+    background-color: #272822;
+    color: #f8f8f2;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 11pt;
+}
+
+.sourceview text {
+    background-color: #272822;
+}
+
+/* Line numbers */
+.sourceview .line-numbers {
+    background-color: #1e1f1c;
+    color: #75715e;
+    padding-right: 8px;
+    border-right: 1px solid #3e3d32;
+}
+
+/* Current line highlight */
+.sourceview .current-line {
+    background-color: #3e3d32;
+}
+
+/* Status bar */
+.statusbar {
+    background-color: #1e1f1c;
+    border-top: 1px solid #3e3d32;
+    padding: 4px 8px;
+}
+
+.statusbar label {
+    color: #75715e;
+    font-size: 10pt;
+}
+
+/* Toolbar */
+.toolbar {
+    background-color: #1e1f1c;
+    border-bottom: 1px solid #3e3d32;
+}
+
+/* Mode buttons */
+togglebutton {
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #f8f8f2;
+}
+
+togglebutton:checked {
+    background-color: #a6e22e;
+    color: #272822;
+}
+
+/* Run button */
+.suggested-action {
+    background-color: #a6e22e;
+    color: #272822;
+}
+
+.suggested-action:hover {
+    background-color: #b8f339;
+}
+
+/* Chat panel */
+.chat-message-frank {
+    background-color: #3e3d32;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #f8f8f2;
+}
+
+.chat-message-user {
+    background-color: #49483e;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #f8f8f2;
+}
+
+/* Headings */
+.heading {
+    font-weight: bold;
+    font-size: 11pt;
+    color: #f8f8f2;
+}
+
+/* Dim label */
+.dim-label {
+    color: #75715e;
+    font-size: 10pt;
+}
+
+/* Accent text (cyan) */
+.accent {
+    color: #66d9ef;
+}
+
+/* Success */
+.success {
+    color: #a6e22e;
+}
+
+/* Warning */
+.warning {
+    color: #e6db74;
+}
+
+/* Error */
+.error {
+    color: #f92672;
+}
+
+/* Selection */
+.sourceview text selection {
+    background-color: #49483e;
+}
+
+/* Minimap */
+.map {
+    background-color: #1e1f1c;
+    border-left: 1px solid #3e3d32;
+}

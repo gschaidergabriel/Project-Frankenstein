@@ -1,0 +1,386 @@
+#!/bin/bash
+# =============================================================================
+# frank-execute - Privilegierter Wrapper für E-SMC Sovereign
+# =============================================================================
+#
+# SICHERHEIT: Dieses Script wird via sudoers ohne Passwort ausgeführt.
+# Es implementiert STRIKTE Whitelists für erlaubte Operationen.
+#
+# Installation:
+#   sudo cp frank-execute /usr/local/bin/
+#   sudo chmod 755 /usr/local/bin/frank-execute
+#   sudo cp frank-execute.sudoers /etc/sudoers.d/frank-execute
+#
+# =============================================================================
+
+set -euo pipefail
+
+# Logging
+LOG_FILE="/var/log/frank-execute.log"
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+# Strict validation
+validate_package_name() {
+    local pkg="$1"
+    # Only allow alphanumeric, dash, dot, plus - no special chars
+    if [[ ! "$pkg" =~ ^[a-zA-Z0-9][a-zA-Z0-9._+-]*$ ]]; then
+        echo "ERROR: Invalid package name: $pkg"
+        log "BLOCKED: Invalid package name: $pkg"
+        exit 1
+    fi
+
+    # Max length 100
+    if [[ ${#pkg} -gt 100 ]]; then
+        echo "ERROR: Package name too long"
+        log "BLOCKED: Package name too long: $pkg"
+        exit 1
+    fi
+}
+
+validate_sysctl_param() {
+    local param="$1"
+    # Only allow specific parameters
+    local allowed_params=(
+        "vm.swappiness"
+        "vm.dirty_ratio"
+        "vm.dirty_background_ratio"
+        "vm.vfs_cache_pressure"
+        "net.core.rmem_max"
+        "net.core.wmem_max"
+        "kernel.sched_autogroup_enabled"
+    )
+
+    local found=0
+    for allowed in "${allowed_params[@]}"; do
+        if [[ "$param" == "$allowed" ]]; then
+            found=1
+            break
+        fi
+    done
+
+    if [[ $found -eq 0 ]]; then
+        echo "ERROR: Sysctl parameter not in whitelist: $param"
+        log "BLOCKED: Sysctl not whitelisted: $param"
+        exit 1
+    fi
+}
+
+# Protected packages that can NEVER be touched
+is_protected_package() {
+    local pkg="$1"
+    local protected=(
+        "linux-image-generic" "linux-headers-generic" "grub-common" "grub-pc"
+        "initramfs-tools" "systemd" "systemd-sysv"
+        "libc6" "libstdc++6" "libgcc-s1" "libssl3" "zlib1g"
+        "nvidia-driver-550" "nvidia-driver-545" "nvidia-driver-535"
+        "ubuntu-minimal" "apt" "dpkg" "bash" "coreutils"
+        "login" "passwd" "sudo" "openssh-server"
+        "python3" "python3-minimal" "libpython3-stdlib"
+    )
+
+    for p in "${protected[@]}"; do
+        if [[ "$pkg" == "$p"* ]]; then
+            return 0  # Is protected
+        fi
+    done
+    return 1  # Not protected
+}
+
+# Main command handler
+case "${1:-}" in
+    apt-install)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute apt-install <package>"
+            exit 1
+        fi
+
+        PACKAGE="$2"
+        validate_package_name "$PACKAGE"
+
+        log "APT-INSTALL: $PACKAGE (by $(whoami))"
+
+        # Execute with timeout and capture
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$PACKAGE" 2>&1
+        RESULT=$?
+
+        log "APT-INSTALL RESULT: $RESULT for $PACKAGE"
+        exit $RESULT
+        ;;
+
+    apt-remove)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute apt-remove <package>"
+            exit 1
+        fi
+
+        PACKAGE="$2"
+        validate_package_name "$PACKAGE"
+
+        # Check if protected
+        if is_protected_package "$PACKAGE"; then
+            echo "ERROR: Cannot remove protected package: $PACKAGE"
+            log "BLOCKED: Protected package removal: $PACKAGE"
+            exit 1
+        fi
+
+        log "APT-REMOVE: $PACKAGE (by $(whoami))"
+
+        DEBIAN_FRONTEND=noninteractive apt-get remove -y "$PACKAGE" 2>&1
+        RESULT=$?
+
+        log "APT-REMOVE RESULT: $RESULT for $PACKAGE"
+        exit $RESULT
+        ;;
+
+    sysctl-set)
+        if [[ -z "${2:-}" ]] || [[ -z "${3:-}" ]]; then
+            echo "Usage: frank-execute sysctl-set <param> <value>"
+            exit 1
+        fi
+
+        PARAM="$2"
+        VALUE="$3"
+
+        validate_sysctl_param "$PARAM"
+
+        # Value must be numeric
+        if [[ ! "$VALUE" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: Value must be numeric"
+            log "BLOCKED: Non-numeric sysctl value: $VALUE"
+            exit 1
+        fi
+
+        log "SYSCTL-SET: $PARAM=$VALUE (by $(whoami))"
+
+        sysctl -w "$PARAM=$VALUE"
+        RESULT=$?
+
+        log "SYSCTL-SET RESULT: $RESULT for $PARAM=$VALUE"
+        exit $RESULT
+        ;;
+
+    sysctl-apply)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute sysctl-apply <config-file>"
+            exit 1
+        fi
+
+        CONFIG_FILE="$2"
+
+        # Only allow files from /tmp with specific naming
+        if [[ ! "$CONFIG_FILE" =~ ^/tmp/sysctl_frank.*\.conf$ ]]; then
+            echo "ERROR: Invalid config file path"
+            log "BLOCKED: Invalid sysctl config path: $CONFIG_FILE"
+            exit 1
+        fi
+
+        if [[ ! -f "$CONFIG_FILE" ]]; then
+            echo "ERROR: Config file not found"
+            exit 1
+        fi
+
+        log "SYSCTL-APPLY: $CONFIG_FILE (by $(whoami))"
+
+        # Backup current
+        cp /etc/sysctl.conf /etc/sysctl.conf.bak
+
+        # Apply new
+        cp "$CONFIG_FILE" /etc/sysctl.conf
+        sysctl -p
+        RESULT=$?
+
+        log "SYSCTL-APPLY RESULT: $RESULT"
+        exit $RESULT
+        ;;
+
+    systemctl-enable)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute systemctl-enable <unit>"
+            exit 1
+        fi
+
+        UNIT="$2"
+
+        # Only user units allowed
+        if [[ ! "$UNIT" =~ ^aicore-.*\.service$ ]]; then
+            echo "ERROR: Only aicore-*.service units allowed"
+            log "BLOCKED: Non-aicore unit: $UNIT"
+            exit 1
+        fi
+
+        log "SYSTEMCTL-ENABLE: $UNIT (by $(whoami))"
+        systemctl enable "$UNIT"
+        ;;
+
+    systemctl-disable)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute systemctl-disable <unit>"
+            exit 1
+        fi
+
+        UNIT="$2"
+
+        # Only user units allowed
+        if [[ ! "$UNIT" =~ ^aicore-.*\.service$ ]]; then
+            echo "ERROR: Only aicore-*.service units allowed"
+            log "BLOCKED: Non-aicore unit: $UNIT"
+            exit 1
+        fi
+
+        log "SYSTEMCTL-DISABLE: $UNIT (by $(whoami))"
+        systemctl disable "$UNIT"
+        ;;
+
+    # E-SMC/V v3.0: Neue Commands
+
+    systemctl-restart)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute systemctl-restart <unit>"
+            exit 1
+        fi
+
+        UNIT="$2"
+
+        # Only aicore services allowed
+        if [[ ! "$UNIT" =~ ^aicore-.*\.service$ ]]; then
+            echo "ERROR: Only aicore-*.service units allowed"
+            log "BLOCKED: Non-aicore unit restart: $UNIT"
+            exit 1
+        fi
+
+        log "SYSTEMCTL-RESTART: $UNIT (by $(whoami))"
+        systemctl restart "$UNIT"
+        RESULT=$?
+
+        log "SYSTEMCTL-RESTART RESULT: $RESULT for $UNIT"
+        exit $RESULT
+        ;;
+
+    systemctl-status)
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: frank-execute systemctl-status <unit>"
+            exit 1
+        fi
+
+        UNIT="$2"
+
+        # Only aicore services allowed
+        if [[ ! "$UNIT" =~ ^aicore-.*\.service$ ]]; then
+            echo "ERROR: Only aicore-*.service units allowed"
+            log "BLOCKED: Non-aicore unit status: $UNIT"
+            exit 1
+        fi
+
+        log "SYSTEMCTL-STATUS: $UNIT (by $(whoami))"
+        systemctl status "$UNIT" --no-pager
+        ;;
+
+    gsettings-set)
+        if [[ -z "${2:-}" ]] || [[ -z "${3:-}" ]] || [[ -z "${4:-}" ]]; then
+            echo "Usage: frank-execute gsettings-set <schema> <key> <value>"
+            exit 1
+        fi
+
+        SCHEMA="$2"
+        KEY="$3"
+        VALUE="$4"
+
+        # Whitelist für erlaubte Schemas
+        ALLOWED_SCHEMAS=(
+            "org.gnome.desktop.interface"
+            "org.gnome.desktop.background"
+            "org.gnome.desktop.wm.preferences"
+            "org.gnome.shell.extensions"
+        )
+
+        SCHEMA_ALLOWED=0
+        for allowed in "${ALLOWED_SCHEMAS[@]}"; do
+            if [[ "$SCHEMA" == "$allowed"* ]]; then
+                SCHEMA_ALLOWED=1
+                break
+            fi
+        done
+
+        if [[ $SCHEMA_ALLOWED -eq 0 ]]; then
+            echo "ERROR: Schema not in whitelist: $SCHEMA"
+            log "BLOCKED: gsettings schema not whitelisted: $SCHEMA"
+            exit 1
+        fi
+
+        log "GSETTINGS-SET: $SCHEMA $KEY=$VALUE (by $(whoami))"
+
+        # gsettings needs DISPLAY and DBUS
+        export DISPLAY=:0
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ai-core-node)/bus"
+
+        sudo -u ai-core-node gsettings set "$SCHEMA" "$KEY" "$VALUE"
+        RESULT=$?
+
+        log "GSETTINGS-SET RESULT: $RESULT"
+        exit $RESULT
+        ;;
+
+    dconf-write)
+        if [[ -z "${2:-}" ]] || [[ -z "${3:-}" ]]; then
+            echo "Usage: frank-execute dconf-write <path> <value>"
+            exit 1
+        fi
+
+        DCONF_PATH="$2"
+        VALUE="$3"
+
+        # Nur bestimmte Pfade erlaubt
+        if [[ ! "$DCONF_PATH" =~ ^/org/gnome/ ]]; then
+            echo "ERROR: dconf path must start with /org/gnome/"
+            log "BLOCKED: dconf path not allowed: $DCONF_PATH"
+            exit 1
+        fi
+
+        # Verbotene Pfade (sensible Einstellungen)
+        FORBIDDEN_PATHS=(
+            "/org/gnome/desktop/lockdown"
+            "/org/gnome/desktop/screensaver"
+            "/org/gnome/settings-daemon/plugins/power"
+        )
+
+        for forbidden in "${FORBIDDEN_PATHS[@]}"; do
+            if [[ "$DCONF_PATH" == "$forbidden"* ]]; then
+                echo "ERROR: dconf path is forbidden: $DCONF_PATH"
+                log "BLOCKED: Forbidden dconf path: $DCONF_PATH"
+                exit 1
+            fi
+        done
+
+        log "DCONF-WRITE: $DCONF_PATH=$VALUE (by $(whoami))"
+
+        export DISPLAY=:0
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ai-core-node)/bus"
+
+        sudo -u ai-core-node dconf write "$DCONF_PATH" "$VALUE"
+        RESULT=$?
+
+        log "DCONF-WRITE RESULT: $RESULT"
+        exit $RESULT
+        ;;
+
+    *)
+        echo "frank-execute - Privileged wrapper for E-SMC/V Sovereign v3.0"
+        echo
+        echo "Commands:"
+        echo "  apt-install <package>         Install package"
+        echo "  apt-remove <package>          Remove package (not protected)"
+        echo "  sysctl-set <param> <value>    Set sysctl parameter"
+        echo "  sysctl-apply <file>           Apply sysctl config"
+        echo "  systemctl-enable <unit>       Enable aicore service"
+        echo "  systemctl-disable <unit>      Disable aicore service"
+        echo "  systemctl-restart <unit>      Restart aicore service"
+        echo "  systemctl-status <unit>       Show aicore service status"
+        echo "  gsettings-set <schema> <k> <v>  Set gsettings value"
+        echo "  dconf-write <path> <value>    Write dconf value"
+        echo
+        echo "All operations are logged to $LOG_FILE"
+        exit 1
+        ;;
+esac

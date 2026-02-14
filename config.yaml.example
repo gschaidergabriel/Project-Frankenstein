@@ -1,0 +1,69 @@
+# ============================================================================
+# AI-Core / Frank — Example Configuration
+# ============================================================================
+# Copy this file to ~/.config/frank/config.yaml and adjust as needed.
+# Environment variables (AICORE_*) override these settings.
+
+# --- Paths ---
+# All paths are auto-detected by default. Override only if needed.
+# aicore_root: /opt/aicore              # Source code location
+# aicore_data: ~/.local/share/frank     # Databases, state, models
+# aicore_log: ~/.local/share/frank/logs # Log files
+# aicore_models_dir: ~/.local/share/frank/models  # GGUF model files
+
+# --- GPU ---
+# Auto-detected. Override with AICORE_GPU_BACKEND env var.
+# Supported: cuda (NVIDIA), vulkan (AMD/Intel), rocm (AMD discrete), cpu
+# gpu_backend: auto
+
+# --- LLM Backends ---
+# Ollama (for vision models like LLaVA)
+ollama:
+  host: "127.0.0.1"
+  port: 11434
+  # models are pulled automatically on first use
+
+# llama.cpp servers (started by systemd)
+llama:
+  host: "127.0.0.1"
+  port: 8101           # Llama 3.1 8B
+  timeout_sec: 400
+
+qwen:
+  host: "127.0.0.1"
+  port: 8102           # Qwen 2.5 Coder 7B
+  timeout_sec: 400
+  # on_demand: true    # Started by router only when needed
+
+whisper:
+  host: "127.0.0.1"
+  port: 8103           # whisper.cpp STT server
+
+# --- Services (microservice ports) ---
+services:
+  router: 8091
+  core: 8088
+  gateway: 8089
+  modeld: 8090
+  desktopd: 8092
+  webd: 8093
+  ingestd: 8094
+  toolboxd: 8096
+
+# --- Overlay UI ---
+overlay:
+  width: 420
+  height: 720
+  opacity: 0.95
+  font_size: 11
+  # position: right    # right | left | center
+
+# --- Voice ---
+voice:
+  enabled: false
+  # stt_model: base    # whisper model size: tiny, base, small, medium
+  # wake_word: "frank"
+
+# --- Privacy ---
+# All inference is 100% local. No data leaves your machine.
+# External APIs (Google Calendar/Contacts via CalDAV) are opt-in.

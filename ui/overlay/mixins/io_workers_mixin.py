@@ -1,0 +1,462 @@
+"""IO worker methods – web search, file ingest, filesystem ops, Steam integration, USB management."""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict
+
+from overlay.constants import LOG, FRANK_IDENTITY, DEFAULT_TIMEOUT_S
+from overlay.services.core_api import _core_chat
+from overlay.services.search import (
+    _search_web, _search_darknet, _fetch_url, _format_fetched_content,
+    _read_rss_feed, _format_rss_result,
+    _get_news, _format_news_result, _detect_news_category,
+)
+from overlay.services.toolbox import (
+    _list_files, _move_file, _copy_file, _delete_file,
+    _usb_storage, _usb_mount, _usb_unmount, _usb_eject,
+)
+from overlay.services.wallpaper import wp_web_search, wp_game_launch, wp_game_exit
+from overlay.file_utils import _format_file_list, _try_ingest_upload
+
+
+class IOWorkersMixin:
+    """Web search, file ingest, filesystem listing/actions, and Steam integration workers."""
+
+    def _do_search_worker(self, query: str, limit: int = 8, voice: bool = False):
+        wp_web_search(query)  # Wallpaper event: web search
+        self._ui_call(self._show_typing)
+        res = _search_web(query, limit=limit)
+        self._pending_results = res
+        self._ui_call(self._hide_typing)
+
+        if not res:
+            self._ui_call(lambda: self._add_message("Frank", "No results found.", is_system=True))
+        elif len(res) == 1:
+            self._ui_call(lambda: self._add_message("Frank", "1 result found. Opening automatically.", is_system=True))
+            self._io_q.put(("open", res[0].url))
+        else:
+            self._ui_call(lambda r=res: self._add_message("Frank", f"{len(r)} results found.", is_system=True))
+            self._ui_call(lambda r=res: self._render_results(r))
+
+    def _do_darknet_search_worker(self, query: str, limit: int = 8):
+        """Search the darknet via Torch (.onion search engine through Tor)."""
+        self._ui_call(self._show_typing)
+        res = _search_darknet(query, limit=limit)
+        self._pending_results = res
+        # Mark results as darknet for opening in Tor Browser
+        self._pending_darknet = True
+        self._ui_call(self._hide_typing)
+
+        if not res:
+            self._ui_call(lambda: self._add_message(
+                "Frank", "No darknet results found. Check your Tor connection.", is_system=True))
+        else:
+            self._ui_call(lambda r=res: self._add_message(
+                "Frank", f"{len(r)} darknet results found.", is_system=True))
+            self._ui_call(lambda r=res: self._render_darknet_results(r))
+
+    def _do_ingest_worker(self, path: Path):
+        ok, msg = _try_ingest_upload(path)
+        # Provide brief feedback
+        if ok:
+            fname = path.name if hasattr(path, 'name') else str(path).split('/')[-1]
+            self._ui_call(lambda f=fname: self._add_message("Frank", f"File '{f}' processed.", is_system=True))
+
+    def _do_fs_list_worker(self, path: str, user_query: str = "", voice: bool = False):
+        """List files in a directory and provide natural response via LLM."""
+        self._ui_call(self._show_typing)
+
+        result = _list_files(path)
+        formatted = _format_file_list(result, path)
+
+        # Always route through LLM for natural response
+        prompt = (
+            f"[Identity: {FRANK_IDENTITY}]\n\n"
+            f"The user asks: '{user_query or path}'\n\n"
+            f"Here is the filesystem data:\n{formatted}\n\n"
+            f"Answer the user's question based on this data. "
+            f"Be specific and helpful."
+        )
+
+        try:
+            res = _core_chat(prompt, max_tokens=500, timeout_s=60, task="chat.fast", force="llama")
+            reply = (res.get("text") or "").strip() if res.get("ok") else formatted
+        except Exception:
+            reply = formatted  # Fallback to raw data
+
+        self._ui_call(self._hide_typing)
+        if voice:
+            self._ui_call(lambda r=reply: self._voice_respond(r))
+        else:
+            self._ui_call(lambda r=reply: self._add_message("Frank", r))
+
+    def _do_fs_action_worker(self, action: str, params: Dict[str, Any]):
+        """Execute a filesystem action (move, copy, delete)."""
+        self._ui_call(self._show_typing)
+
+        result = None
+        if action == "move":
+            result = _move_file(params["src"], params["dst"])
+            action_desc = f"Moving {params['src']} to {params['dst']}"
+        elif action == "copy":
+            result = _copy_file(params["src"], params["dst"])
+            action_desc = f"Copying {params['src']} to {params['dst']}"
+        elif action == "delete":
+            result = _delete_file(params["path"])
+            action_desc = f"Deleting {params['path']}"
+        else:
+            action_desc = "Unknown action"
+
+        self._ui_call(self._hide_typing)
+
+        if result and result.get("ok"):
+            self._ui_call(lambda a=action_desc: self._add_message("Frank", f"Success: {a}", is_system=True))
+        else:
+            error = result.get("error", "Unknown error") if result else "No response"
+            self._ui_call(lambda a=action_desc, e=error: self._add_message("Frank", f"Error during {a}: {e}", is_system=True))
+
+    # ---------- Steam Integration ----------
+    def _do_steam_list_worker(self, voice: bool = False):
+        """List installed Steam games."""
+        try:
+            from tools.steam_integration import list_games_formatted
+            result = list_games_formatted()
+            if voice:
+                self._ui_call(lambda r=result: self._voice_respond(r))
+            else:
+                self._ui_call(lambda r=result: self._add_message("Frank", r))
+        except ImportError:
+            # Try alternative import path
+            try:
+                import sys
+                try:
+                    from config.paths import AICORE_ROOT as _AICORE_ROOT
+                except ImportError:
+                    from pathlib import Path as _P
+                    _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                sys.path.insert(0, str(_AICORE_ROOT))
+                from tools.steam_integration import list_games_formatted
+                result = list_games_formatted()
+                if voice:
+                    self._ui_call(lambda r=result: self._voice_respond(r))
+                else:
+                    self._ui_call(lambda r=result: self._add_message("Frank", r))
+            except Exception as e:
+                msg = f"Steam integration not available: {e}"
+                if voice:
+                    self._ui_call(lambda m=msg: self._voice_respond(m))
+                else:
+                    self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
+
+    def _do_steam_launch_worker(self, game: str, voice: bool = False):
+        """Launch a Steam game by name."""
+        wp_game_launch(game, "steam")  # Wallpaper event: game launch
+        try:
+            import sys
+            try:
+                from config.paths import AICORE_ROOT as _AICORE_ROOT
+            except ImportError:
+                from pathlib import Path as _P
+                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+            sys.path.insert(0, str(_AICORE_ROOT))
+            from tools.steam_integration import launch_game_by_name
+
+            success, msg = launch_game_by_name(game)
+            if voice:
+                self._ui_call(lambda m=msg: self._voice_respond(m))
+            else:
+                self._ui_call(lambda m=msg: self._add_message("Frank", m))
+        except Exception as e:
+            msg = f"Error launching: {e}"
+            if voice:
+                self._ui_call(lambda m=msg: self._voice_respond(m))
+            else:
+                self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
+
+    def _do_steam_close_worker(self, voice: bool = False):
+        """Close the currently running game."""
+        wp_game_exit("steam")  # Wallpaper event: game exit
+        try:
+            import sys
+            try:
+                from config.paths import AICORE_ROOT as _AICORE_ROOT
+            except ImportError:
+                from pathlib import Path as _P
+                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+            sys.path.insert(0, str(_AICORE_ROOT))
+            from tools.steam_integration import close_game
+
+            success, msg = close_game()
+            if voice:
+                self._ui_call(lambda m=msg: self._voice_respond(m))
+            else:
+                self._ui_call(lambda m=msg: self._add_message("Frank", m))
+        except Exception as e:
+            msg = f"Error closing: {e}"
+            if voice:
+                self._ui_call(lambda m=msg: self._voice_respond(m))
+            else:
+                self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
+
+    # ---------- External Data: URL Fetch, RSS, News ----------
+
+    def _do_fetch_url_worker(self, url: str, voice: bool = False):
+        """Fetch a URL and display extracted content."""
+        self._ui_call(self._show_typing)
+        result = _fetch_url(url)
+        formatted = _format_fetched_content(result)
+        self._ui_call(self._hide_typing)
+
+        if voice:
+            self._ui_call(lambda r=formatted: self._voice_respond(r))
+        else:
+            self._ui_call(lambda r=formatted: self._add_message("Frank", r))
+
+    def _do_rss_feed_worker(self, url: str, voice: bool = False):
+        """Read an RSS/Atom feed and display entries."""
+        self._ui_call(self._show_typing)
+        result = _read_rss_feed(url)
+        formatted = _format_rss_result(result)
+        self._ui_call(self._hide_typing)
+
+        if voice:
+            self._ui_call(lambda r=formatted: self._voice_respond(r))
+        else:
+            self._ui_call(lambda r=formatted: self._add_message("Frank", r))
+
+    def _do_news_worker(self, msg: str = "", voice: bool = False):
+        """Get news from pre-configured feeds by detected category."""
+        self._ui_call(self._show_typing)
+        category = _detect_news_category(msg) if msg else "tech_de"
+        result = _get_news(category)
+        formatted = _format_news_result(result)
+        self._ui_call(self._hide_typing)
+
+        if voice:
+            self._ui_call(lambda r=formatted: self._voice_respond(r))
+        else:
+            self._ui_call(lambda r=formatted: self._add_message("Frank", r))
+
+    # ---------- Skill System ----------
+
+    def _do_skill_worker(self, skill_name: str, user_query: str = "",
+                         voice: bool = False):
+        """Execute a skill and display the result."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        try:
+            from skills import get_skill_registry
+            registry = get_skill_registry()
+            result = registry.execute(skill_name, {"user_query": user_query})
+            LOG.info(f"Skill '{skill_name}' result: ok={result.get('ok')}")
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+        self._ui_call(self._hide_typing)
+
+        if result.get("ok"):
+            text = result.get("output", "(no output)")
+        else:
+            text = f"Skill error: {result.get('error', 'unknown')}"
+
+        if voice:
+            self._ui_call(lambda r=text: self._voice_respond(r))
+        else:
+            self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    def _do_skill_reload_worker(self):
+        """Hot-reload all skills."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        try:
+            from skills import get_skill_registry
+            count = get_skill_registry().reload()
+            text = f"Skills reloaded: {count} skills active."
+            LOG.info(text)
+        except Exception as e:
+            text = f"Skill reload error: {e}"
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=text: self._add_message("Frank", r, is_system=True))
+
+    def _do_skill_list_worker(self):
+        """Show all installed skills."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        try:
+            from skills import get_skill_registry
+            text = get_skill_registry().get_skills_summary()
+            LOG.info("Skill list displayed to user")
+        except Exception as e:
+            text = f"Skill list error: {e}"
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    def _do_skill_browse_worker(self, query: str = ""):
+        """Browse OpenClaw marketplace for available skills."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        self._ui_call(lambda: self._add_message(
+            "Frank", "Browsing OpenClaw Marketplace...", is_system=True))
+        try:
+            from skills import get_skill_registry
+            result = get_skill_registry().browse_marketplace(query)
+            if result.get("ok") and result.get("skills"):
+                lines = [f"OpenClaw Marketplace ({result['count']} available):\n"]
+                for s in result["skills"]:
+                    dl = s.get("downloads", 0)
+                    dl_str = f" ({dl} Downloads)" if dl else ""
+                    lines.append(f"  {s['name']}{dl_str}\n    {s.get('description', '')}")
+                lines.append(f"\nInstall with: \"install skill <name>\"")
+                text = "\n".join(lines)
+            elif result.get("ok"):
+                text = "No new skills found in marketplace (or all already installed)."
+            else:
+                text = f"Marketplace error: {result.get('error', 'unknown')}"
+            LOG.info(f"Marketplace browse: {result.get('count', 0)} results")
+        except Exception as e:
+            text = f"Marketplace error: {e}"
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    def _do_skill_install_worker(self, slug: str):
+        """Install a skill from OpenClaw marketplace."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        self._ui_call(lambda s=slug: self._add_message(
+            "Frank", f"Installing skill '{s}' from marketplace...", is_system=True))
+        try:
+            from skills import get_skill_registry
+            result = get_skill_registry().install_from_marketplace(slug)
+            if result.get("ok"):
+                text = result.get("message", f"Skill '{slug}' installed!")
+            else:
+                text = f"Installation failed: {result.get('error', 'unknown')}"
+            LOG.info(f"Skill install '{slug}': ok={result.get('ok')}")
+        except Exception as e:
+            text = f"Installation error: {e}"
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    def _do_skill_uninstall_worker(self, slug: str):
+        """Uninstall a skill."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        try:
+            from skills import get_skill_registry
+            result = get_skill_registry().uninstall(slug)
+            if result.get("ok"):
+                text = result.get("message", f"Skill '{slug}' uninstalled.")
+            else:
+                text = f"Uninstall failed: {result.get('error', 'unknown')}"
+            LOG.info(f"Skill uninstall '{slug}': ok={result.get('ok')}")
+        except Exception as e:
+            text = f"Error: {e}"
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    def _do_skill_updates_worker(self):
+        """Check for skill updates from marketplace."""
+        from overlay.constants import LOG
+        self._ui_call(self._show_typing)
+        self._ui_call(lambda: self._add_message(
+            "Frank", "Checking for skill updates...", is_system=True))
+        try:
+            from skills import get_skill_registry
+            result = get_skill_registry().check_updates()
+            if result.get("ok") and result.get("updates"):
+                lines = [f"**Available updates** ({result['count']}):"]
+                for u in result["updates"]:
+                    lines.append(
+                        f"- `{u['name']}`: {u['current_version']} -> {u['latest_version']}")
+                lines.append("\nUpdate with: `install skill <name>`")
+                text = "\n".join(lines)
+            elif result.get("ok"):
+                text = "All skills are up to date."
+            else:
+                text = f"Update check failed: {result.get('error', 'unknown')}"
+        except Exception as e:
+            text = f"Update check error: {e}"
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    # ---------- USB Device Management ----------
+
+    def _do_usb_storage_worker(self):
+        """List USB storage devices with mount status."""
+        self._ui_call(self._show_typing)
+        result = _usb_storage()
+        self._ui_call(self._hide_typing)
+
+        if not result or not result.get("ok"):
+            error = result.get("error", "No response") if result else "No response"
+            self._ui_call(lambda e=error: self._add_message(
+                "Frank", f"USB query failed: {e}", is_system=True))
+            return
+
+        devices = result.get("devices", [])
+        if not devices:
+            self._ui_call(lambda: self._add_message(
+                "Frank", "No USB storage devices connected.", is_system=True))
+            return
+
+        lines = [f"**USB storage devices** ({len(devices)}):"]
+        for d in devices:
+            name = d.get("name", "?")
+            size = d.get("size", "?")
+            label = d.get("label") or "no label"
+            fstype = d.get("fstype") or "?"
+            mp = d.get("mountpoint")
+            status = f"mounted at: {mp}" if mp else "not mounted"
+            vendor = d.get("vendor", "").strip()
+            model = d.get("model", "").strip()
+            dev_name = f"{vendor} {model}".strip() or name
+            lines.append(f"  {dev_name} ({size}, {fstype}, {label}) — {status}")
+        text = "\n".join(lines)
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
+    def _do_usb_mount_worker(self, device: str = "auto"):
+        """Mount a USB storage device."""
+        self._ui_call(self._show_typing)
+        result = _usb_mount(device)
+        self._ui_call(self._hide_typing)
+
+        if result and result.get("ok"):
+            mp = result.get("mountpoint", "")
+            dev = result.get("device", device)
+            self._ui_call(lambda d=dev, m=mp: self._add_message(
+                "Frank", f"USB device {d} mounted at {m}", is_system=True))
+        else:
+            error = result.get("error", "Unknown error") if result else "No response"
+            self._ui_call(lambda e=error: self._add_message(
+                "Frank", f"USB mount failed: {e}", is_system=True))
+
+    def _do_usb_unmount_worker(self, device: str = "auto"):
+        """Unmount a USB storage device."""
+        self._ui_call(self._show_typing)
+        result = _usb_unmount(device)
+        self._ui_call(self._hide_typing)
+
+        if result and result.get("ok"):
+            dev = result.get("device", device)
+            self._ui_call(lambda d=dev: self._add_message(
+                "Frank", f"USB device {d} unmounted.", is_system=True))
+        else:
+            error = result.get("error", "Unknown error") if result else "No response"
+            self._ui_call(lambda e=error: self._add_message(
+                "Frank", f"USB unmount failed: {e}", is_system=True))
+
+    def _do_usb_eject_worker(self, device: str = "auto"):
+        """Safely eject a USB device (unmount + power-off)."""
+        self._ui_call(self._show_typing)
+        self._ui_call(lambda: self._add_message(
+            "Frank", "Safely ejecting USB device...", is_system=True))
+        result = _usb_eject(device)
+        self._ui_call(self._hide_typing)
+
+        if result and result.get("ok"):
+            dev = result.get("device", device)
+            self._ui_call(lambda d=dev: self._add_message(
+                "Frank", f"USB device {d} safely ejected. You can remove it now.", is_system=True))
+        else:
+            error = result.get("error", "Unknown error") if result else "No response"
+            self._ui_call(lambda e=error: self._add_message(
+                "Frank", f"USB eject failed: {e}", is_system=True))

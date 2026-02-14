@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.eggs/
+dist/
+build/
+venv/
+.venv/
+
+# Databases (user data, generated at runtime)
+*.db
+*.db-shm
+*.db-wal
+*.db.backup
+*.sqlite
+*.sqlite3
+
+# Runtime state and user data
+*.lock
+*.pid
+database/
+logs/
+
+# User configuration (generated, may contain personal data)
+gateway/config.json
+
+# Secrets and credentials
+*.secret
+*.key
+*.pem
+credentials/
+tokens/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+tests/consciousness_results.jsonl
+tests/consciousness_report.md
+tests/consciousness_audit_v2.md
+
+# Sandbox / training artifacts
+sandbox/
+
+# Screenshots
+screenshot.png
+error_screenshots/
+
+# Vector data (generated)
+*_vectors.npz
+*_vector_ids.json
+
+# Temporary files
+/tmp/
+
+# Models (too large for git, downloaded by install.sh)
+*.gguf
+models/
+
+# Voice models
+voices/
+
+# ASRS backups (generated)
+asrs_backups/
+
+# ADI profiles (user-specific)
+adi_profiles/
+
+# Test screenshots and reports (generated)
+tests/ui test/screenshots/
+tests/ui test/reports/
+tests/ui test/baseline/
+
+# System info (machine-specific)
+system_info.json
+
+# Stale DB at repo root
+world_experience.db

@@ -1,0 +1,55 @@
+schema:
+  name: "README"
+  category: technical
+  output_formats: [md, html]
+
+structure:
+  - section: title
+    required: true
+    ai_help: "Projektname mit optionalem Tagline"
+
+  - section: badges
+    required: false
+    ai_help: "Status-Badges (Build, Version, License)"
+
+  - section: description
+    required: true
+    ai_help: "Kurze Beschreibung was das Projekt macht"
+
+  - section: features
+    required: false
+    ai_help: "Hauptfeatures als Bullet-Liste"
+
+  - section: installation
+    required: true
+    ai_help: "Installationsanleitung mit Code-Beispielen"
+
+  - section: usage
+    required: true
+    ai_help: "Verwendungsbeispiele mit Code"
+
+  - section: configuration
+    required: false
+    ai_help: "Konfigurationsoptionen erklärt"
+
+  - section: api
+    required: false
+    ai_help: "API-Dokumentation falls relevant"
+
+  - section: contributing
+    required: false
+    ai_help: "Anleitung für Beiträge"
+
+  - section: license
+    required: true
+    ai_help: "Lizenzinformation"
+
+style:
+  tone: technical
+  person: second
+  tense: present
+  language: developer
+
+export:
+  md:
+    template: null  # Direct markdown output

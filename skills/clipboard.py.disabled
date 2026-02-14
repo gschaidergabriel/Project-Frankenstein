@@ -1,0 +1,68 @@
+"""Clipboard skill — read/write system clipboard via xclip."""
+
+import subprocess
+
+SKILL = {
+    "name": "clipboard",
+    "description": "System-Zwischenablage lesen oder beschreiben (xclip).",
+    "version": "1.0",
+    "category": "system",
+    "risk_level": 0.1,
+    "parameters": [
+        {
+            "name": "action",
+            "type": "string",
+            "description": "read oder write",
+            "required": False,
+            "default": "read",
+        },
+        {
+            "name": "text",
+            "type": "string",
+            "description": "Text zum Kopieren (nur bei action=write)",
+            "required": False,
+            "default": "",
+        },
+    ],
+    "keywords": [
+        "clipboard", "zwischenablage", "was habe ich kopiert",
+        "paste", "einfuegen", "kopiert",
+    ],
+    "timeout_s": 5.0,
+}
+
+
+def run(action: str = "read", text: str = "", user_query: str = "", **kwargs) -> dict:
+    """Read or write the system clipboard."""
+    try:
+        if action == "write" and text:
+            proc = subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=text.encode(), timeout=3,
+                capture_output=True,
+            )
+            if proc.returncode == 0:
+                return {"ok": True, "output": f"In Zwischenablage kopiert: {text[:80]}..."}
+            return {"ok": False, "error": f"xclip write failed: {proc.stderr.decode()}"}
+
+        # Default: read
+        proc = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o"],
+            capture_output=True, timeout=3,
+        )
+        if proc.returncode == 0:
+            content = proc.stdout.decode(errors="replace").strip()
+            if not content:
+                return {"ok": True, "output": "Zwischenablage ist leer."}
+            # Truncate very long content
+            if len(content) > 500:
+                content = content[:500] + f"\n... ({len(content)} Zeichen gesamt)"
+            return {"ok": True, "output": f"Zwischenablage:\n{content}"}
+        return {"ok": False, "error": "Konnte Zwischenablage nicht lesen (xclip fehlt?)"}
+
+    except FileNotFoundError:
+        return {"ok": False, "error": "xclip nicht installiert. Bitte: sudo apt install xclip"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Clipboard-Zugriff timeout"}
+    except Exception as e:
+        return {"ok": False, "error": f"Clipboard-Fehler: {e}"}

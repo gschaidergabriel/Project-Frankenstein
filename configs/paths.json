@@ -1,0 +1,9 @@
+{
+  "base": "/home/ai-core-node/aicore/opt/aicore",
+  "data": "/home/ai-core-node/aicore/var/lib/aicore",
+  "log": "/home/ai-core-node/aicore/var/log/aicore",
+  "db": "/home/ai-core-node/aicore/var/lib/aicore/db/aicore.sqlite",
+  "journal_dir": "/home/ai-core-node/aicore/var/lib/aicore/journal",
+  "workspace_dir": "/home/ai-core-node/aicore/var/lib/aicore/workspace",
+  "models_dir": "/home/ai-core-node/aicore/var/lib/aicore/models"
+}

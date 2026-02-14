@@ -1,0 +1,58 @@
+schema:
+  name: "Geschäftsbericht"
+  description: "Strukturierter Business-Report mit Executive Summary"
+  category: business
+  output_formats: [pdf, docx]
+
+structure:
+  - section: title
+    required: true
+    ai_help: "Prägnanter, informativer Berichtstitel"
+
+  - section: executive_summary
+    required: true
+    max_words: 400
+    ai_help: "Zusammenfassung für Entscheidungsträger: Kernaussagen, Empfehlungen"
+
+  - section: introduction
+    required: true
+    ai_help: "Anlass des Berichts, Zielsetzung, Umfang"
+
+  - section: situation_analysis
+    required: true
+    ai_help: "Aktuelle Situation, Daten und Fakten, Marktumfeld"
+
+  - section: findings
+    required: true
+    ai_help: "Zentrale Erkenntnisse strukturiert mit Datenbelegen"
+
+  - section: recommendations
+    required: true
+    ai_help: "Konkrete Handlungsempfehlungen mit Begründung"
+
+  - section: implementation_plan
+    required: false
+    ai_help: "Zeitplan, Ressourcen, Verantwortlichkeiten"
+
+  - section: risk_assessment
+    required: false
+    ai_help: "Risikobewertung und Gegenmaßnahmen"
+
+  - section: conclusion
+    required: true
+    ai_help: "Fazit und nächste Schritte"
+
+  - section: appendix
+    required: false
+    ai_help: "Zusätzliche Tabellen, Grafiken, Rohdaten"
+
+style:
+  tone: professional
+  person: third
+  tense: present
+  language: business
+
+export:
+  pdf:
+    template: "templates/pdf/business.html"
+    css: "styles/business.css"

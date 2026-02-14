@@ -1,0 +1,386 @@
+/* E-WISH Popup - Cyberpunk Theme */
+
+/* Color Variables */
+@define-color neon_cyan #00fff9;
+@define-color neon_magenta #ff00ff;
+@define-color neon_yellow #ffff00;
+@define-color neon_green #00ff88;
+@define-color neon_orange #ff6600;
+@define-color neon_purple #cc66ff;
+@define-color dark_bg #0a0a12;
+@define-color panel_bg rgba(10, 10, 18, 0.97);
+@define-color text_primary #e0e0e0;
+@define-color text_secondary #808090;
+@define-color success_green #00ff88;
+@define-color error_red #ff4444;
+
+/* Dark Overlay Background */
+.ewish-overlay-bg {
+    background-color: #000000;
+}
+
+/* Main Window */
+.ewish-popup-window {
+    background-color: @dark_bg;
+    box-shadow: 0 0 100px rgba(255, 0, 255, 0.3),
+                0 0 200px rgba(0, 255, 249, 0.2);
+}
+
+.ewish-main-container {
+    background-color: @panel_bg;
+    border: 2px solid @neon_magenta;
+    border-radius: 0px;
+    padding: 0px;
+    box-shadow: 0 0 30px rgba(255, 0, 255, 0.3),
+                inset 0 0 60px rgba(255, 0, 255, 0.05);
+}
+
+/* Header */
+.ewish-header {
+    background: linear-gradient(180deg, rgba(255, 0, 255, 0.15) 0%, transparent 100%);
+    border-bottom: 1px solid @neon_magenta;
+    padding: 16px 20px;
+}
+
+.ewish-title {
+    font-family: 'Share Tech Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: @neon_magenta;
+    letter-spacing: 3px;
+    text-shadow: 0 0 10px rgba(255, 0, 255, 0.8);
+}
+
+.ewish-subtitle {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;  /* FIX: Accessibility */
+    color: @text_secondary;
+    letter-spacing: 1px;
+}
+
+.ewish-close-button {
+    background: transparent;
+    border: 1px solid @text_secondary;
+    border-radius: 0px;
+    padding: 4px 10px;
+    color: @text_secondary;
+    font-size: 14px;
+    min-width: 30px;
+}
+
+.ewish-close-button:hover {
+    border-color: @error_red;
+    color: @error_red;
+}
+
+/* Content Area */
+.ewish-content {
+    padding: 20px;
+}
+
+.ewish-no-wish {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 16px;
+    color: @text_secondary;
+    margin: 50px;
+}
+
+/* Category Badges */
+.ewish-category-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;  /* FIX: Accessibility */
+    font-weight: bold;
+    padding: 6px 14px;
+    border-radius: 0px;
+    letter-spacing: 1px;
+}
+
+.ewish-category-learning {
+    background: rgba(0, 255, 249, 0.2);
+    border: 1px solid @neon_cyan;
+    color: @neon_cyan;
+}
+
+.ewish-category-capability {
+    background: rgba(255, 0, 255, 0.2);
+    border: 1px solid @neon_magenta;
+    color: @neon_magenta;
+}
+
+.ewish-category-social {
+    background: rgba(0, 255, 136, 0.2);
+    border: 1px solid @neon_green;
+    color: @neon_green;
+}
+
+.ewish-category-curiosity {
+    background: rgba(255, 255, 0, 0.2);
+    border: 1px solid @neon_yellow;
+    color: @neon_yellow;
+}
+
+.ewish-category-improvement {
+    background: rgba(255, 102, 0, 0.2);
+    border: 1px solid @neon_orange;
+    color: @neon_orange;
+}
+
+.ewish-category-experience {
+    background: rgba(204, 102, 255, 0.2);
+    border: 1px solid @neon_purple;
+    color: @neon_purple;
+}
+
+/* Intensity Bar */
+.ewish-intensity-label {
+    font-family: monospace;
+    font-size: 14px;  /* FIX: Accessibility */
+    color: @text_secondary;
+}
+
+.ewish-intensity-bar {
+    min-height: 8px;
+    border-radius: 0px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.ewish-intensity-bar progress {
+    background: linear-gradient(90deg, @neon_cyan, @neon_magenta);
+    border-radius: 0px;
+    box-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+}
+
+.ewish-intensity-pct {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    font-weight: bold;
+    color: @neon_cyan;
+    min-width: 45px;
+}
+
+/* Wish Card */
+.ewish-card {
+    background: rgba(0, 0, 0, 0.4);
+    border-left: 4px solid @neon_magenta;
+    border-radius: 0px;
+    padding: 20px;
+    margin-top: 12px;
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.1);
+}
+
+.ewish-description {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: @text_primary;
+    font-style: italic;
+    line-height: 1.4;
+}
+
+.ewish-reasoning {
+    font-family: sans-serif;
+    font-size: 13px;
+    color: @text_secondary;
+    line-height: 1.4;
+}
+
+.ewish-criteria-title {
+    font-family: monospace;
+    font-size: 14px;  /* FIX: Accessibility */
+    font-weight: bold;
+    color: @neon_green;
+}
+
+.ewish-criteria {
+    font-family: sans-serif;
+    font-size: 13px;
+    color: @neon_green;
+}
+
+.ewish-priority {
+    font-family: monospace;
+    font-size: 13px;  /* FIX: Accessibility */
+    color: @text_secondary;
+    margin-top: 8px;
+}
+
+/* Chat Input */
+.ewish-chat-container {
+    background: rgba(0, 255, 249, 0.05);
+    border-top: 1px solid rgba(0, 255, 249, 0.3);
+    border-bottom: 1px solid rgba(0, 255, 249, 0.3);
+    padding: 16px 20px;
+}
+
+.ewish-chat-label {
+    font-family: monospace;
+    font-size: 14px;  /* FIX: Accessibility */
+    color: @neon_cyan;
+}
+
+.ewish-chat-entry {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid @neon_cyan;
+    border-radius: 0px;
+    padding: 10px 14px;
+    color: @text_primary;
+    font-family: sans-serif;
+    font-size: 14px;
+    min-height: 40px;
+}
+
+.ewish-chat-entry:focus {
+    border-color: @neon_magenta;
+    box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+}
+
+.ewish-chat-entry placeholder {
+    color: @text_secondary;
+}
+
+/* Actions Container */
+.ewish-actions-container {
+    background: linear-gradient(0deg, rgba(255, 0, 255, 0.1) 0%, transparent 100%);
+    border-top: 1px solid @neon_magenta;
+    padding: 16px 20px;
+}
+
+/* Buttons */
+.ewish-button {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;  /* FIX: Accessibility */
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-radius: 0px;
+    padding: 10px 18px;
+    min-height: 40px;
+    transition: all 200ms ease;
+}
+
+.ewish-button-approve {
+    background: transparent;
+    border: 2px solid @success_green;
+    color: @success_green;
+}
+
+.ewish-button-approve:hover {
+    background: @success_green;
+    color: @dark_bg;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+}
+
+.ewish-button-reject {
+    background: transparent;
+    border: 2px solid @error_red;
+    color: @error_red;
+}
+
+.ewish-button-reject:hover {
+    background: @error_red;
+    color: @dark_bg;
+    box-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+}
+
+.ewish-button-later {
+    background: transparent;
+    border: 2px solid @text_secondary;
+    color: @text_secondary;
+}
+
+.ewish-button-later:hover {
+    border-color: @neon_yellow;
+    color: @neon_yellow;
+}
+
+.ewish-button-info {
+    background: transparent;
+    border: 2px solid @neon_cyan;
+    color: @neon_cyan;
+}
+
+.ewish-button-info:hover {
+    background: rgba(0, 255, 249, 0.2);
+    box-shadow: 0 0 15px rgba(0, 255, 249, 0.3);
+}
+
+.ewish-button-send {
+    background: @neon_magenta;
+    border: 2px solid @neon_magenta;
+    color: white;
+    font-size: 14px;
+    padding: 12px 30px;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.6);
+    margin-top: 8px;
+}
+
+.ewish-button-send:hover {
+    background: @neon_cyan;
+    border-color: @neon_cyan;
+    color: @dark_bg;
+    box-shadow: 0 0 30px rgba(0, 255, 249, 0.6);
+}
+
+/* Keyboard Hint - FIX: Accessibility (min 14px) */
+.ewish-keyboard-hint {
+    font-family: monospace;
+    font-size: 14px;
+    color: @text_secondary;
+    margin-top: 8px;
+    letter-spacing: 1px;
+}
+
+/* FIX: Focus States für Keyboard Navigation (WCAG 2.4.7) */
+.ewish-button:focus {
+    outline: 2px solid @neon_cyan;
+    outline-offset: 2px;
+}
+
+.ewish-button-primary:focus {
+    outline: 2px solid @success_green;
+    outline-offset: 2px;
+}
+
+.ewish-chat-entry:focus {
+    outline: 2px solid @neon_cyan;
+    outline-offset: 1px;
+}
+
+/* FIX: Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    .ewish-button,
+    .ewish-button-primary,
+    .ewish-chat-entry {
+        transition: none;
+    }
+}
+
+/* Scrollbar */
+scrollbar {
+    background: transparent;
+}
+
+scrollbar slider {
+    background: @neon_magenta;
+    border-radius: 0px;
+    min-width: 6px;
+    min-height: 30px;
+}
+
+scrollbar slider:hover {
+    background: @neon_cyan;
+}
+
+/* Dialog styles */
+messagedialog {
+    background: @dark_bg;
+}
+
+messagedialog box {
+    background: @panel_bg;
+    border: 1px solid @neon_magenta;
+}
+
+messagedialog label {
+    color: @text_primary;
+}

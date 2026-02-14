@@ -1,0 +1,47 @@
+schema:
+  name: "Kurzgeschichte"
+  description: "Kreative Kurzgeschichte mit klassischer Erzählstruktur"
+  category: creative
+  output_formats: [pdf, docx, epub]
+
+structure:
+  - section: title
+    required: true
+    ai_help: "Eingängiger Titel, der Neugier weckt"
+
+  - section: exposition
+    required: true
+    ai_help: "Einführung: Setting, Protagonist, Ausgangssituation"
+
+  - section: rising_action
+    required: true
+    ai_help: "Steigende Handlung: Konflikt entwickeln, Spannung aufbauen"
+
+  - section: climax
+    required: true
+    ai_help: "Höhepunkt: Entscheidender Wendepunkt der Geschichte"
+
+  - section: falling_action
+    required: false
+    ai_help: "Fallende Handlung: Konsequenzen des Höhepunkts"
+
+  - section: resolution
+    required: true
+    ai_help: "Auflösung: Abschluss der Handlung, offenes oder geschlossenes Ende"
+
+metadata:
+  genre: ""
+  pov: "third_limited"
+  tense: "past"
+  target_words: 3000
+
+style:
+  tone: narrative
+  person: third
+  tense: past
+  language: literary
+
+export:
+  pdf:
+    template: "templates/pdf/creative.html"
+    css: "styles/creative.css"

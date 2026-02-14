@@ -1,0 +1,49 @@
+schema:
+  name: "Lebenslauf"
+  category: personal
+  output_formats: [pdf, docx]
+
+structure:
+  - section: header
+    required: true
+    ai_help: "Name, Kontaktdaten, evtl. Foto-Platzhalter"
+
+  - section: summary
+    required: false
+    max_words: 100
+    ai_help: "Kurzes professionelles Profil (2-3 Sätze)"
+
+  - section: experience
+    required: true
+    ai_help: "Berufserfahrung chronologisch absteigend, mit Achievements"
+
+  - section: education
+    required: true
+    ai_help: "Ausbildung mit Abschlüssen und relevanten Kursen"
+
+  - section: skills
+    required: true
+    ai_help: "Technische und Soft Skills, gruppiert"
+
+  - section: languages
+    required: false
+    ai_help: "Sprachkenntnisse mit Niveau"
+
+  - section: projects
+    required: false
+    ai_help: "Relevante Projekte mit Beschreibung und Ergebnissen"
+
+  - section: certifications
+    required: false
+    ai_help: "Zertifizierungen und Weiterbildungen"
+
+style:
+  tone: professional
+  person: none
+  tense: past
+  language: concise
+
+export:
+  pdf:
+    template: "templates/pdf/resume.html"
+    css: "styles/resume.css"

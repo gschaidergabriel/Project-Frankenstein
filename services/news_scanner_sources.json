@@ -1,0 +1,50 @@
+[
+  {
+    "name": "katzlberger_ai",
+    "url": "https://katzlberger.ai/",
+    "type": "html",
+    "rss_url": null,
+    "category": "ai",
+    "lang": "de"
+  },
+  {
+    "name": "heise_ki",
+    "url": "https://www.heise.de/thema/Kuenstliche-Intelligenz",
+    "type": "rss",
+    "rss_url": "https://www.heise.de/rss/heise-atom.xml",
+    "category": "ai",
+    "lang": "de"
+  },
+  {
+    "name": "ki_expertenforum",
+    "url": "https://www.ki-expertenforum.de/ki-news/",
+    "type": "html",
+    "rss_url": null,
+    "category": "ai",
+    "lang": "de"
+  },
+  {
+    "name": "digital_manufacturing",
+    "url": "https://www.digital-manufacturing-magazin.de/",
+    "type": "html",
+    "rss_url": null,
+    "category": "manufacturing",
+    "lang": "de"
+  },
+  {
+    "name": "osbn_ticker",
+    "url": "https://osbn.de/ticker/",
+    "type": "rss",
+    "rss_url": "https://osbn.de/feed.rss",
+    "category": "opensource",
+    "lang": "de"
+  },
+  {
+    "name": "binaergewitter",
+    "url": "https://blog.binaergewitter.de/",
+    "type": "rss",
+    "rss_url": "https://blog.binaergewitter.de/rss.xml",
+    "category": "tech",
+    "lang": "de"
+  }
+]

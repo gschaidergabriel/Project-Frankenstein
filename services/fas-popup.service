@@ -1,0 +1,41 @@
+[Unit]
+Description=F.A.S. Proposal Popup Daemon
+Documentation=https://github.com/frankenstein-project/aicore
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/python3 /home/ai-core-node/aicore/opt/aicore/services/fas_popup_daemon.py
+Environment=DISPLAY=:0
+Environment=PYTHONPATH=/home/ai-core-node/aicore/opt/aicore
+
+# Auto-restart on failure
+Restart=always
+RestartSec=10
+
+# Timeouts
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+# Performance tuning - low priority
+Nice=10
+IOSchedulingClass=idle
+
+# FIX: Memory limits (verhindert OOM)
+MemoryMax=200M
+MemoryHigh=150M
+MemorySwapMax=0
+CPUQuota=25%
+
+# Watchdog - daemon will notify every 60s
+WatchdogSec=120
+NotifyAccess=all
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fas-popup
+
+[Install]
+WantedBy=graphical-session.target

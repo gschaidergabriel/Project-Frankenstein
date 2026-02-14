@@ -1,0 +1,57 @@
+schema:
+  name: "Bash-Skript"
+  description: "Strukturiertes Shell-Skript mit Fehlerbehandlung"
+  category: code
+  output_formats: [sh]
+
+structure:
+  - section: shebang
+    required: true
+    default: "#!/usr/bin/env bash"
+    ai_help: "Shebang-Zeile für den Interpreter"
+
+  - section: header_comment
+    required: true
+    ai_help: "Beschreibung, Autor, Datum, Nutzung, Abhängigkeiten"
+
+  - section: strict_mode
+    required: true
+    default: "set -euo pipefail"
+    ai_help: "Strict-Mode: set -euo pipefail für robuste Fehlerbehandlung"
+
+  - section: constants
+    required: false
+    ai_help: "Konstanten und Konfigurationsvariablen am Anfang"
+
+  - section: functions
+    required: false
+    ai_help: "Hilfsfunktionen: usage(), log(), cleanup(), error_handler()"
+
+  - section: argument_parsing
+    required: false
+    ai_help: "Argument-Parsing mit getopts oder manuellem Parsing"
+
+  - section: validation
+    required: false
+    ai_help: "Input-Validierung, Abhängigkeiten prüfen (command -v)"
+
+  - section: main_logic
+    required: true
+    ai_help: "Hauptlogik des Skripts"
+
+  - section: cleanup
+    required: false
+    ai_help: "Aufräumen: trap für EXIT, temporäre Dateien entfernen"
+
+style:
+  tone: technical
+  language: bash
+  conventions:
+    - "Variablen in Anführungszeichen: \"$var\""
+    - "Funktionen mit snake_case"
+    - "Konstanten in UPPER_CASE"
+    - "Fehlerausgabe auf stderr: >&2"
+
+export:
+  sh:
+    executable: true

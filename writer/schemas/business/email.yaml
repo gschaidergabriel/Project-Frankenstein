@@ -1,0 +1,43 @@
+schema:
+  name: "Geschäftliche E-Mail"
+  category: business
+  output_formats: [txt, html, md]
+
+structure:
+  - section: subject
+    required: true
+    ai_help: "Prägnante, informative Betreffzeile"
+
+  - section: greeting
+    required: true
+    ai_help: "Angemessene Anrede basierend auf Beziehung zum Empfänger"
+
+  - section: opening
+    required: true
+    ai_help: "Kurze Einleitung, Kontext oder Bezugnahme auf vorherige Kommunikation"
+
+  - section: body
+    required: true
+    ai_help: "Hauptinhalt, klar strukturiert mit Absätzen"
+
+  - section: call_to_action
+    required: false
+    ai_help: "Klare Handlungsaufforderung oder nächste Schritte"
+
+  - section: closing
+    required: true
+    ai_help: "Professioneller Abschluss"
+
+  - section: signature
+    required: true
+    ai_help: "Name, Position, Kontaktdaten"
+
+style:
+  tone: professional
+  person: first
+  tense: present
+  language: business
+
+export:
+  txt:
+    template: "templates/txt/email.txt.jinja"

@@ -1,0 +1,48 @@
+schema:
+  name: "Tagebuch-Eintrag"
+  description: "Persönlicher Tagebuch- oder Reflexionseintrag"
+  category: personal
+  output_formats: [md, pdf]
+
+structure:
+  - section: date
+    required: true
+    auto_generate: true
+    ai_help: "Aktuelles Datum und optional Uhrzeit"
+
+  - section: mood
+    required: false
+    ai_help: "Stimmung oder emotionaler Zustand"
+
+  - section: highlights
+    required: false
+    ai_help: "Highlights des Tages als kurze Liste"
+
+  - section: reflection
+    required: true
+    ai_help: "Freie Reflexion: Gedanken, Erlebnisse, Beobachtungen"
+
+  - section: gratitude
+    required: false
+    ai_help: "Dankbarkeit: 3 Dinge für die du heute dankbar bist"
+
+  - section: learnings
+    required: false
+    ai_help: "Was habe ich heute gelernt?"
+
+  - section: tomorrow
+    required: false
+    ai_help: "Vorsätze oder Pläne für morgen"
+
+style:
+  tone: personal
+  person: first
+  tense: past
+  language: informal
+
+export:
+  md:
+    template: "templates/md/journal.md.jinja"
+  pdf:
+    template: "templates/pdf/journal.html"
+    css: "styles/personal.css"

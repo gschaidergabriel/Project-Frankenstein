@@ -1,0 +1,54 @@
+schema:
+  name: "Blog-Artikel"
+  description: "SEO-freundlicher Blog-Post mit Leserführung"
+  category: creative
+  output_formats: [html, md, pdf]
+
+structure:
+  - section: title
+    required: true
+    ai_help: "Aufmerksamkeitsstarke Überschrift (50-70 Zeichen für SEO)"
+
+  - section: meta_description
+    required: false
+    max_words: 30
+    ai_help: "SEO-Beschreibung für Suchmaschinen (max 160 Zeichen)"
+
+  - section: hook
+    required: true
+    ai_help: "Einleitender Absatz der den Leser fesselt"
+
+  - section: main_content
+    required: true
+    ai_help: "Hauptteil: Klare Zwischenüberschriften, kurze Absätze, Beispiele"
+
+  - section: key_takeaways
+    required: false
+    ai_help: "Wichtigste Erkenntnisse als Aufzählung"
+
+  - section: conclusion
+    required: true
+    ai_help: "Zusammenfassung und Handlungsaufforderung"
+
+  - section: call_to_action
+    required: false
+    ai_help: "Klarer CTA: Kommentar, Teilen, Newsletter, etc."
+
+metadata:
+  tags: []
+  category: ""
+  target_words: 1500
+  reading_time_min: 7
+
+style:
+  tone: conversational
+  person: second
+  tense: present
+  language: informal
+
+export:
+  html:
+    template: "templates/html/blog.html.jinja"
+    css: "styles/blog.css"
+  md:
+    template: "templates/md/blog.md.jinja"

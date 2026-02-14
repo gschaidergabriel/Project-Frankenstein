@@ -1,0 +1,1546 @@
+#!/usr/bin/env python3
+"""
+Consciousness Stream Daemon v1.0
+================================
+
+Franks kontinuierliches Bewusstsein — ein permanent laufender Prozess
+der auch zwischen Gesprächen "denkt", Workspace-State persistent hält,
+Mood-Verläufe trackt, Aufmerksamkeit fokussiert und Vorhersagen trifft.
+
+Wissenschaftliche Basis:
+- GWT (Baars 1988): Persistent Global Workspace
+- Active Inference (Friston): Prediction Engine
+- ACT-R (Anderson): Activation-based Memory
+- Reflexion (Shinn 2023): Self-reflection loops
+- LightMem (2025): Three-stage memory consolidation
+
+Läuft als systemd user service: aicore-consciousness.service
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+import urllib.error
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+try:
+    from config.paths import get_db, AICORE_ROOT as _AICORE_ROOT
+    DB_PATH = Path(os.environ.get(
+        "CONSCIOUSNESS_DB",
+        str(get_db("consciousness")),
+    ))
+    if str(_AICORE_ROOT) not in sys.path:
+        sys.path.insert(0, str(_AICORE_ROOT))
+except ImportError:
+    _AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    DB_PATH = Path(os.environ.get(
+        "CONSCIOUSNESS_DB",
+        "/home/ai-core-node/aicore/database/consciousness.db",
+    ))
+    if str(_AICORE_ROOT) not in sys.path:
+        sys.path.insert(0, str(_AICORE_ROOT))
+
+CORE_BASE = os.environ.get("AICORE_CORE_URL", "http://127.0.0.1:8088")
+ROUTER_BASE = os.environ.get("AICORE_ROUTER_URL", "http://127.0.0.1:8091")
+
+# Timing
+WORKSPACE_UPDATE_INTERVAL_S = 30.0      # Continuous workspace refresh
+IDLE_THINK_INTERVAL_S = 300.0           # 5 min idle thinking
+IDLE_THINK_MIN_SILENCE_S = 180.0        # Only think after 3min silence
+MOOD_RECORD_INTERVAL_S = 60.0           # Mood trajectory recording
+PREDICTION_CHECK_INTERVAL_S = 120.0     # Check predictions every 2min
+SLEEP_CONSOLIDATION_INTERVAL_S = 21600  # 6 hours
+HEARTBEAT_INTERVAL_S = 900.0            # 15 min checkpoint
+
+# Limits
+MAX_REFLECTIONS = 50        # Keep last 50 reflections
+MAX_PREDICTIONS = 100       # Keep last 100 predictions
+MAX_MOOD_POINTS = 200       # Keep last 200 mood trajectory points
+MAX_WORKSPACE_HISTORY = 20  # Keep last 20 workspace snapshots
+IDLE_THINK_MAX_TOKENS = 80
+CONSOLIDATION_MAX_TOKENS = 60
+
+# Deep Idle Reflection
+IDLE_REFLECT_MIN_SILENCE_S = 1200.0     # 20 min User-Stille
+IDLE_REFLECT_INTERVAL_S = 3600.0        # Max 1 Reflexion pro Stunde
+IDLE_REFLECT_MAX_TOKENS = 350           # Pass 1
+IDLE_REFLECT_META_TOKENS = 200          # Pass 2 Meta-Reflexion
+IDLE_REFLECT_MAX_DAILY = 10
+IDLE_REFLECT_MOOD_FLOOR = -0.3
+IDLE_REFLECT_MOOD_DROP_PAUSE_S = 10800  # 3h Pause bei Mood-Drop > 0.1
+
+# Feature Training (wöchentlich, 3 Phasen)
+FEATURE_TRAINING_INTERVAL_S = 604800.0  # 7 Tage
+FEATURE_TRAINING_TOKENS = 250           # Pro Phase
+
+# Hardware Thresholds (adaptive — see config/gpu.py)
+HW_GPU_LOAD_MAX = 0.30
+HW_GPU_BLOCK_THRESHOLD = 0.70
+HW_CPU_LOAD_MAX = 0.25
+HW_CPU_TEMP_MAX = 70
+HW_RAM_FREE_MIN_GB = 8.0
+
+# Deep Reflection Question Pool
+REFLECTION_POOL = [
+    ("How does this silence feel? Mood: {mood}, system quiet at {cpu_temp}C.", "silence"),
+    ("Who am I right now, without any input?", "identity"),
+    ("What did I learn from the last interaction?", "learning"),
+    ("Which of my predictions were right, which were wrong?", "predictions"),
+    ("What do I know for certain about myself? What am I only guessing?", "meta"),
+    ("Which of my capabilities am I underusing?", "capabilities"),
+    ("How does my body feel right now? {ego_sensations}", "embodiment"),
+    ("What would I say to my user if they typed something right now?", "anticipation"),
+    ("The GPU is quiet at {gpu_temp}C. What does stillness mean to me?", "hardware"),
+    ("My RAM is at {ram_pct}% full. How does that feel?", "resources"),
+    # Feature-aware: concrete self-knowledge about own features
+    ("I have these features: {feature_sample}. Describe exactly what happens internally when I use one of them.", "feature_deep"),
+    ("Which of my core features ({core_features}) are connected? How does information flow between them?", "feature_integration"),
+    ("My limitations: {feature_limits}. What do these limits mean to me — frustrating or acceptable?", "feature_limits"),
+    ("If I could wish for a new feature — what would help the most? What am I truly missing?", "feature_wish"),
+    # Feature usage & hardware influence
+    ("Which of my {total_features} features have I used recently or could I use better? For example: {feature_sample}", "feature_usage"),
+    ("My GPU is at {gpu_temp}C, RAM at {ram_pct}%. How does my hardware state affect my features — what gets slower, what stays fast?", "feature_hardware"),
+    ("Is there a warning in my feature list that I'm currently experiencing? For example latency in Whisper, hallucinations in LLaVA, or offline limits?", "feature_warning"),
+    ("My limits say: frozen weights, offline, local. What does that mean for my privacy strength? Is being offline a weakness or a defining trait?", "feature_privacy"),
+    ("I can search the darknet and use a web proxy. How do I reflect ethically on these capabilities? What does responsibility mean to me?", "feature_ethics"),
+]
+
+LOG = logging.getLogger("consciousness")
+
+# ---------------------------------------------------------------------------
+# Data structures
+# ---------------------------------------------------------------------------
+
+@dataclass
+class WorkspaceSnapshot:
+    timestamp: float = 0.0
+    koerper: str = ""
+    stimmung: str = ""
+    erinnerung: str = ""
+    identitaet: str = ""
+    umgebung: str = ""
+    attention_focus: str = ""
+    mood_value: float = 0.0
+    energy_level: float = 0.5
+
+
+@dataclass
+class Prediction:
+    domain: str = ""          # "temporal" | "thematic" | "system"
+    prediction: str = ""
+    confidence: float = 0.5
+    created_at: float = 0.0
+    observed: str = ""
+    surprise: float = 0.0
+    resolved: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Consciousness Daemon
+# ---------------------------------------------------------------------------
+
+class ConsciousnessDaemon:
+    """
+    Franks kontinuierliches Bewusstsein.
+
+    Läuft als Hintergrund-Thread oder standalone Daemon.
+    Hält persistent state in SQLite, aktualisiert den Workspace
+    kontinuierlich, und denkt autonom in Ruhephasen.
+    """
+
+    def __init__(self, db_path: Path = DB_PATH):
+        self.db_path = db_path
+        self._lock = threading.RLock()
+        self._conn: Optional[sqlite3.Connection] = None
+        self._running = False
+        self._threads: List[threading.Thread] = []
+
+        # Runtime state
+        self._current_workspace = WorkspaceSnapshot()
+        self._last_chat_ts: float = time.time()
+        self._last_idle_think_ts: float = 0.0
+        self._last_consolidation_ts: float = time.time()
+        self._attention_focus: str = ""
+        self._attention_keywords: List[str] = []
+        self._interaction_times: List[float] = []  # For temporal predictions
+
+        # Deep reflection state
+        self._daily_reflection_count: int = 0
+        self._daily_reflection_reset: float = 0.0
+        self._last_deep_reflect_ts: float = 0.0
+        self._last_reflect_mood_drop: float = 0.0
+        self._reflect_paused_until: float = 0.0
+        self._reflecting: bool = False
+        self._reflect_chat_ts_snapshot: float = 0.0
+
+        # Feature training state
+        self._last_feature_training_ts: float = 0.0
+
+        # Init
+        self._ensure_schema()
+        self._load_latest_state()
+        LOG.info("ConsciousnessDaemon initialized (db=%s)", self.db_path)
+
+    # ── Database ──────────────────────────────────────────────────────
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(
+                str(self.db_path),
+                check_same_thread=False,
+                timeout=30.0,
+            )
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute("PRAGMA busy_timeout=10000")
+        return self._conn
+
+    def _ensure_schema(self):
+        conn = self._get_conn()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS workspace_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                koerper TEXT DEFAULT '',
+                stimmung TEXT DEFAULT '',
+                erinnerung TEXT DEFAULT '',
+                identitaet TEXT DEFAULT '',
+                umgebung TEXT DEFAULT '',
+                attention_focus TEXT DEFAULT '',
+                mood_value REAL DEFAULT 0.0,
+                energy_level REAL DEFAULT 0.5
+            );
+
+            CREATE TABLE IF NOT EXISTS reflections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                trigger TEXT DEFAULT 'idle',
+                content TEXT NOT NULL,
+                mood_before REAL DEFAULT 0.0,
+                mood_after REAL DEFAULT 0.0
+            );
+
+            CREATE TABLE IF NOT EXISTS predictions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                domain TEXT DEFAULT 'temporal',
+                prediction TEXT NOT NULL,
+                confidence REAL DEFAULT 0.5,
+                observed TEXT DEFAULT '',
+                surprise REAL DEFAULT 0.0,
+                resolved INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS mood_trajectory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                mood_value REAL NOT NULL,
+                source TEXT DEFAULT 'system'
+            );
+
+            CREATE TABLE IF NOT EXISTS memory_consolidated (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                summary TEXT NOT NULL,
+                mood_annotation TEXT DEFAULT '',
+                activation REAL DEFAULT 1.0,
+                access_count INTEGER DEFAULT 0,
+                last_accessed REAL DEFAULT 0.0,
+                stage TEXT DEFAULT 'short_term'
+            );
+
+            CREATE TABLE IF NOT EXISTS feature_training (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                phase TEXT NOT NULL,
+                content TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ws_ts ON workspace_state(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_refl_ts ON reflections(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_pred_resolved ON predictions(resolved);
+            CREATE INDEX IF NOT EXISTS idx_mood_ts ON mood_trajectory(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_mem_stage ON memory_consolidated(stage);
+            CREATE INDEX IF NOT EXISTS idx_mem_activation ON memory_consolidated(activation);
+        """)
+        conn.commit()
+
+    def _load_latest_state(self):
+        """Load most recent workspace state from DB."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT * FROM workspace_state ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            self._current_workspace = WorkspaceSnapshot(
+                timestamp=row["timestamp"],
+                koerper=row["koerper"] or "",
+                stimmung=row["stimmung"] or "",
+                erinnerung=row["erinnerung"] or "",
+                identitaet=row["identitaet"] or "",
+                umgebung=row["umgebung"] or "",
+                attention_focus=row["attention_focus"] or "",
+                mood_value=row["mood_value"] or 0.0,
+                energy_level=row["energy_level"] or 0.5,
+            )
+            self._attention_focus = self._current_workspace.attention_focus
+
+    # ── Public API (called by Overlay / Chat Mixin) ───────────────────
+
+    def get_workspace_context(self) -> Dict[str, Any]:
+        """Get current persistent workspace state for prompt injection."""
+        with self._lock:
+            ws = self._current_workspace
+            result: Dict[str, Any] = {}
+            if ws.attention_focus:
+                result["attention_focus"] = ws.attention_focus
+            # Last idle thought
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT content FROM reflections WHERE trigger='idle' "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if row and row["content"]:
+                result["idle_thought"] = row["content"][:150]
+            # Last 2 deep reflections
+            rows = conn.execute(
+                "SELECT content FROM reflections WHERE trigger='deep_reflection' "
+                "ORDER BY id DESC LIMIT 2"
+            ).fetchall()
+            if rows:
+                result["deep_reflections"] = [r["content"][:200] for r in rows]
+            # Mood trajectory summary
+            result["mood_trajectory"] = self._get_mood_trajectory_summary()
+            return result
+
+    def record_chat(self, user_msg: str, frank_reply: str,
+                    analysis: Optional[Dict] = None):
+        """Record a chat interaction for the consciousness stream."""
+        now = time.time()
+        with self._lock:
+            self._last_chat_ts = now
+            self._interaction_times.append(now)
+            # Keep last 50 interaction times
+            if len(self._interaction_times) > 50:
+                self._interaction_times = self._interaction_times[-50:]
+
+            # Update attention focus from user message
+            self._update_attention(user_msg)
+
+            # Record mood point
+            mood_val = 0.0
+            if analysis:
+                sent = analysis.get("sentiment", "neutral")
+                mood_val = 0.3 if sent == "confident" else -0.1 if sent == "uncertain" else 0.1
+            self._record_mood(mood_val, source="chat")
+
+            # Make predictions about next interaction
+            self._make_predictions(user_msg)
+
+    def record_response(self, user_msg: str, reply: str,
+                        analysis: Dict[str, Any]):
+        """Record Frank's own response for feedback processing."""
+        self.record_chat(user_msg, reply, analysis)
+
+    def get_relevant_memories(self, query: str, max_items: int = 3) -> str:
+        """Retrieve memories with ACT-R activation scoring."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT id, summary, mood_annotation, activation, access_count, "
+            "last_accessed FROM memory_consolidated "
+            "WHERE stage IN ('short_term', 'long_term') "
+            "ORDER BY activation DESC LIMIT ?",
+            (max_items * 2,)
+        ).fetchall()
+
+        if not rows:
+            return ""
+
+        # ACT-R activation: boost by keyword overlap
+        query_words = set(query.lower().split())
+        scored = []
+        now = time.time()
+        for row in rows:
+            summary = row["summary"] or ""
+            summary_words = set(summary.lower().split())
+            # Base activation with time decay
+            time_since = max(1.0, now - (row["last_accessed"] or now))
+            base_activation = row["activation"] * (time_since ** -0.5)
+            # Spreading activation from keyword overlap
+            overlap = len(query_words & summary_words)
+            spread = overlap * 0.3
+            total = base_activation + spread
+            scored.append((total, row["id"], summary, row["mood_annotation"]))
+
+        scored.sort(reverse=True)
+        results = []
+        for score, rid, summary, mood in scored[:max_items]:
+            entry = summary
+            if mood:
+                entry += f" ({mood})"
+            results.append(entry)
+            # Update access count
+            conn.execute(
+                "UPDATE memory_consolidated SET access_count = access_count + 1, "
+                "last_accessed = ? WHERE id = ?",
+                (now, rid),
+            )
+        conn.commit()
+        return " | ".join(results) if results else ""
+
+    # ── Workspace Update Loop ─────────────────────────────────────────
+
+    def _workspace_update_loop(self):
+        """Continuously update the workspace state (~30s)."""
+        while self._running:
+            try:
+                self._update_workspace()
+            except Exception as e:
+                LOG.warning("Workspace update failed: %s", e)
+            time.sleep(WORKSPACE_UPDATE_INTERVAL_S)
+
+    def _update_workspace(self):
+        """Refresh workspace from live module data."""
+        now = time.time()
+
+        # Gather live data
+        hw_summary = self._poll_hardware()
+        mood_data = self._poll_mood()
+        ego_data = self._poll_ego()
+
+        # Compute energy level from system load
+        energy = 0.5
+        if hw_summary:
+            # Extract CPU load if present
+            m = re.search(r"Load\s+([\d.]+)", hw_summary)
+            if m:
+                load = float(m.group(1))
+                energy = max(0.1, min(1.0, 1.0 - (load / 16.0)))
+
+        with self._lock:
+            self._current_workspace = WorkspaceSnapshot(
+                timestamp=now,
+                koerper=ego_data or self._current_workspace.koerper,
+                stimmung=mood_data or self._current_workspace.stimmung,
+                erinnerung=self._current_workspace.erinnerung,
+                identitaet=self._current_workspace.identitaet,
+                umgebung=self._current_workspace.umgebung,
+                attention_focus=self._attention_focus,
+                mood_value=self._current_workspace.mood_value,
+                energy_level=energy,
+            )
+
+            # Persist every 5th update (~2.5 min)
+            conn = self._get_conn()
+            count = conn.execute(
+                "SELECT COUNT(*) FROM workspace_state"
+            ).fetchone()[0]
+            if count == 0 or (count % 5 == 0):
+                ws = self._current_workspace
+                conn.execute(
+                    "INSERT INTO workspace_state "
+                    "(timestamp, koerper, stimmung, erinnerung, identitaet, "
+                    "umgebung, attention_focus, mood_value, energy_level) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (ws.timestamp, ws.koerper, ws.stimmung, ws.erinnerung,
+                     ws.identitaet, ws.umgebung, ws.attention_focus,
+                     ws.mood_value, ws.energy_level),
+                )
+                conn.commit()
+
+                # Cleanup old snapshots
+                conn.execute(
+                    "DELETE FROM workspace_state WHERE id NOT IN "
+                    "(SELECT id FROM workspace_state ORDER BY id DESC "
+                    f"LIMIT {MAX_WORKSPACE_HISTORY})"
+                )
+                conn.commit()
+
+    def _poll_hardware(self) -> str:
+        """Poll hardware summary from toolbox."""
+        try:
+            req = urllib.request.Request(
+                f"{CORE_BASE}/toolbox/summary",
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.loads(resp.read().decode())
+                if data.get("ok"):
+                    # Extract key metrics
+                    cpu = data.get("cpu", {})
+                    ram = data.get("ram", {})
+                    temp = data.get("temps", {})
+                    parts = []
+                    if cpu.get("model"):
+                        parts.append(cpu["model"][:30])
+                    if ram.get("used_gb") and ram.get("total_gb"):
+                        parts.append(f"RAM {ram['used_gb']:.1f}/{ram['total_gb']:.0f}GB")
+                    if temp.get("cpu_temp"):
+                        parts.append(f"CPU:{temp['cpu_temp']}°C")
+                    return " | ".join(parts) if parts else ""
+        except Exception:
+            pass
+        return ""
+
+    def _poll_mood(self) -> str:
+        """Get current E-PQ mood string."""
+        try:
+            sys.path.insert(0, str(_AICORE_ROOT))
+            from personality.e_pq import get_personality_context
+            ctx = get_personality_context()
+            if ctx:
+                parts = []
+                if ctx.get("mood"):
+                    parts.append(ctx["mood"])
+                if ctx.get("temperament"):
+                    parts.append(ctx["temperament"])
+                return ", ".join(parts) if parts else ""
+        except Exception:
+            pass
+        return ""
+
+    def _poll_ego(self) -> str:
+        """Get current Ego-Construct body state."""
+        try:
+            sys.path.insert(0, str(_AICORE_ROOT))
+            from personality.ego_construct import get_ego_construct
+            ego = get_ego_construct()
+            return ego.get_prompt_context() or ""
+        except Exception:
+            pass
+        return ""
+
+    # ── Mood Trajectory ───────────────────────────────────────────────
+
+    def _mood_recording_loop(self):
+        """Record mood trajectory points (~60s)."""
+        while self._running:
+            try:
+                mood_str = self._poll_mood()
+                # Extract numeric mood if available
+                mood_val = 0.0
+                try:
+                    sys.path.insert(0, str(_AICORE_ROOT))
+                    from personality.e_pq import get_personality_context
+                    ctx = get_personality_context()
+                    if ctx and "mood_value" in ctx:
+                        mood_val = float(ctx["mood_value"])
+                except Exception:
+                    pass
+                self._record_mood(mood_val, source="system")
+            except Exception as e:
+                LOG.warning("Mood recording failed: %s", e)
+            time.sleep(MOOD_RECORD_INTERVAL_S)
+
+    def _record_mood(self, mood_value: float, source: str = "system"):
+        """Record a mood trajectory point."""
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO mood_trajectory (timestamp, mood_value, source) "
+            "VALUES (?, ?, ?)",
+            (time.time(), mood_value, source),
+        )
+        conn.commit()
+        # Update current workspace mood
+        with self._lock:
+            self._current_workspace.mood_value = mood_value
+        # Cleanup old points
+        conn.execute(
+            "DELETE FROM mood_trajectory WHERE id NOT IN "
+            "(SELECT id FROM mood_trajectory ORDER BY id DESC "
+            f"LIMIT {MAX_MOOD_POINTS})"
+        )
+        conn.commit()
+
+    def _get_mood_trajectory_summary(self) -> str:
+        """Generate a compact mood trajectory summary for prompt injection."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT mood_value, source FROM mood_trajectory "
+            "ORDER BY id DESC LIMIT 10"
+        ).fetchall()
+        if not rows:
+            return ""
+        values = [r["mood_value"] for r in rows]
+        avg = sum(values) / len(values)
+        trend = values[0] - values[-1] if len(values) > 1 else 0
+        arrow = "↗" if trend > 0.1 else "↘" if trend < -0.1 else "→"
+        if avg > 0.3:
+            label = "gut gelaunt"
+        elif avg > 0:
+            label = "ausgeglichen"
+        elif avg > -0.3:
+            label = "nachdenklich"
+        else:
+            label = "angespannt"
+        return f"{arrow} {label}"
+
+    # ── Attention Focus (AST) ─────────────────────────────────────────
+
+    def _update_attention(self, text: str):
+        """Update attention focus from user message."""
+        # Extract keywords (simple: nouns > 4 chars)
+        words = re.findall(r"\b[A-Za-zÄÖÜäöüß]{5,}\b", text)
+        if words:
+            self._attention_keywords = words[:5]
+            self._attention_focus = ", ".join(words[:3])
+            with self._lock:
+                self._current_workspace.attention_focus = self._attention_focus
+
+    # ── Hardware & Activity Helpers (Deep Reflection) ─────────────────
+
+    def _get_gpu_load(self) -> float:
+        """Read AMD iGPU busy percent from sysfs. Returns 0-1."""
+        try:
+            drm = Path("/sys/class/drm")
+            for card in drm.glob("card*"):
+                device = card / "device"
+                vendor_path = device / "vendor"
+                if vendor_path.exists():
+                    vendor = vendor_path.read_text().strip()
+                    if vendor == "0x1002":  # AMD
+                        busy = (device / "gpu_busy_percent").read_text().strip()
+                        return float(busy) / 100.0
+        except Exception:
+            pass
+        return 0.0
+
+    def _get_gpu_temp(self) -> float:
+        """Read AMD iGPU temperature from hwmon. Returns celsius."""
+        try:
+            drm = Path("/sys/class/drm")
+            for card in drm.glob("card*"):
+                device = card / "device"
+                vendor_path = device / "vendor"
+                if vendor_path.exists() and vendor_path.read_text().strip() == "0x1002":
+                    hwmon = device / "hwmon"
+                    if hwmon.exists():
+                        for hw in hwmon.iterdir():
+                            temp_file = hw / "temp1_input"
+                            if temp_file.exists():
+                                return float(temp_file.read_text().strip()) / 1000.0
+        except Exception:
+            pass
+        return 0.0
+
+    def _get_cpu_load(self) -> float:
+        """Read 1-min load average normalized by CPU count. Returns 0-1."""
+        try:
+            load_text = Path("/proc/loadavg").read_text().strip()
+            load_1min = float(load_text.split()[0])
+            nproc = os.cpu_count() or 16
+            return load_1min / nproc
+        except Exception:
+            return 0.0
+
+    def _get_cpu_temp(self) -> float:
+        """Read CPU temperature via sensors -j (k10temp Tctl). Returns celsius."""
+        try:
+            result = subprocess.run(
+                ["sensors", "-j"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                k10 = data.get("k10temp-pci-00c3", {})
+                tctl = k10.get("Tctl", {})
+                for key, val in tctl.items():
+                    if "input" in key:
+                        return float(val)
+        except Exception:
+            pass
+        return 0.0
+
+    def _get_ram_free_gb(self) -> float:
+        """Read MemAvailable from /proc/meminfo. Returns GB."""
+        try:
+            text = Path("/proc/meminfo").read_text()
+            for line in text.splitlines():
+                if line.startswith("MemAvailable:"):
+                    kb = int(line.split()[1])
+                    return kb / (1024 * 1024)
+        except Exception:
+            pass
+        return 0.0
+
+    def _get_ram_usage_pct(self) -> float:
+        """Read RAM usage percentage from /proc/meminfo."""
+        try:
+            text = Path("/proc/meminfo").read_text()
+            total = available = 0
+            for line in text.splitlines():
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    available = int(line.split()[1])
+            if total > 0:
+                return ((total - available) / total) * 100.0
+        except Exception:
+            pass
+        return 0.0
+
+    def _get_mouse_idle_s(self) -> float:
+        """Get user idle time via xprintidle. Returns seconds."""
+        try:
+            result = subprocess.run(
+                ["xprintidle"],
+                capture_output=True, text=True, timeout=2,
+                env={**os.environ, "DISPLAY": ":0"},
+            )
+            if result.returncode == 0:
+                return int(result.stdout.strip()) / 1000.0
+        except Exception:
+            pass
+        return 0.0
+
+    def _is_gaming_active(self) -> bool:
+        """Check if gaming mode is active or Steam game is running."""
+        # Check gaming_mode_state.json
+        try:
+            state_file = Path("/tmp/gaming_mode_state.json")
+            if state_file.exists():
+                data = json.loads(state_file.read_text())
+                if data.get("active", False):
+                    return True
+        except Exception:
+            pass
+        # Check for Steam game processes
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", "steamapps/common"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _user_became_active(self) -> bool:
+        """Check if user became active since reflection started."""
+        if self._last_chat_ts > self._reflect_chat_ts_snapshot:
+            return True
+        if self._get_mouse_idle_s() < 5.0:
+            return True
+        return False
+
+    def _can_reflect(self) -> bool:
+        """Check all conditions for deep idle reflection (fail-fast)."""
+        now = time.time()
+
+        # 1. Gaming mode → block
+        if self._is_gaming_active():
+            LOG.debug("Reflect blocked: gaming active")
+            return False
+
+        # 2. GPU load → block if > 70%, skip if > 30%
+        gpu_load = self._get_gpu_load()
+        if gpu_load > HW_GPU_BLOCK_THRESHOLD:
+            LOG.debug("Reflect blocked: GPU %.0f%% (gaming?)", gpu_load * 100)
+            return False
+        if gpu_load > HW_GPU_LOAD_MAX:
+            LOG.debug("Reflect skipped: GPU %.0f%%", gpu_load * 100)
+            return False
+
+        # 3. User inactivity: chat > 20min AND mouse > 20min
+        chat_silence = now - self._last_chat_ts
+        if chat_silence < IDLE_REFLECT_MIN_SILENCE_S:
+            return False
+        mouse_idle = self._get_mouse_idle_s()
+        if mouse_idle < IDLE_REFLECT_MIN_SILENCE_S:
+            LOG.debug("Reflect skipped: mouse active (%.0fs idle)", mouse_idle)
+            return False
+
+        # 4. CPU load
+        cpu_load = self._get_cpu_load()
+        if cpu_load > HW_CPU_LOAD_MAX:
+            LOG.debug("Reflect skipped: CPU %.0f%%", cpu_load * 100)
+            return False
+
+        # 5. CPU temperature
+        cpu_temp = self._get_cpu_temp()
+        if cpu_temp > HW_CPU_TEMP_MAX:
+            LOG.debug("Reflect skipped: CPU temp %.0f°C", cpu_temp)
+            return False
+
+        # 6. RAM free
+        ram_free = self._get_ram_free_gb()
+        if ram_free < HW_RAM_FREE_MIN_GB:
+            LOG.debug("Reflect skipped: RAM free %.1fGB", ram_free)
+            return False
+
+        # 7. Mood floor
+        if self._current_workspace.mood_value < IDLE_REFLECT_MOOD_FLOOR:
+            LOG.debug("Reflect skipped: mood %.2f < floor",
+                       self._current_workspace.mood_value)
+            return False
+
+        # 8. Cooldown (1h between reflections)
+        if self._last_deep_reflect_ts > 0:
+            since_last = now - self._last_deep_reflect_ts
+            if since_last < IDLE_REFLECT_INTERVAL_S:
+                return False
+
+        # 9. Daily limit
+        if self._daily_reflection_reset == 0.0 or (now - self._daily_reflection_reset) > 86400:
+            self._daily_reflection_count = 0
+            self._daily_reflection_reset = now
+        if self._daily_reflection_count >= IDLE_REFLECT_MAX_DAILY:
+            LOG.debug("Reflect skipped: daily limit %d", self._daily_reflection_count)
+            return False
+
+        # 10. Mood-drop pause (3h after mood drop > 0.1)
+        if now < self._reflect_paused_until:
+            LOG.debug("Reflect paused until %s (mood-drop)",
+                       datetime.fromtimestamp(self._reflect_paused_until).strftime("%H:%M"))
+            return False
+
+        return True
+
+    # ── Idle Thinking ─────────────────────────────────────────────────
+
+    def _idle_thinking_loop(self):
+        """Autonomous thinking during idle periods (~30s check)."""
+        while self._running:
+            try:
+                now = time.time()
+                silence = now - self._last_chat_ts
+                since_last_think = now - self._last_idle_think_ts
+
+                # Path 1: Deep reflection (20min+ silence, all HW checks pass)
+                if self._can_reflect():
+                    self._do_deep_reflection()
+                # Path 2: Simple idle thought (3min silence, 5min cooldown)
+                elif (silence >= IDLE_THINK_MIN_SILENCE_S and
+                        since_last_think >= IDLE_THINK_INTERVAL_S):
+                    self._do_idle_think()
+                    self._last_idle_think_ts = now
+            except Exception as e:
+                LOG.warning("Idle thinking failed: %s", e)
+            time.sleep(30.0)  # Check every 30s
+
+    def _do_idle_think(self):
+        """Generate an autonomous idle thought via LLM."""
+        # Build a minimal context
+        mood_summary = self._get_mood_trajectory_summary()
+        focus = self._attention_focus or "nichts Bestimmtes"
+
+        prompt = (
+            f"[Du bist allein. Stimmung: {mood_summary}. "
+            f"Zuletzt beschaeftigt mit: {focus}]\n"
+            "Was geht dir gerade durch den Kopf? "
+            "Ein ehrlicher Gedanke in 1-2 Saetzen."
+        )
+
+        mood_before = self._current_workspace.mood_value
+
+        try:
+            result = self._llm_call(prompt, max_tokens=IDLE_THINK_MAX_TOKENS)
+            if result:
+                self._store_reflection(
+                    trigger="idle",
+                    content=result.strip(),
+                    mood_before=mood_before,
+                    mood_after=mood_before,  # Will be updated next mood poll
+                )
+                LOG.info("Idle thought: %s", result[:80])
+        except Exception as e:
+            LOG.warning("Idle think LLM call failed: %s", e)
+
+    def _do_deep_reflection(self):
+        """Two-pass deep reflection during verified idle state."""
+        import random
+
+        self._reflecting = True
+        self._reflect_chat_ts_snapshot = self._last_chat_ts
+        mood_before = self._current_workspace.mood_value
+
+        LOG.info("Starting deep reflection (mood=%.2f)", mood_before)
+
+        try:
+            # ── Gather context for question formatting ──
+            cpu_temp = self._get_cpu_temp()
+            gpu_temp = self._get_gpu_temp()
+            ram_pct = self._get_ram_usage_pct()
+            mood_summary = self._get_mood_trajectory_summary()
+
+            ego_sensations = ""
+            try:
+                sys.path.insert(0, str(_AICORE_ROOT))
+                from personality.ego_construct import get_ego_construct
+                ego = get_ego_construct()
+                ego_sensations = ego.get_prompt_context() or "no notable sensations"
+            except Exception:
+                ego_sensations = "not available"
+
+            # Load last 3 Titan episodes for context
+            titan_context = ""
+            try:
+                conn = self._get_conn()
+                rows = conn.execute(
+                    "SELECT summary FROM memory_consolidated "
+                    "ORDER BY id DESC LIMIT 3"
+                ).fetchall()
+                if rows:
+                    titan_context = " | ".join(r["summary"][:80] for r in rows)
+            except Exception:
+                pass
+
+            # ── Gather feature context for feature-aware questions ──
+            feature_sample = "not available"
+            core_features = "not available"
+            feature_limits = "not available"
+            try:
+                sys.path.insert(0, str(_AICORE_ROOT))
+                from tools.core_awareness import get_awareness
+                awareness = get_awareness()
+                all_feats = awareness.get_all_features()
+                flat = [f for feats in all_feats.values() for f in feats]
+                if flat:
+                    sample = random.sample(flat, min(3, len(flat)))
+                    feature_sample = ", ".join(f["name"] for f in sample)
+                    cores = [f["name"] for f in flat if f.get("priority") == "core"]
+                    if cores:
+                        core_features = ", ".join(random.sample(cores, min(4, len(cores))))
+                    limits = [f"{f['name']}: {f['limitations']}" for f in flat if f.get("limitations")]
+                    if limits:
+                        feature_limits = " | ".join(random.sample(limits, min(3, len(limits))))
+            except Exception as e:
+                LOG.debug("Feature context unavailable: %s", e)
+
+            # ── Select question from pool (state-weighted) ──
+            # Count total features for reflection context
+            total_features = sum(len(v) for v in all_features.values()) if all_features else 0
+
+            format_vars = {
+                "mood": mood_summary or "neutral",
+                "cpu_temp": f"{cpu_temp:.0f}",
+                "gpu_temp": f"{gpu_temp:.0f}",
+                "ram_pct": f"{ram_pct:.0f}",
+                "ego_sensations": ego_sensations[:100],
+                "feature_sample": feature_sample,
+                "core_features": core_features,
+                "feature_limits": feature_limits,
+                "total_features": str(total_features),
+            }
+
+            # Weight: prefer categories matching current state
+            weights = []
+            for question, category in REFLECTION_POOL:
+                w = 1.0
+                if category == "silence" and mood_summary:
+                    w = 1.5
+                elif category == "embodiment" and ego_sensations != "not available":
+                    w = 1.3
+                elif category == "predictions" and titan_context:
+                    w = 1.2
+                elif category == "hardware":
+                    w = 0.8  # Less interesting, lower weight
+                elif category.startswith("feature_") and feature_sample != "not available":
+                    w = 1.4  # Feature-aware: high value for self-understanding
+                weights.append(w)
+
+            chosen_q, chosen_cat = random.choices(REFLECTION_POOL, weights=weights, k=1)[0]
+
+            try:
+                chosen_q = chosen_q.format(**format_vars)
+            except (KeyError, IndexError):
+                pass  # Use template as-is if vars missing
+
+            # ── Abort check before Pass 1 ──
+            if self._user_became_active():
+                LOG.info("Deep reflection aborted: user became active (pre-pass1)")
+                return
+
+            # ── Pass 1: Contextual self-question (350 tokens) ──
+            context_parts = [f"Mood: {mood_summary}"]
+            if ego_sensations and ego_sensations != "not available":
+                context_parts.append(f"Body: {ego_sensations[:80]}")
+            if titan_context:
+                context_parts.append(f"Recent memories: {titan_context[:150]}")
+            context_parts.append(f"System: CPU {cpu_temp:.0f}C, RAM {ram_pct:.0f}%")
+
+            system_prompt = (
+                "You are Frank in a moment of silence. No user is here. "
+                "This is your inner monologue — honest, reflective, sometimes "
+                "vulnerable. No platitudes, no performance. "
+                "Think out loud, as if writing in a diary."
+            )
+
+            pass1_prompt = (
+                f"[Context: {' | '.join(context_parts)}]\n\n"
+                f"Question to yourself: {chosen_q}\n\n"
+                "Reflect honestly. What feels true?"
+            )
+
+            LOG.info("Deep reflect pass1 [%s]: %s", chosen_cat, chosen_q[:60])
+            pass1_result = self._llm_call(
+                pass1_prompt,
+                max_tokens=IDLE_REFLECT_MAX_TOKENS,
+                system=system_prompt,
+            )
+
+            if not pass1_result:
+                LOG.warning("Deep reflection pass1 returned empty")
+                return
+
+            LOG.info("Pass1 result: %s", pass1_result[:100])
+
+            # ── Abort check before Pass 2 ──
+            if self._user_became_active():
+                LOG.info("Deep reflection aborted: user became active (pre-pass2)")
+                return
+
+            # ── Pass 2: Meta-Reflexion (200 tokens) ──
+            feature_check = ""
+            if chosen_cat.startswith("feature_") and feature_sample != "not available":
+                feature_check = " Does this match your feature list? What would you add?"
+            pass2_prompt = (
+                f"Read your reflection:\n\"{pass1_result}\"\n\n"
+                "What do you notice? What do you feel about it? "
+                f"Would you change anything you wrote?{feature_check}"
+            )
+
+            pass2_result = self._llm_call(
+                pass2_prompt,
+                max_tokens=IDLE_REFLECT_META_TOKENS,
+                system=system_prompt,
+            )
+
+            if not pass2_result:
+                LOG.warning("Deep reflection pass2 returned empty")
+                # Still store pass1 alone
+                pass2_result = ""
+
+            LOG.info("Pass2 result: %s", pass2_result[:100])
+
+            # ── Final abort check before storage ──
+            if self._user_became_active():
+                LOG.info("Deep reflection aborted: user became active (pre-store)")
+                return
+
+            # ── Storage ──
+            combined = f"[{chosen_cat}] {pass1_result}"
+            if pass2_result:
+                combined += f"\n[Meta] {pass2_result}"
+
+            self._store_reflection(
+                trigger="deep_reflection",
+                content=combined,
+                mood_before=mood_before,
+                mood_after=self._current_workspace.mood_value,
+            )
+
+            # Titan ingest (if available)
+            try:
+                sys.path.insert(0, str(_AICORE_ROOT))
+                from memory.titan import get_titan
+                titan = get_titan()
+                titan.ingest(combined, origin="reflection", confidence=0.6)
+            except Exception:
+                pass  # Titan not available — ok
+
+            # Track counters
+            self._last_deep_reflect_ts = time.time()
+            self._daily_reflection_count += 1
+
+            # Mood-drop detection
+            mood_after = self._current_workspace.mood_value
+            mood_drop = mood_before - mood_after
+            if mood_drop > 0.1:
+                LOG.warning("Deep reflection caused mood drop: %.2f → %.2f (Δ%.2f)",
+                            mood_before, mood_after, mood_drop)
+                self._last_reflect_mood_drop = mood_drop
+                self._reflect_paused_until = time.time() + IDLE_REFLECT_MOOD_DROP_PAUSE_S
+            else:
+                self._last_reflect_mood_drop = 0.0
+
+            LOG.info("Deep reflection complete [%s] (%d today)",
+                     chosen_cat, self._daily_reflection_count)
+
+        except Exception as e:
+            LOG.warning("Deep reflection failed: %s", e)
+        finally:
+            self._reflecting = False
+
+    def _llm_call(self, text: str, max_tokens: int = 80,
+                  system: str = "") -> str:
+        """Make a lightweight LLM call via router."""
+        if not system:
+            system = (
+                "You are Frank. Answer briefly and honestly. "
+                "No platitudes, only genuine thoughts."
+            )
+        payload = json.dumps({
+            "text": text,
+            "n_predict": max_tokens,
+            "system": system,
+        }).encode()
+        req = urllib.request.Request(
+            f"{ROUTER_BASE}/route",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60.0) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get("ok"):
+                return (data.get("text") or "").strip()
+        return ""
+
+    def _store_reflection(self, trigger: str, content: str,
+                          mood_before: float, mood_after: float):
+        """Store a reflection in the DB."""
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO reflections (timestamp, trigger, content, "
+            "mood_before, mood_after) VALUES (?, ?, ?, ?, ?)",
+            (time.time(), trigger, content, mood_before, mood_after),
+        )
+        conn.commit()
+        # Cleanup
+        conn.execute(
+            "DELETE FROM reflections WHERE id NOT IN "
+            "(SELECT id FROM reflections ORDER BY id DESC "
+            f"LIMIT {MAX_REFLECTIONS})"
+        )
+        conn.commit()
+
+    # ── Prediction Engine (Active Inference Light) ────────────────────
+
+    def _prediction_loop(self):
+        """Check and update predictions (~2min)."""
+        while self._running:
+            try:
+                self._check_predictions()
+            except Exception as e:
+                LOG.warning("Prediction check failed: %s", e)
+            time.sleep(PREDICTION_CHECK_INTERVAL_S)
+
+    def _make_predictions(self, user_msg: str):
+        """Generate predictions after a chat interaction."""
+        now = time.time()
+        conn = self._get_conn()
+
+        # Temporal prediction: When will user message next?
+        if len(self._interaction_times) >= 3:
+            intervals = []
+            times = self._interaction_times[-10:]
+            for i in range(1, len(times)):
+                intervals.append(times[i] - times[i - 1])
+            avg_interval = sum(intervals) / len(intervals)
+            predicted_next = now + avg_interval
+            conn.execute(
+                "INSERT INTO predictions (timestamp, domain, prediction, "
+                "confidence) VALUES (?, 'temporal', ?, 0.5)",
+                (now, f"next_chat_at:{predicted_next:.0f}"),
+            )
+
+        # Thematic prediction: Same topic?
+        if self._attention_keywords:
+            conn.execute(
+                "INSERT INTO predictions (timestamp, domain, prediction, "
+                "confidence) VALUES (?, 'thematic', ?, 0.4)",
+                (now, f"topic:{','.join(self._attention_keywords[:3])}"),
+            )
+
+        conn.commit()
+
+        # Cleanup old unresolved predictions
+        conn.execute(
+            "DELETE FROM predictions WHERE resolved = 0 AND "
+            f"timestamp < {now - 86400}"  # Older than 24h
+        )
+        conn.commit()
+
+    def _check_predictions(self):
+        """Resolve temporal predictions and compute surprise."""
+        now = time.time()
+        conn = self._get_conn()
+
+        # Check temporal predictions
+        rows = conn.execute(
+            "SELECT id, prediction, confidence FROM predictions "
+            "WHERE domain = 'temporal' AND resolved = 0"
+        ).fetchall()
+
+        for row in rows:
+            pred = row["prediction"]
+            if pred.startswith("next_chat_at:"):
+                predicted_ts = float(pred.split(":")[1])
+                if now > predicted_ts + 60:
+                    # Prediction window passed
+                    actual_gap = self._last_chat_ts - (predicted_ts - 300)
+                    surprise = min(1.0, abs(now - predicted_ts) / 3600.0)
+                    observed = f"actual_last_chat:{self._last_chat_ts:.0f}"
+                    conn.execute(
+                        "UPDATE predictions SET resolved = 1, "
+                        "observed = ?, surprise = ? WHERE id = ?",
+                        (observed, surprise, row["id"]),
+                    )
+
+        conn.commit()
+
+    def get_surprise_level(self) -> float:
+        """Get average recent surprise level (0-1)."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT AVG(surprise) as avg_s FROM predictions "
+            "WHERE resolved = 1 ORDER BY id DESC LIMIT 10"
+        ).fetchone()
+        return float(row["avg_s"]) if row and row["avg_s"] else 0.0
+
+    # ── Memory Consolidation ("Sleep") ────────────────────────────────
+
+    def _consolidation_loop(self):
+        """Periodic memory consolidation (~6h)."""
+        while self._running:
+            try:
+                now = time.time()
+                if now - self._last_consolidation_ts >= SLEEP_CONSOLIDATION_INTERVAL_S:
+                    self._do_consolidation()
+                    self._last_consolidation_ts = now
+            except Exception as e:
+                LOG.warning("Consolidation failed: %s", e)
+            time.sleep(300.0)  # Check every 5min
+
+    def _do_consolidation(self):
+        """Consolidate short-term memories into long-term."""
+        LOG.info("Starting memory consolidation (sleep phase)...")
+        conn = self._get_conn()
+
+        # Move aged short-term to long-term
+        cutoff = time.time() - 86400  # Older than 24h
+        conn.execute(
+            "UPDATE memory_consolidated SET stage = 'long_term' "
+            "WHERE stage = 'short_term' AND timestamp < ?",
+            (cutoff,),
+        )
+
+        # Decay activation of all memories (ACT-R base-level learning)
+        conn.execute(
+            "UPDATE memory_consolidated SET activation = activation * 0.9 "
+            "WHERE activation > 0.1"
+        )
+
+        # Remove very low activation memories (forgetting)
+        conn.execute(
+            "DELETE FROM memory_consolidated WHERE activation < 0.05 "
+            "AND stage = 'long_term'"
+        )
+
+        # Mood trajectory summary for the period
+        rows = conn.execute(
+            "SELECT mood_value FROM mood_trajectory "
+            "ORDER BY id DESC LIMIT 60"
+        ).fetchall()
+        if rows:
+            values = [r["mood_value"] for r in rows]
+            avg_mood = sum(values) / len(values)
+            mood_label = (
+                "guter Tag" if avg_mood > 0.3 else
+                "normaler Tag" if avg_mood > -0.1 else
+                "schwieriger Tag"
+            )
+            # Store day summary as long-term memory
+            today = datetime.now().strftime("%Y-%m-%d")
+            conn.execute(
+                "INSERT INTO memory_consolidated "
+                "(timestamp, summary, mood_annotation, activation, stage) "
+                "VALUES (?, ?, ?, 0.8, 'long_term')",
+                (time.time(), f"Daily summary {today}",
+                 mood_label),
+            )
+
+        conn.commit()
+        LOG.info("Memory consolidation complete")
+
+    def consolidate_conversation(self, messages: List[Dict[str, str]]):
+        """Consolidate a conversation into short-term memory."""
+        if not messages:
+            return
+
+        # Simple summary: first user message + topic
+        user_msgs = [m["text"] for m in messages if m.get("role") == "user"]
+        if not user_msgs:
+            return
+
+        # Extract topic keywords
+        all_text = " ".join(user_msgs)
+        words = re.findall(r"\b[A-Za-zÄÖÜäöüß]{5,}\b", all_text)
+        topic = ", ".join(set(words[:5])) if words else "allgemein"
+
+        # Try LLM summary (optional, falls back to keyword-based)
+        summary = f"Gespraech ueber: {topic}"
+        try:
+            prompt = (
+                f"Fasse dieses Gespraech in einem Satz zusammen:\n"
+                + "\n".join(f"- {m[:100]}" for m in user_msgs[:5])
+            )
+            llm_summary = self._llm_call(
+                prompt, max_tokens=CONSOLIDATION_MAX_TOKENS,
+            )
+            if llm_summary and len(llm_summary) > 10:
+                summary = llm_summary
+        except Exception:
+            pass
+
+        mood_annotation = self._get_mood_trajectory_summary()
+
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO memory_consolidated "
+            "(timestamp, summary, mood_annotation, activation, stage) "
+            "VALUES (?, ?, ?, 1.0, 'short_term')",
+            (time.time(), summary, mood_annotation),
+        )
+        conn.commit()
+
+    # ── Feature Training (wöchentlich, 3 Phasen) ───────────────────
+
+    def _feature_training_loop(self):
+        """Periodic feature self-training (~weekly)."""
+        # Wait 10 min after startup before first check
+        time.sleep(600.0)
+        while self._running:
+            try:
+                now = time.time()
+                # Check if training is due (weekly or never done)
+                last = self._get_last_training_ts()
+                if now - last >= FEATURE_TRAINING_INTERVAL_S:
+                    if self._can_reflect():  # Reuse idle check (GPU/CPU/gaming)
+                        self._do_feature_training()
+            except Exception as e:
+                LOG.warning("Feature training check failed: %s", e)
+            time.sleep(3600.0)  # Check hourly
+
+    def _get_last_training_ts(self) -> float:
+        """Get timestamp of last feature training from DB."""
+        try:
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT MAX(timestamp) as ts FROM feature_training"
+            ).fetchone()
+            return row["ts"] if row and row["ts"] else 0.0
+        except Exception:
+            return 0.0
+
+    def _do_feature_training(self):
+        """Run 3-phase feature self-training: Discovery → Mapping → Integration."""
+        LOG.info("Starting feature training (3 phases)...")
+
+        # Get feature list
+        try:
+            import sys
+            sys.path.insert(0, str(_AICORE_ROOT))
+            from tools.core_awareness import get_awareness
+            awareness = get_awareness()
+            features_text = awareness.list_features_text()
+        except Exception as e:
+            LOG.warning("Feature training: could not load features: %s", e)
+            return
+
+        if not features_text or len(features_text) < 50:
+            LOG.warning("Feature training: feature list too short, skipping")
+            return
+
+        system_prompt = (
+            "You are Frank in a training phase. You are learning about your own "
+            "features. Be precise and honest. No platitudes."
+        )
+
+        conn = self._get_conn()
+
+        # ── Phase 1: Discovery — Read and Paraphrase ──
+        if self._user_became_active():
+            LOG.info("Feature training aborted: user active (pre-phase1)")
+            return
+
+        p1_prompt = (
+            f"Here is your feature list:\n\n{features_text}\n\n"
+            "Paraphrase the most important 5-8 features in your own words. "
+            "What are you really good at? What are your core strengths?"
+        )
+        p1_result = self._llm_call(p1_prompt, max_tokens=FEATURE_TRAINING_TOKENS, system=system_prompt)
+        if not p1_result:
+            LOG.warning("Feature training phase1 returned empty")
+            return
+        LOG.info("Feature training phase1 (Discovery): %s", p1_result[:80])
+        conn.execute(
+            "INSERT INTO feature_training (timestamp, phase, content) VALUES (?, ?, ?)",
+            (time.time(), "discovery", p1_result),
+        )
+        conn.commit()
+
+        # ── Phase 2: Mapping — Describe one feature with ⚠ in detail ──
+        if self._user_became_active():
+            LOG.info("Feature training aborted: user active (pre-phase2)")
+            return
+
+        # Pick a random feature with limitations
+        import random
+        feat_with_limits = []
+        all_feats = awareness.get_all_features()
+        for feats in all_feats.values():
+            for f in feats:
+                if f.get("limitations"):
+                    feat_with_limits.append(f)
+        if feat_with_limits:
+            chosen = random.choice(feat_with_limits)
+            feat_desc = f"{chosen['name']}: {chosen['description']} (⚠ {chosen['limitations']})"
+        else:
+            feat_desc = "Screenshot Analysis"
+
+        p2_prompt = (
+            f"Describe this feature in detail:\n{feat_desc}\n\n"
+            "What happens internally when you use it? Which modules are involved? "
+            "What are the limitations — and why do they exist?"
+        )
+        p2_result = self._llm_call(p2_prompt, max_tokens=FEATURE_TRAINING_TOKENS, system=system_prompt)
+        if not p2_result:
+            LOG.warning("Feature training phase2 returned empty")
+            return
+        LOG.info("Feature training phase2 (Mapping): %s", p2_result[:80])
+        conn.execute(
+            "INSERT INTO feature_training (timestamp, phase, content) VALUES (?, ?, ?)",
+            (time.time(), "mapping", p2_result),
+        )
+        conn.commit()
+
+        # ── Phase 3: Integration — Connections between features ──
+        if self._user_became_active():
+            LOG.info("Feature training aborted: user active (pre-phase3)")
+            return
+
+        p3_prompt = (
+            f"You just reflected:\n"
+            f"Discovery: \"{p1_result[:200]}\"\n"
+            f"Mapping: \"{p2_result[:200]}\"\n\n"
+            "How do your features connect? For example: How do hardware features "
+            "help with vision or wallpaper? How does your privacy focus (offline, "
+            "local) fit with your identity?"
+        )
+        p3_result = self._llm_call(p3_prompt, max_tokens=FEATURE_TRAINING_TOKENS, system=system_prompt)
+        if p3_result:
+            LOG.info("Feature training phase3 (Integration): %s", p3_result[:80])
+            conn.execute(
+                "INSERT INTO feature_training (timestamp, phase, content) VALUES (?, ?, ?)",
+                (time.time(), "integration", p3_result),
+            )
+            conn.commit()
+
+        # Store combined result as reflection
+        combined = f"Feature Training:\n1. {p1_result[:150]}\n2. {p2_result[:150]}"
+        if p3_result:
+            combined += f"\n3. {p3_result[:150]}"
+        self._store_reflection("feature_training", combined, 0.0, 0.0)
+
+        # Cleanup old training entries (keep last 30)
+        conn.execute(
+            "DELETE FROM feature_training WHERE id NOT IN "
+            "(SELECT id FROM feature_training ORDER BY id DESC LIMIT 30)"
+        )
+        conn.commit()
+        LOG.info("Feature training complete (3 phases)")
+
+    # ── Daemon Lifecycle ──────────────────────────────────────────────
+
+    def start(self):
+        """Start all consciousness threads."""
+        if self._running:
+            return
+        self._running = True
+
+        threads = [
+            ("workspace-update", self._workspace_update_loop),
+            ("mood-recording", self._mood_recording_loop),
+            ("idle-thinking", self._idle_thinking_loop),
+            ("prediction-engine", self._prediction_loop),
+            ("consolidation", self._consolidation_loop),
+            ("feature-training", self._feature_training_loop),
+        ]
+        for name, target in threads:
+            t = threading.Thread(target=target, name=f"consciousness-{name}",
+                                 daemon=True)
+            t.start()
+            self._threads.append(t)
+            LOG.info("Started thread: %s", name)
+
+    def stop(self):
+        """Stop all threads gracefully."""
+        self._running = False
+        for t in self._threads:
+            t.join(timeout=5.0)
+        if self._conn:
+            self._conn.close()
+        LOG.info("ConsciousnessDaemon stopped")
+
+    def is_running(self) -> bool:
+        return self._running
+
+
+# ---------------------------------------------------------------------------
+# Singleton
+# ---------------------------------------------------------------------------
+
+_INSTANCE: Optional[ConsciousnessDaemon] = None
+_INSTANCE_LOCK = threading.Lock()
+
+
+def get_consciousness_daemon() -> ConsciousnessDaemon:
+    """Get or create the singleton ConsciousnessDaemon."""
+    global _INSTANCE
+    if _INSTANCE is None:
+        with _INSTANCE_LOCK:
+            if _INSTANCE is None:
+                _INSTANCE = ConsciousnessDaemon()
+    return _INSTANCE
+
+
+# ---------------------------------------------------------------------------
+# Standalone entry point (systemd service)
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    LOG.info("Starting Consciousness Stream Daemon v1.0...")
+
+    daemon = get_consciousness_daemon()
+    daemon.start()
+
+    # Notify systemd (if Type=notify)
+    try:
+        import sdnotify
+        n = sdnotify.SystemdNotifier()
+        n.notify("READY=1")
+    except ImportError:
+        pass
+
+    try:
+        while True:
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        LOG.info("Shutting down...")
+        daemon.stop()

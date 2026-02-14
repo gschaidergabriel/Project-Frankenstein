@@ -1,0 +1,438 @@
+/* UI Tester - Cyberpunk Theme */
+/* Matching ADI Popup Style with Neon Orange */
+
+/* === Color Definitions === */
+@define-color neon_orange #FF6B00;
+@define-color neon_orange_bright #FF8C33;
+@define-color neon_orange_glow rgba(255, 107, 0, 0.6);
+@define-color neon_orange_dim rgba(255, 107, 0, 0.2);
+@define-color neon_orange_subtle rgba(255, 107, 0, 0.1);
+
+@define-color dark_bg #0a0a12;
+@define-color panel_bg #12121a;
+@define-color panel_bg_light #1a1a24;
+@define-color border_color #2a2a3a;
+@define-color border_glow rgba(255, 107, 0, 0.3);
+
+@define-color text_primary #e8e8e8;
+@define-color text_secondary #888899;
+@define-color text_dim #555566;
+
+@define-color success #00ff88;
+@define-color warning #ffaa00;
+@define-color error #ff4444;
+
+/* === Main Window === */
+window.tester-window {
+    background-color: @dark_bg;
+}
+
+.dark-overlay {
+    background-color: rgba(0, 0, 0, 0.85);
+}
+
+/* === Header === */
+.tester-header {
+    background: linear-gradient(180deg, @panel_bg 0%, @dark_bg 100%);
+    border-bottom: 1px solid @neon_orange;
+    padding: 16px 20px;
+    box-shadow: 0 2px 20px @neon_orange_glow;
+}
+
+.tester-title {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: @neon_orange;
+    letter-spacing: 2px;
+}
+
+.tester-subtitle {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: @text_secondary;
+    letter-spacing: 1px;
+    margin-top: 4px;
+}
+
+/* === Duration Selection === */
+.duration-container {
+    background-color: @panel_bg;
+    border: 1px solid @border_color;
+    border-radius: 8px;
+    padding: 24px;
+    margin: 20px;
+}
+
+.duration-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 14px;
+    color: @text_primary;
+    margin-bottom: 16px;
+}
+
+.duration-buttons {
+    margin-top: 16px;
+}
+
+.duration-button {
+    background: linear-gradient(180deg, @panel_bg_light 0%, @panel_bg 100%);
+    border: 2px solid @border_color;
+    border-radius: 6px;
+    padding: 16px 32px;
+    margin: 0 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 16px;
+    font-weight: bold;
+    color: @text_primary;
+    min-width: 100px;
+    transition: all 0.2s ease;
+}
+
+.duration-button:hover {
+    border-color: @neon_orange;
+    background: linear-gradient(180deg, @panel_bg_light 0%, @neon_orange_subtle 100%);
+    box-shadow: 0 0 15px @neon_orange_glow;
+}
+
+.duration-button:active,
+.duration-button.selected {
+    background: linear-gradient(180deg, @neon_orange_dim 0%, @neon_orange_subtle 100%);
+    border-color: @neon_orange;
+    color: @neon_orange;
+    box-shadow: 0 0 20px @neon_orange_glow, inset 0 0 10px @neon_orange_subtle;
+}
+
+.duration-button .time {
+    font-size: 24px;
+    color: @neon_orange;
+}
+
+.duration-button .unit {
+    font-size: 12px;
+    color: @text_secondary;
+}
+
+/* === Progress Section === */
+.progress-container {
+    background-color: @panel_bg;
+    border: 1px solid @border_color;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px;
+}
+
+.progress-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: @text_secondary;
+    margin-bottom: 8px;
+}
+
+.progress-bar {
+    background-color: @dark_bg;
+    border: 1px solid @border_color;
+    border-radius: 4px;
+    min-height: 8px;
+}
+
+.progress-bar progress {
+    background-color: @neon_orange;
+    border-radius: 3px;
+    box-shadow: 0 0 10px @neon_orange_glow;
+}
+
+.progress-text {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: @neon_orange;
+    margin-top: 8px;
+}
+
+/* === Chat Section === */
+.chat-container {
+    background-color: @panel_bg;
+    border: 1px solid @border_color;
+    border-radius: 8px;
+    margin: 20px;
+    overflow: hidden;
+}
+
+.chat-header {
+    background: linear-gradient(90deg, @neon_orange_dim 0%, transparent 100%);
+    border-bottom: 1px solid @border_color;
+    padding: 10px 16px;
+}
+
+.chat-header-text {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: @neon_orange;
+    letter-spacing: 1px;
+}
+
+.chat-messages {
+    background-color: @dark_bg;
+    padding: 16px;
+    min-height: 200px;
+}
+
+.chat-message {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+}
+
+.chat-message.user {
+    background-color: @panel_bg_light;
+    border-left: 3px solid @text_secondary;
+    color: @text_primary;
+    margin-left: 20px;
+}
+
+.chat-message.assistant {
+    background-color: @neon_orange_subtle;
+    border-left: 3px solid @neon_orange;
+    color: @text_primary;
+    margin-right: 20px;
+}
+
+.chat-message .sender {
+    font-size: 10px;
+    font-weight: bold;
+    color: @text_secondary;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.chat-message.assistant .sender {
+    color: @neon_orange;
+}
+
+.chat-input-container {
+    background-color: @panel_bg;
+    border-top: 1px solid @border_color;
+    padding: 12px 16px;
+}
+
+.chat-input {
+    background-color: @dark_bg;
+    border: 1px solid @border_color;
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    color: @text_primary;
+}
+
+.chat-input:focus {
+    border-color: @neon_orange;
+    box-shadow: 0 0 10px @neon_orange_glow;
+}
+
+.chat-send-button {
+    background: linear-gradient(180deg, @neon_orange 0%, #cc5500 100%);
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: @dark_bg;
+    letter-spacing: 1px;
+    min-width: 80px;
+    box-shadow: 0 0 10px @neon_orange_glow;
+}
+
+.chat-send-button:hover {
+    background: linear-gradient(180deg, @neon_orange_bright 0%, @neon_orange 100%);
+    box-shadow: 0 0 20px @neon_orange_glow;
+}
+
+/* === Preview Section === */
+.preview-container {
+    background-color: @panel_bg;
+    border: 1px solid @border_color;
+    border-radius: 8px;
+    margin: 20px;
+    padding: 16px;
+}
+
+.preview-header {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: @neon_orange;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid @border_color;
+}
+
+.preview-ascii {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 11px;
+    line-height: 1.2;
+    color: @text_primary;
+    background-color: @dark_bg;
+    padding: 12px;
+    border-radius: 4px;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.preview-ascii .highlight {
+    color: @neon_orange;
+}
+
+/* === Action Buttons === */
+.action-buttons {
+    padding: 16px 20px;
+    border-top: 1px solid @border_color;
+    background-color: @panel_bg;
+}
+
+.action-button {
+    padding: 12px 32px;
+    border-radius: 6px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    min-width: 140px;
+    transition: all 0.2s ease;
+}
+
+.action-button.primary {
+    background: linear-gradient(180deg, @neon_orange 0%, #cc5500 100%);
+    border: 2px solid @neon_orange;
+    color: @dark_bg;
+    box-shadow: 0 0 15px @neon_orange_glow;
+}
+
+.action-button.primary:hover {
+    background: linear-gradient(180deg, @neon_orange_bright 0%, @neon_orange 100%);
+    box-shadow: 0 0 25px @neon_orange_glow;
+}
+
+.action-button.secondary {
+    background: transparent;
+    border: 2px solid @border_color;
+    color: @text_secondary;
+}
+
+.action-button.secondary:hover {
+    border-color: @text_secondary;
+    color: @text_primary;
+}
+
+/* === Status Indicators === */
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-dot.running {
+    background-color: @neon_orange;
+    box-shadow: 0 0 10px @neon_orange_glow;
+}
+
+.status-dot.success {
+    background-color: @success;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.status-dot.error {
+    background-color: @error;
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+}
+
+/* === Issue List === */
+.issues-container {
+    background-color: @panel_bg;
+    border: 1px solid @border_color;
+    border-radius: 8px;
+    margin: 20px;
+    padding: 16px;
+}
+
+.issues-header {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: @warning;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+
+.issue-item {
+    background-color: @dark_bg;
+    border-left: 3px solid @warning;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 0 4px 4px 0;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: @text_primary;
+}
+
+.issue-item.critical {
+    border-left-color: @error;
+}
+
+.issue-item.minor {
+    border-left-color: @text_secondary;
+}
+
+/* === Scrollbar === */
+scrollbar {
+    background-color: @dark_bg;
+}
+
+scrollbar slider {
+    background-color: @border_color;
+    border-radius: 4px;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+scrollbar slider:hover {
+    background-color: @neon_orange_dim;
+}
+
+scrollbar slider:active {
+    background-color: @neon_orange;
+}
+
+/* === Tooltips === */
+tooltip {
+    background-color: @panel_bg;
+    border: 1px solid @neon_orange;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: @text_primary;
+    box-shadow: 0 0 15px @neon_orange_glow;
+}
+
+/* === Close Button === */
+.close-button {
+    background: transparent;
+    border: none;
+    color: @text_secondary;
+    font-size: 18px;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.close-button:hover {
+    background-color: @error;
+    color: white;
+}

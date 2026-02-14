@@ -1,0 +1,196 @@
+"""PushToTalk class extracted from the monolith overlay."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import tempfile
+import threading
+import urllib.error
+import urllib.request
+import wave
+from typing import Callable
+
+from overlay.constants import LOG
+
+
+class PushToTalk:
+    """Push-to-talk voice input using whisper.cpp GPU server."""
+
+    WHISPER_URL = "http://127.0.0.1:8103/inference"
+    SAMPLE_RATE = 16000
+
+    def __init__(self, callback: Callable[[str], None], error_callback: Callable[[str], None] = None):
+        """
+        Initialize PTT.
+        callback: Function to call with transcribed text.
+        error_callback: Function to call with error message on failure.
+        """
+        self.callback = callback
+        self.error_callback = error_callback
+        self.recording = False
+        self.record_process = None
+        self.temp_file = None
+        self._detect_mic()
+
+    def _detect_mic(self):
+        """Detect the best microphone."""
+        self.mic_device = None
+        try:
+            result = subprocess.run(
+                ["pactl", "list", "sources", "short"],
+                capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.strip().split('\n'):
+                if not line or "monitor" in line.lower():
+                    continue
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    name = parts[1].lower()
+                    if "rode" in name or "usb" in name:
+                        self.mic_device = parts[1]
+                        LOG.info(f"PTT: Using mic {self.mic_device}")
+                        break
+                    elif self.mic_device is None:
+                        self.mic_device = parts[1]
+        except Exception as e:
+            LOG.error(f"PTT: Mic detection failed: {e}")
+
+    def start_recording(self):
+        """Start recording audio."""
+        if self.recording:
+            return
+
+        self.recording = True
+        self.temp_file = tempfile.NamedTemporaryFile(suffix=".raw", delete=False)
+        self.temp_file.close()
+
+        cmd = [
+            "parecord", "--raw",
+            f"--rate={self.SAMPLE_RATE}",
+            "--channels=1",
+            "--format=s16le",
+        ]
+        if self.mic_device:
+            cmd.append(f"--device={self.mic_device}")
+        cmd.append(self.temp_file.name)
+
+        LOG.info("PTT: Recording started")
+        self.record_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def stop_recording(self):
+        """Stop recording and transcribe."""
+        if not self.recording:
+            return
+
+        self.recording = False
+
+        if self.record_process:
+            self.record_process.terminate()
+            try:
+                self.record_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.record_process.kill()
+            self.record_process = None
+
+        LOG.info("PTT: Recording stopped, transcribing...")
+
+        # Convert raw to WAV and transcribe in background
+        threading.Thread(target=self._transcribe, daemon=True).start()
+
+    def _transcribe(self):
+        """Convert raw audio to WAV and send to Whisper server.
+        Uses try/finally to ensure temp file cleanup (HIGH #7 fix).
+        """
+        raw_path = None
+        wav_path = None
+        try:
+            raw_path = self.temp_file.name
+            wav_path = raw_path.replace(".raw", ".wav")
+
+            # Check if we have audio data
+            raw_size = os.path.getsize(raw_path)
+            if raw_size < 1000:
+                LOG.warning("PTT: Recording too short")
+                return
+
+            # Convert raw to WAV
+            with open(raw_path, 'rb') as rf:
+                raw_data = rf.read()
+
+            with wave.open(wav_path, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self.SAMPLE_RATE)
+                wf.writeframes(raw_data)
+
+            # Send to Whisper server
+            with open(wav_path, 'rb') as f:
+                wav_data = f.read()
+
+            boundary = '----PTTBoundary'
+            body = []
+            body.append(f'--{boundary}'.encode())
+            body.append(b'Content-Disposition: form-data; name="file"; filename="audio.wav"')
+            body.append(b'Content-Type: audio/wav')
+            body.append(b'')
+            body.append(wav_data)
+            body.append(f'--{boundary}'.encode())
+            body.append(b'Content-Disposition: form-data; name="language"')
+            body.append(b'')
+            body.append(b'de')
+            body.append(f'--{boundary}'.encode())
+            body.append(b'Content-Disposition: form-data; name="temperature"')
+            body.append(b'')
+            body.append(b'0.0')
+            body.append(f'--{boundary}--'.encode())
+            body.append(b'')
+
+            body_bytes = b'\r\n'.join(body)
+
+            req = urllib.request.Request(
+                self.WHISPER_URL,
+                data=body_bytes,
+                headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}
+            )
+
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+
+            text = result.get("text", "").strip()
+
+            if text:
+                LOG.info(f"PTT: Transcribed: '{text}'")
+                self.callback(text)
+            else:
+                LOG.warning("PTT: No speech detected")
+
+        except urllib.error.URLError as e:
+            LOG.error(f"PTT: Whisper server connection error: {e}")
+            if self.error_callback:
+                self.error_callback("Speech recognition unreachable. Whisper server is not running.")
+        except json.JSONDecodeError as e:
+            LOG.error(f"PTT: Invalid response from Whisper server: {e}")
+            if self.error_callback:
+                self.error_callback("Speech recognition: Invalid response from server.")
+        except OSError as e:
+            LOG.error(f"PTT: File operation error: {e}")
+            if self.error_callback:
+                self.error_callback("Speech recognition: File error.")
+        except Exception as e:
+            LOG.error(f"PTT: Transcription error: {e}")
+            if self.error_callback:
+                self.error_callback(f"Speech recognition failed: {e}")
+        finally:
+            # Cleanup temp files (HIGH #7 fix - prevent file handle leaks)
+            if raw_path and os.path.exists(raw_path):
+                try:
+                    os.unlink(raw_path)
+                except OSError as e:
+                    LOG.debug(f"PTT: Could not remove raw file: {e}")
+            if wav_path and os.path.exists(wav_path):
+                try:
+                    os.unlink(wav_path)
+                except OSError as e:
+                    LOG.debug(f"PTT: Could not remove wav file: {e}")

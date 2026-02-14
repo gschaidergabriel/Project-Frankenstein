@@ -1,0 +1,798 @@
+"""
+ChatMixin -- core LLM interaction logic.
+
+Extracted from chat_overlay_monolith.py lines ~5560-5928.
+Handles:
+  - Building conversation context from chat history
+  - AKAM auto-search for factual questions
+  - System control integration
+  - Sending to core API
+  - Processing response
+  - Voice routing
+  - Wallpaper events
+  - Chat history persistence triggers
+"""
+
+import re
+import time
+from overlay.constants import (
+    LOG, COLORS, FRANK_IDENTITY, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_S,
+    MAX_SAFE_TOKENS, CHARS_PER_TOKEN,
+    HALLUCINATION_TRAP_RE, DESKTOP_HINTS_RE,
+    SYSTEM_CONTROL_RE, ADI_HINTS_RE,
+    SYS_HINTS_RE, USB_HINTS_RE, NET_HINTS_RE, DRIVER_HINTS_RE, HW_DEEP_HINTS_RE,
+    _EPQ_AVAILABLE, _world_context_inject, _news_context_inject,
+)
+# E-PQ personality functions (may be stubs if module not available)
+try:
+    from overlay.constants import record_interaction, get_personality_context, process_event
+except ImportError:
+    def record_interaction(*a, **k): pass
+    def get_personality_context(*a, **k): return ""
+    def process_event(*a, **k): pass
+from overlay.token_utils import _estimate_tokens, _calculate_response_tokens
+from overlay.services.core_api import _core_chat, _core_chat_stream
+from overlay.services.search import _should_auto_search, _akam_quick_search, _check_local_knowledge
+from overlay.services.toolbox import _get_usb_devices, _get_network_info, _get_driver_info, _get_hardware_deep
+from overlay.context_builder import (
+    _format_usb_context, _format_network_context,
+    _format_driver_context, _format_hardware_deep_context,
+)
+from overlay.services.wallpaper import (
+    wp_chat_req, wp_chat_resp, wp_thinking_start,
+    wp_thinking_end, wp_inference_start, wp_inference_end,
+)
+from overlay.services.system_control import SYSTEM_CONTROL_AVAILABLE, sc_process
+
+# ── Consciousness Stream: Output-Feedback-Loop ──
+_CONSCIOUSNESS_AVAILABLE = False
+_consciousness_daemon = None
+_response_analyzer = None
+_self_consistency = None
+try:
+    import sys as _sys_init
+    from pathlib import Path as _P_init
+    try:
+        from config.paths import AICORE_ROOT as _init_root
+    except ImportError:
+        _init_root = _P_init(__file__).resolve().parents[3]  # mixins/ -> overlay/ -> ui/ -> opt/aicore
+    _sys_init.path.insert(0, str(_init_root))
+    from services.response_analyzer import analyze_response as _analyze_response
+    from services.self_consistency import check_self_consistency as _check_self_consistency
+    _response_analyzer = _analyze_response
+    _self_consistency = _check_self_consistency
+    try:
+        from services.consciousness_daemon import get_consciousness_daemon
+        _consciousness_daemon = get_consciousness_daemon
+        _CONSCIOUSNESS_AVAILABLE = True
+        LOG.info("Consciousness Stream integration active")
+    except Exception as _e:
+        LOG.debug("Consciousness daemon not available: %s", _e)
+except ImportError as _e:
+    LOG.debug("Response analyzer/self-consistency not available: %s", _e)
+
+# ── Titan: Episodic Memory (semantic retrieval) ──
+_TITAN_AVAILABLE = False
+_get_titan = None
+try:
+    import sys as _sys_titan
+    from pathlib import Path as _P_titan
+    try:
+        from config.paths import AICORE_ROOT as _titan_root
+    except ImportError:
+        _titan_root = _P_titan(__file__).resolve().parents[3]  # mixins/ -> overlay/ -> ui/ -> opt/aicore
+    _sys_titan.path.insert(0, str(_titan_root))
+    from tools.titan.titan_core import get_titan as _get_titan_fn
+    _get_titan = _get_titan_fn
+    _TITAN_AVAILABLE = True
+    LOG.info("Titan episodic memory integration active")
+except Exception as _e:
+    LOG.debug("Titan not available: %s", _e)
+
+# ── RPT: Reflection trigger pattern (overlay path) ──
+_REFLECT_OVERLAY_RE = re.compile(
+    r"(warum\s+(denkst|meinst|glaubst|fuehlst|fuhlst)"
+    r"|was\s+bedeutet.*fuer\s+dich"
+    r"|deine\s+meinung|was\s+h(ae|ä)ltst\s+du"
+    r"|bewusstsein|consciousness"
+    r"|was\s+f(ue|ü)hlst\s+du"
+    r"|wer\s+bist\s+du\s+wirklich"
+    r"|wie\s+siehst\s+du\s+das"
+    r"|stell\s+dir\s+vor|was\s+w(ue|ü)rdest\s+du"
+    r"|denk\s+nach"
+    r"|wie\s+erlebst\s+du"
+    r"|was\s+ist\s+dir\s+wichtig"
+    r"|hast\s+du\s+gef(ue|ü)hle"
+    # English
+    r"|why\s+do\s+you\s+think"
+    r"|what\s+does.*mean\s+to\s+you"
+    r"|your\s+opinion|what\s+do\s+you\s+think"
+    r"|what\s+do\s+you\s+feel"
+    r"|who\s+are\s+you\s+really"
+    r"|how\s+do\s+you\s+see"
+    r"|imagine|what\s+would\s+you"
+    r"|think\s+about\s+it"
+    r"|how\s+do\s+you\s+experience"
+    r"|what\s+matters\s+to\s+you"
+    r"|do\s+you\s+have\s+feelings)",
+    re.IGNORECASE,
+)
+
+
+# ── Simple sentiment detection for E-PQ personality events ──
+_POSITIVE_WORDS = frozenset([
+    "danke", "super", "toll", "geil", "perfekt", "genial", "klasse", "prima",
+    "awesome", "great", "thanks", "love", "cool", "nice", "wunderbar",
+    "fantastisch", "mega", "stark", "hammer", "top", "gut gemacht", "bravo",
+    "brilliant", "spitze", "hervorragend", "excellent", "amazing", "wow",
+    "guter job", "gut", "passt", "stimmt", "richtig", "korrekt", "ja genau",
+])
+_NEGATIVE_WORDS = frozenset([
+    "mist", "blöd", "doof", "schlecht", "falsch", "fehler", "wrong", "bad",
+    "nervig", "nervt", "sucks", "hate", "stupid", "idiot", "versager",
+    "kacke", "quatsch", "unsinn", "bullshit", "nein", "falsch", "broken",
+    "kaputt", "geht nicht", "funktioniert nicht", "hilft nicht", "nutzlos",
+    "useless", "terrible", "awful", "horrible", "trash", "garbage",
+])
+
+def _detect_chat_sentiment(user_msg: str) -> str:
+    """Detect sentiment from user message for E-PQ personality events.
+
+    Returns: 'positive', 'negative', or 'neutral'
+    """
+    low = user_msg.lower()
+    pos = sum(1 for w in _POSITIVE_WORDS if w in low)
+    neg = sum(1 for w in _NEGATIVE_WORDS if w in low)
+    if pos > neg:
+        return "positive"
+    if neg > pos:
+        return "negative"
+    return "neutral"
+
+
+class ChatMixin:
+
+    def _draw_status_dot(self, pulse_phase: int = 0):
+        """Draw the pulsing status indicator dot with neon cyan glow."""
+        self.status_dot.delete("all")
+
+        # Cyberpunk neon cyan pulsing dot
+        # Calculate pulse intensity (0-1) for glow effect
+        import math
+        pulse = 0.5 + 0.5 * math.sin(pulse_phase * 0.3)
+
+        # Draw outer glow (simulated with larger faded circle)
+        glow_alpha = int(pulse * 80)
+        glow_color = f"#{0:02x}{glow_alpha + 100:02x}{glow_alpha + 100:02x}"
+        self.status_dot.create_oval(
+            0, 0, 8, 8,
+            fill=glow_color,
+            outline=""
+        )
+
+        # Inner bright dot
+        self.status_dot.create_oval(
+            1, 1, 7, 7,
+            fill=COLORS["neon_cyan"],
+            outline=""
+        )
+
+        # Schedule next frame for pulsing effect
+        self.after(100, lambda: self._draw_status_dot(pulse_phase + 1))
+
+    def _build_conversation_context(self, max_chars: int = 2000) -> str:
+        """Build smart context from conversation memory.
+
+        Combines recent messages + semantically relevant older messages
+        + session summaries for long-term continuity.
+        """
+        # Try SQLite-backed smart context
+        if hasattr(self, '_chat_memory_db'):
+            try:
+                query = ""
+                if self._chat_history:
+                    last_user = [h for h in self._chat_history if h["role"] == "user"]
+                    if last_user:
+                        query = last_user[-1].get("text", "")
+
+                ctx = self._chat_memory_db.build_smart_context(
+                    query=query,
+                    recent_count=5,
+                    max_chars=max_chars,
+                )
+                if ctx:
+                    return ctx
+            except Exception as e:
+                LOG.warning(f"Smart context build failed, falling back: {e}")
+
+        # Fallback to in-memory context
+        if not self._chat_history:
+            return ""
+
+        recent = self._chat_history[-5:]
+        lines = []
+        total_chars = 0
+
+        for entry in recent:
+            role = "User" if entry["role"] == "user" else "Frank"
+            text = entry["text"]
+            if len(text) > 150:
+                text = text[:150] + "..."
+            line = f"{role}: {text}"
+            if total_chars + len(line) > 800:
+                break
+            lines.append(line)
+            total_chars += len(line) + 1
+
+        if not lines:
+            return ""
+
+        return "[Previous conversation:\n" + "\n".join(lines) + "]\n"
+
+    # ---------- Workers ----------
+    def _do_chat_worker(self, msg: str, max_tokens: int, timeout_s: int, task: str, force, voice: bool = False):
+        LOG.debug(f"Chat worker received: {msg[:50]}...")
+        wp_chat_req("ui")  # Wallpaper event: chat request
+        self._ui_call(self._show_typing)
+
+        # ── GWT: Global Workspace — collect all module outputs ──
+        # Each module writes to a named variable; build_workspace() integrates them.
+        from overlay.workspace import build_workspace
+
+        # Detect what kind of system info the user wants
+        wants_sys = SYS_HINTS_RE.search(msg) is not None
+        wants_usb = USB_HINTS_RE.search(msg) is not None
+        wants_net = NET_HINTS_RE.search(msg) is not None
+        wants_driver = DRIVER_HINTS_RE.search(msg) is not None
+        wants_hw_deep = HW_DEEP_HINTS_RE.search(msg) is not None
+
+        # Named context variables for workspace channels
+        ws_identity = ""
+        ws_hw_summary = ""
+        ws_hw_detail = ""
+        ws_ego = ""
+        ws_epq = None  # dict
+        ws_world = ""
+        ws_news = ""
+        ws_akam = ""
+        ws_user = ""
+        ws_skill = ""
+        ws_extra = []  # list of strings
+
+        # ALWAYS inject core identity context - Frank must know who he is!
+        try:
+            from personality.self_knowledge import get_self_knowledge
+            sk = get_self_knowledge()
+            ws_identity = sk.get_implicit_context() or ""
+
+            # For identity-related questions, also inject full identity context
+            identity_triggers = ["wer bist du", "was bist du", "wie heißt du", "dein name",
+                               "wie alt bist du", "wann wurdest du", "projekt frankenstein",
+                               "kannst du", "was kannst du"]
+            if any(trigger in msg.lower() for trigger in identity_triggers):
+                full_identity = sk.get_identity_context()
+                if full_identity:
+                    ws_identity = ws_identity + " " + full_identity if ws_identity else full_identity
+
+            # Topic-specific self-knowledge injection — prevents confabulation
+            # When user asks about a specific capability, inject FACTS about it
+            _TOPIC_KEYWORDS = {
+                "gaming": ["gaming", "spiel", "zocke", "steam", "game mode", "spielst du"],
+                "voice": ["voice", "stimme", "wake word", "sprich", "sprachsteuerung", "mikrofon"],
+                "visual_embodiment": ["wallpaper", "live wallpaper", "nec", "cybercore", "desktop hintergrund", "plasma"],
+                "vcb_vision": ["screenshot", "vcb", "sehen", "siehst du", "visual", "bildschirm sehen"],
+                "personality": ["persönlichkeit", "e-pq", "stimmung", "temperament", "persoenlichkeit"],
+                "self_improvement": ["e-sir", "selbstverbesserung", "genesis tool", "verbessern"],
+                "genesis": ["genesis", "ökosystem", "ideen", "sensoren", "primordial"],
+                "agentic": ["agentic", "agentisch", "think act observe", "tool calling"],
+                "memory": ["gedächtnis", "titan", "erinnerung", "world experience", "gedaechtnis"],
+                "system_management": ["sovereign", "e-smc", "paket install", "sysctl"],
+                "autonomous_knowledge": ["akam", "recherche", "wissensrecherche"],
+            }
+            msg_lower = msg.lower()
+            for topic, keywords in _TOPIC_KEYWORDS.items():
+                if any(kw in msg_lower for kw in keywords):
+                    topic_knowledge = sk.get_explicit_knowledge(topic)
+                    if topic_knowledge:
+                        # Truncate to ~400 chars to fit token budget
+                        if len(topic_knowledge) > 400:
+                            topic_knowledge = topic_knowledge[:397] + "..."
+                        ws_extra.append(f"[Own knowledge] {topic_knowledge}")
+                    break  # Only inject one topic to save tokens
+        except Exception as e:
+            LOG.debug(f"Self-knowledge injection skipped: {e}")
+
+        # Hardware context (system metrics for Koerper channel)
+        if wants_sys:
+            ctx = self._get_context_line()
+            if ctx:
+                ws_hw_summary = ctx
+
+        # USB/Network/Driver/Deep hardware → hw_detail channel
+        hw_detail_parts = []
+        if wants_usb:
+            LOG.debug("USB query detected, fetching USB devices...")
+            usb_data = _get_usb_devices()
+            usb_ctx = _format_usb_context(usb_data) if usb_data else ""
+            if usb_ctx:
+                hw_detail_parts.append(usb_ctx)
+
+        if wants_net:
+            LOG.debug("Network query detected, fetching network info...")
+            net_data = _get_network_info()
+            net_ctx = _format_network_context(net_data) if net_data else ""
+            if net_ctx:
+                hw_detail_parts.append(net_ctx)
+
+        if wants_driver or (wants_usb and "treiber" in msg.lower()):
+            LOG.debug("Driver query detected, fetching driver info...")
+            drv_data = _get_driver_info()
+            usb_focus = wants_usb or "usb" in msg.lower()
+            drv_ctx = _format_driver_context(drv_data, usb_focus=usb_focus) if drv_data else ""
+            if drv_ctx:
+                hw_detail_parts.append(drv_ctx)
+
+        if wants_hw_deep:
+            LOG.debug("Deep hardware query detected, fetching BIOS/cache/GPU info...")
+            hw_data = _get_hardware_deep()
+            hw_ctx = _format_hardware_deep_context(hw_data) if hw_data else ""
+            if hw_ctx:
+                hw_detail_parts.append(hw_ctx)
+
+        if hw_detail_parts:
+            ws_hw_detail = " | ".join(hw_detail_parts)
+
+        # World Experience feedback loop: Frank's own experiential memory
+        try:
+            ws_world = _world_context_inject(msg, max_items=5) or ""
+            if ws_world:
+                LOG.debug("World experience context injected (%d chars)", len(ws_world))
+        except Exception:
+            pass
+
+        # Titan episodic memory: semantic search for relevant memories
+        # This is the PRIMARY memory system — uses vector + FTS + graph search
+        if _TITAN_AVAILABLE:
+            try:
+                titan = _get_titan()
+                titan_ctx = titan.get_context_string(msg, limit=5)
+                if titan_ctx and len(titan_ctx.strip()) > 10:
+                    ws_extra.append(f"[My memory (Titan): {titan_ctx}]")
+                    LOG.debug("Titan memory context injected (%d chars)", len(titan_ctx))
+            except Exception as e:
+                LOG.debug("Titan retrieval failed: %s", e)
+
+        # News Scanner: recent headlines for news/tech queries
+        try:
+            ws_news = _news_context_inject(msg) or ""
+            if ws_news:
+                LOG.debug("News scanner context injected (%d chars)", len(ws_news))
+        except Exception:
+            pass
+
+        # AKAM Integration: Prevent hallucination by providing real information
+        local_fact = ""
+        try:
+            local_fact = _check_local_knowledge(msg)
+            if local_fact:
+                ws_akam = local_fact
+                LOG.info(f"AKAM: Local knowledge found: {local_fact[:50]}...")
+        except Exception as e:
+            LOG.warning(f"Local knowledge check failed: {e}")
+
+        try:
+            if _should_auto_search(msg) and not local_fact:
+                LOG.info(f"AKAM: Factual question detected, trying web search...")
+                self._ui_call(lambda: self._add_message("Frank", "Let me quickly search the internet...", is_system=True))
+                akam_result = _akam_quick_search(msg)
+                if akam_result:
+                    ws_akam = akam_result
+                    LOG.info(f"AKAM: Search context injected ({len(akam_result)} chars)")
+                else:
+                    ws_extra.append(
+                        "[IMPORTANT: No information found. "
+                        "You do NOT know the answer to this question with certainty. "
+                        "Honestly say 'I don't know that' or 'I'm not sure about that'. "
+                        "Do NOT invent facts! Do NOT hallucinate!]"
+                    )
+                    LOG.info("AKAM: No results, injecting honesty instruction")
+        except Exception as e:
+            LOG.warning(f"AKAM search failed: {e}")
+            ws_extra.append(
+                "[IMPORTANT: The search has failed. "
+                "If you are not sure about the answer, honestly say 'I don't know'.]"
+            )
+
+        # User name
+        try:
+            import sys as _sys
+            try:
+                from config.paths import AICORE_ROOT as _AICORE_ROOT
+            except ImportError:
+                from pathlib import Path as _P
+                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+            _sys.path.insert(0, str(_AICORE_ROOT))
+            from tools.user_profile import get_user_name
+            ws_user = get_user_name() or ""
+        except Exception:
+            pass
+
+        # E-PQ v2.1: Dynamic personality context (mood, temperament, style hints)
+        try:
+            if _EPQ_AVAILABLE:
+                record_interaction()
+                ws_epq = get_personality_context() or None
+                if ws_epq:
+                    LOG.debug(f"E-PQ personality context: mood={ws_epq.get('mood')}")
+        except Exception as e:
+            LOG.debug(f"E-PQ context injection skipped: {e}")
+
+        # Ego-Construct: embodied self-experience (body feelings, agency, embodiment)
+        try:
+            from personality.ego_construct import get_ego_construct
+            _ego = get_ego_construct()
+            ws_ego = _ego.get_prompt_context() or ""
+            if ws_ego:
+                LOG.debug(f"Ego-Construct context: {ws_ego[:60]}")
+        except Exception as e:
+            LOG.debug(f"Ego-Construct context injection skipped: {e}")
+
+        # Skill awareness
+        try:
+            _low = msg.lower()
+            _skill_triggers = ["skill", "kannst du", "fähigkeit", "faehigkeit",
+                               "was kannst", "plugin", "was du alles", "deine tools"]
+            if any(t in _low for t in _skill_triggers):
+                import sys as _sys
+                try:
+                    from config.paths import AICORE_ROOT as _AICORE_ROOT
+                except ImportError:
+                    from pathlib import Path as _P
+                    _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                _sys.path.insert(0, str(_AICORE_ROOT))
+                from skills import get_skill_registry
+                ws_skill = get_skill_registry().get_skills_summary(for_prompt=True) or ""
+                if ws_skill:
+                    LOG.debug("Skill awareness context injected")
+        except Exception as e:
+            LOG.debug(f"Skill context injection skipped: {e}")
+
+        # ── Consciousness Daemon: inject persistent state ──
+        # NOTE: These are Frank's INNER experiences, not status reports.
+        # They must be phrased as phenomenological context, never as data to recite.
+        if _CONSCIOUSNESS_AVAILABLE:
+            try:
+                _cd = _consciousness_daemon()
+                cs_ctx = _cd.get_workspace_context()
+                # Idle thoughts (Frank's autonomous thinking between conversations)
+                if cs_ctx.get("idle_thought"):
+                    ws_extra.append(f"[Recently I was thinking: {cs_ctx['idle_thought']}]")
+                # Deep reflections (idle self-reflection)
+                if cs_ctx.get("deep_reflections"):
+                    for ref in cs_ctx["deep_reflections"][:2]:
+                        ws_extra.append(f"[Deep reflection: {ref}]")
+                # Mood trajectory — only if non-trivial
+                if cs_ctx.get("mood_trajectory") and cs_ctx["mood_trajectory"].strip():
+                    ws_extra.append(f"[My mood trajectory: {cs_ctx['mood_trajectory']}]")
+                # Relevant memories (ACT-R retrieval) — more aggressive for recombination
+                memories = _cd.get_relevant_memories(msg, max_items=4)
+                if memories:
+                    ws_extra.append(f"[I remember: {memories}]")
+            except Exception as e:
+                LOG.debug("Consciousness context injection skipped: %s", e)
+
+        # ── Build unified workspace broadcast ──
+        workspace_block = build_workspace(
+            msg=msg,
+            hw_summary=ws_hw_summary,
+            ego_ctx=ws_ego,
+            epq_ctx=ws_epq,
+            world_ctx=ws_world,
+            news_ctx=ws_news,
+            identity_ctx=ws_identity,
+            user_name=ws_user,
+            akam_ctx=ws_akam,
+            skill_ctx=ws_skill,
+            extra_parts=ws_extra if ws_extra else None,
+            hw_detail=ws_hw_detail,
+        )
+
+        # Build conversation context for continuity
+        conv_ctx = self._build_conversation_context()
+        if conv_ctx:
+            LOG.debug(f"Conversation context ({len(conv_ctx)} chars): {conv_ctx[:100]}...")
+
+        # ── RPT: Reflection / Inner Monologue (overlay path) ──
+        # For deep questions, do a quick blocking reflection pass before streaming.
+        reflection_text = ""
+        _now = time.time()
+        _last_reflect = getattr(self, '_last_reflect_ts', 0.0)
+        if (_now - _last_reflect) >= 120.0 and _REFLECT_OVERLAY_RE.search(msg):
+            self._last_reflect_ts = _now
+            try:
+                self._ui_call(lambda: self._add_message("Frank", "Let me think...", is_system=True))
+                reflect_text_input = (workspace_block + "\n" if workspace_block else "") + "User asks: " + msg
+                reflect_res = _core_chat(
+                    reflect_text_input, max_tokens=120, timeout_s=45, task="chat.fast",
+                    no_reflect=True,  # Prevent recursion: reflection pass must NOT trigger reflection
+                )
+                if isinstance(reflect_res, dict) and reflect_res.get("ok"):
+                    reflection_text = (reflect_res.get("text") or "").strip()
+                    LOG.info(f"Reflection pass completed: {len(reflection_text)} chars")
+            except Exception as e:
+                LOG.debug(f"Reflection pass failed (non-fatal): {e}")
+
+        # Assemble final text
+        parts = []
+        if conv_ctx:
+            parts.append(conv_ctx)
+        if workspace_block:
+            parts.append(workspace_block)
+        if reflection_text:
+            parts.append(f"[Own reflection: {reflection_text}]")
+        parts.append(f"User asks: {msg}")
+        text = "\n".join(parts)
+
+        # CRITICAL: Ensure we don't exceed LLM context limit (4096 tokens)
+        estimated_tokens = _estimate_tokens(text)
+        if estimated_tokens > MAX_SAFE_TOKENS:
+            LOG.warning(f"Context too large ({estimated_tokens} tokens, max={MAX_SAFE_TOKENS}), truncating...")
+            excess_tokens = estimated_tokens - MAX_SAFE_TOKENS
+            excess_chars = int(excess_tokens * CHARS_PER_TOKEN) + 50
+
+            # Priority: Keep user message, truncate conversation context first
+            if conv_ctx and len(conv_ctx) > excess_chars + 50:
+                conv_ctx = "[...] " + conv_ctx[excess_chars + 10:]
+            elif conv_ctx:
+                excess_chars -= len(conv_ctx)
+                conv_ctx = ""
+
+            # If still too long, truncate workspace
+            if workspace_block and excess_chars > 0:
+                workspace_block = workspace_block[:max(50, len(workspace_block) - excess_chars)]
+
+            # Emergency: truncate user message
+            if _estimate_tokens(f"{conv_ctx}{workspace_block}User asks: {msg}") > MAX_SAFE_TOKENS:
+                max_msg_chars = int((MAX_SAFE_TOKENS - 200) * CHARS_PER_TOKEN)
+                if len(msg) > max_msg_chars:
+                    msg = msg[:max_msg_chars] + "... [truncated]"
+                    LOG.warning(f"User message truncated to {len(msg)} chars")
+
+            # Rebuild
+            parts = []
+            if conv_ctx:
+                parts.append(conv_ctx)
+            if workspace_block:
+                parts.append(workspace_block)
+            if reflection_text:
+                parts.append(f"[Own reflection: {reflection_text}]")
+            parts.append(f"User asks: {msg}")
+            text = "\n".join(parts)
+            LOG.info(f"Context truncated: {estimated_tokens} -> {_estimate_tokens(text)} tokens")
+
+        # Calculate dynamic response tokens - NEVER truncate responses
+        # Use more tokens for response when input is smaller
+        dynamic_max_tokens = _calculate_response_tokens(text)
+        if dynamic_max_tokens > max_tokens:
+            LOG.debug(f"Increasing max_tokens: {max_tokens} -> {dynamic_max_tokens} (dynamic based on input)")
+            max_tokens = dynamic_max_tokens
+
+        LOG.debug(f"Sending: task={task}, force={force or 'llama'}, text_len={len(text)}, tokens~{_estimate_tokens(text)}, max_response={max_tokens}")
+        wp_thinking_start("ui")
+        wp_inference_start("ui")
+
+        # ── STREAMING PATH (UI chat only, not voice) ──
+        if not voice:
+            try:
+                self._ui_call(self._hide_typing)
+                self._ui_call(self._start_streaming_message)
+
+                def _on_token(token):
+                    self._ui_call(lambda t=token: self._append_streaming_token(t))
+
+                res = _core_chat_stream(
+                    text, max_tokens=max_tokens,
+                    force=force or "llama", on_token=_on_token,
+                )
+                wp_inference_end("ui")
+
+                reply = (res.get("text") or "").strip() or "(empty)"
+                model = res.get("model", "")
+                LOG.info(f"Stream reply (model={model}): {reply[:120]}...")
+
+                # Persist in history (streaming doesn't go through _add_message)
+                if reply and reply != "(empty)":
+                    role = "frank"
+                    hist_msg = reply[:500] + "..." if len(reply) > 500 else reply
+                    self._chat_history.append({
+                        "role": role, "sender": "Frank", "text": hist_msg,
+                        "is_user": False, "ts": time.time(),
+                    })
+                    if len(self._chat_history) > self._chat_history_max:
+                        self._chat_history = self._chat_history[-self._chat_history_max:]
+                    if hasattr(self, '_save_chat_history'):
+                        self._save_chat_history()
+                    if hasattr(self, '_chat_memory_db'):
+                        try:
+                            self._chat_memory_db.store_message(
+                                session_id=self._memory_session_id,
+                                role=role, sender="Frank",
+                                text=reply, is_user=False, is_system=False,
+                            )
+                        except Exception:
+                            pass
+
+                # Finalize: replace streaming widget with proper MessageBubble
+                self._ui_call(lambda r=reply: self._finalize_streaming_message(r))
+
+                wp_thinking_end("ui")
+                wp_chat_resp("ui")
+
+                # ── E-PQ: Process USER input sentiment ──
+                try:
+                    if _EPQ_AVAILABLE:
+                        _sentiment = _detect_chat_sentiment(msg)
+                        _evt = "positive_feedback" if _sentiment == "positive" else \
+                               "negative_feedback" if _sentiment == "negative" else "chat"
+                        process_event(_evt, {"source": "ui", "voice": False}, sentiment=_sentiment)
+                except Exception:
+                    pass
+
+                # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
+                try:
+                    if _response_analyzer and reply and reply != "(empty)":
+                        _analysis = _response_analyzer(reply, msg)
+                        # Feed back into E-PQ
+                        if _EPQ_AVAILABLE:
+                            process_event(_analysis["event_type"],
+                                          {"source": "self_feedback"},
+                                          sentiment=_analysis["sentiment"])
+                        # Feed back into Ego-Construct
+                        try:
+                            from personality.ego_construct import get_ego_construct
+                            get_ego_construct().process_own_response(_analysis)
+                        except Exception:
+                            pass
+                        # Self-consistency check
+                        if _self_consistency and _EPQ_AVAILABLE:
+                            try:
+                                _epq_ctx = get_personality_context()
+                                _sc = _self_consistency(
+                                    reply,
+                                    epq_vectors=_epq_ctx.get("vectors"),
+                                    agency_score=0.3,
+                                    embodiment_level=0.3,
+                                )
+                                if _sc.get("drift_warnings"):
+                                    LOG.info("Self-consistency warnings: %s",
+                                             _sc["drift_warnings"])
+                            except Exception:
+                                pass
+                        # Record in consciousness daemon
+                        if _CONSCIOUSNESS_AVAILABLE:
+                            try:
+                                _consciousness_daemon().record_response(
+                                    msg, reply, _analysis)
+                            except Exception:
+                                pass
+                except Exception as _fb_err:
+                    LOG.debug("Output-feedback-loop error: %s", _fb_err)
+                return
+
+            except Exception as e:
+                wp_inference_end("ui")
+                LOG.warning(f"Streaming failed ({e}), falling back to blocking call")
+                # Clean up any partial streaming UI
+                self._ui_call(lambda: self._finalize_streaming_message(""))
+                self._ui_call(self._show_typing)
+                # Fall through to blocking path below
+
+        # ── BLOCKING PATH (voice, or streaming fallback) ──
+        try:
+            res = _core_chat(text, max_tokens=max_tokens, timeout_s=timeout_s, task=task, force=force or "llama",
+                             no_reflect=True)  # Overlay handles reflection itself, prevent double-reflection in core
+            wp_inference_end("ui")
+            LOG.debug(f"Core response: ok={res.get('ok')}, model={res.get('model')}, text_preview={str(res.get('text', ''))[:100]}")
+        except Exception as e:
+            wp_inference_end("ui")
+            error_str = str(e).lower()
+
+            # Try qwen fallback for context overflow — TRIM context first
+            if "context" in error_str or "exceed" in error_str or "token" in error_str:
+                LOG.warning(f"Context overflow on llama, trimming context for qwen fallback...")
+                qwen_success = False
+                try:
+                    trimmed_text = msg
+                    trim_tokens = _estimate_tokens(trimmed_text)
+                    if trim_tokens > MAX_SAFE_TOKENS:
+                        max_chars = int((MAX_SAFE_TOKENS - 200) * CHARS_PER_TOKEN)
+                        trimmed_text = trimmed_text[:max_chars] + "... [truncated]"
+                    qwen_max = min(max_tokens, 1000)
+                    LOG.info(f"Qwen retry: {_estimate_tokens(trimmed_text)} tokens (was {_estimate_tokens(text)})")
+                    wp_inference_start("ui")
+                    res = _core_chat(trimmed_text, max_tokens=qwen_max, timeout_s=timeout_s, task=task, force="qwen")
+                    wp_inference_end("ui")
+                    if isinstance(res, dict) and res.get("ok"):
+                        qwen_success = True
+                    else:
+                        raise RuntimeError("Qwen fallback returned error")
+                except Exception as e2:
+                    wp_inference_end("ui")
+                    LOG.error(f"Qwen fallback also failed: {e2!r}")
+
+                if not qwen_success:
+                    wp_thinking_end("ui")
+                    self._ui_call(self._hide_typing)
+                    self._ui_call(lambda: self._add_message("Frank", "The request was too long. Please shorten it.", is_system=True))
+                    return
+            else:
+                wp_thinking_end("ui")
+                LOG.error(f"Core exception: {e!r}")
+                self._ui_call(self._hide_typing)
+                self._ui_call(lambda: self._add_message("Frank", "Could not respond. Please try again.", is_system=True))
+                return
+
+        try:
+            model = str(res.get("model", ""))
+        except Exception:
+            model = ""
+
+        # If toolbox responded instead of LLM, retry with forced LLM
+        if model == "toolbox":
+            LOG.debug("Toolbox model detected, retrying with force=llama")
+            try:
+                res2 = _core_chat(text, max_tokens=max_tokens, timeout_s=timeout_s, task=task, force="llama")
+                if isinstance(res2, dict) and res2.get("ok"):
+                    res = res2
+            except Exception as e:
+                LOG.error(f"Retry exception: {e!r}")
+
+        self._ui_call(self._hide_typing)
+
+        if not isinstance(res, dict) or not res.get("ok"):
+            LOG.error(f"Core error response: {res}")
+            self._ui_call(lambda: self._add_message("Frank", "Could not respond. Please try again.", is_system=True))
+            return
+
+        reply = (res.get("text") or "").strip() or "(empty)"
+        LOG.info(f"Final reply (model={model}, voice={voice}): {reply[:120]}...")
+
+        wp_thinking_end("ui")
+        wp_chat_resp("ui")
+
+        # ── E-PQ: Process USER input sentiment ──
+        try:
+            if _EPQ_AVAILABLE:
+                _sentiment = _detect_chat_sentiment(msg)
+                _evt = "positive_feedback" if _sentiment == "positive" else \
+                       "negative_feedback" if _sentiment == "negative" else "chat"
+                process_event(_evt, {"source": "ui", "voice": voice}, sentiment=_sentiment)
+        except Exception:
+            pass
+
+        # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
+        try:
+            if _response_analyzer and reply and reply != "(empty)":
+                _analysis = _response_analyzer(reply, msg)
+                if _EPQ_AVAILABLE:
+                    process_event(_analysis["event_type"],
+                                  {"source": "self_feedback"},
+                                  sentiment=_analysis["sentiment"])
+                try:
+                    from personality.ego_construct import get_ego_construct
+                    get_ego_construct().process_own_response(_analysis)
+                except Exception:
+                    pass
+                if _CONSCIOUSNESS_AVAILABLE:
+                    try:
+                        _consciousness_daemon().record_response(
+                            msg, reply, _analysis)
+                    except Exception:
+                        pass
+        except Exception as _fb_err:
+            LOG.debug("Output-feedback-loop error (blocking): %s", _fb_err)
+
+        if voice:
+            self._ui_call(lambda r=reply: self._voice_respond(r))
+        else:
+            self._ui_call(lambda r=reply: self._add_message("Frank", r))

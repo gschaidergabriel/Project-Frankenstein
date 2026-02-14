@@ -1,0 +1,65 @@
+schema:
+  name: "Geschäftsbrief"
+  description: "Formeller Brief nach DIN 5008"
+  category: business
+  output_formats: [pdf, docx]
+
+structure:
+  - section: sender
+    required: true
+    ai_help: "Absender: Name, Firma, Adresse, Kontaktdaten"
+
+  - section: recipient
+    required: true
+    ai_help: "Empfänger: Name, Firma, Adresse"
+
+  - section: date
+    required: true
+    ai_help: "Datum im Format TT.MM.JJJJ"
+
+  - section: reference
+    required: false
+    ai_help: "Aktenzeichen oder Bezugszeile"
+
+  - section: subject
+    required: true
+    ai_help: "Betreffzeile: Kurz und aussagekräftig"
+
+  - section: salutation
+    required: true
+    ai_help: "Anrede: Formell (Sehr geehrte/r) oder persönlich"
+
+  - section: opening
+    required: true
+    ai_help: "Einleitungssatz mit Bezugnahme oder Anlass"
+
+  - section: body
+    required: true
+    ai_help: "Hauptteil: Anliegen klar und strukturiert formulieren"
+
+  - section: closing
+    required: true
+    ai_help: "Schlussformel: Handlungsaufforderung oder Zusammenfassung"
+
+  - section: farewell
+    required: true
+    ai_help: "Grußformel: Mit freundlichen Grüßen"
+
+  - section: signature
+    required: true
+    ai_help: "Unterschrift: Name, Position"
+
+  - section: enclosures
+    required: false
+    ai_help: "Anlagen-Vermerk"
+
+style:
+  tone: formal
+  person: first
+  tense: present
+  language: business
+
+export:
+  pdf:
+    template: "templates/pdf/letter.html"
+    css: "styles/letter.css"

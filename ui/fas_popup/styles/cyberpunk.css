@@ -1,0 +1,497 @@
+/* F.A.S. Popup - Cyberpunk Theme */
+
+/* Color Variables via named colors */
+@define-color neon_cyan #00fff9;
+@define-color neon_magenta #ff00ff;
+@define-color neon_yellow #ffff00;
+@define-color dark_bg #0a0a12;
+@define-color panel_bg #0a0a12;
+@define-color text_primary #e0e0e0;
+@define-color text_secondary #808090;
+@define-color success_green #00ff88;
+@define-color error_red #ff4444;
+
+/* Dark Overlay Background */
+.fas-dark-overlay {
+    background-color: #000000;
+}
+
+.fas-overlay-bg {
+    background-color: #000000;
+}
+
+/* Main Window — fullscreen opaque black background */
+.fas-popup-window {
+    background-color: #000000;
+}
+
+.fas-main-container {
+    background-color: @panel_bg;
+    border: 2px solid @neon_cyan;
+    border-radius: 0px;
+    padding: 0px;
+    box-shadow: 0 0 30px rgba(0, 255, 249, 0.3),
+                inset 0 0 60px rgba(0, 255, 249, 0.05);
+}
+
+/* Header */
+.fas-header {
+    background: linear-gradient(180deg, rgba(0, 255, 249, 0.15) 0%, transparent 100%);
+    border-bottom: 1px solid @neon_cyan;
+    padding: 16px 20px;
+}
+
+.fas-title {
+    font-family: 'Share Tech Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: @neon_cyan;
+    letter-spacing: 3px;
+    text-shadow: 0 0 10px rgba(0, 255, 249, 0.8);
+}
+
+.fas-subtitle {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    color: @text_secondary;
+    letter-spacing: 1px;
+}
+
+/* Sound Toggle Button */
+.fas-sound-toggle {
+    background: transparent;
+    border: 1px solid @neon_cyan;
+    border-radius: 0px;
+    padding: 4px 10px;
+    color: @neon_cyan;
+    font-family: monospace;
+    font-size: 12px;
+    min-width: 70px;
+}
+
+.fas-sound-toggle:hover {
+    background: rgba(0, 255, 249, 0.2);
+}
+
+.fas-sound-toggle.sound-off {
+    border-color: @text_secondary;
+    color: @text_secondary;
+}
+
+/* Close Button (top-right) */
+.fas-close-button {
+    background: transparent;
+    border: 1px solid @error_red;
+    border-radius: 0px;
+    padding: 4px 10px;
+    color: @error_red;
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: bold;
+    min-width: 32px;
+}
+
+.fas-close-button:hover {
+    background: @error_red;
+    color: @dark_bg;
+}
+
+/* Feature List */
+.fas-feature-list {
+    background: transparent;
+    padding: 10px;
+}
+
+.fas-feature-item {
+    background: rgba(15, 15, 25, 1);
+    border-left: 3px solid @neon_magenta;
+    border-radius: 0px;
+    margin: 8px 0;
+    padding: 12px 16px;
+    transition: all 200ms ease;
+}
+
+.fas-feature-item:hover {
+    background: rgba(10, 25, 30, 1);
+    border-left-color: @neon_cyan;
+}
+
+.fas-feature-item.selected {
+    background: rgba(10, 30, 35, 1);
+    border-left-color: @neon_cyan;
+    border-left-width: 5px;
+}
+
+.fas-feature-checkbox {
+    min-width: 24px;
+    min-height: 24px;
+}
+
+.fas-feature-checkbox check {
+    background: transparent;
+    border: 2px solid @neon_magenta;
+    border-radius: 0px;
+    min-width: 20px;
+    min-height: 20px;
+}
+
+.fas-feature-checkbox:checked check {
+    background: @neon_cyan;
+    border-color: @neon_cyan;
+}
+
+.fas-feature-name {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    font-weight: bold;
+    color: @text_primary;
+}
+
+.fas-feature-type {
+    font-family: monospace;
+    font-size: 11px;
+    color: @neon_magenta;
+    background: rgba(255, 0, 255, 0.15);
+    padding: 2px 8px;
+    border-radius: 0px;
+}
+
+.fas-feature-description {
+    font-family: sans-serif;
+    font-size: 12px;
+    color: @text_secondary;
+    margin-top: 4px;
+}
+
+/* Confidence Bar */
+.fas-confidence-container {
+    margin-top: 8px;
+}
+
+.fas-confidence-label {
+    font-family: monospace;
+    font-size: 11px;
+    color: @neon_cyan;
+}
+
+.fas-confidence-bar {
+    min-height: 4px;
+    border-radius: 0px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.fas-confidence-bar progress {
+    background: linear-gradient(90deg, @neon_magenta, @neon_cyan);
+    border-radius: 0px;
+    box-shadow: 0 0 10px rgba(0, 255, 249, 0.5);
+}
+
+/* Use Case Box */
+.fas-usecase-box {
+    background: rgba(0, 255, 249, 0.05);
+    border: 1px solid rgba(0, 255, 249, 0.3);
+    border-radius: 0px;
+    padding: 10px;
+    margin-top: 8px;
+}
+
+.fas-usecase-title {
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: bold;
+    color: @neon_yellow;
+    margin-bottom: 4px;
+}
+
+.fas-usecase-text {
+    font-family: sans-serif;
+    font-size: 12px;
+    color: @text_secondary;
+}
+
+.fas-personal-relevance {
+    font-family: monospace;
+    font-size: 11px;
+    color: @success_green;
+    margin-top: 6px;
+}
+
+/* Details Button */
+.fas-details-button {
+    background: transparent;
+    border: 1px solid @text_secondary;
+    border-radius: 0px;
+    padding: 4px 12px;
+    color: @text_secondary;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.fas-details-button:hover {
+    border-color: @neon_cyan;
+    color: @neon_cyan;
+}
+
+/* Action Buttons Container */
+.fas-actions-container {
+    background: linear-gradient(0deg, rgba(0, 255, 249, 0.1) 0%, transparent 100%);
+    border-top: 1px solid @neon_cyan;
+    padding: 16px 20px;
+}
+
+/* Primary Action Buttons */
+.fas-button {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-radius: 0px;
+    padding: 10px 20px;
+    min-height: 42px;
+    transition: all 200ms ease;
+}
+
+.fas-button-approve-all {
+    background: transparent;
+    border: 2px solid @success_green;
+    color: @success_green;
+}
+
+.fas-button-approve-all:hover {
+    background: @success_green;
+    color: @dark_bg;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+}
+
+.fas-button-reject-all {
+    background: transparent;
+    border: 2px solid @error_red;
+    color: @error_red;
+}
+
+.fas-button-reject-all:hover {
+    background: @error_red;
+    color: @dark_bg;
+    box-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+}
+
+.fas-button-later {
+    background: transparent;
+    border: 2px solid @text_secondary;
+    color: @text_secondary;
+}
+
+.fas-button-later:hover {
+    border-color: @neon_yellow;
+    color: @neon_yellow;
+}
+
+.fas-button-integrate {
+    background: @neon_magenta;
+    border: 2px solid @neon_magenta;
+    color: white;
+    font-size: 14px;
+    padding: 12px 30px;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.6);
+}
+
+.fas-button-integrate:hover {
+    background: @neon_cyan;
+    border-color: @neon_cyan;
+    color: @dark_bg;
+    box-shadow: 0 0 30px rgba(0, 255, 249, 0.6);
+}
+
+.fas-button-integrate:disabled {
+    background: rgba(40, 40, 60, 1);
+    border-color: @text_secondary;
+    color: @text_secondary;
+    box-shadow: none;
+}
+
+/* Note: GTK4 animation support is limited, using static glow instead */
+
+/* Secondary Buttons */
+.fas-button-archive {
+    background: transparent;
+    border: 1px solid @text_secondary;
+    color: @text_secondary;
+    padding: 8px 16px;
+}
+
+.fas-button-archive:hover {
+    border-color: @neon_cyan;
+    color: @neon_cyan;
+}
+
+.fas-button-settings {
+    background: transparent;
+    border: 1px solid @text_secondary;
+    color: @text_secondary;
+    padding: 8px 16px;
+}
+
+.fas-button-settings:hover {
+    border-color: @neon_yellow;
+    color: @neon_yellow;
+}
+
+/* Progress Indicator */
+.fas-progress-container {
+    padding: 20px;
+}
+
+.fas-progress-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    color: @neon_cyan;
+    margin-bottom: 12px;
+}
+
+.fas-progress-bar {
+    min-height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0px;
+}
+
+.fas-progress-bar progress {
+    background: linear-gradient(90deg, @neon_magenta, @neon_cyan);
+    border-radius: 0px;
+}
+
+.fas-progress-status {
+    font-family: monospace;
+    font-size: 12px;
+    color: @text_secondary;
+    margin-top: 8px;
+}
+
+.fas-progress-time {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    font-weight: bold;
+    color: @neon_cyan;
+    margin-top: 8px;
+}
+
+/* Archive View */
+.fas-archive-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid @neon_cyan;
+}
+
+.fas-archive-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 16px;
+    color: @neon_cyan;
+}
+
+.fas-archive-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-left: 3px solid @error_red;
+    padding: 10px 16px;
+    margin: 6px 10px;
+}
+
+.fas-archive-item:hover {
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.fas-reactivate-button {
+    background: transparent;
+    border: 1px solid @success_green;
+    color: @success_green;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+}
+
+.fas-reactivate-button:hover {
+    background: @success_green;
+    color: @dark_bg;
+}
+
+/* Details View */
+.fas-details-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid @neon_cyan;
+}
+
+.fas-details-section {
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(0, 255, 249, 0.2);
+}
+
+.fas-details-section-title {
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: @neon_magenta;
+    margin-bottom: 8px;
+}
+
+.fas-code-preview {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 249, 0.2);
+    padding: 12px;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 12px;
+    color: @text_primary;
+}
+
+/* Status Indicators */
+.fas-status-queue {
+    font-family: monospace;
+    font-size: 12px;
+    color: @neon_yellow;
+    padding: 8px 16px;
+    background: rgba(255, 255, 0, 0.1);
+    border: 1px solid rgba(255, 255, 0, 0.3);
+    margin: 10px;
+}
+
+/* Scrollbar */
+scrollbar {
+    background: transparent;
+}
+
+scrollbar slider {
+    background: @neon_cyan;
+    border-radius: 0px;
+    min-width: 6px;
+    min-height: 30px;
+}
+
+scrollbar slider:hover {
+    background: @neon_magenta;
+}
+
+/* Tooltips */
+tooltip {
+    background: @dark_bg;
+    border: 1px solid @neon_cyan;
+    color: @text_primary;
+    font-family: sans-serif;
+    font-size: 12px;
+    padding: 8px 12px;
+}
+
+/* Separator */
+.fas-separator {
+    background: linear-gradient(90deg, transparent, @neon_cyan, transparent);
+    min-height: 1px;
+    margin: 8px 20px;
+}
+
+/* Resize Grip */
+.fas-resize-grip {
+    color: @neon_cyan;
+    font-size: 16px;
+    padding: 2px 8px;
+    opacity: 0.4;
+}
+
+.fas-resize-grip:hover {
+    opacity: 1.0;
+}

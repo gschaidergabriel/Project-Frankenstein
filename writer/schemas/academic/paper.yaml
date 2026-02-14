@@ -1,0 +1,55 @@
+schema:
+  name: "Wissenschaftliches Paper"
+  category: academic
+  output_formats: [pdf, tex, docx]
+
+structure:
+  - section: title
+    required: true
+    ai_help: "Generiere prägnanten Titel basierend auf Abstract"
+
+  - section: abstract
+    required: true
+    max_words: 300
+    ai_help: "Fasse Kernaussagen zusammen (Hintergrund, Methode, Ergebnisse, Schlussfolgerung)"
+
+  - section: introduction
+    required: true
+    ai_help: "Kontext etablieren, Problemstellung definieren, Forschungsfrage formulieren"
+
+  - section: related_work
+    required: false
+    ai_help: "Überblick über relevante Literatur und Abgrenzung"
+
+  - section: methodology
+    required: true
+    ai_help: "Beschreibe Methodik strukturiert und reproduzierbar"
+
+  - section: results
+    required: true
+    ai_help: "Präsentiere Ergebnisse klar und objektiv"
+
+  - section: discussion
+    required: true
+    ai_help: "Interpretiere Ergebnisse, vergleiche mit Literatur, diskutiere Limitationen"
+
+  - section: conclusion
+    required: true
+    ai_help: "Kernaussagen zusammenfassen, Implikationen, Ausblick"
+
+  - section: references
+    required: true
+    format: "APA7"
+
+style:
+  tone: formal
+  person: third
+  tense: past
+  language: academic
+
+export:
+  pdf:
+    template: "templates/pdf/academic.html"
+    css: "styles/academic.css"
+  tex:
+    template: "templates/latex/paper.tex.jinja"

@@ -1,5 +1,11 @@
 # AI-Core / Frank
 
+> **Built by one person in 2 months — with zero programming experience.**
+>
+> This entire system was created by **Gabriel Gschaider**, who had no prior programming knowledge. After serving a 2-year prison sentence and being released in late 2025, he spent one month studying AI architecture from scratch. With financial support from **Alexander Machalke**, he then built Project Frankenstein entirely using [Claude Code](https://claude.ai) as his development partner — from first line of code to a fully working 22-subsystem AI desktop companion.
+
+---
+
 A fully local, privacy-first AI system for Linux. Frank runs as a desktop companion with voice interaction, agentic task execution, and a dynamic personality — all powered by local LLMs with no cloud dependencies.
 
 ## Features

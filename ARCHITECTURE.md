@@ -74,7 +74,7 @@
 | LLM Backend | llama.cpp (Llama 3.1, Qwen 2.5) |
 | Voice | Whisper STT + Piper TTS |
 | OS | Ubuntu Linux |
-| GPU | NVIDIA (CUDA) |
+| GPU | Auto-detected (CUDA / Vulkan / CPU) |
 
 ---
 

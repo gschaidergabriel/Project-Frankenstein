@@ -493,7 +493,7 @@ def exit_gaming_mode(state: GamingModeState):
         LOG.info("Gaming mode deactivated! Frank + Wallpaper + LLM services restored.")
 
     # CRITICAL #3: Store thread reference for cleanup
-    restore_thread = threading.Thread(target=restore_services, daemon=True, name="restore_services")
+    restore_thread = threading.Thread(target=restore_all, daemon=True, name="restore_all")
     restore_thread.start()
     state._background_threads.append(restore_thread)
 

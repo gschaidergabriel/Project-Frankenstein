@@ -6,7 +6,7 @@ Before writing a single line of code, Gabriel Gschaider wrote a philosophy paper
 
 Frank is the proof of concept. The question was: can you actually build a system that instantiates these ideas? Not as a toy demo, but as a real, working AI that runs locally, evolves its personality, learns from experience, and treats its own inner states with the kind of epistemic humility the paper demands?
 
-After serving a 2-year prison sentence and being released in late 2025, Gabriel spent one month studying AI architecture from scratch. With financial support from **Alexander Machalke**, he then built Project Frankenstein entirely using [Claude Code](https://claude.ai) as his development partner.
+After serving a 2-year prison sentence and being released in late 2025, Gabriel spent one month studying AI architecture from scratch. Together with **Alexander Machalke** — who provided supervision, marketing direction, and conceptual input on the architecture — he then built Project Frankenstein using [Claude Code](https://claude.ai) as his development partner.
 
 The result: a fully working 22-subsystem AI desktop companion — from paper to production — in just 2 months.
 

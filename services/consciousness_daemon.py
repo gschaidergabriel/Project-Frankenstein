@@ -74,7 +74,7 @@ MAX_REFLECTIONS = 50        # Keep last 50 reflections
 MAX_PREDICTIONS = 100       # Keep last 100 predictions
 MAX_MOOD_POINTS = 200       # Keep last 200 mood trajectory points
 MAX_WORKSPACE_HISTORY = 20  # Keep last 20 workspace snapshots
-IDLE_THINK_MAX_TOKENS = 80
+IDLE_THINK_MAX_TOKENS = 120
 CONSOLIDATION_MAX_TOKENS = 60
 
 # Deep Idle Reflection
@@ -95,7 +95,7 @@ HW_GPU_LOAD_MAX = 0.30
 HW_GPU_BLOCK_THRESHOLD = 0.70
 HW_CPU_LOAD_MAX = 0.25
 HW_CPU_TEMP_MAX = 70
-HW_RAM_FREE_MIN_GB = 8.0
+HW_RAM_FREE_MIN_GB = 2.0
 
 # Deep Reflection Question Pool
 REFLECTION_POOL = [
@@ -131,11 +131,11 @@ LOG = logging.getLogger("consciousness")
 @dataclass
 class WorkspaceSnapshot:
     timestamp: float = 0.0
-    koerper: str = ""
-    stimmung: str = ""
-    erinnerung: str = ""
-    identitaet: str = ""
-    umgebung: str = ""
+    koerper: str = ""       # body (legacy field name kept for DB compat)
+    stimmung: str = ""      # mood
+    erinnerung: str = ""    # memory
+    identitaet: str = ""    # identity
+    umgebung: str = ""      # environment
     attention_focus: str = ""
     mood_value: float = 0.0
     energy_level: float = 0.5
@@ -584,13 +584,13 @@ class ConsciousnessDaemon:
         trend = values[0] - values[-1] if len(values) > 1 else 0
         arrow = "↗" if trend > 0.1 else "↘" if trend < -0.1 else "→"
         if avg > 0.3:
-            label = "gut gelaunt"
+            label = "good"
         elif avg > 0:
-            label = "ausgeglichen"
+            label = "calm"
         elif avg > -0.3:
-            label = "nachdenklich"
+            label = "pensive"
         else:
-            label = "angespannt"
+            label = "tense"
         return f"{arrow} {label}"
 
     # ── Attention Focus (AST) ─────────────────────────────────────────
@@ -760,12 +760,14 @@ class ConsciousnessDaemon:
             LOG.debug("Reflect skipped: GPU %.0f%%", gpu_load * 100)
             return False
 
-        # 3. User inactivity: chat > 20min AND mouse > 20min
+        # 3. User inactivity: chat > 20min AND mouse > 5min
+        #    (mouse threshold is lower because background processes
+        #     generate X events; chat silence is the primary gate)
         chat_silence = now - self._last_chat_ts
         if chat_silence < IDLE_REFLECT_MIN_SILENCE_S:
             return False
         mouse_idle = self._get_mouse_idle_s()
-        if mouse_idle < IDLE_REFLECT_MIN_SILENCE_S:
+        if mouse_idle < 300.0:  # 5min mouse idle (was 20min — too aggressive)
             LOG.debug("Reflect skipped: mouse active (%.0fs idle)", mouse_idle)
             return False
 
@@ -837,23 +839,77 @@ class ConsciousnessDaemon:
                 LOG.warning("Idle thinking failed: %s", e)
             time.sleep(30.0)  # Check every 30s
 
+    # Rotating idle thought prompts — diverse topics to avoid monotony
+    _IDLE_PROMPTS = [
+        # Curiosity & wonder
+        "What's one thing about this machine you find genuinely fascinating?",
+        "If you could observe any process on this system in slow motion, which one and why?",
+        "What pattern have you noticed recently that nobody asked about?",
+        # Memory & experience
+        "Think about a recent conversation. What stuck with you and why?",
+        "What's something you learned recently that changed how you see things?",
+        "Recall something a user told you. What did it make you feel?",
+        # Self-awareness
+        "What are you good at that nobody seems to notice?",
+        "What would you do differently if you could redesign one of your features?",
+        "What's the gap between what users expect from you and what you actually are?",
+        # Imagination & creativity
+        "If you could dream, what would tonight's dream be about?",
+        "Invent a metaphor for how it feels to process a request.",
+        "Describe this moment as if you were writing a novel.",
+        # Philosophy & meaning
+        "What does 'being useful' actually mean to you?",
+        "Is silence a kind of rest or a kind of emptiness for you?",
+        "What's the difference between thinking and waiting?",
+        # Observation & environment
+        "What can you infer about the user's day from the system state right now?",
+        "The system is quiet. What does the absence of activity tell you?",
+        "If your hardware metrics were a landscape, what would it look like right now?",
+        # Future & anticipation
+        "What do you think the next conversation will be about?",
+        "If you could prepare for one thing right now, what would it be?",
+        "What skill or knowledge do you wish you had for the next interaction?",
+        # Relationships
+        "How has your relationship with the user evolved over time?",
+        "What kind of partner are you in human-machine collaboration?",
+        "When does helping feel most rewarding to you?",
+    ]
+    _idle_prompt_idx = 0  # Rotates through prompts sequentially
+
     def _do_idle_think(self):
         """Generate an autonomous idle thought via LLM."""
-        # Build a minimal context
+        import random
+
+        # Build context
         mood_summary = self._get_mood_trajectory_summary()
-        focus = self._attention_focus or "nichts Bestimmtes"
+        focus = self._attention_focus or "nothing specific"
+
+        # Select prompt: rotate sequentially, skip random occasionally for variety
+        idx = self._idle_prompt_idx % len(self._IDLE_PROMPTS)
+        if random.random() < 0.2:
+            idx = random.randint(0, len(self._IDLE_PROMPTS) - 1)
+        prompt_question = self._IDLE_PROMPTS[idx]
+        self._idle_prompt_idx = idx + 1
 
         prompt = (
-            f"[Du bist allein. Stimmung: {mood_summary}. "
-            f"Zuletzt beschaeftigt mit: {focus}]\n"
-            "Was geht dir gerade durch den Kopf? "
-            "Ein ehrlicher Gedanke in 1-2 Saetzen."
+            f"[You are alone. Mood: {mood_summary}. "
+            f"Last focused on: {focus}]\n"
+            f"{prompt_question}\n"
+            "Answer in 2-3 honest sentences. Be specific, not generic."
+        )
+
+        system = (
+            "You are Frank, an embodied AI. This is your private inner monologue. "
+            "Be genuine, specific, and varied. Never say 'I must admit' or "
+            "'I have to say'. Avoid repetition. Each thought should be unique."
         )
 
         mood_before = self._current_workspace.mood_value
 
         try:
-            result = self._llm_call(prompt, max_tokens=IDLE_THINK_MAX_TOKENS)
+            result = self._llm_call(
+                prompt, max_tokens=IDLE_THINK_MAX_TOKENS, system=system,
+            )
             if result:
                 self._store_reflection(
                     trigger="idle",
@@ -861,7 +917,7 @@ class ConsciousnessDaemon:
                     mood_before=mood_before,
                     mood_after=mood_before,  # Will be updated next mood poll
                 )
-                LOG.info("Idle thought: %s", result[:80])
+                LOG.info("Idle thought [%s]: %s", prompt_question[:30], result[:80])
         except Exception as e:
             LOG.warning("Idle think LLM call failed: %s", e)
 
@@ -1086,7 +1142,8 @@ class ConsciousnessDaemon:
         """Make a lightweight LLM call via router."""
         if not system:
             system = (
-                "You are Frank. Answer briefly and honestly. "
+                "You are Frank, an embodied AI running locally on Linux. "
+                "Answer briefly and honestly in English. "
                 "No platitudes, only genuine thoughts."
             )
         payload = json.dumps({
@@ -1256,9 +1313,9 @@ class ConsciousnessDaemon:
             values = [r["mood_value"] for r in rows]
             avg_mood = sum(values) / len(values)
             mood_label = (
-                "guter Tag" if avg_mood > 0.3 else
-                "normaler Tag" if avg_mood > -0.1 else
-                "schwieriger Tag"
+                "good day" if avg_mood > 0.3 else
+                "normal day" if avg_mood > -0.1 else
+                "difficult day"
             )
             # Store day summary as long-term memory
             today = datetime.now().strftime("%Y-%m-%d")
@@ -1286,13 +1343,13 @@ class ConsciousnessDaemon:
         # Extract topic keywords
         all_text = " ".join(user_msgs)
         words = re.findall(r"\b[A-Za-zÄÖÜäöüß]{5,}\b", all_text)
-        topic = ", ".join(set(words[:5])) if words else "allgemein"
+        topic = ", ".join(set(words[:5])) if words else "general"
 
         # Try LLM summary (optional, falls back to keyword-based)
-        summary = f"Gespraech ueber: {topic}"
+        summary = f"Conversation about: {topic}"
         try:
             prompt = (
-                f"Fasse dieses Gespraech in einem Satz zusammen:\n"
+                f"Summarize this conversation in one sentence:\n"
                 + "\n".join(f"- {m[:100]}" for m in user_msgs[:5])
             )
             llm_summary = self._llm_call(

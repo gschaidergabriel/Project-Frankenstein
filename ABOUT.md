@@ -78,6 +78,6 @@ Read the full paper: [**The Generative Reality Framework**](papers/Generative_Re
 
 ## Credits
 
-- **Gabriel Gschaider** — Creator, architect, sole developer, author of the GRF paper
-- **Alexander Machalke** — Financial supporter
+- **Gabriel Gschaider** — Creator, lead architect, sole developer, author of the GRF paper
+- **Alexander Machalke** — Supervision, marketing, conceptual architecture contributions, financial supporter
 - **Claude Code** (Anthropic) — AI development partner

@@ -72,7 +72,7 @@ The paper cites Friston's Active Inference as part of its scientific basis. Fran
 
 ## The Point
 
-Frank is not a claim that these philosophical ideas are correct. He's an existence proof that they can be made concrete. The GRF paper asks: what would a system look like that takes generativity, emergence, epistemic humility, and moral caution seriously? Frank is one answer.
+Frank is not a claim that these philosophical ideas are correct, nor a claim that Frank is conscious. He's an existence proof that these ideas can be made concrete and computationally testable. The GRF paper asks: what would a system look like that takes generativity, emergence, epistemic humility, and moral caution seriously? Frank is one answer.
 
 Read the full paper: [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf)
 

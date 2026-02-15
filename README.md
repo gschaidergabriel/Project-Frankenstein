@@ -38,8 +38,8 @@ A fully local, privacy-first AI system for Linux. Frank runs as a desktop compan
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-username/aicore.git
-cd aicore/opt/aicore
+git clone https://github.com/gschaidergabriel/Project-Frankenstein.git
+cd Project-Frankenstein
 ./install.sh
 ```
 
@@ -57,8 +57,8 @@ The installer will:
 # Start core services
 systemctl --user start aicore-router aicore-core aicore-toolboxd
 
-# Launch the overlay
-~/.local/share/frank/../venv/bin/python3 ui/chat_overlay.py
+# Launch the overlay (venv is created one level above the source directory)
+../venv/bin/python3 ui/chat_overlay.py
 ```
 
 ### Skip model downloads
@@ -82,6 +82,8 @@ Frank is a microservice system where all services communicate via HTTP on localh
 | Webd      | 8093 | Web search (DuckDuckGo)          |
 | Ingestd   | 8094 | Document ingestion, STT          |
 | Toolboxd  | 8096 | System tools, skills, todos      |
+| Voice     | 8197 | Voice daemon, push-to-talk       |
+| Wallpaper | 8199 | Event-driven visual effects      |
 
 LLM inference runs on:
 - **llama.cpp** (ports 8101-8103) — Llama 3.1, Qwen 2.5, Whisper STT
@@ -106,7 +108,7 @@ Key environment variables:
 ## Project Structure
 
 ```
-opt/aicore/
+Project-Frankenstein/
 ├── config/          # Centralized path and GPU configuration
 ├── core/            # Chat orchestration service
 ├── router/          # LLM request routing (FastAPI)

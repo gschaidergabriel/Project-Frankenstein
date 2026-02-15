@@ -247,6 +247,7 @@ Each probe scored 0.0 to 1.0 on its stated criteria by the assessor (Claude Opus
 - **N=1 per probe**: Each question was asked once. Response variance across runs was not measured.
 - **No GAIA validation set**: The reasoning probes are GAIA-inspired but not drawn from the actual GAIA dataset. Scores are not directly comparable to GAIA leaderboard numbers.
 - **System prompt leakage**: Frank's system prompt tells the LLM it has a body, mood, and memory. Some improvements may come from prompt injection rather than genuine architectural grounding. However, the bare model also confabulates (claims Google TPUs, fabricates mood states) — it just confabulates without any real data to draw on.
+- **Self-evaluation**: This benchmark was designed, conducted, and scored by the project's development team. Results should be independently replicated before drawing strong conclusions. The scoring criteria and raw responses are documented above for reproducibility.
 
 ---
 

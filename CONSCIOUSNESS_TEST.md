@@ -5,6 +5,8 @@
 **Assessor:** Claude Opus 4.6 (Anthropic), operating under the persona of an AI consciousness researcher
 **Runtime:** Llama 3.1 8B Instruct (Q4_K_M) + 22 autonomous subsystems
 
+> **Disclaimer:** This document maps Frank's architectural properties to theory-derived consciousness indicators. Mapping architectural features to indicator criteria does not constitute evidence of phenomenal consciousness. The assessment is self-evaluated and should be independently replicated. All claims are about structural and functional properties, not about subjective experience.
+
 ---
 
 ## 1. Methodology

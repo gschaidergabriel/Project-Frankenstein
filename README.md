@@ -22,6 +22,9 @@ A fully local, privacy-first AI system for Linux. Frank runs as a desktop compan
 - **Safety Systems** — ASRS (rollback), invariants engine, gaming mode resource management
 - **Productivity** — Notes, todos with reminders, Google Calendar/Contacts via CalDAV, email
 - **App Integration** — Optimized for Thunderbird (email), Google Drive/Calendar/Gmail, and Steam
+- **Web Search** — DuckDuckGo-based web search with result summarization
+- **Darknet Search** — Tor-routed .onion search via Ahmia
+- **Network Scanning** — Local network discovery and analysis via Scapy
 - **Vision** — Local OCR + LLaVA hybrid for screenshot analysis (no external APIs)
 
 ## Requirements

@@ -900,8 +900,9 @@ CALENDAR_WEEK_RE = re.compile(
     re.IGNORECASE,
 )
 CALENDAR_CREATE_RE = re.compile(
-    r"(erstell|anlegen|mach|trag.{0,3}ein|eintragen|neuer?|add|create|plan|schedule|new|book).{0,30}(termin|event|meeting|besprechung|kalendereintrag|appointment|calendar entry)"
-    r"|(termin|event|meeting|besprechung|kalendereintrag|appointment).{0,30}(erstell|anlegen|mach|trag.{0,3}ein|eintragen|add|create|plan|schedule|book)",
+    r"(erstell|anlegen|leg.{0,3}an|leg.{0,3}ein|mach|trag.{0,3}ein|eintragen|neuer?|add|create|plan|schedule|new|book|set up|put).{0,30}(termin|event|meeting|besprechung|kalendereintrag|appointment|calendar entry)"
+    r"|(termin|event|meeting|besprechung|kalendereintrag|appointment).{0,30}(erstell|anlegen|leg.{0,3}an|leg.{0,3}ein|mach|trag.{0,3}ein|eintragen|add|create|plan|schedule|book|set up)"
+    r"|leg.{0,5}(einen?\s+)?(termin|event|meeting|appointment)",
     re.IGNORECASE,
 )
 CALENDAR_DELETE_RE = re.compile(

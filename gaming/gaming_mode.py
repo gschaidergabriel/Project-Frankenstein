@@ -190,20 +190,25 @@ def stop_heavy_services(state: GamingModeState):
 
     # User systemd services for heavy LLM backends
     heavy_systemd_services = [
-        "aicore-llama3.service",   # Llama 3.1 8B on port 8101
-        "aicore-qwen.service",     # Qwen Coder 7B on port 8102
+        "aicore-llama3-gpu.service",  # Llama 3.1 8B on port 8101
+        "aicore-qwen-gpu.service",   # Qwen Coder 7B on port 8102
     ]
 
     for service in heavy_systemd_services:
         try:
             LOG.info(f"Stopping {service}...")
+            # Mask first to prevent Restart=always from reviving the service
+            subprocess.run(
+                ["systemctl", "--user", "mask", "--runtime", service],
+                capture_output=True, text=True, timeout=10
+            )
             result = subprocess.run(
                 ["systemctl", "--user", "stop", service],
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
                 state.stopped_services.append({"name": service, "type": "systemd"})
-                LOG.info(f"Stopped {service}")
+                LOG.info(f"Stopped {service} (masked until gaming ends)")
             else:
                 LOG.warning(f"Could not stop {service}: {result.stderr}")
         except Exception as e:
@@ -233,6 +238,11 @@ def restart_services(state: GamingModeState):
         if stype == "systemd":
             try:
                 LOG.info(f"Restarting {name}...")
+                # Unmask first (was masked during gaming to prevent Restart=always)
+                subprocess.run(
+                    ["systemctl", "--user", "unmask", name],
+                    capture_output=True, text=True, timeout=10
+                )
                 result = subprocess.run(
                     ["systemctl", "--user", "start", name],
                     capture_output=True, text=True, timeout=30
@@ -455,20 +465,14 @@ def exit_gaming_mode(state: GamingModeState):
     state.game_name = None
     state.save()
 
-    # 3. Restart heavy LLM services in background (user doesn't need to wait)
+    # 3. Start Frank overlay IMMEDIATELY — user sees it within milliseconds
+    start_main_frank()
+
+    # 4. Restart heavy LLM services + network sentinel in background (no user wait)
     def restore_services():
-        # CRITICAL #3: Check shutdown event before each step
-        if state._shutdown_event.wait(timeout=0.5):
-            return
         restart_services(state)
-        if state._shutdown_event.wait(timeout=1.0):
-            return
-        start_main_frank()
-        # Restart network sentinel after everything else
-        if state._shutdown_event.wait(timeout=2.0):
-            return
         start_network_sentinel()
-        LOG.info("Gaming mode deactivated! Full Frank + Network Sentinel restored.")
+        LOG.info("Gaming mode deactivated! LLM services + Network Sentinel restored.")
 
     # CRITICAL #3: Store thread reference for cleanup
     restore_thread = threading.Thread(target=restore_services, daemon=True, name="restore_services")
@@ -558,8 +562,8 @@ def daemon_loop():
     state = GamingModeState()
     LOG.info("Gaming Mode Daemon started")
     exit_grace_counter = 0   # Counts checks since game process disappeared
-    EXIT_GRACE_CHECKS = 3    # Wait 3 checks (9 sec) before exiting if Steam also gone
-    EXIT_GRACE_STEAM = 5     # Wait 5 checks (15 sec) if Steam still open
+    EXIT_GRACE_CHECKS = 1    # Wait 1 check (2 sec) before exiting if Steam also gone
+    EXIT_GRACE_STEAM = 2     # Wait 2 checks (4 sec) if Steam still open
     MIN_GAMING_SECS = 30     # Minimum 30 sec in gaming mode (game loading protection)
     gaming_entered_at = 0    # Timestamp when gaming mode was entered
 
@@ -575,7 +579,9 @@ def daemon_loop():
             exit_gaming_mode(state)
         else:
             gaming_entered_at = time.time()  # Treat recovery as fresh entry
-            LOG.info("Game still active after recovery - staying in gaming mode")
+            LOG.info("Game still active after recovery - re-enforcing service stops")
+            stop_heavy_services(state)
+            stop_main_frank()
 
     while True:
         try:

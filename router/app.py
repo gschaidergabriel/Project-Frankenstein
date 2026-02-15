@@ -64,6 +64,7 @@ LLAMA_STARTUP_WAIT_SEC = float(os.environ.get("AICORE_LLAMA_STARTUP_WAIT_SEC", "
 
 # Memory pressure control: mutual exclusion for heavy models (only one loaded at a time)
 MEMORY_PRESSURE_CONTROL = os.environ.get("AICORE_MEMORY_PRESSURE_CONTROL", "1").strip() in ("1", "true", "yes")
+MPC_LLAMA_PARKED_FLAG = Path("/tmp/frank_mpc_llama_parked")
 
 # CRITICAL: Default token limit for response generation
 # Must be high enough for complete answers (German text ~1.3 chars/token)
@@ -234,11 +235,12 @@ def _start_qwen_if_needed() -> bool:
 # ---- memory pressure control ------------------------------------------------
 
 def _rollback_to_llama():
-    """Emergency rollback: unmask and restart Llama after a failed swap."""
+    """Emergency rollback: stop Qwen and restart Llama after a failed swap."""
     global _active_heavy_model, _llama_parked
     LOG.info("[MPC] Rolling back to Llama...")
     _systemctl_user(["stop", QWEN_SERVICE], timeout=8.0)
-    _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+    # Remove park flag so watchdog can restart Llama if we fail
+    MPC_LLAMA_PARKED_FLAG.unlink(missing_ok=True)
     _systemctl_user(["start", LLAMA_SERVICE], timeout=10.0)
 
     deadline = time.time() + LLAMA_STARTUP_WAIT_SEC
@@ -251,7 +253,7 @@ def _rollback_to_llama():
             return
         time.sleep(0.25)
 
-    # Even if health check fails, unmask so watchdog can fix it
+    # Even if health check fails, flag is removed so watchdog can fix it
     with _lock:
         _llama_parked = False
     LOG.error("[MPC] Rollback: Llama not healthy yet, watchdog should recover")
@@ -283,15 +285,15 @@ def _swap_to_qwen() -> bool:
             return True
 
         try:
-            # Step 1: Park Llama (mask prevents watchdog restart)
+            # Step 1: Park Llama (flag file prevents watchdog restart)
             if _is_llama_up():
-                LOG.info("[MPC] Masking Llama to prevent watchdog restart")
-                _systemctl_user(["mask", LLAMA_SERVICE], timeout=5.0)
+                LOG.info("[MPC] Setting park flag to prevent watchdog restart")
+                MPC_LLAMA_PARKED_FLAG.write_text(str(int(time.time())))
                 LOG.info("[MPC] Stopping Llama to free VRAM...")
                 rc, out = _systemctl_user(["stop", LLAMA_SERVICE], timeout=12.0)
                 if rc != 0:
                     LOG.error(f"[MPC] Llama stop failed (rc={rc}): {out}")
-                    _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+                    MPC_LLAMA_PARKED_FLAG.unlink(missing_ok=True)
                     return _start_qwen_if_needed()  # fallback: try without swap
 
                 with _lock:
@@ -354,9 +356,9 @@ def _swap_to_llama() -> bool:
                         break
                     time.sleep(0.25)
 
-            # Step 2: Unmask and start Llama
-            LOG.info("[MPC] Unmasking and starting Llama...")
-            _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+            # Step 2: Remove park flag and start Llama
+            LOG.info("[MPC] Removing park flag and starting Llama...")
+            MPC_LLAMA_PARKED_FLAG.unlink(missing_ok=True)
             _systemctl_user(["start", LLAMA_SERVICE], timeout=10.0)
 
             deadline = time.time() + LLAMA_STARTUP_WAIT_SEC
@@ -376,7 +378,7 @@ def _swap_to_llama() -> bool:
 
         except Exception as e:
             LOG.error(f"[MPC] Exception during swap-to-llama: {e}")
-            _systemctl_user(["unmask", LLAMA_SERVICE], timeout=5.0)
+            MPC_LLAMA_PARKED_FLAG.unlink(missing_ok=True)
             with _lock:
                 _llama_parked = False
             return False

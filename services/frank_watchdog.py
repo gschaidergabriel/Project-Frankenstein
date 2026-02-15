@@ -113,6 +113,7 @@ MONITORED_SERVICES = {
 CHECK_INTERVAL = 15  # Check every 15 seconds
 HEALTH_FILE = Path("/tmp/frank_watchdog_health.json")
 USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
+MPC_LLAMA_PARKED = Path("/tmp/frank_mpc_llama_parked")  # Router parks Llama for Qwen swap
 
 # ============================================================================
 # State tracking
@@ -337,6 +338,11 @@ def main():
                     # Skip auto-restart of frank-overlay if user closed it intentionally
                     if name == "frank-overlay" and USER_CLOSED_SIGNAL.exists():
                         LOG.debug(f"[{name}] User closed overlay intentionally, skipping restart")
+                        continue
+
+                    # Skip Llama restart when Router intentionally parked it for Qwen (MPC)
+                    if name == "aicore-llama3-gpu" and MPC_LLAMA_PARKED.exists():
+                        LOG.debug(f"[{name}] Parked by MPC (Qwen active), skipping restart")
                         continue
 
                     LOG.warning(f"[{name}] NOT RUNNING ({tracker.config['description']})")

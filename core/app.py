@@ -704,16 +704,16 @@ class Handler(BaseHTTPRequestHandler):
             # (not for every message — technical context suppresses creative responses)
             ctx_block = enrichment if enrichment else ""
 
-            # Language enforcement for 7B models: add [Reply in English] nudge
+            # Language enforcement for 7B models: add [lang:en] metadata prefix
             # unless user explicitly requested German
             global _core_response_lang
             if _LANG_SWITCH_RE.search(user_text_for_matching):
                 _core_response_lang = "de"
             elif re.search(r"switch\s+(back\s+)?(to\s+)?english|speak\s+english|auf\s+englisch", user_text_for_matching, re.I):
                 _core_response_lang = "en"
-            _lang_suffix = " [Reply in English]" if _core_response_lang == "en" else ""
+            _lang_prefix = "[lang:en]\n" if _core_response_lang == "en" else ""
 
-            grounded_text = (ctx_block + "\n" if ctx_block else "") + text + _lang_suffix
+            grounded_text = _lang_prefix + (ctx_block + "\n" if ctx_block else "") + text
 
             # --- RPT: Reflection / Inner Monologue ---
             # Two-pass pipeline: Pass 1 generates inner reflection (not shown to user),

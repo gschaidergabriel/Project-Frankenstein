@@ -558,17 +558,18 @@ class ChatMixin:
         # Assemble final text
         parts = []
         # Language nudge: 7B models need instruction near the generation point
-        _lang_tag = ""
-        if getattr(self, '_response_language', 'en') == "en":
-            _lang_tag = " [Reply in English]"
+        # Use [lang:en] metadata prefix — less conspicuous than [Reply in English]
+        _lang_prefix = "[lang:en]\n" if getattr(self, '_response_language', 'en') == "en" else ""
 
+        if _lang_prefix:
+            parts.append(_lang_prefix.strip())
         if conv_ctx:
             parts.append(conv_ctx)
         if workspace_block:
             parts.append(workspace_block)
         if reflection_text:
             parts.append(f"[Own reflection: {reflection_text}]")
-        parts.append(f"User asks: {msg}{_lang_tag}")
+        parts.append(f"User asks: {msg}")
         text = "\n".join(parts)
 
         # CRITICAL: Ensure we don't exceed LLM context limit (4096 tokens)
@@ -598,13 +599,15 @@ class ChatMixin:
 
             # Rebuild
             parts = []
+            if _lang_prefix:
+                parts.append(_lang_prefix.strip())
             if conv_ctx:
                 parts.append(conv_ctx)
             if workspace_block:
                 parts.append(workspace_block)
             if reflection_text:
                 parts.append(f"[Own reflection: {reflection_text}]")
-            parts.append(f"User asks: {msg}{_lang_tag}")
+            parts.append(f"User asks: {msg}")
             text = "\n".join(parts)
             LOG.info(f"Context truncated: {estimated_tokens} -> {_estimate_tokens(text)} tokens")
 

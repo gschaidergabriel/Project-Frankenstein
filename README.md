@@ -21,6 +21,7 @@ A fully local, privacy-first AI system for Linux. Frank runs as a desktop compan
 - **Self-Improvement** — Genesis daemon for recursive learning and proposal generation
 - **Safety Systems** — ASRS (rollback), invariants engine, gaming mode resource management
 - **Productivity** — Notes, todos with reminders, Google Calendar/Contacts via CalDAV, email
+- **App Integration** — Optimized for Thunderbird (email), Google Drive/Calendar/Gmail, and Steam
 - **Vision** — Local OCR + LLaVA hybrid for screenshot analysis (no external APIs)
 
 ## Requirements

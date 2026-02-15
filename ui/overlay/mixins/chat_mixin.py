@@ -118,6 +118,28 @@ _REFLECT_OVERLAY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Language enforcement for 7B models ──
+# 7B models mirror the user's language despite system prompt instructions.
+# We detect explicit switch commands and add a [Reply in English] nudge otherwise.
+_LANG_SWITCH_DE_RE = re.compile(
+    r"(antworte|sprich|rede|schreib)\s*(auf|in|bitte)?\s*(deutsch|german)"
+    r"|switch\s+to\s+german"
+    r"|speak\s+german"
+    r"|respond\s+in\s+german"
+    r"|auf\s+deutsch\s+(bitte|antworten)",
+    re.IGNORECASE,
+)
+_LANG_SWITCH_EN_RE = re.compile(
+    r"(antworte|sprich|rede|schreib)\s*(auf|in|bitte)?\s*(englisch|english)"
+    r"|switch\s+(back\s+)?(to\s+)?english"
+    r"|speak\s+english"
+    r"|respond\s+in\s+english"
+    r"|auf\s+englisch\s+(bitte|antworten)",
+    re.IGNORECASE,
+)
+# Module-level default; instance state set in ChatMixin
+_DEFAULT_RESPONSE_LANG = "en"
+
 
 # ── Simple sentiment detection for E-PQ personality events ──
 _POSITIVE_WORDS = frozenset([
@@ -234,6 +256,17 @@ class ChatMixin:
         LOG.debug(f"Chat worker received: {msg[:50]}...")
         wp_chat_req("ui")  # Wallpaper event: chat request
         self._ui_call(self._show_typing)
+
+        # ── Language enforcement for 7B models ──
+        # Track explicit language switch commands. Default: English.
+        if not hasattr(self, '_response_language'):
+            self._response_language = _DEFAULT_RESPONSE_LANG
+        if _LANG_SWITCH_DE_RE.search(msg):
+            self._response_language = "de"
+            LOG.info("Language switched to: de (explicit user request)")
+        elif _LANG_SWITCH_EN_RE.search(msg):
+            self._response_language = "en"
+            LOG.info("Language switched to: en (explicit user request)")
 
         # ── GWT: Global Workspace — collect all module outputs ──
         # Each module writes to a named variable; build_workspace() integrates them.
@@ -524,13 +557,18 @@ class ChatMixin:
 
         # Assemble final text
         parts = []
+        # Language nudge: 7B models need instruction near the generation point
+        _lang_tag = ""
+        if getattr(self, '_response_language', 'en') == "en":
+            _lang_tag = " [Reply in English]"
+
         if conv_ctx:
             parts.append(conv_ctx)
         if workspace_block:
             parts.append(workspace_block)
         if reflection_text:
             parts.append(f"[Own reflection: {reflection_text}]")
-        parts.append(f"User asks: {msg}")
+        parts.append(f"User asks: {msg}{_lang_tag}")
         text = "\n".join(parts)
 
         # CRITICAL: Ensure we don't exceed LLM context limit (4096 tokens)
@@ -566,7 +604,7 @@ class ChatMixin:
                 parts.append(workspace_block)
             if reflection_text:
                 parts.append(f"[Own reflection: {reflection_text}]")
-            parts.append(f"User asks: {msg}")
+            parts.append(f"User asks: {msg}{_lang_tag}")
             text = "\n".join(parts)
             LOG.info(f"Context truncated: {estimated_tokens} -> {_estimate_tokens(text)} tokens")
 

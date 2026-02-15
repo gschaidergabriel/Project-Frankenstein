@@ -145,6 +145,17 @@ def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None) -> str:
 SYS_Q_RE = re.compile(r"\b(hardware|cpu|prozessor|ram|speicher|memory|disk|festplatte|ssd|hdd|temp|temperatur|heiss|heiß|load|uptime|laufzeit|services|dienste)\b", re.I)
 SEE_Q_RE = re.compile(r"\b(was siehst|siehst du|desktop|bildschirm|screen)\b", re.I)
 
+# Language enforcement for 7B models: detect explicit switch, otherwise nudge English
+_LANG_SWITCH_RE = re.compile(
+    r"(antworte|sprich|rede|schreib)\s*(auf|in|bitte)?\s*(deutsch|german)"
+    r"|switch\s+to\s+german"
+    r"|speak\s+german"
+    r"|respond\s+in\s+german"
+    r"|auf\s+deutsch",
+    re.IGNORECASE,
+)
+_core_response_lang = "en"  # session-level default
+
 # RPT: Reflection trigger — deep questions that benefit from inner monologue
 REFLECT_RE = re.compile(
     r"(warum\s+(denkst|meinst|glaubst|fuehlst|fuhlst)"
@@ -692,7 +703,17 @@ class Handler(BaseHTTPRequestHandler):
             # Only include hardware context block when user asked about hardware
             # (not for every message — technical context suppresses creative responses)
             ctx_block = enrichment if enrichment else ""
-            grounded_text = (ctx_block + "\n" if ctx_block else "") + text
+
+            # Language enforcement for 7B models: add [Reply in English] nudge
+            # unless user explicitly requested German
+            global _core_response_lang
+            if _LANG_SWITCH_RE.search(user_text_for_matching):
+                _core_response_lang = "de"
+            elif re.search(r"switch\s+(back\s+)?(to\s+)?english|speak\s+english|auf\s+englisch", user_text_for_matching, re.I):
+                _core_response_lang = "en"
+            _lang_suffix = " [Reply in English]" if _core_response_lang == "en" else ""
+
+            grounded_text = (ctx_block + "\n" if ctx_block else "") + text + _lang_suffix
 
             # --- RPT: Reflection / Inner Monologue ---
             # Two-pass pipeline: Pass 1 generates inner reflection (not shown to user),

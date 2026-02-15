@@ -493,6 +493,8 @@ class ChatMixin:
         # ── Consciousness Daemon: inject persistent state ──
         # NOTE: These are Frank's INNER experiences, not status reports.
         # They must be phrased as phenomenological context, never as data to recite.
+        ws_perception = ""
+        ws_attention_detail = ""
         if _CONSCIOUSNESS_AVAILABLE:
             try:
                 _cd = _consciousness_daemon()
@@ -511,6 +513,33 @@ class ChatMixin:
                 memories = _cd.get_relevant_memories(msg, max_items=4)
                 if memories:
                     ws_extra.append(f"[I remember: {memories}]")
+
+                # --- New consciousness modules ---
+                # Perceptual Feedback Loop (RPT)
+                if cs_ctx.get("perception"):
+                    ws_perception = cs_ctx["perception"]
+
+                # Latent Experience Space (HOT-4)
+                if cs_ctx.get("experience_quality"):
+                    ws_extra.append(f"[Experience: {cs_ctx['experience_quality']}]")
+
+                # Attention Controller (AST) — rich focus info
+                attn_parts = []
+                if cs_ctx.get("attention_focus"):
+                    attn_parts.append(f"Focus: {cs_ctx['attention_focus']}")
+                if cs_ctx.get("attention_correction"):
+                    attn_parts.append(cs_ctx["attention_correction"])
+                if cs_ctx.get("attention_competing"):
+                    attn_parts.append(cs_ctx["attention_competing"])
+                if attn_parts:
+                    ws_attention_detail = ". ".join(attn_parts)
+
+                # Persistent Goals (AE)
+                if cs_ctx.get("active_goals"):
+                    ws_extra.append(f"[{cs_ctx['active_goals']}]")
+                if cs_ctx.get("goal_conflict"):
+                    ws_extra.append(f"[Goal tension: {cs_ctx['goal_conflict']}]")
+
             except Exception as e:
                 LOG.debug("Consciousness context injection skipped: %s", e)
 
@@ -528,6 +557,8 @@ class ChatMixin:
             skill_ctx=ws_skill,
             extra_parts=ws_extra if ws_extra else None,
             hw_detail=ws_hw_detail,
+            perception_ctx=ws_perception,
+            attention_detail=ws_attention_detail,
         )
 
         # Build conversation context for continuity

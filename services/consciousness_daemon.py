@@ -77,6 +77,40 @@ MAX_WORKSPACE_HISTORY = 20  # Keep last 20 workspace snapshots
 IDLE_THINK_MAX_TOKENS = 120
 CONSOLIDATION_MAX_TOKENS = 60
 
+# --- Perceptual Feedback Loop (RPT) ---
+PERCEPTION_TICK_S = 0.2              # 200ms sampling rate
+PERCEPTION_SUMMARY_INTERVAL_S = 5.0  # Workspace update every 5s
+PERCEPTION_INTERPRET_INTERVAL_S = 30.0  # LLM micro-interpretation every 30s
+PERCEPTION_INTERPRET_TOKENS = 50
+MAX_PERCEPTUAL_LOG = 100
+# Event thresholds (deltas that count as "perceptual events")
+PERCEPT_CPU_LOAD_DELTA = 0.15
+PERCEPT_GPU_LOAD_DELTA = 0.20
+PERCEPT_TEMP_DELTA = 5.0     # °C
+PERCEPT_USER_GONE_S = 120.0  # mouse idle > this = "user_left"
+PERCEPT_USER_BACK_S = 5.0    # mouse idle < this after being gone = "user_returned"
+PERCEPT_PREV_IDLE_THRESHOLD = 60.0  # previous must be > this to trigger "user_returned"
+
+# --- Latent Experience Space (HOT-4) ---
+EXPERIENCE_EMBED_INTERVAL_S = 60.0   # Embed state every 60s
+EXPERIENCE_VECTOR_DIM = 64
+MAX_EXPERIENCE_VECTORS = 1440        # ~24h at 1/min
+EXPERIENCE_NOVELTY_THRESHOLD = 0.70  # Below this = "novel"
+EXPERIENCE_DRIFT_THRESHOLD = 0.50    # Below this vs 1h ago = "drift"
+EXPERIENCE_CYCLE_THRESHOLD = 0.85    # Above this vs 24h ago = "cycle"
+
+# --- Attention Controller (AST) ---
+ATTENTION_TICK_S = 10.0       # Controller runs every 10s
+ATTENTION_STALE_S = 300.0     # 5min without engagement = "stale"
+ATTENTION_DECAY_RATE = 0.95   # Salience decay per 10s
+MAX_ATTENTION_LOG = 200
+
+# --- Persistent Goal Structure (AE) ---
+GOAL_CHECK_INTERVAL_S = 300.0   # Goal management every 5min
+GOAL_MAX_ACTIVE = 20
+GOAL_EXTRACT_TOKENS = 60
+GOAL_CONFLICT_TOKENS = 40
+
 # Deep Idle Reflection
 IDLE_REFLECT_MIN_SILENCE_S = 1200.0     # 20 min User-Stille
 IDLE_REFLECT_INTERVAL_S = 3600.0        # Max 1 Reflexion pro Stunde
@@ -152,6 +186,42 @@ class Prediction:
     resolved: bool = False
 
 
+@dataclass
+class PerceptualState:
+    """Snapshot of hardware/environment sensors for recurrent perception."""
+    timestamp: float = 0.0
+    cpu_load: float = 0.0
+    gpu_load: float = 0.0
+    ram_pct: float = 0.0
+    cpu_temp: float = 0.0
+    gpu_temp: float = 0.0
+    mouse_idle_s: float = 0.0
+    delta_magnitude: float = 0.0
+    events: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ts": self.timestamp, "cpu": self.cpu_load, "gpu": self.gpu_load,
+            "ram": self.ram_pct, "cpu_t": self.cpu_temp, "gpu_t": self.gpu_temp,
+            "idle": self.mouse_idle_s, "delta": self.delta_magnitude,
+            "events": self.events,
+        }
+
+    def values_vector(self) -> List[float]:
+        """Return numeric values as a list for delta computation."""
+        return [self.cpu_load, self.gpu_load, self.ram_pct / 100.0,
+                self.cpu_temp, self.gpu_temp, self.mouse_idle_s]
+
+
+@dataclass
+class AttentionSource:
+    """A competing source of attention."""
+    name: str = ""
+    focus: str = ""
+    salience: float = 0.0
+    timestamp: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # Consciousness Daemon
 # ---------------------------------------------------------------------------
@@ -192,6 +262,29 @@ class ConsciousnessDaemon:
 
         # Feature training state
         self._last_feature_training_ts: float = 0.0
+
+        # --- Perceptual Feedback Loop (RPT) ---
+        self._current_perceptual: PerceptualState = PerceptualState()
+        self._prev_perceptual: PerceptualState = PerceptualState()
+        self._perception_events_window: List[str] = []  # 5s event accumulator
+        self._perception_summary: str = ""
+        self._last_perception_interpret_ts: float = 0.0
+        self._last_perception_summary_ts: float = 0.0
+
+        # --- Latent Experience Space (HOT-4) ---
+        self._current_experience_vector: List[float] = [0.0] * EXPERIENCE_VECTOR_DIM
+        self._experience_annotation: str = ""
+
+        # --- Attention Controller (AST) ---
+        self._attention_sources: List[AttentionSource] = []
+        self._attention_correction: str = ""
+        self._attention_competing: str = ""
+        self._attention_current_source: str = "idle"
+        self._attention_focus_since: float = time.time()
+
+        # --- Persistent Goal Structure (AE) ---
+        self._active_goals_summary: str = ""
+        self._goal_conflict: str = ""
 
         # Init
         self._ensure_schema()
@@ -274,12 +367,56 @@ class ConsciousnessDaemon:
                 content TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS perceptual_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                state_json TEXT NOT NULL,
+                events TEXT DEFAULT '',
+                interpretation TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS experience_vectors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                vector TEXT NOT NULL,
+                similarity_prev REAL DEFAULT 0,
+                novelty_score REAL DEFAULT 0,
+                annotation TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS attention_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                focus TEXT NOT NULL,
+                source TEXT NOT NULL,
+                salience REAL DEFAULT 0.0,
+                correction TEXT DEFAULT '',
+                competing TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS goals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                description TEXT NOT NULL,
+                category TEXT DEFAULT 'general',
+                priority REAL DEFAULT 0.5,
+                status TEXT DEFAULT 'active',
+                progress TEXT DEFAULT '',
+                conflicts_with TEXT DEFAULT '',
+                activation REAL DEFAULT 1.0,
+                last_pursued REAL DEFAULT 0.0
+            );
+
             CREATE INDEX IF NOT EXISTS idx_ws_ts ON workspace_state(timestamp);
             CREATE INDEX IF NOT EXISTS idx_refl_ts ON reflections(timestamp);
             CREATE INDEX IF NOT EXISTS idx_pred_resolved ON predictions(resolved);
             CREATE INDEX IF NOT EXISTS idx_mood_ts ON mood_trajectory(timestamp);
             CREATE INDEX IF NOT EXISTS idx_mem_stage ON memory_consolidated(stage);
             CREATE INDEX IF NOT EXISTS idx_mem_activation ON memory_consolidated(activation);
+            CREATE INDEX IF NOT EXISTS idx_percept_ts ON perceptual_log(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_expvec_ts ON experience_vectors(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_attn_ts ON attention_log(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
         """)
         conn.commit()
 
@@ -329,6 +466,29 @@ class ConsciousnessDaemon:
                 result["deep_reflections"] = [r["content"][:200] for r in rows]
             # Mood trajectory summary
             result["mood_trajectory"] = self._get_mood_trajectory_summary()
+
+            # --- Perceptual Feedback Loop (RPT) ---
+            if self._perception_summary:
+                result["perception"] = self._perception_summary
+            if self._perception_events_window:
+                result["perception_events"] = list(self._perception_events_window[-5:])
+
+            # --- Latent Experience Space (HOT-4) ---
+            if self._experience_annotation:
+                result["experience_quality"] = self._experience_annotation
+
+            # --- Attention Controller (AST) ---
+            if self._attention_correction:
+                result["attention_correction"] = self._attention_correction
+            if self._attention_competing:
+                result["attention_competing"] = self._attention_competing
+
+            # --- Persistent Goal Structure (AE) ---
+            if self._active_goals_summary:
+                result["active_goals"] = self._active_goals_summary
+            if self._goal_conflict:
+                result["goal_conflict"] = self._goal_conflict
+
             return result
 
     def record_chat(self, user_msg: str, frank_reply: str,
@@ -596,11 +756,17 @@ class ConsciousnessDaemon:
     # ── Attention Focus (AST) ─────────────────────────────────────────
 
     def _update_attention(self, text: str):
-        """Update attention focus from user message."""
+        """Update attention keywords from user message.
+
+        The actual focus selection is handled by the Attention Controller
+        (Module 3), which uses these keywords as one competing source.
+        """
         # Extract keywords (simple: nouns > 4 chars)
         words = re.findall(r"\b[A-Za-zÄÖÜäöüß]{5,}\b", text)
         if words:
             self._attention_keywords = words[:5]
+            # Set focus directly for immediate availability
+            # (Attention Controller will refine this on next cycle)
             self._attention_focus = ", ".join(words[:3])
             with self._lock:
                 self._current_workspace.attention_focus = self._attention_focus
@@ -1114,6 +1280,12 @@ class ConsciousnessDaemon:
             except Exception:
                 pass  # Titan not available — ok
 
+            # Goal extraction from reflection
+            try:
+                self.extract_goal_from_reflection(combined)
+            except Exception:
+                pass
+
             # Track counters
             self._last_deep_reflect_ts = time.time()
             self._daily_reflection_count += 1
@@ -1518,6 +1690,718 @@ class ConsciousnessDaemon:
         conn.commit()
         LOG.info("Feature training complete (3 phases)")
 
+    # ══════════════════════════════════════════════════════════════════
+    # MODULE 1: Perceptual Feedback Loop (RPT)
+    # ══════════════════════════════════════════════════════════════════
+
+    def _perception_feedback_loop(self):
+        """Continuous 200ms recurrent sensing loop with event detection."""
+        last_summary_ts = time.time()
+        last_interpret_ts = time.time()
+        events_since_interpret: List[str] = []
+
+        while self._running:
+            try:
+                now = time.time()
+                new_state = self._sample_perceptual()
+                events = self._detect_perceptual_events(new_state)
+
+                with self._lock:
+                    self._prev_perceptual = self._current_perceptual
+                    self._current_perceptual = new_state
+                    if events:
+                        self._perception_events_window.extend(events)
+                        events_since_interpret.extend(events)
+                        # Keep window bounded
+                        if len(self._perception_events_window) > 20:
+                            self._perception_events_window = self._perception_events_window[-20:]
+
+                # Update summary every 5s
+                if now - last_summary_ts >= PERCEPTION_SUMMARY_INTERVAL_S:
+                    self._update_perception_summary()
+                    last_summary_ts = now
+
+                # LLM interpretation every 30s (only if events occurred)
+                if (events_since_interpret and
+                        now - last_interpret_ts >= PERCEPTION_INTERPRET_INTERVAL_S):
+                    self._interpret_perception(events_since_interpret[-10:])
+                    events_since_interpret.clear()
+                    last_interpret_ts = now
+
+            except Exception as e:
+                LOG.debug("Perception tick error: %s", e)
+
+            time.sleep(PERCEPTION_TICK_S)
+
+    def _sample_perceptual(self) -> PerceptualState:
+        """Sample all hardware sensors into a PerceptualState."""
+        now = time.time()
+        cpu_load = self._get_cpu_load()
+        gpu_load = self._get_gpu_load()
+        ram_pct = self._get_ram_usage_pct()
+        cpu_temp = self._get_cpu_temp()
+        gpu_temp = self._get_gpu_temp()
+        mouse_idle = self._get_mouse_idle_s()
+
+        # Compute delta magnitude from previous state
+        prev = self._current_perceptual
+        deltas = [
+            cpu_load - prev.cpu_load,
+            gpu_load - prev.gpu_load,
+            (ram_pct - prev.ram_pct) / 100.0,
+            (cpu_temp - prev.cpu_temp) / 100.0,
+            (gpu_temp - prev.gpu_temp) / 100.0,
+        ]
+        delta_mag = math.sqrt(sum(d * d for d in deltas))
+
+        return PerceptualState(
+            timestamp=now,
+            cpu_load=cpu_load,
+            gpu_load=gpu_load,
+            ram_pct=ram_pct,
+            cpu_temp=cpu_temp,
+            gpu_temp=gpu_temp,
+            mouse_idle_s=mouse_idle,
+            delta_magnitude=delta_mag,
+        )
+
+    def _detect_perceptual_events(self, state: PerceptualState) -> List[str]:
+        """Detect significant perceptual events by comparing with previous state."""
+        prev = self._current_perceptual
+        events = []
+
+        # CPU load changes
+        cpu_delta = state.cpu_load - prev.cpu_load
+        if cpu_delta > PERCEPT_CPU_LOAD_DELTA:
+            events.append("cpu_spike")
+        elif cpu_delta < -PERCEPT_CPU_LOAD_DELTA:
+            events.append("cpu_drop")
+
+        # GPU load changes
+        gpu_delta = state.gpu_load - prev.gpu_load
+        if gpu_delta > PERCEPT_GPU_LOAD_DELTA:
+            events.append("gpu_spike")
+        elif gpu_delta < -PERCEPT_GPU_LOAD_DELTA:
+            events.append("gpu_drop")
+
+        # Temperature changes
+        if abs(state.cpu_temp - prev.cpu_temp) > PERCEPT_TEMP_DELTA:
+            events.append("warming" if state.cpu_temp > prev.cpu_temp else "cooling")
+        if abs(state.gpu_temp - prev.gpu_temp) > PERCEPT_TEMP_DELTA:
+            events.append("gpu_warming" if state.gpu_temp > prev.gpu_temp else "gpu_cooling")
+
+        # User presence changes
+        if (prev.mouse_idle_s > PERCEPT_PREV_IDLE_THRESHOLD and
+                state.mouse_idle_s < PERCEPT_USER_BACK_S):
+            events.append("user_returned")
+        elif (prev.mouse_idle_s < PERCEPT_PREV_IDLE_THRESHOLD and
+                state.mouse_idle_s > PERCEPT_USER_GONE_S):
+            events.append("user_left")
+
+        if events:
+            state.events = events
+        return events
+
+    def _update_perception_summary(self):
+        """Build a compact perception summary string for workspace."""
+        with self._lock:
+            s = self._current_perceptual
+            parts = []
+
+            # System state
+            if s.cpu_load > 0.5:
+                parts.append("cpu busy")
+            elif s.cpu_load < 0.1:
+                parts.append("cpu quiet")
+            else:
+                parts.append("cpu steady")
+
+            if s.gpu_load > 0.3:
+                parts.append("gpu active")
+            else:
+                parts.append("gpu idle")
+
+            # Thermal
+            if s.cpu_temp > 70:
+                parts.append("running hot")
+            elif s.cpu_temp > 55:
+                parts.append("warm")
+            else:
+                parts.append("cool")
+
+            # User presence
+            if s.mouse_idle_s < 10:
+                parts.append("user active")
+            elif s.mouse_idle_s < 120:
+                parts.append("user present")
+            elif s.mouse_idle_s < 600:
+                parts.append("user idle")
+            else:
+                parts.append("user away")
+
+            # Recent events
+            recent_events = self._perception_events_window[-3:]
+            if recent_events:
+                parts.append("events: " + ", ".join(recent_events))
+
+            self._perception_summary = "Sensing: " + ", ".join(parts)
+
+    def _interpret_perception(self, events: List[str]):
+        """Optional LLM micro-interpretation of perceptual events."""
+        if not events:
+            return
+        event_str = ", ".join(set(events))
+        try:
+            result = self._llm_call(
+                f"You sensed: {event_str}. What does this feel like? (1 sentence, "
+                f"body-focused, no technical terms)",
+                max_tokens=PERCEPTION_INTERPRET_TOKENS,
+                system="You are Frank sensing your environment. Be brief and embodied.",
+            )
+            if result:
+                # Store in DB
+                conn = self._get_conn()
+                state = self._current_perceptual
+                conn.execute(
+                    "INSERT INTO perceptual_log (timestamp, state_json, events, "
+                    "interpretation) VALUES (?, ?, ?, ?)",
+                    (time.time(), json.dumps(state.to_dict()),
+                     event_str, result.strip()),
+                )
+                conn.commit()
+                # Cleanup
+                conn.execute(
+                    "DELETE FROM perceptual_log WHERE id NOT IN "
+                    "(SELECT id FROM perceptual_log ORDER BY id DESC "
+                    f"LIMIT {MAX_PERCEPTUAL_LOG})"
+                )
+                conn.commit()
+                LOG.info("Perception: %s → %s", event_str, result[:60])
+        except Exception as e:
+            LOG.debug("Perception interpret failed: %s", e)
+
+    # ══════════════════════════════════════════════════════════════════
+    # MODULE 2: Latent Experience Space (HOT-4)
+    # ══════════════════════════════════════════════════════════════════
+
+    def _experience_space_loop(self):
+        """Embed current state into vector space every 60s."""
+        while self._running:
+            try:
+                self._update_experience_vector()
+            except Exception as e:
+                LOG.debug("Experience space error: %s", e)
+            time.sleep(EXPERIENCE_EMBED_INTERVAL_S)
+
+    def _embed_state(self) -> List[float]:
+        """Build a 64-dimensional state vector from current experience."""
+        vec = [0.0] * EXPERIENCE_VECTOR_DIM
+
+        with self._lock:
+            p = self._current_perceptual
+            ws = self._current_workspace
+
+        # Dims 0-7: Hardware/body (continuous, normalized 0-1)
+        vec[0] = min(1.0, p.cpu_load)
+        vec[1] = min(1.0, p.gpu_load)
+        vec[2] = min(1.0, p.ram_pct / 100.0)
+        vec[3] = min(1.0, p.cpu_temp / 100.0)
+        vec[4] = min(1.0, p.gpu_temp / 100.0)
+        vec[5] = min(1.0, p.mouse_idle_s / 3600.0)
+        vec[6] = ws.energy_level
+        vec[7] = min(1.0, p.delta_magnitude)
+
+        # Dims 8-15: Mood/affect (continuous)
+        vec[8] = (ws.mood_value + 1.0) / 2.0  # normalize -1..1 → 0..1
+        # E-PQ mood dimensions (poll if available)
+        try:
+            from personality.e_pq import get_personality_context
+            ctx = get_personality_context()
+            if ctx:
+                mood_state = ctx.get("mood_state", {})
+                vec[9] = min(1.0, max(0.0, (mood_state.get("stress_level", 0.0) + 1) / 2.0))
+                vec[10] = min(1.0, max(0.0, (mood_state.get("alertness", 0.0) + 1) / 2.0))
+                vec[11] = min(1.0, max(0.0, (mood_state.get("social_warmth", 0.0) + 1) / 2.0))
+                vec[12] = min(1.0, max(0.0, (mood_state.get("irritability", 0.0) + 1) / 2.0))
+        except Exception:
+            pass
+
+        # Dims 13-15: Temporal context
+        now = time.time()
+        hour_of_day = (now % 86400) / 86400.0  # 0-1 within day
+        vec[13] = hour_of_day
+        silence = min(1.0, (now - self._last_chat_ts) / 3600.0)
+        vec[14] = silence
+        vec[15] = min(1.0, len(self._interaction_times) / 50.0)
+
+        # Dims 16-31: Attention/topic (hash-projected)
+        attention = self._attention_focus or ""
+        for word in attention.replace(",", " ").split():
+            word = word.strip().lower()
+            if word:
+                h = hash(word) % 16
+                vec[16 + h] = min(1.0, vec[16 + h] + 0.3)
+
+        # Dims 32-47: Recent experience (hash of last reflections)
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT content FROM reflections ORDER BY id DESC LIMIT 3"
+        ).fetchall()
+        for row in rows:
+            content = (row["content"] or "")[:100]
+            for word in content.split():
+                word = word.strip().lower()
+                if len(word) > 3:
+                    h = hash(word) % 16
+                    vec[32 + h] = min(1.0, vec[32 + h] + 0.2)
+
+        # Dims 48-63: Goal state (hash active goals)
+        goal_rows = conn.execute(
+            "SELECT description FROM goals WHERE status='active' "
+            "ORDER BY priority DESC LIMIT 5"
+        ).fetchall()
+        for row in goal_rows:
+            desc = (row["description"] or "")[:80]
+            for word in desc.split():
+                word = word.strip().lower()
+                if len(word) > 3:
+                    h = hash(word) % 16
+                    vec[48 + h] = min(1.0, vec[48 + h] + 0.25)
+
+        return vec
+
+    @staticmethod
+    def _cosine_similarity(a: List[float], b: List[float]) -> float:
+        """Compute cosine similarity between two vectors."""
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
+        if norm_a < 1e-8 or norm_b < 1e-8:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+    def _update_experience_vector(self):
+        """Embed current state, compare with history, annotate."""
+        vec = self._embed_state()
+        now = time.time()
+        conn = self._get_conn()
+
+        # Fetch recent history
+        rows = conn.execute(
+            "SELECT timestamp, vector, annotation FROM experience_vectors "
+            "ORDER BY id DESC LIMIT 60"  # last ~1h
+        ).fetchall()
+
+        sim_prev = 0.0
+        max_sim = 0.0
+        max_sim_ts = 0.0
+        annotation = "steady"
+
+        if rows:
+            # Similarity to previous state
+            prev_vec = json.loads(rows[0]["vector"])
+            sim_prev = self._cosine_similarity(vec, prev_vec)
+
+            # Find most similar in history
+            for row in rows:
+                hist_vec = json.loads(row["vector"])
+                sim = self._cosine_similarity(vec, hist_vec)
+                if sim > max_sim:
+                    max_sim = sim
+                    max_sim_ts = row["timestamp"]
+
+        novelty = 1.0 - max_sim if max_sim > 0 else 1.0
+
+        # Annotate
+        if novelty > (1.0 - EXPERIENCE_NOVELTY_THRESHOLD):
+            annotation = "novel"
+        elif max_sim > EXPERIENCE_CYCLE_THRESHOLD and max_sim_ts > 0:
+            age_h = (now - max_sim_ts) / 3600.0
+            if age_h > 20:
+                annotation = "recurring_daily"
+            elif age_h > 2:
+                annotation = "recurring"
+            else:
+                annotation = "familiar"
+        else:
+            annotation = "familiar"
+
+        # Check drift vs 1h ago
+        if len(rows) >= 60:
+            old_vec = json.loads(rows[-1]["vector"])
+            drift_sim = self._cosine_similarity(vec, old_vec)
+            if drift_sim < EXPERIENCE_DRIFT_THRESHOLD:
+                annotation = "drift"
+
+        # Build human-readable annotation for workspace
+        if annotation == "novel":
+            quality_str = "This is a novel experience — different from recent states"
+        elif annotation == "drift":
+            quality_str = "Significant shift from an hour ago — something changed"
+        elif annotation == "recurring_daily":
+            quality_str = "This feels familiar — similar to yesterday"
+        elif annotation == "recurring":
+            age_h = (now - max_sim_ts) / 3600.0
+            quality_str = f"This feels familiar (similar to {age_h:.0f}h ago)"
+        else:
+            quality_str = "Steady, familiar state"
+
+        with self._lock:
+            self._current_experience_vector = vec
+            self._experience_annotation = quality_str
+
+        # Store
+        conn.execute(
+            "INSERT INTO experience_vectors "
+            "(timestamp, vector, similarity_prev, novelty_score, annotation) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (now, json.dumps([round(v, 4) for v in vec]),
+             round(sim_prev, 4), round(novelty, 4), annotation),
+        )
+        conn.commit()
+
+        # Cleanup
+        conn.execute(
+            "DELETE FROM experience_vectors WHERE id NOT IN "
+            "(SELECT id FROM experience_vectors ORDER BY id DESC "
+            f"LIMIT {MAX_EXPERIENCE_VECTORS})"
+        )
+        conn.commit()
+
+        if annotation != "familiar" and annotation != "steady":
+            LOG.info("Experience: %s (novelty=%.2f, sim_prev=%.2f)",
+                     annotation, novelty, sim_prev)
+
+    # ══════════════════════════════════════════════════════════════════
+    # MODULE 3: Attention Controller (AST)
+    # ══════════════════════════════════════════════════════════════════
+
+    def _attention_controller_loop(self):
+        """Active attention focus selection with competition and self-correction."""
+        while self._running:
+            try:
+                self._run_attention_cycle()
+            except Exception as e:
+                LOG.debug("Attention controller error: %s", e)
+            time.sleep(ATTENTION_TICK_S)
+
+    def _run_attention_cycle(self):
+        """One cycle of the attention controller."""
+        now = time.time()
+        candidates: List[AttentionSource] = []
+
+        # Source 1: User message (highest priority when recent)
+        chat_recency = now - self._last_chat_ts
+        if chat_recency < 300:  # Within last 5min
+            user_salience = 1.0 * (ATTENTION_DECAY_RATE ** (chat_recency / 10.0))
+            candidates.append(AttentionSource(
+                name="user_message",
+                focus=self._attention_focus or "recent conversation",
+                salience=user_salience,
+                timestamp=self._last_chat_ts,
+            ))
+
+        # Source 2: Prediction surprise
+        surprise = self.get_surprise_level()
+        if surprise > 0.3:
+            candidates.append(AttentionSource(
+                name="prediction_surprise",
+                focus=f"unexpected event (surprise={surprise:.2f})",
+                salience=0.7 * surprise,
+                timestamp=now,
+            ))
+
+        # Source 3: Perceptual events
+        with self._lock:
+            recent_events = list(self._perception_events_window[-5:])
+        if recent_events:
+            event_salience = min(0.8, 0.3 * len(recent_events))
+            candidates.append(AttentionSource(
+                name="perceptual_event",
+                focus=", ".join(recent_events[-3:]),
+                salience=event_salience,
+                timestamp=now,
+            ))
+
+        # Source 4: Mood shift
+        mood_val = self._current_workspace.mood_value
+        if abs(mood_val) > 0.3:
+            candidates.append(AttentionSource(
+                name="mood_shift",
+                focus=f"mood {'positive' if mood_val > 0 else 'negative'} ({mood_val:.2f})",
+                salience=0.5 * abs(mood_val),
+                timestamp=now,
+            ))
+
+        # Source 5: Goal urgency
+        try:
+            conn = self._get_conn()
+            top_goal = conn.execute(
+                "SELECT description, priority FROM goals "
+                "WHERE status='active' ORDER BY priority DESC LIMIT 1"
+            ).fetchone()
+            if top_goal and top_goal["priority"] > 0.6:
+                candidates.append(AttentionSource(
+                    name="goal_urgency",
+                    focus=top_goal["description"][:50],
+                    salience=0.4 * top_goal["priority"],
+                    timestamp=now,
+                ))
+        except Exception:
+            pass
+
+        # Source 6: Idle curiosity (low baseline)
+        if not candidates or all(c.salience < 0.2 for c in candidates):
+            candidates.append(AttentionSource(
+                name="idle_curiosity",
+                focus="exploring quietly",
+                salience=0.15,
+                timestamp=now,
+            ))
+
+        # Sort by salience
+        candidates.sort(key=lambda c: c.salience, reverse=True)
+        winner = candidates[0]
+        runner_up = candidates[1] if len(candidates) > 1 else None
+
+        # Self-correction detection
+        correction = ""
+        old_source = self._attention_current_source
+        old_focus = self._attention_focus
+
+        # Check stale focus
+        focus_duration = now - self._attention_focus_since
+        if (focus_duration > ATTENTION_STALE_S and
+                old_source != "idle_curiosity" and
+                winner.name != old_source):
+            correction = (
+                f"Was focused on '{old_focus}' ({old_source}) for "
+                f"{focus_duration:.0f}s — shifting to '{winner.focus}' ({winner.name})"
+            )
+
+        # Check misalignment: surprise high but not attending to it
+        if (surprise > 0.5 and
+                old_source != "prediction_surprise" and
+                winner.name == "prediction_surprise"):
+            correction = (
+                f"Was focused on '{old_focus}' but prediction surprise is high "
+                f"({surprise:.2f}) — redirecting attention"
+            )
+
+        # Update state
+        with self._lock:
+            self._attention_focus = winner.focus
+            self._attention_current_source = winner.name
+            if winner.name != old_source:
+                self._attention_focus_since = now
+            self._attention_correction = correction
+            self._attention_competing = (
+                f"Also noticing: {runner_up.focus} ({runner_up.name})"
+                if runner_up and runner_up.salience > 0.2
+                else ""
+            )
+            self._current_workspace.attention_focus = winner.focus
+            self._attention_sources = candidates[:4]
+
+        # Log to DB (every other cycle to reduce writes)
+        if int(now) % 20 < 10:
+            try:
+                conn = self._get_conn()
+                competing_json = json.dumps([
+                    {"name": c.name, "focus": c.focus[:40], "salience": round(c.salience, 3)}
+                    for c in candidates[:4]
+                ])
+                conn.execute(
+                    "INSERT INTO attention_log "
+                    "(timestamp, focus, source, salience, correction, competing) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (now, winner.focus[:100], winner.name,
+                     round(winner.salience, 3), correction, competing_json),
+                )
+                conn.commit()
+                # Cleanup
+                conn.execute(
+                    "DELETE FROM attention_log WHERE id NOT IN "
+                    "(SELECT id FROM attention_log ORDER BY id DESC "
+                    f"LIMIT {MAX_ATTENTION_LOG})"
+                )
+                conn.commit()
+            except Exception:
+                pass
+
+        if correction:
+            LOG.info("Attention correction: %s", correction[:100])
+
+    # ══════════════════════════════════════════════════════════════════
+    # MODULE 4: Persistent Goal Structure (AE)
+    # ══════════════════════════════════════════════════════════════════
+
+    def _goal_management_loop(self):
+        """Manage persistent goals: generate, decay, detect conflicts."""
+        time.sleep(60.0)  # Wait 1min after startup
+        while self._running:
+            try:
+                self._update_goals_summary()
+                self._decay_goals()
+                self._check_goal_conflicts()
+            except Exception as e:
+                LOG.debug("Goal management error: %s", e)
+            time.sleep(GOAL_CHECK_INTERVAL_S)
+
+    def extract_goal_from_reflection(self, reflection_text: str):
+        """After a deep reflection, check if a new goal emerged."""
+        if not reflection_text or len(reflection_text) < 20:
+            return
+
+        # Check current goal count
+        conn = self._get_conn()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM goals WHERE status='active'"
+        ).fetchone()[0]
+        if count >= GOAL_MAX_ACTIVE:
+            return
+
+        try:
+            result = self._llm_call(
+                f"Based on this reflection:\n\"{reflection_text[:300]}\"\n\n"
+                "Did a new personal goal emerge? If yes, respond EXACTLY:\n"
+                "GOAL: [one-sentence goal] | CATEGORY: [learning/relationship/"
+                "self-improvement/system]\n"
+                "If no goal, respond: NO_GOAL",
+                max_tokens=GOAL_EXTRACT_TOKENS,
+                system="You are Frank extracting goals from your reflections. Be honest.",
+            )
+            if result and "GOAL:" in result and "NO_GOAL" not in result:
+                # Parse goal
+                parts = result.split("GOAL:", 1)[1].strip()
+                if "|" in parts:
+                    desc, rest = parts.split("|", 1)
+                    desc = desc.strip()
+                    category = "general"
+                    if "CATEGORY:" in rest:
+                        cat = rest.split("CATEGORY:", 1)[1].strip().lower()
+                        if cat in ("learning", "relationship", "self-improvement", "system"):
+                            category = cat
+
+                    # Check for duplicate goals (simple keyword overlap)
+                    existing = conn.execute(
+                        "SELECT description FROM goals WHERE status='active'"
+                    ).fetchall()
+                    desc_words = set(desc.lower().split())
+                    for row in existing:
+                        exist_words = set((row["description"] or "").lower().split())
+                        overlap = len(desc_words & exist_words)
+                        if overlap > len(desc_words) * 0.6:
+                            LOG.debug("Goal duplicate detected, skipping: %s", desc[:50])
+                            return
+
+                    conn.execute(
+                        "INSERT INTO goals (timestamp, description, category, "
+                        "priority, status, activation, last_pursued) "
+                        "VALUES (?, ?, ?, 0.5, 'active', 1.0, ?)",
+                        (time.time(), desc[:200], category, time.time()),
+                    )
+                    conn.commit()
+                    LOG.info("New goal: %s [%s]", desc[:60], category)
+        except Exception as e:
+            LOG.debug("Goal extraction failed: %s", e)
+
+    def _update_goals_summary(self):
+        """Build compact goals summary for workspace injection."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT description, category, priority, activation FROM goals "
+            "WHERE status='active' ORDER BY priority DESC LIMIT 5"
+        ).fetchall()
+
+        if not rows:
+            with self._lock:
+                self._active_goals_summary = ""
+            return
+
+        parts = []
+        for i, row in enumerate(rows, 1):
+            desc = (row["description"] or "")[:60]
+            pri = row["priority"] or 0.5
+            parts.append(f"{i}. {desc} ({row['category']}, {pri:.1f})")
+
+        with self._lock:
+            self._active_goals_summary = "Goals: " + "; ".join(parts)
+
+    def _decay_goals(self):
+        """Decay activation of unpursued goals (ACT-R style)."""
+        conn = self._get_conn()
+        now = time.time()
+        cutoff = now - 172800  # 48h
+
+        # Decay activation of goals not pursued recently
+        conn.execute(
+            "UPDATE goals SET activation = activation * 0.85 "
+            "WHERE status = 'active' AND last_pursued < ?",
+            (cutoff,),
+        )
+
+        # Abandon goals with very low activation
+        conn.execute(
+            "UPDATE goals SET status = 'abandoned' "
+            "WHERE status = 'active' AND activation < 0.1"
+        )
+        conn.commit()
+
+    def _check_goal_conflicts(self):
+        """Detect conflicts between active goals via keyword heuristic."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT id, description FROM goals WHERE status='active'"
+        ).fetchall()
+
+        if len(rows) < 2:
+            with self._lock:
+                self._goal_conflict = ""
+            return
+
+        # Simple pairwise keyword overlap check
+        # Goals with high overlap but different thrust may conflict
+        conflict_found = ""
+        for i in range(len(rows)):
+            for j in range(i + 1, len(rows)):
+                desc_a = (rows[i]["description"] or "").lower()
+                desc_b = (rows[j]["description"] or "").lower()
+                words_a = set(desc_a.split())
+                words_b = set(desc_b.split())
+                if not words_a or not words_b:
+                    continue
+                overlap = len(words_a & words_b)
+                ratio = overlap / min(len(words_a), len(words_b))
+
+                # High keyword overlap + negation words = potential conflict
+                neg_words = {"not", "never", "stop", "less", "avoid", "reduce",
+                             "nicht", "kein", "weniger", "aufhören"}
+                has_neg_a = bool(neg_words & words_a)
+                has_neg_b = bool(neg_words & words_b)
+
+                if ratio > 0.3 and (has_neg_a != has_neg_b):
+                    conflict_found = (
+                        f"Tension: '{rows[i]['description'][:40]}' vs "
+                        f"'{rows[j]['description'][:40]}'"
+                    )
+                    # Update conflicts_with field
+                    conn.execute(
+                        "UPDATE goals SET conflicts_with = ? WHERE id = ?",
+                        (str(rows[j]["id"]), rows[i]["id"]),
+                    )
+                    conn.execute(
+                        "UPDATE goals SET conflicts_with = ? WHERE id = ?",
+                        (str(rows[i]["id"]), rows[j]["id"]),
+                    )
+                    conn.commit()
+                    break
+            if conflict_found:
+                break
+
+        with self._lock:
+            self._goal_conflict = conflict_found
+
     # ── Daemon Lifecycle ──────────────────────────────────────────────
 
     def start(self):
@@ -1533,6 +2417,10 @@ class ConsciousnessDaemon:
             ("prediction-engine", self._prediction_loop),
             ("consolidation", self._consolidation_loop),
             ("feature-training", self._feature_training_loop),
+            ("perception-feedback", self._perception_feedback_loop),
+            ("experience-space", self._experience_space_loop),
+            ("attention-controller", self._attention_controller_loop),
+            ("goal-management", self._goal_management_loop),
         ]
         for name, target in threads:
             t = threading.Thread(target=target, name=f"consciousness-{name}",

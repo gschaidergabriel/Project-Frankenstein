@@ -10,14 +10,16 @@ Architecture: Implements Global Workspace Theory (GWT, Baars 1988).
 All sensory channels converge into a unified broadcast that the LLM
 "experiences" as an integrated inner state.
 
-Five phenomenological channels:
+Seven phenomenological channels:
   Body       — Ego-Construct body sensations + hardware metrics
+  Perception — Recurrent perceptual feedback (RPT: events, sensing)
   Mood       — E-PQ mood, temperament, style
   Memory     — World Experience + news + AKAM knowledge
   Identity   — Self-Knowledge (date, subsystems, age)
+  Attention  — Active focus with source and self-correction (AST)
   Environment — User name, conversation topic, skills
 
-Token budget: ~220 tokens (vs ~300-500 for the old pipe-separated format).
+Token budget: ~295 tokens (expanded from ~220 for new consciousness modules).
 """
 
 from typing import Optional, Dict, Any, List
@@ -37,6 +39,8 @@ def build_workspace(
     skill_ctx: str = "",
     extra_parts: Optional[List[str]] = None,
     hw_detail: str = "",
+    perception_ctx: str = "",
+    attention_detail: str = "",
 ) -> str:
     """Build the unified [INNER_WORLD] workspace broadcast.
 
@@ -52,6 +56,10 @@ def build_workspace(
     body = _build_body(ego_ctx, hw_summary, hw_detail)
     if body:
         lines.append("Body: " + body)
+
+    # --- Perception (RPT: recurrent perceptual feedback) ---
+    if perception_ctx:
+        lines.append("Perception: " + _clean_ctx(perception_ctx, max_len=100))
 
     # --- Mood ---
     mood = _build_mood(epq_ctx)
@@ -79,8 +87,12 @@ def build_workspace(
         "Titan=episodic-memory, "
         "WorldExp=causal-patterns, "
         "Genesis=idea-ecosystem, "
-        "Consciousness=idle-thinking+mood-tracking"
+        "Consciousness=perception+experience-space+attention+goals+idle-thinking+mood"
     )
+
+    # --- Attention (AST: active focus with source and self-correction) ---
+    if attention_detail:
+        lines.append("Attention: " + _clean_ctx(attention_detail, max_len=120))
 
     # --- Environment ---
     env = _build_environment(user_name, skill_ctx)

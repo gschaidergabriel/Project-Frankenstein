@@ -86,11 +86,15 @@ Everything communicates via HTTP on localhost:
 
 ```
 Port 8088  ─ Core         (chat orchestration, personality)
+Port 8089  ─ Gateway      (API gateway, auth, rate limiting)
+Port 8090  ─ Modeld       (model lifecycle management)
 Port 8091  ─ Router       (model selection, inference routing)
-Port 8096  ─ Toolboxd     (system tools, skills, todos)
 Port 8092  ─ Desktopd     (X11 automation)
 Port 8093  ─ Webd         (web search)
 Port 8094  ─ Ingestd      (document ingestion, STT)
+Port 8096  ─ Toolboxd     (system tools, skills, todos)
+Port 8197  ─ Voice        (STT/TTS daemon)
+Port 8199  ─ Wallpaper    (live visualization events)
 Port 8101  ─ Llama 3.1    (general LLM, llama.cpp)
 Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp)
 Port 11434 ─ Ollama       (vision models)

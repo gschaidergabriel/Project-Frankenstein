@@ -26,6 +26,9 @@ PyYAML>=6.0
 # --- Security ---
 cryptography>=41.0
 
+# --- Network ---
+scapy>=2.5
+
 # --- GUI (Tkinter overlay — ships with Python, no pip needed) ---
 # tkinter is part of the Python standard library
 

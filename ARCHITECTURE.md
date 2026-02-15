@@ -87,7 +87,12 @@ All services communicate via HTTP REST APIs on localhost:
 | Service | Port | Protocol | Purpose |
 |---------|------|----------|---------|
 | Core | 8088 | HTTP/JSON | Main chat orchestrator |
+| Gateway | 8089 | HTTP/JSON | API gateway, auth, rate limiting |
+| Modeld | 8090 | HTTP/JSON | Model lifecycle management |
 | Router | 8091 | HTTP/JSON | Intelligent model routing |
+| Desktopd | 8092 | HTTP/JSON | X11 desktop automation |
+| Webd | 8093 | HTTP/JSON | Web search (DuckDuckGo) |
+| Ingestd | 8094 | HTTP/JSON | Document ingestion, STT |
 | Toolbox | 8096 | HTTP/JSON | System introspection & tools |
 | Voice | 8197 | HTTP/JSON | STT/TTS daemon |
 | Wallpaper | 8199 | HTTP/JSON | Live visualization events |
@@ -544,7 +549,7 @@ Automatic optimization during gaming sessions.
 
 ### Visual Feedback
 
-#### `/live_wallpaper/frank_wallpaperd.py` - Live Wallpaper
+#### `/live_wallpaper/neural_cybercore_qt.py` - Live Wallpaper
 
 Real-time visual representation of Frank's state.
 
@@ -1067,10 +1072,6 @@ result = process_event(
 ## License
 
 MIT License - See LICENSE file for details.
-
-## Contributing
-
-See CONTRIBUTING.md for guidelines.
 
 ---
 

@@ -109,27 +109,37 @@ Key environment variables:
 
 ```
 Project-Frankenstein/
+├── agentic/         # Multi-step task execution engine
+├── assets/          # Screenshots and media
+├── common/          # Shared utilities
 ├── config/          # Centralized path and GPU configuration
+├── configs/         # Service configuration files
 ├── core/            # Chat orchestration service
-├── router/          # LLM request routing (FastAPI)
+├── desktopd/        # Desktop automation service (X11)
+├── docs/            # Additional documentation
+├── ext/             # Self-improvement daemon (Genesis)
+├── gaming/          # Gaming mode detection and resource management
 ├── gateway/         # API gateway with auth
-├── tools/           # System tools and toolboxd service
-├── services/        # Background daemons (genesis, consciousness, ASRS)
+├── ingestd/         # Document ingestion service
+├── intelligence/    # Intelligence and analysis modules
+├── live_wallpaper/  # Event-driven visual effects (Qt)
+├── modeld/          # Model lifecycle service
+├── papers/          # Research papers (GRF)
 ├── personality/     # Ego-construct, self-knowledge, world-model
+├── router/          # LLM request routing (FastAPI)
+├── scripts/         # Utility and setup scripts
+├── services/        # Background daemons (consciousness, ASRS)
+├── skills/          # Plugin system (native + OpenClaw)
+├── tests/           # Test suite
+├── tools/           # System tools and toolboxd service
 ├── ui/
 │   └── overlay/     # Tkinter chat overlay (mixin architecture)
 │       ├── mixins/  # Feature modules (chat, voice, calendar, etc.)
 │       ├── widgets/ # UI components (message bubbles, file actions)
 │       ├── bsn/     # Layout system
 │       └── services/# HTTP helpers, vision, search
-├── agentic/         # Multi-step task execution engine
-├── skills/          # Plugin system (native + OpenClaw)
 ├── voice/           # Voice daemon, push-to-talk
-├── live_wallpaper/  # Event-driven visual effects
-├── ingestd/         # Document ingestion service
 ├── webd/            # Web search service
-├── desktopd/        # Desktop automation service
-├── modeld/          # Model lifecycle service
 └── writer/          # AI-assisted document editor (EXPERIMENTAL)
 ```
 

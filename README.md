@@ -1,4 +1,4 @@
-# AI-Core / Frank — Fully Integrated AI-OS with Personality
+# F.R.A.N.K. — Fully Integrated AI-OS with Personality
 
 Built by one person in 2 months with zero programming experience. [Read the full story.](ABOUT.md)
 

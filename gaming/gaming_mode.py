@@ -35,7 +35,7 @@ LOG = logging.getLogger("gaming_mode")
 
 # Configuration
 CONFIG = {
-    "check_interval": 2,  # seconds between game checks
+    "check_interval": 1,  # seconds between game checks
     "steam_game_patterns": [
         # Common Steam game process patterns
         r"\.x86_64$",
@@ -327,7 +327,7 @@ def is_frank_running() -> bool:
 
 
 def start_main_frank():
-    """Remove lock file and start the Frank overlay via systemd."""
+    """Remove lock file and start the Frank overlay."""
     LOG.info("Starting main Frank overlay...")
     # Remove lock file FIRST
     try:
@@ -335,16 +335,28 @@ def start_main_frank():
     except Exception:
         pass
     try:
-        result = subprocess.run(
-            ["systemctl", "--user", "start", "frank-overlay.service"],
-            capture_output=True, text=True, timeout=10
+        # Start directly (bypasses systemd After= dependencies on LLM services)
+        env = os.environ.copy()
+        env["DISPLAY"] = ":0"
+        env["PYTHONUNBUFFERED"] = "1"
+        subprocess.Popen(
+            [sys.executable, "/home/ai-core-node/aicore/opt/aicore/ui/chat_overlay.py"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
-        if result.returncode == 0:
-            LOG.info("Frank overlay started")
-        else:
-            LOG.warning(f"Could not start Frank: {result.stderr}")
+        LOG.info("Frank overlay started (direct)")
     except Exception as e:
         LOG.error(f"Error starting Frank: {e}")
+        # Fallback to systemd
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "start", "frank-overlay.service"],
+                capture_output=True, text=True, timeout=10
+            )
+        except Exception:
+            pass
 
 
 def stop_wallpaper():
@@ -455,24 +467,30 @@ def exit_gaming_mode(state: GamingModeState):
     """Exit gaming mode - restart all services and Frank overlay."""
     LOG.info("🎮 EXITING GAMING MODE")
 
-    # 1. Start live wallpaper IMMEDIATELY - no delay!
-    # Wallpaper renders instantly, user sees it appear as soon as game closes
-    start_wallpaper()
+    # 1. Remove lock file FIRST so Frank can start immediately
+    try:
+        GAMING_LOCK.unlink(missing_ok=True)
+    except Exception:
+        pass
 
-    # 2. Reset state immediately so wallpaper won't be stopped again
+    # 2. Reset state immediately
     state.active = False
     state.game_pid = None
     state.game_name = None
     state.save()
 
-    # 3. Start Frank overlay IMMEDIATELY — user sees it within milliseconds
-    start_main_frank()
-
-    # 4. Restart heavy LLM services + network sentinel in background (no user wait)
-    def restore_services():
-        restart_services(state)
-        start_network_sentinel()
-        LOG.info("Gaming mode deactivated! LLM services + Network Sentinel restored.")
+    # 3. Start Frank overlay + wallpaper + LLM services ALL in parallel
+    def restore_all():
+        threads = [
+            threading.Thread(target=start_main_frank, daemon=True),
+            threading.Thread(target=start_wallpaper, daemon=True),
+            threading.Thread(target=lambda: (restart_services(state), start_network_sentinel()), daemon=True),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        LOG.info("Gaming mode deactivated! Frank + Wallpaper + LLM services restored.")
 
     # CRITICAL #3: Store thread reference for cleanup
     restore_thread = threading.Thread(target=restore_services, daemon=True, name="restore_services")
@@ -563,7 +581,7 @@ def daemon_loop():
     LOG.info("Gaming Mode Daemon started")
     exit_grace_counter = 0   # Counts checks since game process disappeared
     EXIT_GRACE_CHECKS = 1    # Wait 1 check (2 sec) before exiting if Steam also gone
-    EXIT_GRACE_STEAM = 2     # Wait 2 checks (4 sec) if Steam still open
+    EXIT_GRACE_STEAM = 1     # Wait 1 check (2 sec) if Steam still open
     MIN_GAMING_SECS = 30     # Minimum 30 sec in gaming mode (game loading protection)
     gaming_entered_at = 0    # Timestamp when gaming mode was entered
 

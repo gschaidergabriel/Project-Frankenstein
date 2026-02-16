@@ -133,7 +133,7 @@ class GenesisWatcher:
         self.overlay._ui_queue.put(
             lambda: self.overlay._add_message(
                 "GENESIS",
-                f"◈ {len(proposals)} neue Verbesserungsvorschläge verfügbar! Popup geöffnet.",
+                f"◈ {len(proposals)} new improvement proposals available! Popup opened.",
                 is_system=True
             )
         )
@@ -164,7 +164,7 @@ class GenesisWatcher:
                 f.write("\n".join(lines) + "\n")
 
             # Notify user
-            status_msg = "✓ Genehmigt" if action == "approve" else "✕ Abgelehnt"
+            status_msg = "✓ Approved" if action == "approve" else "✕ Rejected"
             self.overlay._ui_queue.put(
                 lambda: self.overlay._add_message(
                     "GENESIS",

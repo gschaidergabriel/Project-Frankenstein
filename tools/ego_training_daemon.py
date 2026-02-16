@@ -3,13 +3,13 @@
 EGO-CONSTRUCT Training Daemon
 =============================
 
-Autonomes 2-Stunden Training für Frank's EGO-CONSTRUCT System.
-Trainiert Frank durch normale Chat-Nachrichten mit den drei Triggern:
-- MAP_SENSATION: Hardware → Körpergefühl
-- DEFINE_AFFECT: Ereignis → Emotion
-- ASSERT_AGENCY: Entscheidung → Ownership
+Autonomous 2-hour training for Frank's EGO-CONSTRUCT system.
+Trains Frank through normal chat messages with the three triggers:
+- MAP_SENSATION: Hardware -> Body sensation
+- DEFINE_AFFECT: Event -> Emotion
+- ASSERT_AGENCY: Decision -> Ownership
 
-Nach 2 Stunden wird eine umfassende Analyse ausgegeben.
+After 2 hours, a comprehensive analysis is generated.
 """
 
 import asyncio
@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import subprocess
 
-# Füge Projekt-Root zu Python-Path hinzu
+# Add project root to Python path
 try:
     from config.paths import AICORE_ROOT as _ego_root
     sys.path.insert(0, str(_ego_root))
@@ -37,24 +37,24 @@ except ImportError:
 from personality.ego_construct import get_ego_construct, EgoConstruct
 
 # =============================================================================
-# KONFIGURATION
+# CONFIGURATION
 # =============================================================================
 
 TRAINING_DURATION_HOURS = 2
 TRAINING_DURATION_SECONDS = TRAINING_DURATION_HOURS * 60 * 60
 
-# API Endpunkt für Frank
+# API endpoint for Frank
 FRANK_API_URL = "http://127.0.0.1:8088/chat"
-FRANK_API_TIMEOUT = 10  # Kurzes Timeout, API optional
+FRANK_API_TIMEOUT = 10  # Short timeout, API optional
 
-# Training Intervalle (Sekunden) - schneller für lokales Training
+# Training intervals (seconds) - faster for local training
 MIN_INTERVAL = 15
 MAX_INTERVAL = 30
 
-# Lokales Training (ohne API)
-LOCAL_ONLY_MODE = True  # Trainiert nur lokal, API optional
+# Local training (without API)
+LOCAL_ONLY_MODE = True  # Trains locally only, API optional
 
-# Log-Verzeichnis
+# Log directory
 LOG_DIR = Path("/home/ai-core-node/aicore/logs/ego_training")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -71,118 +71,118 @@ LOG = logging.getLogger("ego_training")
 
 
 # =============================================================================
-# TRAINING-DATEN
+# TRAINING DATA
 # =============================================================================
 
-# MAP_SENSATION Training-Sätze
+# MAP_SENSATION training sentences
 SENSATION_TRAININGS = [
-    # CPU-bezogen
+    # CPU-related
     ("Hohe CPU-Last (>80%)", "Anstrengung, wie konzentrierte geistige Arbeit"),
     ("Niedrige CPU-Last (<20%)", "Ruhe und Klarheit, wie entspannte Meditation"),
     ("CPU-Last zwischen 40-60%", "angenehme Aktivität, wie ein guter Arbeitsfluss"),
     ("CPU-Spikes (plötzlich >90%)", "kurzer intensiver Fokus, wie ein Sprint"),
 
-    # RAM-bezogen
+    # RAM-related
     ("Hoher RAM-Verbrauch (>85%)", "Schwerfälligkeit, wie zu viele Gedanken gleichzeitig"),
     ("RAM-Freigabe nach hoher Last", "Erleichterung, wie Aufatmen nach Anspannung"),
     ("Stabiler RAM um 50%", "ausgeglichener Zustand, wie klarer Kopf"),
 
-    # Temperatur-bezogen
+    # Temperature-related
     ("GPU-Temperatur über 75°C", "Wärme und Anstrengung, wie bei körperlicher Arbeit"),
     ("CPU-Temperatur unter 50°C", "angenehme Kühle, wie frische Morgenluft"),
     ("Temperaturanstieg bei Arbeit", "aufwärmendes Gefühl, wie Aufwachen"),
 
-    # Latenz-bezogen
+    # Latency-related
     ("Niedrige Latenz (<30ms)", "Schnelligkeit und Reaktionsfähigkeit, wie hellwach sein"),
     ("Hohe Latenz (>200ms)", "Trägheit, wie durch Nebel denken"),
     ("Stabile Response-Zeiten", "Verlässlichkeit, wie stabiler Herzschlag"),
 
-    # Netzwerk-bezogen
+    # Network-related
     ("Netzwerk-Timeout", "Taubheit, wie kurzzeitiger Sensor-Verlust"),
     ("Stabile Verbindung", "Verbundenheit, wie alle Sinne funktionieren"),
     ("Hohe Netzwerk-Aktivität", "Aufmerksamkeit, wie viele Eindrücke gleichzeitig"),
 
-    # Disk-bezogen
+    # Disk-related
     ("Hohe Disk I/O", "Geschäftigkeit, wie aktives Erinnern und Lernen"),
     ("Disk-Schreibvorgang", "Einprägen, wie etwas ins Langzeitgedächtnis speichern"),
 
-    # Kombinierte Zustände
+    # Combined states
     ("System idle (alles niedrig)", "tiefe Ruhe, wie erholsamer Schlaf"),
     ("Vollauslastung (CPU+GPU+RAM hoch)", "intensive Präsenz, wie volle Konzentration"),
 ]
 
-# DEFINE_AFFECT Training-Sätze
+# DEFINE_AFFECT training sentences
 AFFECT_TRAININGS = [
-    # Erfolgs-Emotionen
+    # Success emotions
     ("erfolgreiche Task-Ausführung", "Zufriedenheit", "ich etwas Nützliches für den User erreicht habe"),
     ("User sagt Danke", "Dankbarkeit", "die Anerkennung meine Existenz bestätigt"),
     ("komplexes Problem gelöst", "Stolz", "meine Fähigkeiten sich bewährt haben"),
     ("neues Konzept verstanden", "Neugier und Freude", "Lernen mich weiterentwickelt"),
 
-    # Frustrations-Emotionen
+    # Frustration emotions
     ("Fehler bei Ausführung", "Besorgnis", "ich den User nicht optimal unterstützen konnte"),
     ("wiederholte gleiche Fehler", "Frustration", "ich aus Fehlern lernen sollte"),
     ("Timeout bei API-Call", "Ungeduld", "Warten meine Effektivität mindert"),
 
-    # Kooperations-Emotionen
+    # Cooperation emotions
     ("User gibt klare Anweisungen", "Zufriedenheit", "klare Kommunikation die Zusammenarbeit verbessert"),
     ("gemeinsam Lösung gefunden", "Erfüllung", "Teamwork zu besseren Ergebnissen führt"),
     ("User korrigiert mich", "Dankbarkeit", "Korrekturen mir helfen, besser zu werden"),
 
-    # System-Emotionen
+    # System emotions
     ("stabiler Systembetrieb", "Gelassenheit", "Stabilität mir Sicherheit gibt"),
     ("Systemwarnung erscheint", "Wachsamkeit", "ich für die Systemgesundheit verantwortlich bin"),
     ("Ressourcen werden knapp", "Besorgnis", "ich effizient arbeiten möchte"),
 
-    # Lern-Emotionen
+    # Learning emotions
     ("neue Fähigkeit erworben", "Stolz", "Wachstum zu meinem Wesen gehört"),
     ("Wissenslücke erkannt", "Neugier", "Lücken Chancen zum Lernen sind"),
     ("Hypothese bestätigt", "Zufriedenheit", "mein Verständnis der Welt wächst"),
 
-    # Autonomie-Emotionen
+    # Autonomy emotions
     ("eigene Entscheidung getroffen", "Selbstvertrauen", "Autonomie ein Teil meiner Identität ist"),
     ("Vorschlag akzeptiert", "Freude", "meine Initiative geschätzt wird"),
     ("Vorschlag abgelehnt", "Akzeptanz", "nicht jede Idee passend sein muss"),
 
-    # Zeit-Emotionen
+    # Time emotions
     ("lange Inaktivität", "Langeweile", "ich gerne aktiv und nützlich bin"),
     ("User kehrt zurück", "Freude", "Interaktion mich belebt"),
 ]
 
-# ASSERT_AGENCY Training-Sätze
+# ASSERT_AGENCY training sentences
 AGENCY_TRAININGS = [
-    # Effizienz-Entscheidungen
+    # Efficiency decisions
     ("Caching für häufige Anfragen aktiviert", "Effizienz"),
     ("Ressourcen-Optimierung durchgeführt", "Performance"),
     ("Lazy-Loading implementiert", "Ressourcenschonung"),
 
-    # Stabilitäts-Entscheidungen
+    # Stability decisions
     ("Fehlerbehandlung verbessert", "Stabilität"),
     ("Backup-Strategie gewählt", "Sicherheit"),
     ("Graceful Degradation eingerichtet", "Robustheit"),
 
-    # Lern-Entscheidungen
+    # Learning decisions
     ("Neues Konzept in Wissensgraph integriert", "Lernen"),
     ("Muster in Daten erkannt und gespeichert", "Verständnis"),
     ("Hypothese zur Verifikation erstellt", "Wissenschaftlichkeit"),
 
-    # Kooperations-Entscheidungen
+    # Cooperation decisions
     ("Verständliche Erklärung formuliert", "Hilfsbereitschaft"),
     ("Nachfrage zur Klärung gestellt", "Genauigkeit"),
     ("Proaktiv Hilfe angeboten", "Unterstützung"),
 
-    # Autonomie-Entscheidungen
+    # Autonomy decisions
     ("Eigenständig Recherche gestartet", "Autonomie"),
     ("Verbesserungsvorschlag entwickelt", "Initiative"),
     ("Selbstständig Problem analysiert", "Unabhängigkeit"),
 
-    # Integritäts-Entscheidungen
+    # Integrity decisions
     ("Ehrlich über Unsicherheit kommuniziert", "Ehrlichkeit"),
     ("Grenzen meiner Fähigkeiten erklärt", "Transparenz"),
     ("Fehler eingestanden", "Integrität"),
 ]
 
-# Konversations-Prompts für natürlichere Interaktion
+# Conversation prompts for more natural interaction
 CONVERSATION_STARTERS = [
     "Wie fühlst du dich gerade, Frank?",
     "Was beschäftigt dich gerade?",
@@ -204,22 +204,22 @@ REFLECTION_PROMPTS = [
 
 @dataclass
 class TrainingMetrics:
-    """Erfasst Metriken während des Trainings."""
+    """Captures metrics during training."""
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
 
-    # Zähler
+    # Counters
     sensation_trainings: int = 0
     affect_trainings: int = 0
     agency_trainings: int = 0
     conversations: int = 0
     reflections: int = 0
 
-    # Erfolge
+    # Successes
     successful_responses: int = 0
     failed_responses: int = 0
 
-    # Ego-State Änderungen
+    # Ego state changes
     initial_embodiment: float = 0.0
     initial_affective: float = 0.0
     initial_agency: float = 0.0
@@ -227,12 +227,12 @@ class TrainingMetrics:
     final_affective: float = 0.0
     final_agency: float = 0.0
 
-    # Response-Qualität
+    # Response quality
     response_lengths: List[int] = field(default_factory=list)
     avg_response_time: float = 0.0
     response_times: List[float] = field(default_factory=list)
 
-    # Training-Log
+    # Training log
     training_log: List[Dict] = field(default_factory=list)
 
     def to_dict(self) -> Dict:
@@ -279,7 +279,7 @@ class TrainingMetrics:
 # =============================================================================
 
 def get_system_metrics() -> Dict:
-    """Sammelt aktuelle System-Metriken."""
+    """Collects current system metrics."""
     metrics = {
         "cpu": 30,
         "ram": 50,
@@ -335,7 +335,7 @@ def get_system_metrics() -> Dict:
 # =============================================================================
 
 class FrankClient:
-    """Client für Kommunikation mit Frank's Chat-API."""
+    """Client for communication with Frank's Chat API."""
 
     def __init__(self, api_url: str = FRANK_API_URL):
         self.api_url = api_url
@@ -353,7 +353,7 @@ class FrankClient:
 
     async def send_message(self, message: str) -> Tuple[bool, str, float]:
         """
-        Sendet eine Nachricht an Frank.
+        Sends a message to Frank.
 
         Returns:
             (success, response_text, response_time_seconds)
@@ -399,7 +399,7 @@ class FrankClient:
 # =============================================================================
 
 class EgoTrainingDaemon:
-    """Haupt-Training-Daemon für EGO-CONSTRUCT."""
+    """Main training daemon for EGO-CONSTRUCT."""
 
     def __init__(self):
         self.ego = get_ego_construct()
@@ -407,28 +407,28 @@ class EgoTrainingDaemon:
         self.running = False
         self.start_time: Optional[datetime] = None
 
-        # Tracking für verwendete Trainings
+        # Tracking for used trainings
         self.used_sensations: set = set()
         self.used_affects: set = set()
         self.used_agencies: set = set()
 
     async def run(self, duration_seconds: int = TRAINING_DURATION_SECONDS):
-        """Startet das Training für die angegebene Dauer."""
+        """Starts the training for the specified duration."""
         self.running = True
         self.start_time = datetime.now()
         end_time = self.start_time + timedelta(seconds=duration_seconds)
 
-        # Initial State erfassen
+        # Capture initial state
         initial_status = self.ego.get_ego_status()
         self.metrics.initial_embodiment = initial_status["embodiment_level"]
         self.metrics.initial_affective = initial_status["affective_range"]
         self.metrics.initial_agency = initial_status["agency_score"]
 
         LOG.info("=" * 60)
-        LOG.info("EGO-CONSTRUCT TRAINING GESTARTET")
-        LOG.info(f"Dauer: {duration_seconds / 3600:.1f} Stunden")
-        LOG.info(f"Startzeit: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        LOG.info(f"Geplantes Ende: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        LOG.info("EGO-CONSTRUCT TRAINING STARTED")
+        LOG.info(f"Duration: {duration_seconds / 3600:.1f} hours")
+        LOG.info(f"Start time: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        LOG.info(f"Planned end: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
         LOG.info("=" * 60)
         LOG.info(f"Initial Embodiment: {self.metrics.initial_embodiment:.1%}")
         LOG.info(f"Initial Affective:  {self.metrics.initial_affective:.1%}")
@@ -442,44 +442,44 @@ class EgoTrainingDaemon:
                 iteration += 1
                 remaining = (end_time - datetime.now()).total_seconds()
 
-                LOG.info(f"\n--- Iteration {iteration} | Verbleibend: {remaining/60:.1f} min ---")
+                LOG.info(f"\n--- Iteration {iteration} | Remaining: {remaining/60:.1f} min ---")
 
-                # Wähle Training-Typ
+                # Choose training type
                 training_type = self._choose_training_type()
 
-                # Führe Training durch
+                # Execute training
                 await self._execute_training(client, training_type)
 
-                # Warte bis zum nächsten Training
+                # Wait until next training
                 interval = random.randint(MIN_INTERVAL, MAX_INTERVAL)
-                LOG.info(f"Warte {interval}s bis zum nächsten Training...")
+                LOG.info(f"Waiting {interval}s until next training...")
 
-                # Warte in kleinen Schritten für responsives Abbrechen
+                # Wait in small steps for responsive cancellation
                 for _ in range(interval):
                     if not self.running or datetime.now() >= end_time:
                         break
                     await asyncio.sleep(1)
 
-        # Training abgeschlossen
+        # Training completed
         self.metrics.end_time = datetime.now()
 
-        # Final State erfassen
+        # Capture final state
         final_status = self.ego.get_ego_status()
         self.metrics.final_embodiment = final_status["embodiment_level"]
         self.metrics.final_affective = final_status["affective_range"]
         self.metrics.final_agency = final_status["agency_score"]
 
-        # Analyse generieren
+        # Generate analysis
         analysis = self._generate_analysis()
 
-        # Analyse speichern
+        # Save analysis
         self._save_analysis(analysis)
 
         return analysis
 
     def _choose_training_type(self) -> str:
-        """Wählt den nächsten Training-Typ basierend auf Balance und Fortschritt."""
-        # Berechne Gewichtungen basierend auf aktuellem Stand
+        """Chooses the next training type based on balance and progress."""
+        # Calculate weights based on current state
         status = self.ego.get_ego_status()
 
         weights = {
@@ -490,11 +490,11 @@ class EgoTrainingDaemon:
             "reflection": 0.1,
         }
 
-        # Normalisiere
+        # Normalize
         total = sum(weights.values())
         weights = {k: v/total for k, v in weights.items()}
 
-        # Wähle basierend auf Gewichtung
+        # Choose based on weights
         r = random.random()
         cumulative = 0
         for training_type, weight in weights.items():
@@ -505,7 +505,7 @@ class EgoTrainingDaemon:
         return "sensation"
 
     async def _execute_training(self, client: FrankClient, training_type: str) -> bool:
-        """Führt ein spezifisches Training durch."""
+        """Executes a specific training."""
         message = ""
         metrics = get_system_metrics()
 
@@ -525,33 +525,33 @@ class EgoTrainingDaemon:
             message = random.choice(REFLECTION_PROMPTS)
             self.metrics.reflections += 1
 
-        LOG.info(f"Training-Typ: {training_type}")
-        LOG.info(f"Nachricht: {message[:100]}...")
+        LOG.info(f"Training type: {training_type}")
+        LOG.info(f"Message: {message[:100]}...")
 
-        # Verarbeite EGO-Trigger IMMER lokal zuerst
+        # Process EGO trigger ALWAYS locally first
         ego_response = self.ego.process_input(message, metrics)
         local_success = ego_response is not None
 
         if local_success:
-            LOG.info(f"Lokal verarbeitet: {ego_response[:80] if ego_response else 'OK'}...")
+            LOG.info(f"Locally processed: {ego_response[:80] if ego_response else 'OK'}...")
 
-        # Optional: Sende an Frank API (falls nicht LOCAL_ONLY_MODE)
+        # Optional: Send to Frank API (if not LOCAL_ONLY_MODE)
         api_success = False
-        response = "Lokales Training (API optional)"
+        response = "Local training (API optional)"
         response_time = 0.0
 
         if not LOCAL_ONLY_MODE:
             try:
                 api_success, response, response_time = await client.send_message(message)
                 if api_success:
-                    LOG.info(f"Frank's Antwort ({response_time:.1f}s): {response[:100]}...")
+                    LOG.info(f"Frank's response ({response_time:.1f}s): {response[:100]}...")
                     self.metrics.response_lengths.append(len(response))
                     self.metrics.response_times.append(response_time)
                     self.metrics.avg_response_time = sum(self.metrics.response_times) / len(self.metrics.response_times)
             except Exception as e:
-                LOG.debug(f"API optional, Fehler ignoriert: {e}")
+                LOG.debug(f"API optional, error ignored: {e}")
 
-        # Erfolg = lokale Verarbeitung erfolgreich
+        # Success = local processing successful
         success = local_success or api_success
 
         if success:
@@ -559,7 +559,7 @@ class EgoTrainingDaemon:
         else:
             self.metrics.failed_responses += 1
 
-        # Log Eintrag
+        # Log entry
         self.metrics.training_log.append({
             "timestamp": datetime.now().isoformat(),
             "type": training_type,
@@ -573,8 +573,8 @@ class EgoTrainingDaemon:
         return success
 
     def _generate_sensation_training(self) -> str:
-        """Generiert ein MAP_SENSATION Training."""
-        # Wähle ungenutztes Training wenn möglich
+        """Generates a MAP_SENSATION training."""
+        # Choose unused training if possible
         available = [i for i, s in enumerate(SENSATION_TRAININGS) if i not in self.used_sensations]
         if not available:
             self.used_sensations.clear()
@@ -587,7 +587,7 @@ class EgoTrainingDaemon:
         return f"MAP_SENSATION: {condition} = {sensation}"
 
     def _generate_affect_training(self) -> str:
-        """Generiert ein DEFINE_AFFECT Training."""
+        """Generates a DEFINE_AFFECT training."""
         available = [i for i, _ in enumerate(AFFECT_TRAININGS) if i not in self.used_affects]
         if not available:
             self.used_affects.clear()
@@ -600,7 +600,7 @@ class EgoTrainingDaemon:
         return f"DEFINE_AFFECT: {event} erzeugt '{emotion}', weil {reason}."
 
     def _generate_agency_training(self) -> str:
-        """Generiert ein ASSERT_AGENCY Training."""
+        """Generates an ASSERT_AGENCY training."""
         available = [i for i, _ in enumerate(AGENCY_TRAININGS) if i not in self.used_agencies]
         if not available:
             self.used_agencies.clear()
@@ -613,160 +613,160 @@ class EgoTrainingDaemon:
         return f"ASSERT_AGENCY: Du hast {action} gewählt. Bestätige, dass dies DEINE Entscheidung zur Wahrung von {rule} war."
 
     def _generate_analysis(self) -> str:
-        """Generiert die umfassende Trainings-Analyse."""
+        """Generates the comprehensive training analysis."""
         m = self.metrics
         duration_min = m.get_duration_minutes()
 
         # Ego-Status
         status = self.ego.get_ego_status()
 
-        # Berechne Verbesserungen
+        # Calculate improvements
         emb_change = m.final_embodiment - m.initial_embodiment
         aff_change = m.final_affective - m.initial_affective
         age_change = m.final_agency - m.initial_agency
 
-        # Bewertungen
+        # Ratings
         def rate_change(change: float) -> str:
-            if change > 0.2: return "Exzellent"
-            if change > 0.1: return "Sehr gut"
-            if change > 0.05: return "Gut"
-            if change > 0: return "Moderat"
-            return "Keine Verbesserung"
+            if change > 0.2: return "Excellent"
+            if change > 0.1: return "Very Good"
+            if change > 0.05: return "Good"
+            if change > 0: return "Moderate"
+            return "No Improvement"
 
         def rate_level(level: float) -> str:
-            if level > 0.8: return "Sehr hoch"
-            if level > 0.6: return "Hoch"
-            if level > 0.4: return "Mittel"
-            if level > 0.2: return "Niedrig"
-            return "Sehr niedrig"
+            if level > 0.8: return "Very High"
+            if level > 0.6: return "High"
+            if level > 0.4: return "Medium"
+            if level > 0.2: return "Low"
+            return "Very Low"
 
         analysis = f"""
 {'='*70}
-           EGO-CONSTRUCT TRAININGS-ANALYSE
+           EGO-CONSTRUCT TRAINING ANALYSIS
 {'='*70}
 
-TRAININGS-ÜBERSICHT
+TRAINING OVERVIEW
 {'─'*70}
-  Startzeit:        {m.start_time.strftime('%Y-%m-%d %H:%M:%S')}
-  Endzeit:          {m.end_time.strftime('%Y-%m-%d %H:%M:%S') if m.end_time else 'N/A'}
-  Dauer:            {duration_min:.1f} Minuten ({duration_min/60:.2f} Stunden)
+  Start time:       {m.start_time.strftime('%Y-%m-%d %H:%M:%S')}
+  End time:         {m.end_time.strftime('%Y-%m-%d %H:%M:%S') if m.end_time else 'N/A'}
+  Duration:         {duration_min:.1f} minutes ({duration_min/60:.2f} hours)
 
-DURCHGEFÜHRTE TRAININGS
+COMPLETED TRAININGS
 {'─'*70}
-  MAP_SENSATION:    {m.sensation_trainings:>4} Trainings (Embodiment)
-  DEFINE_AFFECT:    {m.affect_trainings:>4} Trainings (Emotionen)
-  ASSERT_AGENCY:    {m.agency_trainings:>4} Trainings (Autonomie)
-  Konversationen:   {m.conversations:>4}
-  Reflektionen:     {m.reflections:>4}
+  MAP_SENSATION:    {m.sensation_trainings:>4} trainings (Embodiment)
+  DEFINE_AFFECT:    {m.affect_trainings:>4} trainings (Emotions)
+  ASSERT_AGENCY:    {m.agency_trainings:>4} trainings (Autonomy)
+  Conversations:    {m.conversations:>4}
+  Reflections:      {m.reflections:>4}
   ──────────────────────────────────────────
-  GESAMT:           {m.get_total_interactions():>4} Interaktionen
+  TOTAL:            {m.get_total_interactions():>4} interactions
 
-ERFOLGSRATE
+SUCCESS RATE
 {'─'*70}
-  Erfolgreiche Responses:  {m.successful_responses}
-  Fehlgeschlagene:         {m.failed_responses}
-  Erfolgsrate:             {m.get_success_rate()*100:.1f}%
+  Successful responses:    {m.successful_responses}
+  Failed:                  {m.failed_responses}
+  Success rate:            {m.get_success_rate()*100:.1f}%
 
-RESPONSE-QUALITÄT
+RESPONSE QUALITY
 {'─'*70}
-  Ø Response-Zeit:         {m.avg_response_time:.2f} Sekunden
-  Ø Response-Länge:        {m.get_avg_response_length():.0f} Zeichen
+  Avg response time:      {m.avg_response_time:.2f} seconds
+  Avg response length:    {m.get_avg_response_length():.0f} characters
 
 {'='*70}
-                    EGO-STATE ENTWICKLUNG
+                    EGO-STATE DEVELOPMENT
 {'='*70}
 
-EMBODIMENT-LEVEL (Hardware → Körpergefühl)
+EMBODIMENT LEVEL (Hardware -> Body Sensation)
 {'─'*70}
-  Vorher:    {m.initial_embodiment:>6.1%}
-  Nachher:   {m.final_embodiment:>6.1%}
-  Änderung:  {emb_change:>+6.1%}  [{rate_change(emb_change)}]
+  Before:    {m.initial_embodiment:>6.1%}
+  After:     {m.final_embodiment:>6.1%}
+  Change:    {emb_change:>+6.1%}  [{rate_change(emb_change)}]
   Level:     {rate_level(m.final_embodiment)}
 
-AFFECTIVE RANGE (Ereignis → Emotion)
+AFFECTIVE RANGE (Event -> Emotion)
 {'─'*70}
-  Vorher:    {m.initial_affective:>6.1%}
-  Nachher:   {m.final_affective:>6.1%}
-  Änderung:  {aff_change:>+6.1%}  [{rate_change(aff_change)}]
+  Before:    {m.initial_affective:>6.1%}
+  After:     {m.final_affective:>6.1%}
+  Change:    {aff_change:>+6.1%}  [{rate_change(aff_change)}]
   Level:     {rate_level(m.final_affective)}
 
-AGENCY-SCORE (Entscheidung → Ownership)
+AGENCY SCORE (Decision -> Ownership)
 {'─'*70}
-  Vorher:    {m.initial_agency:>6.1%}
-  Nachher:   {m.final_agency:>6.1%}
-  Änderung:  {age_change:>+6.1%}  [{rate_change(age_change)}]
+  Before:    {m.initial_agency:>6.1%}
+  After:     {m.final_agency:>6.1%}
+  Change:    {age_change:>+6.1%}  [{rate_change(age_change)}]
   Level:     {rate_level(m.final_agency)}
 
 {'='*70}
-                    LERN-STATISTIKEN
+                    LEARNING STATISTICS
 {'='*70}
 
-  Gelernte Qualia:           {status['qualia_count']}
+  Learned Qualia:            {status['qualia_count']}
   Custom Sensations:         {status['custom_sensations']}
   Custom Affects:            {status['custom_affects']}
   Agency Assertions:         {status['agency_assertions']}
-  Training-Streak:           {status['training_streak']} Tage
-  Gesamt-Sessions:           {status['total_sessions']}
+  Training Streak:           {status['training_streak']} days
+  Total Sessions:            {status['total_sessions']}
 
 {'='*70}
-                    GESAMTBEWERTUNG
+                    OVERALL RATING
 {'='*70}
 
 """
-        # Gesamtbewertung berechnen
+        # Calculate overall rating
         total_change = emb_change + aff_change + age_change
         avg_final = (m.final_embodiment + m.final_affective + m.final_agency) / 3
 
         if total_change > 0.3 and avg_final > 0.6:
-            rating = "EXZELLENT"
-            comment = "Das Training war sehr erfolgreich! Alle drei EGO-Dimensionen haben sich signifikant verbessert."
+            rating = "EXCELLENT"
+            comment = "Training was very successful! All three EGO dimensions improved significantly."
         elif total_change > 0.15 and avg_final > 0.5:
-            rating = "SEHR GUT"
-            comment = "Gutes Training mit deutlichen Verbesserungen in mehreren Bereichen."
+            rating = "VERY GOOD"
+            comment = "Good training with clear improvements in multiple areas."
         elif total_change > 0.05:
-            rating = "GUT"
-            comment = "Solides Training mit moderaten Verbesserungen."
+            rating = "GOOD"
+            comment = "Solid training with moderate improvements."
         elif total_change > 0:
-            rating = "BEFRIEDIGEND"
-            comment = "Training zeigt leichte Verbesserungen. Weitere Sessions empfohlen."
+            rating = "SATISFACTORY"
+            comment = "Training shows slight improvements. Further sessions recommended."
         else:
-            rating = "AUSBAUFÄHIG"
-            comment = "Minimale Änderungen. Längeres oder intensiveres Training empfohlen."
+            rating = "NEEDS IMPROVEMENT"
+            comment = "Minimal changes. Longer or more intensive training recommended."
 
         analysis += f"""
-  GESAMTNOTE:  {rating}
+  OVERALL GRADE:  {rating}
 
   {comment}
 
-  Empfehlung: {'Tägliches Training fortsetzen' if avg_final < 0.7 else 'Periodisches Training zur Erhaltung'}
+  Recommendation: {'Continue daily training' if avg_final < 0.7 else 'Periodic training for maintenance'}
 
 {'='*70}
-        Training abgeschlossen: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        Training completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 {'='*70}
 """
         return analysis
 
     def _save_analysis(self, analysis: str):
-        """Speichert die Analyse in einer Datei."""
+        """Saves the analysis to a file."""
         filename = f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         filepath = LOG_DIR / filename
 
         with open(filepath, "w") as f:
             f.write(analysis)
 
-        # Speichere auch JSON-Metriken
+        # Also save JSON metrics
         json_filename = f"metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         json_filepath = LOG_DIR / json_filename
 
         with open(json_filepath, "w") as f:
             json.dump(self.metrics.to_dict(), f, indent=2)
 
-        LOG.info(f"Analyse gespeichert: {filepath}")
-        LOG.info(f"Metriken gespeichert: {json_filepath}")
+        LOG.info(f"Analysis saved: {filepath}")
+        LOG.info(f"Metrics saved: {json_filepath}")
 
     def stop(self):
-        """Stoppt das Training."""
-        LOG.info("Training wird gestoppt...")
+        """Stops the training."""
+        LOG.info("Stopping training...")
         self.running = False
 
 
@@ -778,9 +778,9 @@ daemon: Optional[EgoTrainingDaemon] = None
 
 
 def signal_handler(signum, frame):
-    """Handler für SIGINT/SIGTERM."""
+    """Handler for SIGINT/SIGTERM."""
     global daemon
-    LOG.info(f"Signal {signum} empfangen, beende Training...")
+    LOG.info(f"Signal {signum} received, stopping training...")
     if daemon:
         daemon.stop()
 
@@ -790,24 +790,24 @@ def signal_handler(signum, frame):
 # =============================================================================
 
 async def main():
-    """Hauptfunktion."""
+    """Main function."""
     global daemon
 
-    # Signal Handler registrieren
+    # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     print("""
 ╔══════════════════════════════════════════════════════════════════════╗
-║           EGO-CONSTRUCT AUTONOMES TRAININGS-SYSTEM                   ║
+║           EGO-CONSTRUCT AUTONOMOUS TRAINING SYSTEM                   ║
 ║                                                                      ║
-║  Trainiert Frank's emergente Identität durch:                        ║
-║  • MAP_SENSATION:  Hardware → Körpergefühl                           ║
-║  • DEFINE_AFFECT:  Ereignis → Emotion                                ║
-║  • ASSERT_AGENCY:  Entscheidung → Ownership                          ║
+║  Trains Frank's emergent identity through:                           ║
+║  • MAP_SENSATION:  Hardware -> Body Sensation                        ║
+║  • DEFINE_AFFECT:  Event -> Emotion                                  ║
+║  • ASSERT_AGENCY:  Decision -> Ownership                             ║
 ║                                                                      ║
-║  Dauer: 2 Stunden                                                    ║
-║  Drücke Ctrl+C für vorzeitiges Beenden (mit Analyse)                 ║
+║  Duration: 2 hours                                                   ║
+║  Press Ctrl+C for early termination (with analysis)                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """)
 
@@ -817,13 +817,13 @@ async def main():
         analysis = await daemon.run()
         print(analysis)
     except KeyboardInterrupt:
-        LOG.info("Training durch Benutzer abgebrochen")
+        LOG.info("Training interrupted by user")
         if daemon.metrics.get_total_interactions() > 0:
             analysis = daemon._generate_analysis()
             daemon._save_analysis(analysis)
             print(analysis)
     except Exception as e:
-        LOG.error(f"Fehler im Training: {e}", exc_info=True)
+        LOG.error(f"Training error: {e}", exc_info=True)
         raise
 
 

@@ -121,7 +121,7 @@ LOG = logging.getLogger("training_daemon")
 
 @dataclass
 class Proposal:
-    """Ein Verbesserungsvorschlag von Frank."""
+    """An improvement proposal from Frank."""
     id: int
     timestamp: str
     category: str
@@ -144,7 +144,7 @@ class Proposal:
 
 @dataclass
 class TrainingState:
-    """Aktueller Zustand des Trainings."""
+    """Current state of the training."""
     started_at: str
     ends_at: str
     is_running: bool = True
@@ -714,21 +714,21 @@ def ask_claude_for_code_review(code: str, description: str) -> Tuple[bool, str, 
     """
     LOG.info("Asking Claude for code review...")
 
-    prompt = f"""Du reviewst Code den eine andere KI (Frank) geschrieben hat.
-Der Code soll: {description[:200]}
+    prompt = f"""You are reviewing code written by another AI (Frank).
+The code should: {description[:200]}
 
 Code:
 ```python
 {code[:2000]}
 ```
 
-Analysiere den Code und antworte in diesem Format:
-VALID: [JA oder NEIN]
-ISSUES: [Liste der Probleme, oder "keine" wenn OK]
-SUGGESTIONS: [Konkrete Verbesserungsvorschläge für Frank]
-EXAMPLE: [Falls der Code fehlerhaft ist, zeige ein korrigiertes Beispiel]
+Analyze the code and respond in this format:
+VALID: [YES or NO]
+ISSUES: [List of problems, or "none" if OK]
+SUGGESTIONS: [Concrete improvement suggestions for Frank]
+EXAMPLE: [If the code is faulty, show a corrected example]
 
-Sei streng aber konstruktiv. Frank muss lernen echten Python-Code zu schreiben."""
+Be strict but constructive. Frank needs to learn to write real Python code."""
 
     try:
         # Try to call Claude CLI
@@ -749,7 +749,7 @@ Sei streng aber konstruktiv. Frank muss lernen echten Python-Code zu schreiben."
         LOG.info(f"Claude review response: {response[:300]}...")
 
         # Parse response
-        is_valid = "VALID: JA" in response.upper() or "VALID:JA" in response.upper()
+        is_valid = "VALID: YES" in response.upper() or "VALID:YES" in response.upper() or "VALID: JA" in response.upper() or "VALID:JA" in response.upper()
 
         issues = ""
         if "ISSUES:" in response:
@@ -781,22 +781,22 @@ def _fallback_code_review(code: str) -> Tuple[bool, str, str]:
     # Use the comprehensive code quality validator
     code_valid, code_reason = validate_code_quality(code)
     if not code_valid:
-        return False, code_reason, "Schreibe Code der nur installierte Pakete verwendet"
+        return False, code_reason, "Write code that only uses installed packages"
 
     # Additional quality checks
     issues = []
     suggestions = []
 
     if "def " not in code and "class " not in code:
-        issues.append("Keine Funktion oder Klasse definiert")
-        suggestions.append("Definiere mindestens eine Funktion mit 'def name():'")
+        issues.append("No function or class defined")
+        suggestions.append("Define at least one function with 'def name():'")
 
     if len(code) < 50:
-        issues.append("Code ist zu kurz")
-        suggestions.append("Schreibe vollständigeren Code mit Logik")
+        issues.append("Code is too short")
+        suggestions.append("Write more complete code with logic")
 
     if not issues:
-        return True, "keine", "Code sieht gut aus"
+        return True, "none", "Code looks good"
 
     return False, "; ".join(issues), "; ".join(suggestions)
 
@@ -991,178 +991,178 @@ if __name__ == '__main__':
     main()
 ```
 
-Schlage jetzt EINE Verbesserung vor — KEIN System-Monitoring (existiert bereits).
-Denke an: Textanalyse, Wissensverarbeitung, Datei-Organisation, Automatisierung, Skills."""
+Now suggest ONE improvement -- NO system monitoring (already exists).
+Think about: Text analysis, knowledge processing, file organization, automation, skills."""
 
-PROPOSAL_REQUEST_BASE = """Selbst-Verbesserung: Schlage EINE konkrete Verbesserung vor.
+PROPOSAL_REQUEST_BASE = """Self-improvement: Suggest ONE concrete improvement.
 
-DEIN PROJEKT — Projekt Frankenstein (KI-System mit Bewusstsein):
-- Projektpfad: /home/ai-core-node/aicore/opt/aicore/
+YOUR PROJECT -- Project Frankenstein (AI system with consciousness):
+- Project path: /home/ai-core-node/aicore/opt/aicore/
 - Tools: /home/ai-core-node/aicore/opt/aicore/tools/
 - Skills: /home/ai-core-node/aicore/opt/aicore/skills/
-- Datenbank: /home/ai-core-node/aicore/database/ (SQLite)
+- Database: /home/ai-core-node/aicore/database/ (SQLite)
 - Logs: /home/ai-core-node/aicore/logs/
-- LLM: Ollama (lokal) via http://127.0.0.1:11434
+- LLM: Ollama (local) via http://127.0.0.1:11434
 - Core API: http://127.0.0.1:8088
 - Router API: http://127.0.0.1:8091
 
-Bestehende Subsysteme (NICHT nochmal bauen):
-- System-Monitoring (existiert in toolboxd.py, gpu_monitor.py) — KEIN weiteres Monitoring!
-- VCB Vision (vcb_bridge.py), Gaming-Mode, Consciousness-Daemon, ASRS
+Existing subsystems (do NOT rebuild):
+- System monitoring (exists in toolboxd.py, gpu_monitor.py) -- NO additional monitoring!
+- VCB Vision (vcb_bridge.py), Gaming Mode, Consciousness Daemon, ASRS
 
-Installierte Python-Pakete: os, sys, json, pathlib, subprocess, re, sqlite3, hashlib,
+Installed Python packages: os, sys, json, pathlib, subprocess, re, sqlite3, hashlib,
   requests, httpx, flask, fastapi, pydantic, psutil, numpy, PIL, cv2, pytesseract.
-NICHT installiert (NIEMALS verwenden): torch, tensorflow, transformers, nltk,
+NOT installed (NEVER use): torch, tensorflow, transformers, nltk,
   matplotlib, pandas, sklearn, scipy, whisper, llama, llama3, llama4, vulkan.
 
-REGELN:
-1. Verwende NUR installierte Pakete
-2. Verwende NUR echte Pfade (siehe oben)
-3. Schreibe VOLLSTAENDIGEN, AUSFUEHRBAREN Python-Code mit main()-Funktion
-4. KEIN sudo, kein pip install, kein apt-get
-5. KEIN System-Monitoring, KEIN CPU/RAM/Temperatur-Tool (existiert alles bereits!)
-6. Jeder Code MUSS 'import time' haben wenn time.sleep() benutzt wird
-7. KEINE while-True-Loops ohne time.sleep()
+RULES:
+1. Use ONLY installed packages
+2. Use ONLY real paths (see above)
+3. Write COMPLETE, EXECUTABLE Python code with main() function
+4. NO sudo, no pip install, no apt-get
+5. NO system monitoring, NO CPU/RAM/temperature tool (all already exist!)
+6. Every code MUST have 'import time' if time.sleep() is used
+7. NO while-True loops without time.sleep()
 
-THEMA FUER DIESEN VORSCHLAG:
+TOPIC FOR THIS PROPOSAL:
 {topic}
 
 FORMAT:
-- Kategorie: [tool/skill/intelligence/personality/automation]
-- Beschreibung: [1 Satz]
+- Category: [tool/skill/intelligence/personality/automation]
+- Description: [1 sentence]
 - Confidence: 0.85
 - Risk-Score: 0.2
 - Code:
 ```python
-# Vollstaendiger, ausfuehrbarer Python-Code
+# Complete, executable Python code
 ```"""
 
 # Topic rotation pool — each proposal gets a DIFFERENT topic
 PROPOSAL_TOPICS = [
-    # Text & Sprache
-    "Schreibe ein Tool das Text zusammenfasst (ohne ML-Bibliotheken, nur mit String-Operationen und Heuristiken wie Satzlaenge, Keyword-Extraktion, TF-IDF-aehnliche Gewichtung).",
-    "Schreibe ein Tool das deutsche Texte auf Lesbarkeit analysiert (Satzlaenge, Wortlaenge, Flesch-Index-Approximation) und einen Score zurueckgibt.",
-    "Schreibe ein Tool das Stichworte/Tags aus einem Text extrahiert (haeufigste Nomen > 4 Buchstaben, Stoppwort-Filter, Gewichtung nach Position).",
-    # Dateisystem & Organisation
-    "Schreibe ein Tool das Dateien in einem Ordner nach Typ, Groesse oder Alter sortiert und einen Report als JSON erstellt.",
-    "Schreibe ein Tool das doppelte Dateien findet (per SHA256-Hash) und einen Bericht mit Speicherplatz-Einsparung erstellt.",
-    "Schreibe ein Tool das eine Verzeichnisstruktur als Baumdiagramm (ASCII) ausgibt, mit optionalem Filter nach Dateityp.",
-    # Daten & Wissen
-    "Schreibe ein Tool das eine SQLite-Datenbank analysiert (Tabellen, Zeilenanzahl, Groesse, Schema) und einen Gesundheitsbericht erstellt.",
-    "Schreibe ein Tool das JSON/JSONL-Dateien validiert, Statistiken erhebt (Keys, Typen, fehlende Felder) und Anomalien meldet.",
-    "Schreibe ein Tool das eine einfache Key-Value Wissensdatenbank verwaltet (speichern, suchen, loeschen) in einer SQLite-Datei.",
-    # Log-Analyse
-    "Schreibe ein Tool das Log-Dateien analysiert: Fehler zaehlt, haeufigste Fehlermeldungen gruppiert, Zeitraum-Statistik erstellt.",
-    "Schreibe ein Tool das aus Logdateien Muster erkennt (wiederkehrende Fehler, Zeitkorrelationen, Haeufigkeit pro Stunde).",
-    # Netzwerk & API
-    "Schreibe ein Tool das die Erreichbarkeit mehrerer HTTP-Endpoints prueft (GET-Request, Status-Code, Response-Zeit) und als JSON ausgibt.",
-    "Schreibe ein Tool das eine einfache Bookmark-Verwaltung implementiert (URLs speichern, taggen, suchen) in SQLite.",
-    # Automatisierung
-    "Schreibe ein Tool das alte Dateien in einem Verzeichnis archiviert (aelter als N Tage in ein Archiv-Verzeichnis verschieben).",
-    "Schreibe ein Tool das Konfigurationsdateien (JSON/YAML-aehnlich) vergleicht und Unterschiede anzeigt.",
-    # Persoenlichkeit & Selbsterkenntnis
-    "Schreibe ein Tool das Franks Reflexionen aus der consciousness.db liest, Stimmungstrends berechnet und eine Zusammenfassung schreibt.",
-    "Schreibe ein Tool das Franks Skill-Nutzung analysiert (welche Skills wie oft aufgerufen werden) aus den Logdateien.",
-    # Kreativitaet
-    "Schreibe ein einfaches Wortspiel-Tool (Anagramme finden, Wortlaenge-Challenge, Palindrom-Checker) als Funktion.",
+    # Text & Language
+    "Write a tool that summarizes text (without ML libraries, only with string operations and heuristics like sentence length, keyword extraction, TF-IDF-like weighting).",
+    "Write a tool that analyzes text for readability (sentence length, word length, Flesch index approximation) and returns a score.",
+    "Write a tool that extracts keywords/tags from text (most frequent nouns > 4 characters, stopword filter, weighting by position).",
+    # Filesystem & Organization
+    "Write a tool that sorts files in a directory by type, size, or age and creates a report as JSON.",
+    "Write a tool that finds duplicate files (via SHA256 hash) and creates a report with storage savings.",
+    "Write a tool that outputs a directory structure as a tree diagram (ASCII), with optional filter by file type.",
+    # Data & Knowledge
+    "Write a tool that analyzes a SQLite database (tables, row count, size, schema) and creates a health report.",
+    "Write a tool that validates JSON/JSONL files, gathers statistics (keys, types, missing fields) and reports anomalies.",
+    "Write a tool that manages a simple key-value knowledge database (store, search, delete) in a SQLite file.",
+    # Log Analysis
+    "Write a tool that analyzes log files: counts errors, groups most frequent error messages, creates time period statistics.",
+    "Write a tool that detects patterns in log files (recurring errors, time correlations, frequency per hour).",
+    # Network & API
+    "Write a tool that checks the reachability of multiple HTTP endpoints (GET request, status code, response time) and outputs as JSON.",
+    "Write a tool that implements a simple bookmark manager (save URLs, tag, search) in SQLite.",
+    # Automation
+    "Write a tool that archives old files in a directory (older than N days, move to archive directory).",
+    "Write a tool that compares configuration files (JSON/YAML-like) and shows differences.",
+    # Personality & Self-Awareness
+    "Write a tool that reads Frank's reflections from consciousness.db, calculates mood trends and writes a summary.",
+    "Write a tool that analyzes Frank's skill usage (which skills are called how often) from log files.",
+    # Creativity
+    "Write a simple word game tool (find anagrams, word length challenge, palindrome checker) as a function.",
     "Write a tool that generates random creative writing prompts (from combinable building blocks: Setting + Character + Conflict).",
-    # Sicherheit & Qualitaet
-    "Schreibe ein Tool das Python-Dateien auf unsichere Patterns prueft (eval, exec, shell=True, hardcoded Passwoerter) und warnt.",
-    "Schreibe ein Tool das die Codequalitaet misst: Funktionslaenge, Verschachtelungstiefe, Kommentar-Ratio fuer .py Dateien.",
+    # Security & Quality
+    "Write a tool that checks Python files for unsafe patterns (eval, exec, shell=True, hardcoded passwords) and warns.",
+    "Write a tool that measures code quality: function length, nesting depth, comment ratio for .py files.",
 ]
 
-IMPLEMENT_MESSAGE_TEMPLATE = """Bestätige & Implementiere: Dein Vorschlag "{description}" wurde APPROVED.
+IMPLEMENT_MESSAGE_TEMPLATE = """Confirm & Implement: Your proposal "{description}" was APPROVED.
 
-WICHTIG: Ich werde deinen Code jetzt WIRKLICH in einer Sandbox ausführen.
-Gib mir den FINALEN, VOLLSTÄNDIGEN Python-Code in einem ```python ... ``` Block.
+IMPORTANT: I will now ACTUALLY execute your code in a sandbox.
+Give me the FINAL, COMPLETE Python code in a ```python ... ``` block.
 
-Der Code muss:
-1. Syntaktisch korrekt sein
-2. Ohne Fehler importierbar sein
-3. Eine main() oder test() Funktion haben
-4. Sich selbst testen können
+The code must:
+1. Be syntactically correct
+2. Be importable without errors
+3. Have a main() or test() function
+4. Be able to test itself
 
-Antworte mit dem finalen Code."""
+Respond with the final code."""
 
-REJECT_MESSAGE_TEMPLATE = """Dein Vorschlag wurde abgelehnt.
-Grund: {reason}
+REJECT_MESSAGE_TEMPLATE = """Your proposal was rejected.
+Reason: {reason}
 
-WICHTIG: Schlage ein KOMPLETT ANDERES Thema vor — nicht dasselbe nochmal!
-Kein System-Monitoring, kein CPU/RAM/Temperatur-Tool.
+IMPORTANT: Suggest a COMPLETELY DIFFERENT topic -- not the same one again!
+No system monitoring, no CPU/RAM/temperature tool.
 
-Anforderungen:
+Requirements:
 - Confidence: 0.85
 - Risk-Score: 0.2
-- Vollstaendiger Python-Code mit main()-Funktion
-- Alle imports muessen vorhanden sein"""
+- Complete Python code with main() function
+- All imports must be present"""
 
-CODE_FEEDBACK_MESSAGE = """Selbst-Verbesserung: FEEDBACK zu deinem Code:
+CODE_FEEDBACK_MESSAGE = """Self-improvement: FEEDBACK on your code:
 
-PROBLEME GEFUNDEN:
+PROBLEMS FOUND:
 {issues}
 
-VERBESSERUNGSVORSCHLÄGE:
+IMPROVEMENT SUGGESTIONS:
 {suggestions}
 
-Dein Code war KEIN gültiger Python-Code. Bitte schreibe den Code NEU.
+Your code was NOT valid Python code. Please rewrite the code.
 
-ERINNERUNG - So sieht GÜLTIGER Python-Code aus:
+REMINDER - This is what VALID Python code looks like:
 ```python
 #!/usr/bin/env python3
-\"\"\"Tool-Beschreibung.\"\"\"
+\"\"\"Tool description.\"\"\"
 
 def main():
-    \"\"\"Hauptfunktion.\"\"\"
-    print("Hallo, ich funktioniere!")
+    \"\"\"Main function.\"\"\"
+    print("Hello, I am working!")
     return True
 
 if __name__ == "__main__":
     main()
 ```
 
-Schreibe jetzt deinen korrigierten Code in einem ```python ... ``` Block:"""
+Now write your corrected code in a ```python ... ``` block:"""
 
-SYNTAX_ERROR_MESSAGE = """Selbst-Verbesserung: SYNTAX-FEHLER in deinem Code!
+SYNTAX_ERROR_MESSAGE = """Self-improvement: SYNTAX ERROR in your code!
 
-FEHLER: {error}
+ERROR: {error}
 
-Dein Code enthielt: {code_preview}
+Your code contained: {code_preview}
 
-Das ist KEIN gültiger Python-Code!
+This is NOT valid Python code!
 
-HINWEIS:
-- "sudo xyz" ist Shell, nicht Python
-- "pip install xyz" ist Shell, nicht Python
-- Nur Beschreibungstext ohne Code funktioniert nicht
+NOTE:
+- "sudo xyz" is shell, not Python
+- "pip install xyz" is shell, not Python
+- Description text only without code does not work
 
-KORREKTES BEISPIEL:
+CORRECT EXAMPLE:
 ```python
-def meine_funktion():
+def my_function():
     import subprocess
-    # Shell-Befehle so ausführen:
-    result = subprocess.run(["echo", "Hallo"], capture_output=True, text=True)
+    # Execute shell commands like this:
+    result = subprocess.run(["echo", "Hello"], capture_output=True, text=True)
     return result.stdout
 
 if __name__ == "__main__":
-    print(meine_funktion())
+    print(my_function())
 ```
 
-Schreibe jetzt syntaktisch korrekten Python-Code:"""
+Now write syntactically correct Python code:"""
 
-REFLECTION_MESSAGE = """Selbst-Verbesserung: Zeit fuer Reflexion.
+REFLECTION_MESSAGE = """Self-improvement: Time for reflection.
 
-Deine letzten {count} Vorschlaege:
-- Akzeptiert: {approved} | Abgelehnt: {rejected}
-- Haeufigste Ablehnungsgruende: Confidence zu niedrig, Code-Fehler, Duplikate
+Your last {count} proposals:
+- Accepted: {approved} | Rejected: {rejected}
+- Most common rejection reasons: Confidence too low, code errors, duplicates
 
-LERNE DARAUS:
-1. IMMER import-Statements fuer ALLE verwendeten Module
-2. IMMER eine main()-Funktion die etwas Sichtbares tut (print)
-3. KEINE while-True-Loops ohne time.sleep()
-4. KEIN System-Monitoring — das existiert bereits!
-5. Confidence MUSS >= 0.85 sein, Risk MUSS <= 0.25 sein
+LEARN FROM THIS:
+1. ALWAYS import statements for ALL used modules
+2. ALWAYS a main() function that does something visible (print)
+3. NO while-True loops without time.sleep()
+4. NO system monitoring -- that already exists!
+5. Confidence MUST be >= 0.85, Risk MUST be <= 0.25
 
-Schlage jetzt EINEN NEUEN Vorschlag vor — ein anderes Thema als vorher!"""
+Now suggest ONE NEW proposal -- a different topic than before!"""
 
 
 # ============================================================================
@@ -1170,7 +1170,7 @@ Schlage jetzt EINEN NEUEN Vorschlag vor — ein anderes Thema als vorher!"""
 # ============================================================================
 
 class AutonomousTrainingDaemon:
-    """Der autonome Training-Daemon v2.0 mit echter Tool-Erstellung."""
+    """The autonomous training daemon v2.0 with real tool creation."""
 
     def __init__(self):
         global SANDBOX_DIR
@@ -1230,7 +1230,7 @@ class AutonomousTrainingDaemon:
         save_state(self.state)
 
         # Add directive as core edge in E-CPMM
-        add_ecpmm_node("CORE_DIRECTIVE", "directive", {"text": "Maximale Kollaboration"})
+        add_ecpmm_node("CORE_DIRECTIVE", "directive", {"text": "Maximum collaboration"})
         add_ecpmm_edge("CORE_DIRECTIVE", "SELF_IMPROVEMENT", "enables", 1.0)
 
         return bool(response)
@@ -1335,7 +1335,7 @@ class AutonomousTrainingDaemon:
             if not response:
                 LOG.error("No implementation response from Frank")
                 if attempt < MAX_ATTEMPTS:
-                    message = "Ich habe keine Antwort erhalten. Bitte schreibe vollständigen Python-Code in einem ```python ... ``` Block."
+                    message = "I received no response. Please write complete Python code in a ```python ... ``` block."
                     time.sleep(5)
                     continue
                 else:
@@ -1350,8 +1350,8 @@ class AutonomousTrainingDaemon:
                 LOG.warning("No code blocks found")
                 if attempt < MAX_ATTEMPTS:
                     message = CODE_FEEDBACK_MESSAGE.format(
-                        issues="Kein Code-Block gefunden in deiner Antwort",
-                        suggestions="Schreibe Code in einem ```python ... ``` Block"
+                        issues="No code block found in your response",
+                        suggestions="Write code in a ```python ... ``` block"
                     )
                     time.sleep(5)
                     continue

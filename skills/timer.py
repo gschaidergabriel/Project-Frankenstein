@@ -6,7 +6,7 @@ import threading
 
 SKILL = {
     "name": "timer",
-    "description": "Countdown-Timer mit Desktop-Benachrichtigung setzen.",
+    "description": "Set a countdown timer with desktop notification.",
     "version": "1.0",
     "category": "utility",
     "risk_level": 0.0,
@@ -14,16 +14,16 @@ SKILL = {
         {
             "name": "seconds",
             "type": "number",
-            "description": "Timer-Dauer in Sekunden",
+            "description": "Timer duration in seconds",
             "required": False,
             "default": 0,
         },
         {
             "name": "label",
             "type": "string",
-            "description": "Beschreibung (z.B. 'Tee fertig')",
+            "description": "Description (e.g. 'Tea ready')",
             "required": False,
-            "default": "Timer abgelaufen",
+            "default": "Timer expired",
         },
     ],
     "keywords": [
@@ -101,7 +101,7 @@ def _timer_thread(seconds: int, label: str):
         pass
 
 
-def run(seconds: int = 0, label: str = "Timer abgelaufen",
+def run(seconds: int = 0, label: str = "Timer expired",
         user_query: str = "", **kwargs) -> dict:
     """Set a countdown timer."""
     # Parse duration from query if not given directly
@@ -109,13 +109,13 @@ def run(seconds: int = 0, label: str = "Timer abgelaufen",
         seconds = _parse_duration(user_query)
 
     if not seconds:
-        return {"ok": False, "error": "Keine Dauer erkannt. Beispiel: 'timer 5 minuten'"}
+        return {"ok": False, "error": "No duration recognized. Example: 'timer 5 minutes'"}
 
     if seconds > 86400:
-        return {"ok": False, "error": "Maximale Dauer: 24 Stunden"}
+        return {"ok": False, "error": "Maximum duration: 24 hours"}
 
     # Extract label from query if default
-    if label == "Timer abgelaufen" and user_query:
+    if label == "Timer expired" and user_query:
         # Try to find purpose: "erinner mich X zu Y"
         m = re.search(r"(?:fuer|für|zu|an|wegen)\s+(.+?)(?:\s+in\s+\d|\s*$)", user_query)
         if m:
@@ -125,9 +125,9 @@ def run(seconds: int = 0, label: str = "Timer abgelaufen",
     if seconds >= 3600:
         display = f"{seconds // 3600}h {(seconds % 3600) // 60}min"
     elif seconds >= 60:
-        display = f"{seconds // 60} Minuten"
+        display = f"{seconds // 60} minutes"
     else:
-        display = f"{seconds} Sekunden"
+        display = f"{seconds} seconds"
 
     # Start background timer
     t = threading.Thread(target=_timer_thread, args=(seconds, label), daemon=True)
@@ -136,5 +136,5 @@ def run(seconds: int = 0, label: str = "Timer abgelaufen",
 
     return {
         "ok": True,
-        "output": f"Timer gesetzt: {display}\nBenachrichtigung: \"{label}\"",
+        "output": f"Timer set: {display}\nNotification: \"{label}\"",
     }

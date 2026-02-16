@@ -193,7 +193,7 @@ def _openclaw_run(instructions: str, user_query: str = "", **kwargs) -> dict:
     if user_query:
         messages.append({"role": "user", "content": user_query})
     else:
-        messages.append({"role": "user", "content": "Fuehre den Skill aus."})
+        messages.append({"role": "user", "content": "Execute the skill."})
 
     try:
         payload = json.dumps({
@@ -390,7 +390,7 @@ class SkillRegistry:
         """
         skills = self.list_all()
         if not skills:
-            return "Keine Skills installiert."
+            return "No skills installed."
 
         if for_prompt:
             # Compact: "weather (native), clipboard (native), summarize (openclaw)"
@@ -404,7 +404,7 @@ class SkillRegistry:
             keywords = s.meta.get("keywords", [])
             kw_str = ", ".join(keywords[:5]) if keywords else "-"
             lines.append(f"  {s.name} [{typ}]: {desc}\n    Keywords: {kw_str}")
-        return f"Installierte Skills ({len(skills)}):\n" + "\n".join(lines)
+        return f"Installed skills ({len(skills)}):\n" + "\n".join(lines)
 
     def browse_marketplace(self, query: str = "", limit: int = 20) -> dict:
         """Browse OpenClaw ClawHub marketplace. Returns available skills."""
@@ -455,7 +455,7 @@ class SkillRegistry:
 
         except Exception as e:
             LOG.error(f"Marketplace browse error: {e}")
-            return {"ok": False, "error": f"Marketplace nicht erreichbar: {e}", "skills": []}
+            return {"ok": False, "error": f"Marketplace not reachable: {e}", "skills": []}
 
     def install_from_marketplace(self, slug: str) -> dict:
         """Download and install a skill from ClawHub marketplace."""
@@ -463,16 +463,16 @@ class SkillRegistry:
         import zipfile
 
         if not slug:
-            return {"ok": False, "error": "Kein Skill-Name angegeben"}
+            return {"ok": False, "error": "No skill name provided"}
 
         # Sanitize slug
         slug = re.sub(r"[^a-zA-Z0-9_-]", "", slug.strip().lower())
         if not slug:
-            return {"ok": False, "error": "Ungueltiger Skill-Name"}
+            return {"ok": False, "error": "Invalid skill name"}
 
         # Check if already installed
         if self.get(slug):
-            return {"ok": False, "error": f"Skill '{slug}' ist bereits installiert"}
+            return {"ok": False, "error": f"Skill '{slug}' is already installed"}
 
         try:
             # Fetch skill metadata
@@ -505,7 +505,7 @@ class SkillRegistry:
                         break
 
             if not skill_md_content or not skill_md_content.strip():
-                return {"ok": False, "error": f"Skill '{slug}' enthaelt keine SKILL.md"}
+                return {"ok": False, "error": f"Skill '{slug}' contains no SKILL.md"}
 
             # Create skill directory and save SKILL.md
             skill_dir = SKILLS_DIR / slug
@@ -525,12 +525,12 @@ class SkillRegistry:
                     return {
                         "ok": False,
                         "error": (
-                            f"Skill '{slug}' blockiert (Sicherheitsrisiko {scan['risk_level']:.1f}):\n"
+                            f"Skill '{slug}' blocked (security risk {scan['risk_level']:.1f}):\n"
                             f"{warnings_text}"
                         ),
                     }
                 # Medium risk — install with warning
-                skill_desc += f"\n\u26a0 Sicherheitshinweis: {warnings_text}"
+                skill_desc += f"\n\u26a0 Security notice: {warnings_text}"
 
             # Load the new skill
             loaded = self._load_openclaw(skill_md)
@@ -542,21 +542,21 @@ class SkillRegistry:
                     "ok": True,
                     "name": loaded.name,
                     "description": skill_desc,
-                    "message": f"Skill '{loaded.name}' erfolgreich installiert!\n{skill_desc}",
+                    "message": f"Skill '{loaded.name}' successfully installed!\n{skill_desc}",
                 }
             else:
                 return {
                     "ok": False,
-                    "error": f"Skill '{slug}' heruntergeladen aber konnte nicht geladen werden",
+                    "error": f"Skill '{slug}' downloaded but could not be loaded",
                 }
 
         except urllib.request.HTTPError as e:
             if e.code == 404:
-                return {"ok": False, "error": f"Skill '{slug}' nicht im Marketplace gefunden"}
-            return {"ok": False, "error": f"HTTP-Fehler: {e.code} {e.reason}"}
+                return {"ok": False, "error": f"Skill '{slug}' not found in marketplace"}
+            return {"ok": False, "error": f"HTTP error: {e.code} {e.reason}"}
         except Exception as e:
             LOG.error(f"Skill install error: {e}")
-            return {"ok": False, "error": f"Installation fehlgeschlagen: {e}"}
+            return {"ok": False, "error": f"Installation failed: {e}"}
 
     # ── Security Scanning ──────────────────────────────────────
 
@@ -608,10 +608,10 @@ class SkillRegistry:
                         break
 
         if not skill:
-            return {"ok": False, "error": f"Skill '{name_or_slug}' nicht gefunden"}
+            return {"ok": False, "error": f"Skill '{name_or_slug}' not found"}
 
         if skill.skill_type == "native":
-            return {"ok": False, "error": f"Native Skills (.py) koennen nicht deinstalliert werden"}
+            return {"ok": False, "error": f"Native skills (.py) cannot be uninstalled"}
 
         # Remove directory
         skill_dir = Path(skill.module_path).parent
@@ -624,7 +624,7 @@ class SkillRegistry:
             self._skills.pop(skill.name, None)
 
         LOG.info(f"Skill uninstalled: {skill.name}")
-        return {"ok": True, "name": skill.name, "message": f"Skill '{skill.name}' deinstalliert."}
+        return {"ok": True, "name": skill.name, "message": f"Skill '{skill.name}' uninstalled."}
 
     # ── Update Check ──────────────────────────────────────────
 
@@ -652,7 +652,7 @@ class SkillRegistry:
                 if remote_version and remote_version != local_version:
                     updates.append({
                         "name": skill.name,
-                        "current_version": local_version or "unbekannt",
+                        "current_version": local_version or "unknown",
                         "latest_version": remote_version,
                         "slug": slug,
                     })

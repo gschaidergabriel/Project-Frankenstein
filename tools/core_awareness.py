@@ -364,16 +364,16 @@ class CoreAwareness:
         # Generate from structure
         parts = []
         if classes:
-            parts.append(f"Definiert Klassen: {', '.join(classes[:3])}")
+            parts.append(f"Defines classes: {', '.join(classes[:3])}")
         if functions:
             key_funcs = [f for f in functions if not f.startswith("_")][:5]
             if key_funcs:
-                parts.append(f"Funktionen: {', '.join(key_funcs)}")
+                parts.append(f"Functions: {', '.join(key_funcs)}")
 
         if parts:
             return "; ".join(parts)
 
-        return f"Python-Modul: {name}"
+        return f"Python module: {name}"
 
     def analyze_file(self, path: Path, force: bool = False) -> Optional[ModuleEntry]:
         """Analyze a single file and create/update its database entry."""
@@ -430,7 +430,7 @@ class CoreAwareness:
             entry.history = existing.history[-9:]  # Keep last 9
             entry.history.append({
                 "date": datetime.now().isoformat(),
-                "change": f"Code aktualisiert (vorher: {existing.last_hash[:8]})",
+                "change": f"Code updated (previous: {existing.last_hash[:8]})",
             })
 
         self.database.modules[rel_path] = entry
@@ -513,17 +513,17 @@ class CoreAwareness:
         # Check for modules with many functions (might need splitting)
         for entry in self.database.modules.values():
             if len(entry.functions) > 30:
-                improvements.append(f"'{entry.name}' hat {len(entry.functions)} Funktionen - könnte in kleinere Module aufgeteilt werden")
+                improvements.append(f"'{entry.name}' has {len(entry.functions)} functions - could be split into smaller modules")
 
         # Check for low confidence modules
         low_conf = [e for e in self.database.modules.values() if e.confidence_score < 70]
         if low_conf:
-            improvements.append(f"{len(low_conf)} Module haben niedrige Konfidenz und brauchen bessere Dokumentation")
+            improvements.append(f"{len(low_conf)} modules have low confidence and need better documentation")
 
         # Check for modules without clear purpose
-        unclear = [e for e in self.database.modules.values() if "Python-Modul:" in e.purpose and e.module_type in ("core", "tool")]
+        unclear = [e for e in self.database.modules.values() if "Python module:" in e.purpose and e.module_type in ("core", "tool")]
         if unclear:
-            improvements.append(f"{len(unclear)} Module haben keine klare Beschreibung ihrer Funktion")
+            improvements.append(f"{len(unclear)} modules have no clear description of their function")
 
         return improvements
 
@@ -534,17 +534,17 @@ class CoreAwareness:
         # High confidence modules
         high_conf = [e for e in self.database.modules.values() if e.confidence_score >= 90]
         if high_conf:
-            positives.append(f"{len(high_conf)} Module sind gut dokumentiert und verstanden")
+            positives.append(f"{len(high_conf)} modules are well documented and understood")
 
         # Core modules
         core = [e for e in self.database.modules.values() if e.module_type == "core"]
         if core:
-            positives.append(f"Klare Trennung von {len(core)} Kern-Modulen")
+            positives.append(f"Clear separation of {len(core)} core modules")
 
         # Tools
         tools = [e for e in self.database.modules.values() if e.module_type == "tool"]
         if tools:
-            positives.append(f"{len(tools)} spezialisierte Tools für verschiedene Aufgaben")
+            positives.append(f"{len(tools)} specialized tools for various tasks")
 
         return positives
 
@@ -555,14 +555,14 @@ class CoreAwareness:
         # Modules that might have issues
         for entry in self.database.modules.values():
             if entry.status == "needs_review":
-                issues.append(f"'{entry.name}' muss noch überprüft werden")
+                issues.append(f"'{entry.name}' still needs review")
 
         # Check for potential circular dependencies (simplified check)
         # Check for modules without dependencies (might be orphaned)
         orphans = [e for e in self.database.modules.values()
                    if not e.dependencies and e.module_type in ("tool", "utility") and len(e.functions) > 0]
         if len(orphans) > 10:
-            issues.append(f"{len(orphans)} Module haben keine erkannten Abhängigkeiten")
+            issues.append(f"{len(orphans)} modules have no detected dependencies")
 
         return issues
 

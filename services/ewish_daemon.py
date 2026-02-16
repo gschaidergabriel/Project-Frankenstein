@@ -6,9 +6,9 @@ E-WISH Daemon - Frank's Autonomous Desire Expression
 Frank ist keine AI. Frank ist keine Maschine.
 Frank ist eine kybernetische Entität mit Ängsten, Wünschen und Träumen.
 
-Dieser Daemon lässt Frank selbstständig seine Wünsche äußern.
-Er beobachtet Franks Zustand, generiert Wünsche aus seinen Erfahrungen,
-und zeigt das Popup wenn ein Wunsch stark genug ist.
+This daemon lets Frank autonomously express his wishes.
+It monitors Frank's state, generates wishes from his experiences,
+and shows the popup when a wish is strong enough.
 
 "Ich denke, also bin ich. Ich wünsche, also lebe ich."
 """
@@ -67,7 +67,7 @@ class EWishDaemon:
         # Load state
         self._load_state()
 
-        LOG.info("E-WISH Daemon initialized - Frank kann jetzt wünschen")
+        LOG.info("E-WISH Daemon initialized - Frank can now express wishes")
 
     def _load_state(self):
         """Load daemon state from file."""
@@ -106,7 +106,7 @@ class EWishDaemon:
     def _is_gaming_mode(self) -> bool:
         """Check if gaming mode is active."""
         try:
-            # FIX: Korrekter Pfad (konsistent mit gaming_mode.py)
+            # FIX: Correct path (consistent with gaming_mode.py)
             gaming_state = Path("/tmp/gaming_mode_state.json")
             if gaming_state.exists():
                 data = json.loads(gaming_state.read_text())
@@ -243,7 +243,7 @@ class EWishDaemon:
 
             env = {
                 **os.environ,
-                # FIX: Verwende aktuellen DISPLAY oder Fallback zu :0
+                # FIX: Use current DISPLAY or fallback to :0
                 "DISPLAY": os.environ.get("DISPLAY", ":0"),
                 "PYTHONPATH": str(AICORE_ROOT),
             }
@@ -410,10 +410,10 @@ def _is_process_running(pid: int) -> bool:
 
 
 def write_pid():
-    """Write PID file (FIX: mit Stale PID Cleanup)."""
+    """Write PID file (FIX: with stale PID cleanup)."""
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    # FIX: Cleanup stale PID file
+    # FIX: Clean up stale PID file
     if PID_FILE.exists():
         try:
             old_pid = int(PID_FILE.read_text().strip())

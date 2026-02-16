@@ -22,7 +22,7 @@ Key Subsystems:
   5. Structural Versioning & Decay (anatomy hash-sync)
   6. Asymmetric Quantization Tiers (raw -> dense -> sparse)
   7. Confidence Reporting & Mut-Parameter
-  8. Heartbeat Flush (15-Minuten-Checkpoints für Crash-Resilienz)
+  8. Heartbeat Flush (15-minute checkpoints for crash resilience)
 
 Database: /home/ai-core-node/aicore/database/world_experience.db
 Anatomy: /home/ai-core-node/aicore/database/system_core.json
@@ -91,8 +91,8 @@ DAEMON_TICK_SECONDS = 10  # Main loop tick
 IDLE_THRESHOLD_SECONDS = 30  # Consider system idle after 30s of low activity
 ANATOMY_CHECK_INTERVAL = 60  # Check anatomy hash every 60s
 
-# Heartbeat Flush (Crash-Resilienz)
-HEARTBEAT_INTERVAL_SECONDS = 900  # 15 Minuten - der "Sweet Spot"
+# Heartbeat Flush (crash resilience)
+HEARTBEAT_INTERVAL_SECONDS = 900  # 15 minutes - the "sweet spot"
 
 # Mut-Parameter (courage)
 DEFAULT_MUT = 0.5  # 0.0 = very cautious, 1.0 = fully proactive
@@ -795,7 +795,7 @@ class WorldExperienceDaemon:
         self._idle_counter = 0
         self._lock = threading.Lock()
 
-        # Crash-Recovery beim Start prüfen
+        # Crash recovery check on startup
         self._crash_recovery_check()
 
         # Load persisted state
@@ -838,77 +838,77 @@ class WorldExperienceDaemon:
 
     def _crash_recovery_check(self):
         """
-        Crash-Recovery Logik beim Start.
+        Crash recovery logic on startup.
 
-        Prüft ob ein unsauberer Shutdown stattfand und repariert:
-        1. WAL-Recovery: SQLite repariert sich selbst mit .db-wal
-        2. Buffer-Check: Prüft telemetry_buffer für unverarbeitete Daten
-        3. Anatomie-Validierung: Stellt Integrität sicher
+        Checks if an unclean shutdown occurred and repairs:
+        1. WAL recovery: SQLite repairs itself with .db-wal
+        2. Buffer check: Checks telemetry_buffer for unprocessed data
+        3. Anatomy validation: Ensures integrity
         """
-        LOG.info("Crash-Recovery-Check gestartet...")
+        LOG.info("Crash recovery check started...")
 
-        # 1. WAL-Recovery: SQLite macht das automatisch beim ersten Connect
-        # Wir erzwingen einen Checkpoint um WAL-Daten zu materialisieren
+        # 1. WAL recovery: SQLite does this automatically on first connect
+        # We force a checkpoint to materialize WAL data
         try:
             self.db.execute("PRAGMA wal_checkpoint(PASSIVE);")
-            LOG.debug("WAL-Checkpoint ausgeführt")
+            LOG.debug("WAL checkpoint performed")
         except Exception as e:
-            LOG.warning("WAL-Checkpoint fehlgeschlagen: %s", e)
+            LOG.warning("WAL checkpoint failed: %s", e)
 
-        # 2. Buffer-Check: Prüfe unverarbeitete Telemetrie-Daten
+        # 2. Buffer check: Check for unprocessed telemetry data
         try:
             unprocessed = self.db.fetchone(
                 "SELECT COUNT(*) as cnt FROM telemetry_buffer WHERE processed = 0"
             )
             if unprocessed and unprocessed["cnt"] > 0:
                 LOG.info(
-                    "Crash-Recovery: %d unverarbeitete Telemetrie-Einträge gefunden",
+                    "Crash recovery: %d unprocessed telemetry entries found",
                     unprocessed["cnt"]
                 )
-                # Markiere alte unverarbeitete Einträge für spätere Analyse
+                # Mark old unprocessed entries for later analysis
                 self.db.execute(
                     "UPDATE telemetry_buffer SET processed = -1 "
                     "WHERE processed = 0 AND timestamp < datetime('now', '-1 hour')"
                 )
                 self.db.commit()
         except Exception as e:
-            LOG.warning("Buffer-Check fehlgeschlagen: %s", e)
+            LOG.warning("Buffer check failed: %s", e)
 
-        # 3. Anatomie-Validierung: Prüfe ob korrupte Einträge existieren
+        # 3. Anatomy validation: Check for corrupt entries
         try:
             corrupt = self.db.fetchone(
                 "SELECT COUNT(*) as cnt FROM anatomy_versions WHERE hash = '' OR hash IS NULL"
             )
             if corrupt and corrupt["cnt"] > 0:
                 LOG.warning(
-                    "Crash-Recovery: %d korrupte Anatomie-Einträge entfernt",
+                    "Crash recovery: %d corrupt anatomy entries removed",
                     corrupt["cnt"]
                 )
                 self.db.execute("DELETE FROM anatomy_versions WHERE hash = '' OR hash IS NULL")
                 self.db.commit()
         except Exception as e:
-            LOG.warning("Anatomie-Validierung fehlgeschlagen: %s", e)
+            LOG.warning("Anatomy validation failed: %s", e)
 
-        # 4. Gaming-Mode Status prüfen
+        # 4. Check gaming mode status
         gaming_status = self.db.get_meta("gaming_mode", "inactive")
         if gaming_status == "active":
             LOG.warning(
-                "Crash-Recovery: Gaming-Mode war beim Crash aktiv. "
-                "Letzte 15 Minuten könnten verloren sein."
+                "Crash recovery: Gaming mode was active during crash. "
+                "Last 15 minutes may be lost."
             )
             self.db.set_meta("gaming_mode", "inactive")
             self.db.set_meta("last_crash_recovery", _now_iso())
 
-        LOG.info("Crash-Recovery-Check abgeschlossen")
+        LOG.info("Crash recovery check completed")
 
     def _heartbeat_checkpoint(self):
         """
-        Heartbeat Flush: Sichert RAM-Telemetrie alle 15 Minuten auf SSD.
+        Heartbeat Flush: Saves RAM telemetry to SSD every 15 minutes.
 
-        Der "Sweet Spot" von 15 Minuten:
-        - Datenverlust-Minimierung: Max. 15 Min Verlust bei Stromausfall
-        - I/O-Schonung: Kaum messbare SSD-Abnutzung
-        - WAL-Management: Verhindert gigantische .db-wal Dateien
+        The "sweet spot" of 15 minutes:
+        - Data loss minimization: Max. 15 min loss on power failure
+        - I/O preservation: Barely measurable SSD wear
+        - WAL management: Prevents gigantic .db-wal files
         """
         LOG.debug("Heartbeat-Thread gestartet (Intervall: %ds)", HEARTBEAT_INTERVAL_SECONDS)
 
@@ -918,54 +918,54 @@ class WorldExperienceDaemon:
             if not self._running:
                 break
 
-            # Nur bei aktivem Gaming-Mode mit Daten im Buffer
+            # Only during active gaming mode with data in buffer
             if self._gaming_mode and self._ring_buffer.record_count > 0:
                 try:
                     LOG.info(
-                        "Heartbeat: Sichere RAM-Telemetrie auf SSD... "
-                        "(%d Records, %s)",
+                        "Heartbeat: Saving RAM telemetry to SSD... "
+                        "(%d records, %s)",
                         self._ring_buffer.record_count,
                         _human_size(self._ring_buffer.current_bytes)
                     )
 
-                    # Telemetrie-Snapshot in DB speichern (ohne Buffer zu leeren)
+                    # Save telemetry snapshot to DB (without clearing buffer)
                     self._flush_telemetry_snapshot()
 
-                    # WAL-Checkpoint erzwingen um Daten von .db-wal in .db zu schieben
+                    # Force WAL checkpoint to push data from .db-wal to .db
                     self.db.execute("PRAGMA wal_checkpoint(PASSIVE);")
                     self.db.commit()
 
                     self._last_heartbeat_flush = time.time()
                     self.db.set_meta("last_heartbeat_flush", _now_iso())
 
-                    LOG.info("Heartbeat: Checkpoint erfolgreich")
+                    LOG.info("Heartbeat: Checkpoint successful")
 
                 except Exception as e:
-                    LOG.error("Heartbeat-Flush fehlgeschlagen: %s", e)
+                    LOG.error("Heartbeat flush failed: %s", e)
 
-        LOG.debug("Heartbeat-Thread beendet")
+        LOG.debug("Heartbeat thread ended")
 
     def _flush_telemetry_snapshot(self):
         """
-        Speichert einen Snapshot der aktuellen Telemetrie in die DB.
-        Der Ring-Buffer wird NICHT geleert (das passiert erst bei gaming-off).
+        Saves a snapshot of current telemetry to the DB.
+        The ring buffer is NOT cleared (that happens on gaming-off).
         """
         session_id = self._ring_buffer.session_id
         if not session_id:
             return
 
-        # Hole aktuelle Records (ohne zu leeren)
+        # Get current records (without clearing)
         with self._ring_buffer._lock:
             records = list(self._ring_buffer._buffer)
 
         if not records:
             return
 
-        # Speichere aggregierte Statistiken als Checkpoint
+        # Save aggregated statistics as checkpoint
         now = _now_iso()
         stats = self._ring_buffer.stats()
 
-        # Komprimierter JSON-Snapshot der letzten Records (max 100)
+        # Compressed JSON snapshot of recent records (max 100)
         recent_records = records[-100:] if len(records) > 100 else records
         snapshot_data = {
             "checkpoint_type": "heartbeat",
@@ -979,11 +979,11 @@ class WorldExperienceDaemon:
                     "thermal": rec.thermal,
                     "logical": rec.logical,
                 }
-                for rec in recent_records[-10:]  # Nur letzte 10 für Checkpoint
+                for rec in recent_records[-10:]  # Only last 10 for checkpoint
             ]
         }
 
-        # In telemetry_buffer speichern (für Recovery)
+        # Save to telemetry_buffer (for recovery)
         self.db.execute(
             "INSERT INTO telemetry_buffer (session_id, timestamp, data, processed) "
             "VALUES (?, ?, ?, 0)",
@@ -1600,7 +1600,7 @@ class WorldExperienceDaemon:
             return {
                 "known": False,
                 "confidence": 0.0,
-                "message": f"Keine Erfahrung mit der Beziehung '{cause_name}' -> '{effect_name}'.",
+                "message": f"No experience with the relationship '{cause_name}' -> '{effect_name}'.",
                 "mut_action": "ask" if self._mut < 0.5 else "hypothesize",
             }
 
@@ -1615,7 +1615,7 @@ class WorldExperienceDaemon:
             return {
                 "known": False,
                 "confidence": 0.0,
-                "message": f"Kein kausaler Zusammenhang bekannt zwischen '{cause_name}' und '{effect_name}'.",
+                "message": f"No causal relationship known between '{cause_name}' and '{effect_name}'.",
                 "mut_action": "ask" if self._mut < 0.5 else "hypothesize",
             }
 
@@ -1626,17 +1626,17 @@ class WorldExperienceDaemon:
         obs = link.observation_count
 
         if conf_pct >= 80:
-            msg = (f"Ich bin mir sehr sicher ({conf_pct}% Evidenz, {obs} Beobachtungen): "
+            msg = (f"I am very confident ({conf_pct}% evidence, {obs} observations): "
                    f"'{cause_name}' {link.relation_type} '{effect_name}'.")
         elif conf_pct >= 50:
-            msg = (f"Ich habe moderate Evidenz ({conf_pct}%, {obs} Beobachtungen) dass "
+            msg = (f"I have moderate evidence ({conf_pct}%, {obs} observations) that "
                    f"'{cause_name}' {link.relation_type} '{effect_name}'.")
         elif conf_pct >= 30:
-            msg = (f"Ich sehe Kontext '{cause_name}' -> '{effect_name}', "
-                   f"habe aber nur {conf_pct}% Evidenz ({obs} Beobachtungen).")
+            msg = (f"I see context '{cause_name}' -> '{effect_name}', "
+                   f"but only have {conf_pct}% evidence ({obs} observations).")
         else:
-            msg = (f"Schwache Vermutung ({conf_pct}% Evidenz): '{cause_name}' koennte "
-                   f"'{effect_name}' beeinflussen, aber ich bin unsicher.")
+            msg = (f"Weak hypothesis ({conf_pct}% evidence): '{cause_name}' might "
+                   f"influence '{effect_name}', but I am uncertain.")
 
         # Mut-based action
         if self._mut >= 0.7 and conf_pct >= 50:
@@ -1658,7 +1658,7 @@ class WorldExperienceDaemon:
             "hypothetical": conf_pct < 50 and self._mut >= 0.7,
         }
 
-    # -- Context Injection (Rückkopplungsschleife / Self-Reflection) --
+    # -- Context Injection (Feedback Loop / Self-Reflection) --
 
     def context_inject(self, user_message: str, max_items: int = 3) -> str:
         """
@@ -1718,13 +1718,13 @@ class WorldExperienceDaemon:
                 effect_name = effect_row["name"]
                 lines.append(
                     f"- {cause_name} {link.relation_type} {effect_name} "
-                    f"({conf_pct}% Sicherheit, {link.observation_count}x beobachtet)"
+                    f"({conf_pct}% confidence, observed {link.observation_count}x)"
                 )
 
         if not lines:
             return ""
 
-        header = "[Dein Erfahrungsgedaechtnis (world_experience.db) zu diesem Thema:"
+        header = "[Your experiential memory (world_experience.db) on this topic:"
         return f"{header}\n" + "\n".join(lines) + "]\n"
 
     def _extract_keywords(self, message: str) -> List[str]:
@@ -1847,7 +1847,7 @@ class WorldExperienceDaemon:
 
         self._running = True
 
-        # Haupt-Daemon-Thread
+        # Main daemon thread
         self._thread = threading.Thread(
             target=self._daemon_loop,
             name="world-experience-daemon",
@@ -1855,7 +1855,7 @@ class WorldExperienceDaemon:
         )
         self._thread.start()
 
-        # Heartbeat-Thread für 15-Minuten-Checkpoints
+        # Heartbeat thread for 15-minute checkpoints
         self._heartbeat_thread = threading.Thread(
             target=self._heartbeat_checkpoint,
             name="wed-heartbeat",
@@ -1864,7 +1864,7 @@ class WorldExperienceDaemon:
         self._heartbeat_thread.start()
 
         LOG.info(
-            "WorldExperienceDaemon started (Heartbeat-Intervall: %ds)",
+            "WorldExperienceDaemon started (heartbeat interval: %ds)",
             HEARTBEAT_INTERVAL_SECONDS
         )
 
@@ -1873,19 +1873,19 @@ class WorldExperienceDaemon:
         LOG.info("Stopping WorldExperienceDaemon...")
         self._running = False
 
-        # Gaming-Mode sauber beenden (inkl. finaler Flush)
+        # Cleanly end gaming mode (including final flush)
         if self._gaming_mode:
             self.exit_gaming_mode()
 
-        # Finaler WAL-Checkpoint vor Shutdown
+        # Final WAL checkpoint before shutdown
         try:
-            LOG.info("Finaler WAL-Checkpoint...")
+            LOG.info("Final WAL checkpoint...")
             self.db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
             self.db.commit()
         except Exception as e:
-            LOG.warning("Finaler Checkpoint fehlgeschlagen: %s", e)
+            LOG.warning("Final checkpoint failed: %s", e)
 
-        # Threads beenden
+        # Stop threads
         if self._heartbeat_thread:
             self._heartbeat_thread.join(timeout=5)
         if self._thread:
@@ -2122,11 +2122,11 @@ Commands:
         else:
             print(f"Mut-Parameter: {daemon.mut:.2f}")
             if daemon.mut >= 0.7:
-                print("  Mode: Proaktiv (handelt bei >= 50% Evidenz)")
+                print("  Mode: Proactive (acts at >= 50% evidence)")
             elif daemon.mut >= 0.4:
-                print("  Mode: Ausgewogen (schlaegt vor, fragt bei Unsicherheit)")
+                print("  Mode: Balanced (suggests, asks when uncertain)")
             else:
-                print("  Mode: Vorsichtig (meldet nur, handelt nicht eigenstaendig)")
+                print("  Mode: Cautious (reports only, does not act independently)")
 
     elif cmd == "dbsize":
         size = daemon.db.db_size_bytes()

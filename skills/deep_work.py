@@ -9,7 +9,7 @@ from pathlib import Path
 
 SKILL = {
     "name": "deep_work",
-    "description": "Fokus-Sessions (Pomodoro) starten, pausieren und Statistik anzeigen.",
+    "description": "Start, pause, and show statistics for focus sessions (Pomodoro).",
     "version": "1.0",
     "category": "productivity",
     "risk_level": 0.0,
@@ -24,14 +24,14 @@ SKILL = {
         {
             "name": "minutes",
             "type": "number",
-            "description": "Session-Dauer in Minuten (Standard: 25)",
+            "description": "Session duration in minutes (default: 25)",
             "required": False,
             "default": 25,
         },
         {
             "name": "label",
             "type": "string",
-            "description": "Woran du arbeitest",
+            "description": "What you are working on",
             "required": False,
             "default": "",
         },
@@ -166,8 +166,8 @@ def _session_thread(minutes: int, label: str, start_ts: float):
 
     # Session complete
     _notify(
-        "Fokus-Session beendet!",
-        f"{minutes} Minuten geschafft! {label}" if label else f"{minutes} Minuten geschafft!",
+        "Focus session completed!",
+        f"{minutes} minutes done! {label}" if label else f"{minutes} minutes done!",
         "critical",
     )
 
@@ -194,9 +194,9 @@ def _start_session(minutes: int, label: str) -> dict:
         return {
             "ok": False,
             "error": (
-                f"Bereits eine Session aktiv: \"{existing.get('label', '')}\" "
-                f"({remaining:.0f} Min verbleibend). "
-                f"Stoppe sie zuerst mit 'fokus stoppen'."
+                f"Already a session active: \"{existing.get('label', '')}\" "
+                f"({remaining:.0f} min remaining). "
+                f"Stop it first with 'focus stop'."
             ),
         }
 
@@ -216,11 +216,11 @@ def _start_session(minutes: int, label: str) -> dict:
     )
     t.start()
 
-    parts = [f"Fokus-Session gestartet: **{minutes} Minuten**"]
+    parts = [f"Focus session started: **{minutes} minutes**"]
     if label:
-        parts.append(f"Aufgabe: {label}")
-    parts.append(f"Ende um: {datetime.fromtimestamp(start_ts + minutes * 60).strftime('%H:%M')}")
-    parts.append("Stoppen mit: *fokus stoppen*")
+        parts.append(f"Task: {label}")
+    parts.append(f"Ends at: {datetime.fromtimestamp(start_ts + minutes * 60).strftime('%H:%M')}")
+    parts.append("Stop with: *focus stop*")
 
     return {"ok": True, "output": "\n".join(parts)}
 
@@ -229,7 +229,7 @@ def _stop_session() -> dict:
     """Stop active session early."""
     session = _load_active()
     if not session.get("active"):
-        return {"ok": False, "error": "Keine aktive Fokus-Session."}
+        return {"ok": False, "error": "No active focus session."}
 
     elapsed_min = (time.time() - session["start_ts"]) / 60
     label = session.get("label", "")
@@ -249,8 +249,8 @@ def _stop_session() -> dict:
     return {
         "ok": True,
         "output": (
-            f"Fokus-Session nach {elapsed_min:.0f} Minuten gestoppt.\n"
-            f"(Geplant: {session['minutes']} Min)"
+            f"Focus session stopped after {elapsed_min:.0f} minutes.\n"
+            f"(Planned: {session['minutes']} min)"
         ),
     }
 
@@ -259,7 +259,7 @@ def _get_status() -> dict:
     """Get current session status."""
     session = _load_active()
     if not session.get("active"):
-        return {"ok": True, "output": "Keine aktive Fokus-Session.\nStarte eine mit: *fokus 25 minuten*"}
+        return {"ok": True, "output": "No active focus session.\nStart one with: *focus 25 minutes*"}
 
     elapsed = (time.time() - session["start_ts"]) / 60
     remaining = session["minutes"] - elapsed
@@ -271,13 +271,13 @@ def _get_status() -> dict:
     bar = "=" * filled + "-" * (bar_len - filled)
 
     lines = [
-        f"**Fokus-Session aktiv**",
+        f"**Focus session active**",
         f"[{bar}] {progress_pct:.0f}%",
-        f"Verstrichen: {elapsed:.0f} Min / {session['minutes']} Min",
-        f"Verbleibend: {remaining:.0f} Min",
+        f"Elapsed: {elapsed:.0f} min / {session['minutes']} min",
+        f"Remaining: {remaining:.0f} min",
     ]
     if label:
-        lines.insert(1, f"Aufgabe: {label}")
+        lines.insert(1, f"Task: {label}")
 
     return {"ok": True, "output": "\n".join(lines)}
 
@@ -286,7 +286,7 @@ def _get_stats() -> dict:
     """Get session statistics."""
     history = _load_history()
     if not history:
-        return {"ok": True, "output": "Noch keine Fokus-Sessions aufgezeichnet."}
+        return {"ok": True, "output": "No focus sessions recorded yet."}
 
     total_sessions = len(history)
     completed = [s for s in history if s.get("completed")]
@@ -316,26 +316,26 @@ def _get_stats() -> dict:
             break
 
     lines = [
-        "**Deep Work Statistik**",
-        f"Heute: {len(today_sessions)} Sessions, {today_minutes} Min",
-        f"Gesamt: {total_sessions} Sessions, {total_minutes} Min",
-        f"Abgeschlossen: {len(completed)}/{total_sessions}",
-        f"Streak: {streak} Tage",
+        "**Deep Work Statistics**",
+        f"Today: {len(today_sessions)} sessions, {today_minutes} min",
+        f"Total: {total_sessions} sessions, {total_minutes} min",
+        f"Completed: {len(completed)}/{total_sessions}",
+        f"Streak: {streak} days",
     ]
 
     # Last 5 sessions
     if history:
-        lines.append("\n**Letzte Sessions:**")
+        lines.append("\n**Recent sessions:**")
         for s in history[-5:]:
             start = s.get("start", "?")
             try:
                 start = datetime.fromisoformat(start).strftime("%d.%m. %H:%M")
             except (ValueError, TypeError):
                 pass
-            status = "abgeschlossen" if s.get("completed") else "abgebrochen"
+            status = "completed" if s.get("completed") else "cancelled"
             label = s.get("label", "")
             label_str = f" — {label}" if label else ""
-            lines.append(f"  - {start}: {s.get('minutes', '?')} Min ({status}){label_str}")
+            lines.append(f"  - {start}: {s.get('minutes', '?')} min ({status}){label_str}")
 
     return {"ok": True, "output": "\n".join(lines)}
 

@@ -956,7 +956,7 @@ class VisualCausalBridge:
 
         # Get verified system info
         monitor_count = SystemInfo.get_monitor_count()
-        monitor_info = f"🖥️ System: {monitor_count} Monitor(e) angeschlossen" if monitor_count > 0 else ""
+        monitor_info = f"🖥️ System: {monitor_count} monitor(s) connected" if monitor_count > 0 else ""
 
         # Step 3: Combine results
         if vision_desc and ocr_context:
@@ -964,18 +964,18 @@ class VisualCausalBridge:
             combined = (
                 f"{vision_desc}\n\n"
                 f"---\n"
-                f"📋 OCR-verifizierter Text:\n{ocr_context.strip()}\n"
+                f"📋 OCR-verified text:\n{ocr_context.strip()}\n"
             )
             if monitor_info:
                 combined += f"{monitor_info}\n"
-            combined += f"⚠️ Hinweis: Lokales Vision-Modell kann ungenau sein. OCR-Text und System-Info sind verifiziert."
+            combined += f"⚠️ Note: Local vision model may be inaccurate. OCR text and system info are verified."
             return combined, f"{model}+ocr"
         elif vision_desc:
             suffix = f"\n\n{monitor_info}\n" if monitor_info else "\n\n"
-            suffix += "⚠️ Hinweis: Lokales 7B Vision-Modell - Details können ungenau sein."
+            suffix += "⚠️ Note: Local 7B vision model - details may be inaccurate."
             return f"{vision_desc}{suffix}", model
         elif ocr_context:
-            result = f"[OCR-Analyse]\n{ocr_context}"
+            result = f"[OCR Analysis]\n{ocr_context}"
             if monitor_info:
                 result += f"\n{monitor_info}"
             return result, "ocr_only"
@@ -1148,10 +1148,10 @@ class VisualCausalBridge:
 
             # Analyze with error-specific prompt (using hybrid OCR + Vision)
             error_prompt = (
-                f"Ein Fehler ist aufgetreten: {error_context}\n\n"
-                "Beschreibe was auf dem Bildschirm zu sehen ist. "
-                "Achte besonders auf: Fehlermeldungen, Dialoge, Warnungen, "
-                "ungewöhnliche Zustände oder Hinweise auf das Problem."
+                f"An error occurred: {error_context}\n\n"
+                "Describe what is visible on the screen. "
+                "Pay special attention to: error messages, dialogs, warnings, "
+                "unusual states or hints about the problem."
             )
 
             description, model = self._analyze_image(image_bytes, error_prompt, captured_path)
@@ -1182,8 +1182,8 @@ class VisualCausalBridge:
             # Add correlation summary for easier debugging
             if recent_errors:
                 result["log_correlation_summary"] = (
-                    f"UOLG meldet {len(recent_errors)} relevante Events. "
-                    f"Screenshot-Analyse mit {'OCR-Grounding' if result['ocr_grounded'] else 'Vision-only'}."
+                    f"UOLG reports {len(recent_errors)} relevant events. "
+                    f"Screenshot analysis with {'OCR grounding' if result['ocr_grounded'] else 'vision only'}."
                 )
 
             LOG.info(f"Error screenshot captured: {screenshot_path} (OCR grounded: {result['ocr_grounded']})")
@@ -1222,7 +1222,7 @@ class VisualCausalBridge:
 
         LOG.info(f"Visual audit triggered (anomaly={anomaly_score:.2f})")
         return self.take_screenshot(
-            query="Beschreibe alle Fehlermeldungen, Warnungen oder Probleme die sichtbar sind"
+            query="Describe all error messages, warnings, or problems that are visible"
         )
 
     def get_status(self) -> dict:
@@ -1262,7 +1262,7 @@ def take_screenshot(query: Optional[str] = None) -> Optional[dict]:
     return evidence.to_dict() if evidence else None
 
 
-def analyze_screen(question: str = "Beschreibe was auf dem Bildschirm zu sehen ist") -> Optional[str]:
+def analyze_screen(question: str = "Describe what is visible on the screen") -> Optional[str]:
     """Simple interface: analyze screen, return description."""
     evidence = get_vcb().take_screenshot(question)
     return evidence.description if evidence else None

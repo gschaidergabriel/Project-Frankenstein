@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Frank Neural Monitor - Live Log Display für Mini-HDMI
+Frank Neural Monitor - Live Log Display for Mini-HDMI
 
-Erkennt automatisch den Mini-HDMI-Display (eM713A, 1024x600) an jedem
-HDMI-Port und zeigt Frank's interne Logs in Echtzeit an.
+Automatically detects the mini-HDMI display (eM713A, 1024x600) on any
+HDMI port and shows Frank's internal logs in real time.
 
-Schwarzer Hintergrund, Neon-Grüner Text (#00FF00)
+Black background, neon-green text (#00FF00)
 
 Features:
-- Auto-Detection via EDID (Model: eM713A) oder Auflösung (1024x600)
-- Hotplug-Erkennung (Display anstecken → Logs starten)
-- Aggregiert alle Frank-Subsysteme
-- Fullscreen auf dem Mini-Display
+- Auto-detection via EDID (Model: eM713A) or resolution (1024x600)
+- Hotplug detection (plug in display -> logs start)
+- Aggregates all Frank subsystems
+- Fullscreen on the mini display
 
 Database: /home/ai-core-node/aicore/database/
 """
@@ -151,20 +151,20 @@ logging.basicConfig(
 LOG = logging.getLogger("neural_monitor")
 
 # =============================================================================
-# Konstanten
+# Constants
 # =============================================================================
 
-# Mini-Display Identifikation (EDID-basiert)
+# Mini-Display identification (EDID-based)
 MINI_DISPLAY_IDENTIFIERS = [
     "eM713A",           # Model name from EDID
     "1024x600",         # Native resolution
 ]
 
-# Mindest-Auflösung für Mini-Display Erkennung
+# Minimum resolution for mini-display detection
 MINI_DISPLAY_MAX_WIDTH = 1100
 MINI_DISPLAY_MAX_HEIGHT = 700
 
-# Farben (Neon-Grün auf Schwarz)
+# Colors (neon green on black)
 BG_COLOR = "#000000"
 FG_COLOR = "#00FF00"
 FG_COLOR_DIM = "#007700"
@@ -172,9 +172,9 @@ FG_COLOR_WARN = "#FFFF00"
 FG_COLOR_ERROR = "#FF3333"
 FG_COLOR_INFO = "#00FFFF"
 
-# Log-Quellen
+# Log sources
 LOG_SOURCES = {
-    # Haupt-Journal: ALLE Frank/AI Core Services
+    # Main journal: ALL Frank/AI Core Services
     "journal": {
         "cmd": ["journalctl", "--user", "-f", "-n", "0", "--no-pager",
                 "-u", "frank*", "-u", "uolg*",
@@ -185,7 +185,7 @@ LOG_SOURCES = {
         "prefix": "[CORE]",
         "color": FG_COLOR,
     },
-    # UOLG Log-Gateway
+    # UOLG log gateway
     "uolg": {
         "file": "/tmp/uolg/uolg.log",
         "prefix": "[UOLG]",
@@ -197,17 +197,17 @@ LOG_SOURCES = {
         "prefix": "[NET]",
         "color": FG_COLOR_WARN,
     },
-    # Voice Daemon File Log (zusätzlich zum Journal)
+    # Voice Daemon File Log (in addition to journal)
     "voice": {
         "file": "/tmp/frank_voice.log",
         "prefix": "[VOICE]",
-        "color": "#FF00FF",  # Magenta für Voice
+        "color": "#FF00FF",  # Magenta for voice
     },
     # UI Overlay Chat
     "overlay": {
         "file": "/tmp/overlay.log",
         "prefix": "[CHAT]",
-        "color": "#00FFFF",  # Cyan für Chat
+        "color": "#00FFFF",  # Cyan for chat
     },
 }
 
@@ -226,7 +226,7 @@ DISPLAY_CHECK_INTERVAL_SEC = 3
 # =============================================================================
 
 def get_connected_displays() -> List[Dict]:
-    """Hole Liste aller verbundenen Displays via xrandr."""
+    """Get list of all connected displays via xrandr."""
     displays = []
     try:
         result = subprocess.run(
@@ -236,7 +236,7 @@ def get_connected_displays() -> List[Dict]:
 
         current_display = None
         for line in result.stdout.split("\n"):
-            # Display-Zeile: "HDMI-A-1 connected 1024x600+1920+0 ..."
+            # Display line: "HDMI-A-1 connected 1024x600+1920+0 ..."
             match = re.match(
                 r'^(\S+)\s+connected\s+(?:primary\s+)?(\d+)x(\d+)\+(\d+)\+(\d+)',
                 line
@@ -252,20 +252,20 @@ def get_connected_displays() -> List[Dict]:
                 }
                 displays.append(current_display)
             elif current_display and line.startswith("   "):
-                # Auflösungs-Zeilen
+                # Resolution lines
                 mode_match = re.match(r'^\s+(\d+)x(\d+)', line)
                 if mode_match:
                     current_display["modes"].append(
                         (int(mode_match.group(1)), int(mode_match.group(2)))
                     )
     except Exception as e:
-        LOG.error(f"xrandr Fehler: {e}")
+        LOG.error(f"xrandr error: {e}")
 
     return displays
 
 
 def get_display_edid(display_name: str) -> str:
-    """Hole EDID-Daten für ein Display."""
+    """Get EDID data for a display."""
     try:
         result = subprocess.run(
             ["xrandr", "--verbose"],
@@ -290,18 +290,18 @@ def get_display_edid(display_name: str) -> str:
 
 
 def is_mini_display(display: Dict) -> bool:
-    """Prüfe ob ein Display der Mini-HDMI-Monitor ist."""
-    # Methode 1: Auflösung prüfen
+    """Check if a display is the mini-HDMI monitor."""
+    # Method 1: Check resolution
     if (display["width"] <= MINI_DISPLAY_MAX_WIDTH and
         display["height"] <= MINI_DISPLAY_MAX_HEIGHT):
-        # Prüfe ob 1024x600 in den Modi ist
+        # Check if 1024x600 is among the modes
         for w, h in display.get("modes", []):
             if w == 1024 and h == 600:
-                # Nur DEBUG - Daemon loggt bei erster Erkennung
-                LOG.debug(f"Mini-Display Match via Auflösung: {display['name']}")
+                # DEBUG only - daemon logs on first detection
+                LOG.debug(f"Mini-display match via resolution: {display['name']}")
                 return True
 
-    # Methode 2: EDID prüfen (Model-Name)
+    # Method 2: Check EDID (model name)
     edid = get_display_edid(display["name"])
     for identifier in MINI_DISPLAY_IDENTIFIERS:
         if identifier.lower() in edid.lower():
@@ -312,7 +312,7 @@ def is_mini_display(display: Dict) -> bool:
 
 
 def find_mini_display() -> Optional[Dict]:
-    """Finde den Mini-HDMI-Display, egal an welchem Port."""
+    """Find the mini-HDMI display, regardless of port."""
     displays = get_connected_displays()
 
     for display in displays:
@@ -324,30 +324,30 @@ def find_mini_display() -> Optional[Dict]:
 
 def find_secondary_display() -> Optional[Dict]:
     """
-    Finde einen sekundären Monitor (nicht den primären).
-    Bevorzugt Mini-HDMI, nimmt aber jeden sekundären Monitor.
+    Find a secondary monitor (not the primary one).
+    Prefers mini-HDMI, but accepts any secondary monitor.
     """
     displays = get_connected_displays()
 
     if len(displays) <= 1:
-        return None  # Nur ein Monitor oder keiner
+        return None  # Only one monitor or none
 
-    # Primärer Monitor ist der bei x=0, y=0 (normalerweise)
-    # Oder der erste in der Liste
+    # Primary monitor is the one at x=0, y=0 (usually)
+    # Or the first in the list
     primary_x = 0
     primary_y = 0
 
-    # Bevorzuge Mini-Display wenn vorhanden
+    # Prefer mini-display if present
     for display in displays:
         if is_mini_display(display):
             return display
 
-    # Sonst nimm jeden sekundären (nicht bei 0,0)
+    # Otherwise take any secondary (not at 0,0)
     for display in displays:
         if display["x"] != primary_x or display["y"] != primary_y:
             return display
 
-    # Falls alle bei 0,0 sind (unwahrscheinlich), nimm den zweiten
+    # If all are at 0,0 (unlikely), take the second one
     if len(displays) > 1:
         return displays[1]
 
@@ -355,12 +355,12 @@ def find_secondary_display() -> Optional[Dict]:
 
 
 def find_primary_display() -> Optional[Dict]:
-    """Finde den primären Monitor."""
+    """Find the primary monitor."""
     displays = get_connected_displays()
     if not displays:
         return None
 
-    # Primärer ist bei x=0, y=0 oder der erste
+    # Primary is at x=0, y=0 or the first one
     for display in displays:
         if display["x"] == 0 and display["y"] == 0:
             return display
@@ -373,7 +373,7 @@ def find_primary_display() -> Optional[Dict]:
 # =============================================================================
 
 class LogAggregator:
-    """Aggregiert Logs aus verschiedenen Quellen."""
+    """Aggregates logs from various sources."""
 
     def __init__(self, callback):
         self.callback = callback
@@ -382,18 +382,18 @@ class LogAggregator:
         self._file_positions = {}
 
     def start(self):
-        """Starte Log-Collection."""
+        """Start log collection."""
         if self._running:
             return
 
         self._running = True
 
-        # Journal-Thread
+        # Journal thread
         t = threading.Thread(target=self._watch_journal, daemon=True)
         t.start()
         self._threads.append(t)
 
-        # File-Watcher Threads
+        # File watcher threads
         for name, config in LOG_SOURCES.items():
             if "file" in config:
                 t = threading.Thread(
@@ -404,15 +404,15 @@ class LogAggregator:
                 t.start()
                 self._threads.append(t)
 
-        LOG.info("Log Aggregator gestartet")
+        LOG.info("Log aggregator started")
 
     def stop(self):
-        """Stoppe Log-Collection."""
+        """Stop log collection."""
         self._running = False
-        LOG.info("Log Aggregator gestoppt")
+        LOG.info("Log aggregator stopped")
 
     def _watch_journal(self):
-        """Überwache systemd journal."""
+        """Watch systemd journal."""
         config = LOG_SOURCES["journal"]
         proc = None
         try:
@@ -431,9 +431,9 @@ class LogAggregator:
                 else:
                     time.sleep(0.1)
         except (IOError, OSError) as e:
-            LOG.error(f"Journal-Watcher Fehler: {e}")
+            LOG.error(f"Journal watcher error: {e}")
         finally:
-            # KRITISCH: proc.wait() nach terminate() um Zombie zu vermeiden
+            # CRITICAL: proc.wait() after terminate() to avoid zombie
             if proc:
                 try:
                     proc.terminate()
@@ -442,10 +442,10 @@ class LogAggregator:
                     proc.kill()
                     proc.wait()
                 except (OSError, ProcessLookupError):
-                    pass  # Prozess bereits beendet
+                    pass  # Process already terminated
 
     def _watch_file(self, name: str, config: Dict):
-        """Überwache eine Log-Datei (tail -f style)."""
+        """Watch a log file (tail -f style)."""
         filepath = Path(config["file"])
 
         while self._running:
@@ -454,7 +454,7 @@ class LogAggregator:
                     time.sleep(1)
                     continue
 
-                # Initialisiere Position
+                # Initialize position
                 if name not in self._file_positions:
                     self._file_positions[name] = filepath.stat().st_size
 
@@ -475,15 +475,15 @@ class LogAggregator:
                 time.sleep(0.2)
 
             except Exception as e:
-                LOG.debug(f"File-Watcher {name} Fehler: {e}")
+                LOG.debug(f"File watcher {name} error: {e}")
                 time.sleep(1)
 
     def _emit(self, prefix: str, message: str, color: str):
-        """Sende Log-Zeile an Callback."""
+        """Send log line to callback."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted = f"{timestamp} {prefix} {message}"
 
-        # Farbe basierend auf Inhalt anpassen
+        # Adjust color based on content
         if "ERROR" in message.upper() or "FAIL" in message.upper():
             color = FG_COLOR_ERROR
         elif "WARN" in message.upper():
@@ -497,7 +497,7 @@ class LogAggregator:
 # =============================================================================
 
 class NeuralMonitorWindow(Gtk.Window):
-    """Log-Fenster für Mini-Display oder als Terminal-Fallback."""
+    """Log window for mini-display or as terminal fallback."""
 
     def __init__(self, display_info: Dict, fallback_mode: bool = False):
         super().__init__(title="Frank Neural Monitor")
@@ -511,7 +511,7 @@ class NeuralMonitorWindow(Gtk.Window):
         self._setup_ui()
         self._setup_aggregator()
 
-        # Initial-Nachricht
+        # Initial message
         mode_text = "TERMINAL MODE" if fallback_mode else "DEDICATED DISPLAY"
         self._add_log_line(
             f"╔══════════════════════════════════════════════════╗",
@@ -534,11 +534,11 @@ class NeuralMonitorWindow(Gtk.Window):
             FG_COLOR
         )
         self._add_log_line("", FG_COLOR)
-        self._add_log_line("Initialisiere Log-Streams...", FG_COLOR_INFO)
+        self._add_log_line("Initializing log streams...", FG_COLOR_INFO)
 
     def _setup_window(self):
-        """Konfiguriere Fenster - Fullscreen auf Mini-Display oder Terminal-Modus."""
-        # Schwarzer Hintergrund via CSS
+        """Configure window - fullscreen on mini-display or terminal mode."""
+        # Black background via CSS
         css_provider = Gtk.CssProvider()
         css_provider.load_from_data(b"""
             window, textview, scrolledwindow, textview text {
@@ -554,16 +554,16 @@ class NeuralMonitorWindow(Gtk.Window):
 
         if self.fallback_mode:
             # ===== TERMINAL MODE =====
-            # Normales Fenster auf Hauptbildschirm: minimierbar, resizable, mit Rahmen
+            # Normal window on primary screen: minimizable, resizable, with frame
             self.set_decorated(True)
             self.set_resizable(True)
             self.set_default_size(800, 500)
             self.set_title("◈ Frank Neural Monitor")
 
-            # Zentriert auf Hauptbildschirm
+            # Centered on primary screen
             self.set_position(Gtk.WindowPosition.CENTER)
 
-            # Normales Fenster-Verhalten
+            # Normal window behavior
             self.set_keep_above(False)
             self.set_skip_taskbar_hint(False)
             self.set_skip_pager_hint(False)
@@ -601,22 +601,22 @@ class NeuralMonitorWindow(Gtk.Window):
 
             LOG.info(f"Window setup: OVERRIDE_REDIRECT mode - target {self._target_w}x{self._target_h} at +{self._target_x}+{self._target_y}")
 
-        # Events (beide Modi)
+        # Events (both modes)
         self.connect("destroy", self._on_destroy)
         self.connect("key-press-event", self._on_key_press)
 
     def _setup_ui(self):
-        """Erstelle UI-Elemente."""
-        # Haupt-Container
+        """Create UI elements."""
+        # Main container
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(vbox)
 
-        # Scrolled Window für Logs
+        # Scrolled window for logs
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         vbox.pack_start(scroll, True, True, 0)
 
-        # TextView für Logs
+        # TextView for logs
         self.textview = Gtk.TextView()
         self.textview.set_editable(False)
         self.textview.set_cursor_visible(False)
@@ -637,10 +637,10 @@ class NeuralMonitorWindow(Gtk.Window):
         scroll.add(self.textview)
         self.scroll = scroll
 
-        # Text Buffer mit Tags für Farben
+        # Text buffer with tags for colors
         self.buffer = self.textview.get_buffer()
 
-        # Farb-Tags erstellen
+        # Create color tags
         self.tags = {}
         for name, color in [
             ("green", FG_COLOR),
@@ -653,16 +653,16 @@ class NeuralMonitorWindow(Gtk.Window):
             self.tags[color] = tag
 
     def _setup_aggregator(self):
-        """Starte Log Aggregator."""
+        """Start log aggregator."""
         self.aggregator = LogAggregator(self._add_log_line)
         self.aggregator.start()
 
     def _add_log_line(self, text: str, color: str = FG_COLOR):
-        """Füge eine Log-Zeile hinzu."""
-        # Tag für Farbe holen
+        """Add a log line."""
+        # Get tag for color
         tag = self.tags.get(color, self.tags.get(FG_COLOR))
 
-        # Text einfügen
+        # Insert text
         end_iter = self.buffer.get_end_iter()
         if self.buffer.get_char_count() > 0:
             self.buffer.insert(end_iter, "\n")
@@ -670,10 +670,10 @@ class NeuralMonitorWindow(Gtk.Window):
 
         self.buffer.insert_with_tags(end_iter, text, tag)
 
-        # Auto-Scroll nach unten
+        # Auto-scroll to bottom
         GLib.idle_add(self._scroll_to_bottom)
 
-        # Buffer begrenzen
+        # Limit buffer
         line_count = self.buffer.get_line_count()
         if line_count > MAX_LINES:
             start = self.buffer.get_start_iter()
@@ -681,7 +681,7 @@ class NeuralMonitorWindow(Gtk.Window):
             self.buffer.delete(start, line_end)
 
     def _scroll_to_bottom(self):
-        """Scrolle zum Ende."""
+        """Scroll to bottom."""
         adj = self.scroll.get_vadjustment()
         adj.set_value(adj.get_upper() - adj.get_page_size())
         return False
@@ -752,15 +752,15 @@ class NeuralMonitorWindow(Gtk.Window):
             LOG.error(f"xdotool fix failed: {e}")
 
     def _on_key_press(self, widget, event):
-        """Handle Tastendruck."""
-        # ESC oder Q zum Beenden
+        """Handle key press."""
+        # ESC or Q to quit
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_q, Gdk.KEY_Q):
             self.close()
             return True
         return False
 
     def _on_destroy(self, widget):
-        """Cleanup beim Schließen."""
+        """Cleanup on close."""
         if self.aggregator:
             self.aggregator.stop()
         Gtk.main_quit()
@@ -772,8 +772,8 @@ class NeuralMonitorWindow(Gtk.Window):
 
 class NeuralMonitorDaemon:
     """
-    Daemon der auf Mini-Display Hotplug wartet und
-    automatisch das Monitor-Fenster startet.
+    Daemon that waits for mini-display hotplug and
+    automatically starts the monitor window.
     """
 
     def __init__(self):
@@ -782,11 +782,11 @@ class NeuralMonitorDaemon:
         self._last_display = None
 
     def run(self):
-        """Hauptschleife - prüft periodisch auf Display."""
+        """Main loop - periodically checks for display."""
         self._running = True
         self._fallback_mode = False
-        LOG.info("Neural Monitor Daemon gestartet")
-        LOG.info(f"Suche nach sekundärem Monitor...")
+        LOG.info("Neural Monitor Daemon started")
+        LOG.info(f"Searching for secondary monitor...")
 
         # Notify systemd we're ready
         sd_notify_ready()
@@ -794,7 +794,7 @@ class NeuralMonitorDaemon:
         # Initial check - start fallback if no secondary display
         secondary = find_secondary_display()
         if not secondary:
-            LOG.warning("Kein sekundärer Monitor beim Start - starte Terminal-Modus auf Hauptbildschirm")
+            LOG.warning("No secondary monitor at startup - starting terminal mode on primary screen")
             primary = find_primary_display()
             if primary:
                 self._fallback_mode = True
@@ -805,22 +805,22 @@ class NeuralMonitorDaemon:
             secondary = find_secondary_display()
 
             if secondary and not self.window:
-                # Sekundärer Monitor gefunden, dediziertes Fenster starten
-                LOG.info(f"Sekundärer Monitor verbunden: {secondary['name']}")
+                # Secondary monitor found, start dedicated window
+                LOG.info(f"Secondary monitor connected: {secondary['name']}")
                 self._fallback_mode = False
                 self._start_window(secondary, fallback=False)
 
             elif secondary and self.window and self._fallback_mode:
-                # Sekundärer Monitor da, aber wir sind im Fallback-Modus -> wechseln
-                LOG.info(f"Sekundärer Monitor gefunden - wechsle zu dediziertem Modus")
+                # Secondary monitor present, but we're in fallback mode -> switch
+                LOG.info(f"Secondary monitor found - switching to dedicated mode")
                 GLib.idle_add(self._stop_window)
                 time.sleep(0.5)
                 self._fallback_mode = False
                 self._start_window(secondary, fallback=False)
 
             elif not secondary and self.window and not self._fallback_mode:
-                # Sekundärer Monitor entfernt -> wechsle zu Fallback
-                LOG.info("Sekundärer Monitor getrennt - wechsle zu Terminal-Modus")
+                # Secondary monitor removed -> switch to fallback
+                LOG.info("Secondary monitor disconnected - switching to terminal mode")
                 GLib.idle_add(self._stop_window)
                 time.sleep(0.5)
                 primary = find_primary_display()
@@ -837,7 +837,7 @@ class NeuralMonitorDaemon:
             time.sleep(DISPLAY_CHECK_INTERVAL_SEC)
 
     def _start_window(self, display_info: Dict, fallback: bool = False):
-        """Starte Monitor-Fenster."""
+        """Start monitor window."""
         def _create():
             self.window = NeuralMonitorWindow(display_info, fallback_mode=fallback)
             self.window.show_all()
@@ -845,13 +845,13 @@ class NeuralMonitorDaemon:
         GLib.idle_add(_create)
 
     def _stop_window(self):
-        """Stoppe Monitor-Fenster."""
+        """Stop monitor window."""
         if self.window:
             self.window.destroy()
             self.window = None
 
     def stop(self):
-        """Stoppe Daemon."""
+        """Stop daemon."""
         self._running = False
         if self.window:
             GLib.idle_add(self._stop_window)
@@ -862,26 +862,26 @@ class NeuralMonitorDaemon:
 # =============================================================================
 
 def main():
-    """Hauptfunktion."""
+    """Main function."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Frank Neural Monitor - Live Log Display für Mini-HDMI"
+        description="Frank Neural Monitor - Live Log Display for Mini-HDMI"
     )
     parser.add_argument(
         "--daemon", "-d",
         action="store_true",
-        help="Daemon-Modus: Warte auf Display-Hotplug"
+        help="Daemon mode: Wait for display hotplug"
     )
     parser.add_argument(
         "--once", "-o",
         action="store_true",
-        help="Einmal-Modus: Starte sofort wenn Display gefunden"
+        help="One-shot mode: Start immediately if display found"
     )
     parser.add_argument(
         "--force", "-f",
         type=str,
-        help="Erzwinge Display (z.B. HDMI-A-1)"
+        help="Force display (e.g. HDMI-A-1)"
     )
 
     args = parser.parse_args()
@@ -897,14 +897,14 @@ def main():
 
     def _do_shutdown():
         """Perform shutdown in GTK main thread context."""
-        LOG.info("Shutdown durchgeführt")
+        LOG.info("Shutdown performed")
         release_singleton_lock()
         Gtk.main_quit()
         return False  # Don't repeat
 
-    # Signal Handler - nur Flag setzen, keine GTK-Aufrufe!
+    # Signal handler - only set flag, no GTK calls!
     def signal_handler(sig, frame):
-        LOG.info("Shutdown-Signal empfangen...")
+        LOG.info("Shutdown signal received...")
         _shutdown_requested.set()
         # Schedule shutdown in GTK main thread (thread-safe)
         GLib.idle_add(_do_shutdown)
@@ -913,27 +913,27 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     if args.force:
-        # Erzwinge bestimmtes Display
+        # Force specific display
         displays = get_connected_displays()
         display = next((d for d in displays if d["name"] == args.force), None)
 
         if not display:
-            LOG.error(f"Display {args.force} nicht gefunden")
-            LOG.info("Verfügbare Displays:")
+            LOG.error(f"Display {args.force} not found")
+            LOG.info("Available displays:")
             for d in displays:
                 LOG.info(f"  {d['name']} ({d['width']}x{d['height']})")
             sys.exit(1)
 
-        LOG.info(f"Erzwinge Display: {display['name']}")
+        LOG.info(f"Forcing display: {display['name']}")
         window = NeuralMonitorWindow(display)
         window.show_all()
         Gtk.main()
 
     elif args.daemon:
-        # Daemon-Modus mit Hotplug-Erkennung
+        # Daemon mode with hotplug detection
         daemon = NeuralMonitorDaemon()
 
-        # GTK in separatem Thread
+        # GTK in separate thread
         gtk_thread = threading.Thread(target=Gtk.main, daemon=True)
         gtk_thread.start()
 
@@ -943,23 +943,23 @@ def main():
             daemon.stop()
 
     else:
-        # Standard: Einmal prüfen und starten
+        # Default: Check once and start
         secondary = find_secondary_display()
 
         if not secondary:
-            # FALLBACK: Kein sekundärer Monitor -> Terminal-Modus auf Hauptbildschirm
-            LOG.warning("Kein sekundärer Monitor gefunden - starte im Terminal-Modus")
+            # FALLBACK: No secondary monitor -> terminal mode on primary screen
+            LOG.warning("No secondary monitor found - starting in terminal mode")
             primary = find_primary_display()
             if primary:
-                LOG.info(f"Verwende Hauptbildschirm: {primary['name']}")
+                LOG.info(f"Using primary screen: {primary['name']}")
                 window = NeuralMonitorWindow(primary, fallback_mode=True)
                 window.show_all()
                 Gtk.main()
             else:
-                LOG.error("Keine Displays gefunden!")
+                LOG.error("No displays found!")
                 sys.exit(1)
         else:
-            LOG.info(f"Sekundärer Monitor gefunden: {secondary['name']}")
+            LOG.info(f"Secondary monitor found: {secondary['name']}")
             window = NeuralMonitorWindow(secondary, fallback_mode=False)
             window.show_all()
             Gtk.main()

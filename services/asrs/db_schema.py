@@ -11,7 +11,7 @@ import logging
 
 LOG = logging.getLogger("asrs.db_schema")
 
-# Pattern für valide SQL-Identifier (SQL Injection Prevention)
+# Pattern for valid SQL identifiers (SQL Injection Prevention)
 _VALID_SQL_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 _VALID_SQL_TYPE = re.compile(r'^[A-Z]+(\s+[A-Z]+)*(\s+DEFAULT\s+\S+)?$', re.IGNORECASE)
 
@@ -147,8 +147,8 @@ def ensure_schema(db_path: Path):
 
 
 def _add_columns_if_missing(cursor, table: str, columns: list):
-    """Add columns to a table if they don't already exist (mit SQL Injection Schutz)."""
-    # Validiere Tabellennamen gegen SQL Injection
+    """Add columns to a table if they don't already exist (with SQL injection protection)."""
+    # Validate table name against SQL injection
     if not _VALID_SQL_IDENTIFIER.match(table):
         raise ValueError(f"Invalid table name: {table}")
 
@@ -157,11 +157,11 @@ def _add_columns_if_missing(cursor, table: str, columns: list):
     existing = {row[1] for row in cursor.fetchall()}
 
     for col_name, col_type in columns:
-        # Validiere Spaltennamen gegen SQL Injection
+        # Validate column name against SQL injection
         if not _VALID_SQL_IDENTIFIER.match(col_name):
             LOG.warning(f"Invalid column name rejected: {col_name}")
             continue
-        # Validiere Spaltentyp (nur bekannte SQL-Typen)
+        # Validate column type (only known SQL types)
         if not _VALID_SQL_TYPE.match(col_type):
             LOG.warning(f"Invalid column type rejected: {col_type}")
             continue

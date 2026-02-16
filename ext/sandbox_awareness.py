@@ -2,18 +2,18 @@
 """
 Sandbox Awareness System v1.0
 ==============================
-KRITISCH: Dieses Modul stellt sicher, dass Frank IMMER weiß,
-ob er in einer Sandbox oder im Production-System arbeitet.
+CRITICAL: This module ensures that Frank ALWAYS knows
+whether he is working in a sandbox or in the production system.
 
-Dies verhindert:
-- Verwechslung von Sandbox-Tools mit echten System-Tools
-- Unbeabsichtigte Nutzung von Test-Funktionen im Live-System
-- Inkonsistente Weltmodell-Updates basierend auf Sandbox-Ergebnissen
+This prevents:
+- Confusion of sandbox tools with real system tools
+- Unintended use of test functions in the live system
+- Inconsistent world model updates based on sandbox results
 
 Integration:
-- E-CPMM: Als unveränderlicher Kern-Edge gespeichert
-- Personality: Injiziert Sandbox-Status in jeden Kontext
-- E-SIR: Markiert alle Sandbox-Operationen eindeutig
+- E-CPMM: Stored as immutable core edge
+- Personality: Injects sandbox status into every context
+- E-SIR: Marks all sandbox operations clearly
 
 Author: Projekt Frankenstein
 Created: 2026-01-30
@@ -52,30 +52,30 @@ ENV_SANDBOX_SESSION = "FRANK_SANDBOX_SESSION_ID"
 # =============================================================================
 
 class EnvironmentType(Enum):
-    """Klar definierte Umgebungstypen."""
-    PRODUCTION = "PRODUCTION"      # Echtes System - alle Aktionen sind permanent
-    SANDBOX = "SANDBOX"            # Isolierte Testumgebung - keine echten Auswirkungen
-    TRAINING = "TRAINING"          # 10h Training-Modus - kontrollierte Experimente
-    UNKNOWN = "UNKNOWN"            # Fehlerfall - sollte nie auftreten
+    """Clearly defined environment types."""
+    PRODUCTION = "PRODUCTION"      # Real system - all actions are permanent
+    SANDBOX = "SANDBOX"            # Isolated test environment - no real effects
+    TRAINING = "TRAINING"          # 10h training mode - controlled experiments
+    UNKNOWN = "UNKNOWN"            # Error case - should never occur
 
 
 class ToolOrigin(Enum):
-    """Herkunft eines Tools - KRITISCH für Unterscheidung."""
-    CORE_SYSTEM = "CORE_SYSTEM"           # Fest integrierte System-Tools
-    GENESIS_PRODUCTION = "GENESIS_PROD"   # Von E-SIR erstellte, getestete Tools
-    GENESIS_SANDBOX = "GENESIS_SANDBOX"   # Sandbox-Tools, noch nicht promoted
-    EXTERNAL_TESTED = "EXTERNAL_TESTED"   # Externe Tools, getestet
-    EXTERNAL_UNTESTED = "EXTERNAL_UNTEST" # Externe Tools, ungetestet (GEFAHR)
+    """Origin of a tool - CRITICAL for distinction."""
+    CORE_SYSTEM = "CORE_SYSTEM"           # Built-in system tools
+    GENESIS_PRODUCTION = "GENESIS_PROD"   # Tools created and tested by E-SIR
+    GENESIS_SANDBOX = "GENESIS_SANDBOX"   # Sandbox tools, not yet promoted
+    EXTERNAL_TESTED = "EXTERNAL_TESTED"   # External tools, tested
+    EXTERNAL_UNTESTED = "EXTERNAL_UNTEST" # External tools, untested (DANGER)
 
 
 @dataclass
 class SandboxSession:
-    """Eine Sandbox-Session mit allen Metadaten."""
+    """A sandbox session with all metadata."""
     session_id: str
     started_at: str
     environment: EnvironmentType
     purpose: str
-    parent_session: Optional[str] = None  # Falls nested sandbox
+    parent_session: Optional[str] = None  # If nested sandbox
     tools_tested: List[str] = None
     is_active: bool = True
 
@@ -86,7 +86,7 @@ class SandboxSession:
 
 @dataclass
 class ToolRegistration:
-    """Registrierung eines Tools mit klarer Herkunfts-Markierung."""
+    """Registration of a tool with clear origin marking."""
     tool_name: str
     tool_path: str
     origin: ToolOrigin
@@ -99,7 +99,7 @@ class ToolRegistration:
 
     @property
     def is_safe_for_production(self) -> bool:
-        """Nur Tools die getestet UND promoted wurden sind sicher."""
+        """Only tools that were tested AND promoted are safe."""
         return self.tested_in_sandbox and self.promoted_to_production
 
 
@@ -108,7 +108,7 @@ class ToolRegistration:
 # =============================================================================
 
 class SandboxAwarenessDB:
-    """Persistente Speicherung der Sandbox-Awareness Daten."""
+    """Persistent storage of sandbox awareness data."""
 
     _instance = None
     _lock = threading.Lock()
@@ -129,7 +129,7 @@ class SandboxAwarenessDB:
         self._init_db()
 
     def _init_db(self):
-        """Initialisiere Datenbank-Schema."""
+        """Initialize database schema."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         with sqlite3.connect(self.db_path) as conn:
@@ -146,7 +146,7 @@ class SandboxAwarenessDB:
                     tools_tested TEXT DEFAULT '[]'
                 );
 
-                -- Tool Registry mit Origin-Tracking
+                -- Tool Registry with origin tracking
                 CREATE TABLE IF NOT EXISTS tool_registry (
                     tool_name TEXT PRIMARY KEY,
                     tool_path TEXT NOT NULL,
@@ -160,7 +160,7 @@ class SandboxAwarenessDB:
                     FOREIGN KEY (sandbox_session_id) REFERENCES sandbox_sessions(session_id)
                 );
 
-                -- E-CPMM Kern-Edges (unveränderlich)
+                -- E-CPMM core edges (immutable)
                 CREATE TABLE IF NOT EXISTS core_edges (
                     edge_id TEXT PRIMARY KEY,
                     edge_type TEXT NOT NULL,
@@ -169,7 +169,7 @@ class SandboxAwarenessDB:
                     is_immutable INTEGER DEFAULT 1
                 );
 
-                -- Aktiver Umgebungs-Status
+                -- Active environment status
                 CREATE TABLE IF NOT EXISTS current_environment (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     environment TEXT NOT NULL DEFAULT 'PRODUCTION',
@@ -177,23 +177,23 @@ class SandboxAwarenessDB:
                     last_updated TEXT
                 );
 
-                -- Initialer Umgebungs-Status
+                -- Initial environment status
                 INSERT OR IGNORE INTO current_environment (id, environment, last_updated)
                 VALUES (1, 'PRODUCTION', datetime('now'));
 
-                -- KRITISCHER Kern-Edge: Sandbox-Awareness Direktive
+                -- CRITICAL core edge: Sandbox awareness directive
                 INSERT OR IGNORE INTO core_edges (edge_id, edge_type, content, created_at, is_immutable)
                 VALUES (
                     'SANDBOX_AWARENESS_DIRECTIVE',
                     'IMMUTABLE_DIRECTIVE',
-                    'FRANK MUSS IMMER WISSEN: (1) Bin ich in PRODUCTION oder SANDBOX? (2) Ist dieses Tool ein CORE_SYSTEM, GENESIS_PRODUCTION, oder GENESIS_SANDBOX Tool? (3) Sandbox-Ergebnisse sind NICHT real - sie duerfen das Weltmodell NICHT als Fakten aktualisieren. (4) Nur PROMOTED Tools duerfen im Production-System verwendet werden.',
+                    'FRANK MUST ALWAYS KNOW: (1) Am I in PRODUCTION or SANDBOX? (2) Is this tool a CORE_SYSTEM, GENESIS_PRODUCTION, or GENESIS_SANDBOX tool? (3) Sandbox results are NOT real - they must NOT update the world model as facts. (4) Only PROMOTED tools may be used in the production system.',
                     datetime('now'),
                     1
                 );
             """)
 
     def get_current_environment(self) -> EnvironmentType:
-        """Hole aktuellen Umgebungs-Status."""
+        """Get current environment status."""
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT environment FROM current_environment WHERE id = 1"
@@ -206,7 +206,7 @@ class SandboxAwarenessDB:
         return EnvironmentType.PRODUCTION
 
     def set_environment(self, env: EnvironmentType, session_id: Optional[str] = None):
-        """Setze Umgebungs-Status."""
+        """Set environment status."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 UPDATE current_environment
@@ -216,7 +216,7 @@ class SandboxAwarenessDB:
             conn.commit()
 
     def start_sandbox_session(self, purpose: str, parent_session: Optional[str] = None) -> SandboxSession:
-        """Starte eine neue Sandbox-Session."""
+        """Start a new sandbox session."""
         import uuid
         session_id = f"sandbox_{uuid.uuid4().hex[:12]}_{int(datetime.now().timestamp())}"
         started_at = datetime.now().isoformat()
@@ -236,17 +236,17 @@ class SandboxAwarenessDB:
             """, (session_id, started_at, EnvironmentType.SANDBOX.value, purpose, parent_session))
             conn.commit()
 
-        # Setze Environment auf SANDBOX
+        # Set environment to SANDBOX
         self.set_environment(EnvironmentType.SANDBOX, session_id)
 
-        # Setze Environment-Variable
+        # Set environment variable
         os.environ[ENV_SANDBOX_MODE] = "1"
         os.environ[ENV_SANDBOX_SESSION] = session_id
 
         return session
 
     def end_sandbox_session(self, session_id: str):
-        """Beende eine Sandbox-Session."""
+        """End a sandbox session."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 UPDATE sandbox_sessions
@@ -255,15 +255,15 @@ class SandboxAwarenessDB:
             """, (session_id,))
             conn.commit()
 
-        # Zurück zu PRODUCTION
+        # Back to PRODUCTION
         self.set_environment(EnvironmentType.PRODUCTION, None)
 
-        # Lösche Environment-Variablen
+        # Remove environment variables
         os.environ.pop(ENV_SANDBOX_MODE, None)
         os.environ.pop(ENV_SANDBOX_SESSION, None)
 
     def register_tool(self, tool: ToolRegistration):
-        """Registriere ein Tool mit Origin-Tracking."""
+        """Register a tool with origin tracking."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO tool_registry
@@ -284,7 +284,7 @@ class SandboxAwarenessDB:
             conn.commit()
 
     def get_tool(self, tool_name: str) -> Optional[ToolRegistration]:
-        """Hole Tool-Registrierung."""
+        """Get tool registration."""
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute("""
                 SELECT tool_name, tool_path, origin, registered_at, tested_in_sandbox,
@@ -307,13 +307,13 @@ class SandboxAwarenessDB:
         return None
 
     def promote_tool_to_production(self, tool_name: str) -> bool:
-        """Promote ein getestetes Sandbox-Tool zu Production."""
+        """Promote a tested sandbox tool to production."""
         tool = self.get_tool(tool_name)
         if not tool:
             return False
 
         if not tool.tested_in_sandbox:
-            return False  # Kann nicht promoted werden ohne Test
+            return False  # Cannot be promoted without testing
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -327,12 +327,12 @@ class SandboxAwarenessDB:
 
     def get_sandbox_context_for_injection(self) -> Dict[str, Any]:
         """
-        Generiere Kontext für Injection in Frank's Awareness.
-        Dies wird in jeden Chat-Kontext injiziert.
+        Generate context for injection into Frank's awareness.
+        This is injected into every chat context.
         """
         env = self.get_current_environment()
 
-        # Hole aktive Session falls vorhanden
+        # Get active session if present
         active_session = None
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute("""
@@ -348,7 +348,7 @@ class SandboxAwarenessDB:
                     "started_at": row[2]
                 }
 
-        # Hole Sandbox-Tools (nicht promoted)
+        # Get sandbox tools (not promoted)
         sandbox_tools = []
         production_tools = []
         with sqlite3.connect(self.db_path) as conn:
@@ -373,21 +373,21 @@ class SandboxAwarenessDB:
         }
 
     def _generate_warning(self, env: EnvironmentType, sandbox_tools: List[str]) -> str:
-        """Generiere Warn-Text basierend auf Umgebung."""
+        """Generate warning text based on environment."""
         if env == EnvironmentType.SANDBOX:
             return (
-                "⚠️ SANDBOX-MODUS AKTIV: Alle Operationen sind isoliert. "
-                "Ergebnisse sind NICHT real und dürfen das Weltmodell NICHT als Fakten aktualisieren. "
-                "Tools hier sind TEST-Tools, nicht Production-Tools."
+                "⚠️ SANDBOX MODE ACTIVE: All operations are isolated. "
+                "Results are NOT real and must NOT update the world model as facts. "
+                "Tools here are TEST tools, not production tools."
             )
         elif env == EnvironmentType.TRAINING:
             return (
-                "🎓 TRAINING-MODUS: Kontrollierte Experimente aktiv. "
-                "Sandbox-Tests werden durchgeführt. Menschliche Bestätigung erforderlich für Production-Übernahme."
+                "🎓 TRAINING MODE: Controlled experiments active. "
+                "Sandbox tests are being performed. Human confirmation required for production adoption."
             )
         elif sandbox_tools:
             return (
-                f"ℹ️ Es gibt {len(sandbox_tools)} Sandbox-Tools die noch nicht für Production freigegeben sind: "
+                f"ℹ️ There are {len(sandbox_tools)} sandbox tools not yet approved for production: "
                 f"{', '.join(sandbox_tools[:5])}{'...' if len(sandbox_tools) > 5 else ''}"
             )
         return ""
@@ -400,7 +400,7 @@ class SandboxAwarenessDB:
 _db: Optional[SandboxAwarenessDB] = None
 
 def get_db() -> SandboxAwarenessDB:
-    """Hole globale DB-Instanz."""
+    """Get global DB instance."""
     global _db
     if _db is None:
         _db = SandboxAwarenessDB()
@@ -408,58 +408,58 @@ def get_db() -> SandboxAwarenessDB:
 
 
 def is_sandbox_mode() -> bool:
-    """Schneller Check ob Sandbox-Modus aktiv ist."""
-    # Erst Environment-Variable prüfen (schnell)
+    """Quick check whether sandbox mode is active."""
+    # First check environment variable (fast)
     if os.environ.get(ENV_SANDBOX_MODE) == "1":
         return True
-    # Dann DB prüfen (persistent)
+    # Then check DB (persistent)
     return get_db().get_current_environment() == EnvironmentType.SANDBOX
 
 
 def get_environment() -> EnvironmentType:
-    """Hole aktuelle Umgebung."""
+    """Get current environment."""
     return get_db().get_current_environment()
 
 
 def get_context_injection() -> str:
     """
-    Generiere Text für Injection in Frank's System-Prompt.
-    Dies MUSS in jeden Kontext injiziert werden.
+    Generate text for injection into Frank's system prompt.
+    This MUST be injected into every context.
     """
     ctx = get_db().get_sandbox_context_for_injection()
 
     lines = [
-        f"[UMGEBUNG: {ctx['environment']}]"
+        f"[ENVIRONMENT: {ctx['environment']}]"
     ]
 
     if ctx["is_sandbox"]:
-        lines.append("⚠️ SANDBOX-MODUS: Alle Operationen sind isoliert und nicht permanent.")
+        lines.append("⚠️ SANDBOX MODE: All operations are isolated and not permanent.")
         if ctx["active_session"]:
             lines.append(f"Session: {ctx['active_session']['session_id']}")
-            lines.append(f"Zweck: {ctx['active_session']['purpose']}")
+            lines.append(f"Purpose: {ctx['active_session']['purpose']}")
 
     if ctx["warning"]:
         lines.append(ctx["warning"])
 
     if ctx["sandbox_tools"]:
-        lines.append(f"Sandbox-Tools (NICHT für Production): {', '.join(ctx['sandbox_tools'][:10])}")
+        lines.append(f"Sandbox tools (NOT for production): {', '.join(ctx['sandbox_tools'][:10])}")
 
     return "\n".join(lines)
 
 
 def start_sandbox(purpose: str) -> SandboxSession:
-    """Starte Sandbox-Session."""
+    """Start sandbox session."""
     return get_db().start_sandbox_session(purpose)
 
 
 def end_sandbox(session_id: str):
-    """Beende Sandbox-Session."""
+    """End sandbox session."""
     get_db().end_sandbox_session(session_id)
 
 
 def register_sandbox_tool(name: str, path: str, description: str = "",
                           test_results: Optional[Dict] = None) -> ToolRegistration:
-    """Registriere ein neues Sandbox-Tool."""
+    """Register a new sandbox tool."""
     session_id = os.environ.get(ENV_SANDBOX_SESSION)
 
     tool = ToolRegistration(
@@ -479,12 +479,12 @@ def register_sandbox_tool(name: str, path: str, description: str = "",
 
 
 def promote_to_production(tool_name: str) -> bool:
-    """Promote Tool von Sandbox zu Production."""
+    """Promote tool from sandbox to production."""
     return get_db().promote_tool_to_production(tool_name)
 
 
 def is_tool_safe_for_production(tool_name: str) -> bool:
-    """Prüfe ob Tool sicher für Production ist."""
+    """Check whether tool is safe for production."""
     tool = get_db().get_tool(tool_name)
     if tool is None:
         return False
@@ -492,18 +492,18 @@ def is_tool_safe_for_production(tool_name: str) -> bool:
 
 
 # =============================================================================
-# CONTEXT MANAGER FÜR SANDBOX-SESSIONS
+# CONTEXT MANAGER FOR SANDBOX SESSIONS
 # =============================================================================
 
 class SandboxContext:
     """
-    Context Manager für Sandbox-Sessions.
+    Context manager for sandbox sessions.
 
-    Verwendung:
+    Usage:
         with SandboxContext("Testing new feature X") as session:
-            # Alle Operationen hier sind in der Sandbox
+            # All operations here are in the sandbox
             result = test_something()
-        # Automatisch zurück zu Production
+        # Automatically back to production
     """
 
     def __init__(self, purpose: str):
@@ -526,20 +526,20 @@ class SandboxContext:
 
 def inject_into_ecpmm():
     """
-    Injiziere Sandbox-Awareness als unveränderlichen Kern-Edge in E-CPMM.
-    Dies sollte einmalig beim System-Start aufgerufen werden.
+    Inject sandbox awareness as immutable core edge into E-CPMM.
+    This should be called once at system startup.
     """
     if not ECPMM_DB_PATH.exists():
-        return  # E-CPMM nicht initialisiert
+        return  # E-CPMM not initialized
 
     directive = {
         "type": "SANDBOX_AWARENESS",
         "content": (
-            "UNVERÄNDERLICHE DIREKTIVE: "
-            "1. Prüfe IMMER get_environment() vor Tool-Nutzung. "
-            "2. Sandbox-Ergebnisse sind NICHT real - niemals als Fakten speichern. "
-            "3. Nur PROMOTED Tools (is_tool_safe_for_production=True) im Production-System nutzen. "
-            "4. Bei Unsicherheit: FRAGE den Menschen."
+            "IMMUTABLE DIRECTIVE: "
+            "1. ALWAYS check get_environment() before tool usage. "
+            "2. Sandbox results are NOT real - never store as facts. "
+            "3. Only use PROMOTED tools (is_tool_safe_for_production=True) in the production system. "
+            "4. When uncertain: ASK the human."
         ),
         "immutable": True,
         "created_at": datetime.now().isoformat()
@@ -547,7 +547,7 @@ def inject_into_ecpmm():
 
     try:
         with sqlite3.connect(ECPMM_DB_PATH) as conn:
-            # Prüfe ob Tabelle existiert
+            # Check if table exists
             tables = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
@@ -569,7 +569,7 @@ def inject_into_ecpmm():
 # =============================================================================
 
 def init():
-    """Initialisiere Sandbox-Awareness System."""
+    """Initialize Sandbox Awareness System."""
     db = get_db()
     inject_into_ecpmm()
     return db

@@ -19,11 +19,11 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
 
-# Setup logging - FIX: INFO statt DEBUG in Production
+# Setup logging - FIX: INFO instead of DEBUG in production
 LOG = logging.getLogger("ewish_popup")
 if not LOG.handlers:
     LOG.addHandler(logging.StreamHandler(sys.stderr))
-    LOG.setLevel(logging.INFO)  # FIX: DEBUG verursacht Performance-Overhead
+    LOG.setLevel(logging.INFO)  # FIX: DEBUG causes performance overhead
 
 # Add parent path for imports
 AICORE_ROOT = Path(__file__).parent.parent.parent
@@ -56,16 +56,16 @@ except ImportError:
 class EWishPopupWindow(Gtk.ApplicationWindow):
     """Main E-WISH Popup Window."""
 
-    # Maximale Anzahl an Retry-Versuchen für Timer (verhindert Endlosschleife)
-    MAX_OVERLAY_RETRIES = 50  # 50 * 100ms = 5 Sekunden max
+    # Maximum number of retry attempts for timer (prevents infinite loop)
+    MAX_OVERLAY_RETRIES = 50  # 50 * 100ms = 5 seconds max
 
     def __init__(self, app: Gtk.Application, wish: 'Wish' = None):
-        super().__init__(application=app, title="Frank hat einen Wunsch")
+        super().__init__(application=app, title="Frank Has a Wish")
 
         self.wish = wish
         self._timer_ids: List[int] = []
         self._response_callback: Optional[Callable] = None
-        self._overlay_retry_count = 0  # FIX: Counter für Timer-Retries
+        self._overlay_retry_count = 0  # FIX: Counter for timer retries
 
         # Window dimensions
         self.popup_width = 700
@@ -151,8 +151,8 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         self._timer_ids.append(timer_id)
 
     def _setup_overlay_opacity(self):
-        """Set overlay opacity via X11 (FIX: mit Max-Retries)."""
-        # FIX: Verhindere Endlosschleife
+        """Set overlay opacity via X11 (FIX: with max retries)."""
+        # FIX: Prevent infinite loop
         self._overlay_retry_count += 1
         if self._overlay_retry_count > self.MAX_OVERLAY_RETRIES:
             LOG.warning(f"Overlay setup failed after {self.MAX_OVERLAY_RETRIES} retries")
@@ -231,11 +231,11 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
 
             # Move and raise
             subprocess.run([
-                'wmctrl', '-r', 'Frank hat einen Wunsch',
+                'wmctrl', '-r', 'Frank Has a Wish',
                 '-e', f'0,{x},{y},{self.popup_width},{self.popup_height}'
             ], capture_output=True)
             subprocess.run([
-                'wmctrl', '-r', 'Frank hat einen Wunsch',
+                'wmctrl', '-r', 'Frank Has a Wish',
                 '-b', 'add,above,sticky'
             ], capture_output=True)
 
@@ -245,7 +245,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
                 dim_wid = dim_result.stdout.strip().split()[0]
                 subprocess.run(['xdotool', 'windowraise', dim_wid], capture_output=True, timeout=5)
 
-            popup_result = subprocess.run(['xdotool', 'search', '--name', 'Frank hat einen Wunsch'], capture_output=True, text=True, timeout=5)
+            popup_result = subprocess.run(['xdotool', 'search', '--name', 'Frank Has a Wish'], capture_output=True, text=True, timeout=5)
             if popup_result.stdout.strip():
                 popup_wid = popup_result.stdout.strip().split()[0]
                 subprocess.run(['xdotool', 'windowactivate', popup_wid], capture_output=True, timeout=5)
@@ -329,7 +329,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         title_box.set_hexpand(True)
 
-        title = Gtk.Label(label="░▒▓ FRANK HAT EINEN WUNSCH ▓▒░")
+        title = Gtk.Label(label="░▒▓ FRANK HAS A WISH ▓▒░")
         title.add_css_class("ewish-title")
         title.set_halign(Gtk.Align.START)
         title_box.append(title)
@@ -357,7 +357,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
 
         if not self.wish:
             # No wish - show placeholder
-            label = Gtk.Label(label="Keine Wünsche vorhanden")
+            label = Gtk.Label(label="No wishes available")
             label.add_css_class("ewish-no-wish")
             content.append(label)
             return content
@@ -376,7 +376,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         intensity_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         intensity_box.set_hexpand(True)
 
-        intensity_label = Gtk.Label(label="Intensität:")
+        intensity_label = Gtk.Label(label="Intensity:")
         intensity_label.add_css_class("ewish-intensity-label")
         intensity_box.append(intensity_label)
 
@@ -426,7 +426,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
             criteria_icon = Gtk.Label(label="✅")
             criteria_box.append(criteria_icon)
 
-            criteria_title = Gtk.Label(label="Erfüllungskriterium:")
+            criteria_title = Gtk.Label(label="Success Criteria:")
             criteria_title.add_css_class("ewish-criteria-title")
             criteria_box.append(criteria_title)
             wish_card.append(criteria_box)
@@ -442,7 +442,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         content.append(wish_card)
 
         # Priority indicator
-        priority_label = Gtk.Label(label=f"Priorität: {self.wish.priority.name}")
+        priority_label = Gtk.Label(label=f"Priority: {self.wish.priority.name}")
         priority_label.add_css_class("ewish-priority")
         priority_label.set_halign(Gtk.Align.START)
         content.append(priority_label)
@@ -454,7 +454,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         chat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         chat_box.add_css_class("ewish-chat-container")
 
-        label = Gtk.Label(label="💬 Deine Antwort (optional):")
+        label = Gtk.Label(label="💬 Your Response (optional):")
         label.add_css_class("ewish-chat-label")
         label.set_halign(Gtk.Align.START)
         chat_box.append(label)
@@ -462,7 +462,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         # Text entry
         self.chat_entry = Gtk.Entry()
         self.chat_entry.add_css_class("ewish-chat-entry")
-        self.chat_entry.set_placeholder_text("Schreibe hier deine Antwort...")
+        self.chat_entry.set_placeholder_text("Type your response here...")
         self.chat_entry.connect("activate", self._on_send_response)
         chat_box.append(self.chat_entry)
 
@@ -478,28 +478,28 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         btn_row.set_halign(Gtk.Align.CENTER)
 
         # Approve button
-        approve_btn = Gtk.Button(label="✓ ERLAUBEN")
+        approve_btn = Gtk.Button(label="✓ ALLOW")
         approve_btn.add_css_class("ewish-button")
         approve_btn.add_css_class("ewish-button-approve")
         approve_btn.connect("clicked", self._on_approve)
         btn_row.append(approve_btn)
 
         # Reject button
-        reject_btn = Gtk.Button(label="✗ ABLEHNEN")
+        reject_btn = Gtk.Button(label="✗ REJECT")
         reject_btn.add_css_class("ewish-button")
         reject_btn.add_css_class("ewish-button-reject")
         reject_btn.connect("clicked", self._on_reject)
         btn_row.append(reject_btn)
 
         # Later button
-        later_btn = Gtk.Button(label="⏰ SPÄTER")
+        later_btn = Gtk.Button(label="⏰ LATER")
         later_btn.add_css_class("ewish-button")
         later_btn.add_css_class("ewish-button-later")
         later_btn.connect("clicked", self._on_later)
         btn_row.append(later_btn)
 
         # More info button
-        info_btn = Gtk.Button(label="💬 MEHR INFOS")
+        info_btn = Gtk.Button(label="💬 MORE INFO")
         info_btn.add_css_class("ewish-button")
         info_btn.add_css_class("ewish-button-info")
         info_btn.connect("clicked", self._on_more_info)
@@ -511,7 +511,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         send_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         send_row.set_halign(Gtk.Align.CENTER)
 
-        self.send_btn = Gtk.Button(label="▶ MIT NACHRICHT ANTWORTEN")
+        self.send_btn = Gtk.Button(label="▶ RESPOND WITH MESSAGE")
         self.send_btn.add_css_class("ewish-button")
         self.send_btn.add_css_class("ewish-button-send")
         self.send_btn.connect("clicked", self._on_send_response)
@@ -520,7 +520,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         actions.append(send_row)
 
         # Keyboard hint
-        hint = Gtk.Label(label="Y = Erlauben | N = Ablehnen | ESC = Später | Enter = Senden")
+        hint = Gtk.Label(label="Y = Allow | N = Reject | ESC = Later | Enter = Send")
         hint.add_css_class("ewish-keyboard-hint")
         actions.append(hint)
 
@@ -551,13 +551,13 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
 
         return False
 
-    # Maximale Länge für User-Responses (FIX: Input Validation)
+    # Maximum length for user responses (FIX: Input Validation)
     MAX_RESPONSE_LENGTH = 1000
 
     def _get_response_text(self) -> str:
-        """Get text from chat entry (FIX: mit Input Validation)."""
+        """Get text from chat entry (FIX: with input validation)."""
         text = self.chat_entry.get_text().strip()
-        # Länge begrenzen
+        # Limit length
         if len(text) > self.MAX_RESPONSE_LENGTH:
             text = text[:self.MAX_RESPONSE_LENGTH]
             LOG.warning(f"Response truncated to {self.MAX_RESPONSE_LENGTH} chars")
@@ -576,8 +576,8 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         if self._response_callback:
             self._response_callback("approved", self.wish, self._get_response_text())
 
-        self._show_inline_confirmation("✓ WUNSCH ERLAUBT", "Frank wird daran arbeiten.", "#00ff88")
-        GLib.timeout_add(2500, self._close_all)  # FIX: Längere Confirmation (2.5s)
+        self._show_inline_confirmation("✓ WISH ALLOWED", "Frank will work on it.", "#00ff88")
+        GLib.timeout_add(2500, self._close_all)  # FIX: Longer confirmation (2.5s)
 
     def _on_reject(self, button):
         """Handle reject action."""
@@ -594,8 +594,8 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         if self._response_callback:
             self._response_callback("rejected", self.wish, self._get_response_text())
 
-        self._show_inline_confirmation("✗ WUNSCH ABGELEHNT", "Frank versteht das.", "#ff4444")
-        GLib.timeout_add(2500, self._close_all)  # FIX: Längere Confirmation (2.5s)
+        self._show_inline_confirmation("✗ WISH REJECTED", "Frank understands.", "#ff4444")
+        GLib.timeout_add(2500, self._close_all)  # FIX: Longer confirmation (2.5s)
 
     def _on_later(self, button):
         """Handle later action."""
@@ -638,15 +638,15 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         if self._response_callback:
             self._response_callback("approved_with_message", self.wish, response)
 
-        self._show_inline_confirmation("✓ ANTWORT GESENDET", f"Nachricht: {response[:40]}...", "#00ff88")
-        GLib.timeout_add(2500, self._close_all)  # FIX: Längere Confirmation (2.5s)
+        self._show_inline_confirmation("✓ RESPONSE SENT", f"Message: {response[:40]}...", "#00ff88")
+        GLib.timeout_add(2500, self._close_all)  # FIX: Longer confirmation (2.5s)
 
-    # Erlaubte Farben für Confirmation (FIX: CSS Injection Prevention)
+    # Allowed colors for confirmation (FIX: CSS Injection Prevention)
     ALLOWED_COLORS = {"#00ff88", "#ff4444", "#00fff9", "#ff00ff", "#ffff00"}
 
     def _show_inline_confirmation(self, title: str, message: str, color: str = "#00ff88"):
         """Show confirmation by replacing main content (FIX: CSS Injection Prevention)."""
-        # FIX: Validiere Farbe gegen Whitelist
+        # FIX: Validate color against whitelist
         if color not in self.ALLOWED_COLORS:
             LOG.warning(f"Invalid color rejected: {color}, using default")
             color = "#00ff88"
@@ -660,7 +660,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
         # Big checkmark/X
         icon_label = Gtk.Label(label=title)
         icon_label.set_css_classes(["ewish-confirm-title"])
-        # Apply color via inline CSS (color ist jetzt validiert)
+        # Apply color via inline CSS (color is now validated)
         css = f"""
             .ewish-confirm-title {{
                 font-family: 'Share Tech Mono', monospace;
@@ -707,7 +707,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
 
     def _show_details_dialog(self):
         """Show detailed wish information."""
-        dialog = Gtk.Window(title=f"Wunsch Details")
+        dialog = Gtk.Window(title=f"Wish Details")
         dialog.set_transient_for(self)
         dialog.set_modal(True)
         dialog.set_default_size(500, 400)
@@ -720,14 +720,14 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
 
         # Details
         details = [
-            ("Kategorie", self.wish.category.value),
-            ("Priorität", self.wish.priority.name),
+            ("Category", self.wish.category.value),
+            ("Priority", self.wish.priority.name),
             ("Status", self.wish.state.value),
-            ("Intensität", f"{self.wish.get_current_intensity():.0%}"),
-            ("Quelle", f"{self.wish.source_module}/{self.wish.source_event}"),
-            ("Erstellt", self.wish.created_at.strftime("%d.%m.%Y %H:%M")),
-            ("Selbstständig lösbar", "Ja" if self.wish.actionable else "Nein"),
-            ("Braucht User-Hilfe", "Ja" if self.wish.requires_user else "Nein"),
+            ("Intensity", f"{self.wish.get_current_intensity():.0%}"),
+            ("Source", f"{self.wish.source_module}/{self.wish.source_event}"),
+            ("Created", self.wish.created_at.strftime("%Y-%m-%d %H:%M")),
+            ("Self-solvable", "Yes" if self.wish.actionable else "No"),
+            ("Requires User", "Yes" if self.wish.requires_user else "No"),
         ]
 
         for label, value in details:
@@ -742,7 +742,7 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
             box.append(row)
 
         # Close button
-        close_btn = Gtk.Button(label="Schließen")
+        close_btn = Gtk.Button(label="Close")
         close_btn.connect("clicked", lambda b: dialog.close())
         close_btn.set_halign(Gtk.Align.CENTER)
         close_btn.set_margin_top(12)
@@ -769,7 +769,7 @@ class EWishPopupApp(Gtk.Application):
 
     @classmethod
     def is_already_running(cls) -> bool:
-        """Check if already running (FIX: Memory Leak bei Lock-Datei)."""
+        """Check if already running (FIX: Memory leak with lock file)."""
         import fcntl
         cls.LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -780,7 +780,7 @@ class EWishPopupApp(Gtk.Application):
                 cls._lock_fd.flush()
                 return False
             except (IOError, OSError):
-                # FIX: Schließe Datei wenn Lock fehlschlägt
+                # FIX: Close file if lock fails
                 cls._lock_fd.close()
                 cls._lock_fd = None
                 return True
@@ -822,7 +822,7 @@ def show_wish_popup(wish: 'Wish' = None, callback: Callable = None):
     if EWishPopupApp.is_already_running():
         LOG.info("E-WISH popup already running")
         try:
-            subprocess.run(['wmctrl', '-a', 'Frank hat einen Wunsch'], capture_output=True)
+            subprocess.run(['wmctrl', '-a', 'Frank Has a Wish'], capture_output=True)
         except Exception:
             pass
         return

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -13,6 +14,19 @@ import wave
 from typing import Callable
 
 from overlay.constants import LOG
+
+# Whisper hallucination patterns — these are artifacts, not real speech
+_HALLUCINATION_RE = re.compile(
+    r"^\s*[\[\(]?\s*("
+    r"musik|music|applaus|applause|gelächter|laughter|stille|silence|"
+    r"klopfen|knocking|gespräch|rauschen|noise|wind|husten|cough|"
+    r"lacht|laughs|seufzt|sighs|weint|cries|singt|sings|pfeift|whistles"
+    r")\s*[\]\)]?\s*$",
+    re.IGNORECASE,
+)
+_FILLER_RE = re.compile(
+    r"^\s*(\.+|,+|!+|\?+|-+|–+|\.{2,}|…+)\s*$"
+)
 
 
 class PushToTalk:
@@ -139,7 +153,7 @@ class PushToTalk:
             body.append(f'--{boundary}'.encode())
             body.append(b'Content-Disposition: form-data; name="language"')
             body.append(b'')
-            body.append(b'de')
+            body.append(b'auto')
             body.append(f'--{boundary}'.encode())
             body.append(b'Content-Disposition: form-data; name="temperature"')
             body.append(b'')
@@ -160,11 +174,23 @@ class PushToTalk:
 
             text = result.get("text", "").strip()
 
-            if text:
-                LOG.info(f"PTT: Transcribed: '{text}'")
-                self.callback(text)
-            else:
+            if not text:
                 LOG.warning("PTT: No speech detected")
+                return
+
+            # Filter Whisper hallucinations
+            if _HALLUCINATION_RE.match(text) or _FILLER_RE.match(text):
+                LOG.info(f"PTT: Filtered hallucination: '{text}'")
+                return
+
+            # Filter too-short or punctuation-only
+            clean = re.sub(r"[^\w\s]", "", text).strip()
+            if len(clean) < 2:
+                LOG.info(f"PTT: Filtered too short: '{text}'")
+                return
+
+            LOG.info(f"PTT: Transcribed: '{text}'")
+            self.callback(text)
 
         except urllib.error.URLError as e:
             LOG.error(f"PTT: Whisper server connection error: {e}")

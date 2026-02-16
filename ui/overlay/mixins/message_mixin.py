@@ -257,11 +257,22 @@ class MessageMixin:
         bubble = tk.Frame(bubble_outer, bg=COLORS["bg_ai_msg"], padx=14, pady=10)
         bubble.pack()
 
-        # Sender
+        # Top row: sender + cancel button
+        top_row = tk.Frame(bubble, bg=COLORS["bg_ai_msg"])
+        top_row.pack(fill="x", pady=(0, 6))
+
         tk.Label(
-            bubble, text="\u25cf Frank", bg=COLORS["bg_ai_msg"],
+            top_row, text="\u25cf Frank", bg=COLORS["bg_ai_msg"],
             fg=COLORS["accent"], font=("Segoe UI", 9, "bold")
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(side="left")
+
+        # Cancel (X) button — top right
+        cancel_btn = tk.Label(
+            top_row, text="\u2715", bg=COLORS["bg_ai_msg"],
+            fg=COLORS["text_muted"], font=("Segoe UI", 10), cursor="hand2",
+        )
+        cancel_btn.pack(side="right", padx=(8, 0))
+        cancel_btn.bind("<Button-1>", lambda e: self._cancel_thinking())
 
         # Animated dots container
         self._dots_frame = tk.Frame(bubble, bg=COLORS["bg_ai_msg"])
@@ -322,6 +333,14 @@ class MessageMixin:
                 self._typing_elapsed_label.configure(text=f"{elapsed}s")
 
         self.after(300, self._animate_typing_dots)
+
+    def _cancel_thinking(self):
+        """Cancel current thinking/processing — interrupt Frank."""
+        LOG.info("User cancelled thinking")
+        self._hide_typing()
+        # Set cancel flag so workers can check
+        self._thinking_cancelled = True
+        self._add_message("Frank", "Cancelled.", is_system=True)
 
     def _hide_typing(self):
         """Hide typing indicator."""

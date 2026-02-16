@@ -150,7 +150,7 @@ class IOWorkersMixin:
 
     def _do_steam_launch_worker(self, game: str, voice: bool = False):
         """Launch a Steam game by name."""
-        wp_game_launch(game, "steam")  # Wallpaper event: game launch
+        wp_game_launch(f"{game}:steam")  # Wallpaper event: game launch
         try:
             import sys
             try:

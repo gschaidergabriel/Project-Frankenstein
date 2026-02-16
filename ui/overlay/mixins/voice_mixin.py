@@ -249,33 +249,81 @@ class VoiceMixin:
         }))
 
     def _voice_respond(self, text: str):
-        """
-        Send a response back to the voice daemon via the Outbox.
-        Voice daemon will read this and speak it via TTS.
-        """
+        """Show response in chat AND speak it via TTS."""
         if not text:
             return
 
-        LOG.info(f"Voice response -> Outbox: '{text[:50]}...'")
+        LOG.info(f"Voice response: '{text[:50]}...'")
         self._hide_typing()
-        self._add_message("🔊 Frank", text, is_user=False)
+        self._add_message("Frank", text, is_user=False)
 
-        # Write to Outbox for voice daemon to pick up
-        try:
-            outbox_data = {
-                "type": "frank_response",
-                "session_id": self._pending_voice_session or "",
-                "text": text,
-                "timestamp": time.time()
-            }
-            self._voice_outbox_file.write_text(json.dumps(outbox_data, ensure_ascii=False))
-        except Exception as e:
-            LOG.error(f"Failed to write voice outbox: {e}")
+        # Speak the response via TTS
+        self._tts_speak(text)
 
         self._pending_voice_session = None
 
     # ---------- TTS Engine ----------
     _kokoro_instance = None  # Lazy-loaded singleton
+    _audio_sink = None  # Detected output device
+
+    @classmethod
+    def _get_audio_sink(cls) -> str:
+        """Detect the correct audio output sink (not microphone)."""
+        if cls._audio_sink is not None:
+            return cls._audio_sink
+        try:
+            result = subprocess.run(
+                ["pactl", "list", "sinks", "short"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    name = parts[1].lower()
+                    # Skip microphone sinks (RODE, USB mic, etc.)
+                    if "rode" in name or "usb" in name and "mic" in name:
+                        continue
+                    # Prefer HDMI or built-in analog output
+                    if "hdmi" in name or "analog" in name or "speaker" in name:
+                        cls._audio_sink = parts[1]
+                        LOG.info(f"TTS audio sink: {cls._audio_sink}")
+                        return cls._audio_sink
+            # Fallback: first non-mic sink
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    name = parts[1].lower()
+                    if "rode" not in name and "monitor" not in name:
+                        cls._audio_sink = parts[1]
+                        LOG.info(f"TTS audio sink (fallback): {cls._audio_sink}")
+                        return cls._audio_sink
+        except Exception as e:
+            LOG.warning(f"Audio sink detection failed: {e}")
+        cls._audio_sink = ""  # Empty = use default
+        return cls._audio_sink
+
+    @classmethod
+    def _play_audio(cls, wav_path: str):
+        """Play audio file on the correct output device."""
+        sink = cls._get_audio_sink()
+        try:
+            cmd = ["pw-play"]
+            if sink:
+                cmd.extend(["--target", sink])
+            cmd.append(wav_path)
+            result = subprocess.run(cmd, capture_output=True, timeout=60)
+            LOG.info(f"TTS play: exit={result.returncode}, sink={sink or 'default'}")
+        except FileNotFoundError:
+            cmd = ["paplay"]
+            if sink:
+                cmd.extend(["--device", sink])
+            cmd.append(wav_path)
+            result = subprocess.run(cmd, capture_output=True, timeout=60)
+            LOG.info(f"TTS paplay: exit={result.returncode}")
 
     @classmethod
     def _get_kokoro(cls):
@@ -362,10 +410,7 @@ class VoiceMixin:
             except Exception:
                 pass  # Play raw Kokoro output
 
-            try:
-                subprocess.run(["pw-play", out_path], capture_output=True, timeout=60)
-            except FileNotFoundError:
-                subprocess.run(["paplay", out_path], capture_output=True, timeout=60)
+            self._play_audio(out_path)
 
         except Exception as e:
             LOG.error(f"Kokoro TTS error: {e}")
@@ -379,6 +424,7 @@ class VoiceMixin:
 
     def _tts_piper(self, text: str):
         """Generate German speech with Piper (Thorsten voice)."""
+        LOG.info("TTS Piper: starting synthesis...")
         piper_bin = Path.home() / ".local/bin/piper"
         voice_model = Path.home() / ".local/share/frank/voices/de_DE-thorsten-high.onnx"
 
@@ -395,10 +441,13 @@ class VoiceMixin:
                 [str(piper_bin), "--model", str(voice_model), "--output_file", raw_path],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
-            proc.communicate(input=text.encode("utf-8"), timeout=30)
+            stdout, stderr = proc.communicate(input=text.encode("utf-8"), timeout=30)
+            LOG.info(f"TTS Piper: synthesis done, exit={proc.returncode}, raw_size={Path(raw_path).stat().st_size if Path(raw_path).exists() else 0}")
 
             if not Path(raw_path).exists() or Path(raw_path).stat().st_size < 100:
                 LOG.error("Piper TTS: no audio produced")
+                if stderr:
+                    LOG.error(f"Piper stderr: {stderr.decode('utf-8', errors='replace')[:200]}")
                 return
 
             # Resample 22050Hz → 48kHz stereo + volume boost
@@ -416,13 +465,11 @@ class VoiceMixin:
             except Exception:
                 pass
 
-            try:
-                subprocess.run(["pw-play", play_path], capture_output=True, timeout=60)
-            except FileNotFoundError:
-                subprocess.run(["paplay", play_path], capture_output=True, timeout=60)
+            LOG.info(f"TTS Piper: playing {play_path}...")
+            self._play_audio(play_path)
 
         except Exception as e:
-            LOG.error(f"Piper TTS error: {e}")
+            LOG.error(f"Piper TTS error: {e}", exc_info=True)
         finally:
             for p in (raw_path, out_path):
                 try:
@@ -431,12 +478,16 @@ class VoiceMixin:
                     pass
 
     # ---------- Push-to-Talk ----------
+    _ptt_indicator_bubble = None
+
     def _on_ptt_press(self, event=None):
         """Start recording when PTT button is pressed."""
         if self._ptt_recording:
             return
         self._ptt_recording = True
         self.ptt_btn.configure(bg="#ff4444")  # Red while recording
+        # Show recording indicator in chat
+        self._show_ptt_indicator()
         self.ptt.start_recording()
 
     def _on_ptt_release(self, event=None):
@@ -445,7 +496,37 @@ class VoiceMixin:
             return
         self._ptt_recording = False
         self.ptt_btn.configure(bg=COLORS["bg_input"])  # Back to normal
+        # Remove recording indicator
+        self._hide_ptt_indicator()
         self.ptt.stop_recording()
+
+    def _show_ptt_indicator(self):
+        """Show a 'Recording...' indicator in the chat area."""
+        try:
+            self._hide_ptt_indicator()  # Remove any existing
+            self._ptt_indicator_bubble = tk.Frame(self.messages_frame, bg="#ff4444", padx=12, pady=6)
+            lbl = tk.Label(
+                self._ptt_indicator_bubble,
+                text="\u23fa Recording...",
+                bg="#ff4444", fg="white",
+                font=("Ubuntu", 10, "bold"),
+            )
+            lbl.pack()
+            self._ptt_indicator_bubble.pack(fill="x", pady=(4, 4))
+            self.messages_frame.update_idletasks()
+            self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+            self.chat_canvas.yview_moveto(1.0)
+        except Exception as e:
+            LOG.debug(f"PTT indicator show error: {e}")
+
+    def _hide_ptt_indicator(self):
+        """Remove the recording indicator."""
+        try:
+            if self._ptt_indicator_bubble:
+                self._ptt_indicator_bubble.destroy()
+                self._ptt_indicator_bubble = None
+        except Exception:
+            self._ptt_indicator_bubble = None
 
     def _on_ptt_error(self, error_msg: str):
         """Handle PTT transcription errors — show feedback to user."""
@@ -453,16 +534,17 @@ class VoiceMixin:
         self.after(0, lambda m=error_msg: self._add_message("Frank", m, is_system=True))
 
     def _on_ptt_result(self, text: str):
-        """Handle transcribed text from PTT."""
+        """Handle transcribed text from PTT — show in chat and process with voice response."""
         if not text:
             return
-        LOG.info(f"PTT: Sending to chat: '{text}'")
-        # Insert text into entry and send
-        self.after(0, lambda: self._ptt_insert_and_send(text))
+        LOG.info(f"PTT: Transcribed speech: '{text}'")
+        # Run on main thread: show user message + process as voice input
+        self.after(0, lambda t=text: self._ptt_process(t))
 
-    def _ptt_insert_and_send(self, text: str):
-        """Insert PTT text and send message (must run on main thread)."""
-        LOG.info(f"PTT: Inserting into entry: '{text}'")
-        self.entry.delete(0, tk.END)
-        self.entry.insert(0, text)
-        self._on_send()
+    def _ptt_process(self, text: str):
+        """Show transcribed text in chat and process through voice pipeline."""
+        LOG.info(f"PTT: Processing voice input: '{text}'")
+        self._add_message("Du", text, is_user=True)
+        self._show_typing()
+        # Process through voice pipeline (responds in chat + TTS)
+        self._process_voice_input(text)

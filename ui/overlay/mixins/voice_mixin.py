@@ -274,28 +274,123 @@ class VoiceMixin:
 
         self._pending_voice_session = None
 
+    # ---------- TTS Engine ----------
+    _kokoro_instance = None  # Lazy-loaded singleton
+
+    @classmethod
+    def _get_kokoro(cls):
+        """Lazy-load Kokoro TTS (heavy ONNX model, only load once)."""
+        if cls._kokoro_instance is None:
+            model = Path.home() / ".local/share/frank/kokoro/kokoro-v1.0.onnx"
+            voices = Path.home() / ".local/share/frank/kokoro/voices-v1.0.bin"
+            if model.exists() and voices.exists():
+                try:
+                    from kokoro_onnx import Kokoro
+                    cls._kokoro_instance = Kokoro(str(model), str(voices))
+                    LOG.info("Kokoro TTS loaded (am_fenrir voice)")
+                except Exception as e:
+                    LOG.error(f"Kokoro TTS init failed: {e}")
+                    cls._kokoro_instance = False  # Mark as failed
+            else:
+                LOG.warning("Kokoro model files not found, English TTS unavailable")
+                cls._kokoro_instance = False
+        return cls._kokoro_instance if cls._kokoro_instance is not False else None
+
+    @staticmethod
+    def _detect_language(text: str) -> str:
+        """Detect if text is primarily German or English."""
+        de_markers = re.compile(
+            r'\b(ich|und|der|die|das|ist|ein|eine|nicht|auf|für|mit|den|dem|'
+            r'des|von|zu|auch|wird|hat|kann|aber|oder|noch|nach|über|wie|'
+            r'nur|bei|vor|mehr|dann|schon|wenn|sein|dein|mein|'
+            r'bist|hast|habe|wir|sie|dir|mir|dich|mich|hier|'
+            r'jetzt|gerade|heute|morgen|gestern|'
+            r'ä|ö|ü|ß)\b', re.IGNORECASE
+        )
+        words = text.split()
+        if not words:
+            return "en"
+        de_count = len(de_markers.findall(text))
+        ratio = de_count / len(words)
+        return "de" if ratio > 0.15 else "en"
+
     def _tts_speak(self, text: str):
-        """Speak text via Piper TTS directly (for SPEAK button)."""
+        """Speak text via Kokoro TTS (am_fenrir deep voice for all languages)."""
         if not text:
             return
         LOG.info(f"TTS speak: '{text[:80]}...'")
         threading.Thread(target=self._tts_speak_worker, args=(text,), daemon=True).start()
 
     def _tts_speak_worker(self, text: str):
-        """Background worker: generate speech with Piper, resample, and play."""
+        """Background worker: Kokoro (deep voice) for English, Piper for German."""
+        lang = self._detect_language(text)
+        LOG.info(f"TTS language: {lang}")
+        if lang == "de":
+            self._tts_piper(text)
+        else:
+            self._tts_kokoro(text)
+
+    def _tts_kokoro(self, text: str):
+        """Generate English speech with Kokoro (am_fenrir deep voice)."""
+        kokoro = self._get_kokoro()
+        if not kokoro:
+            LOG.warning("Kokoro unavailable, falling back to Piper")
+            self._tts_piper(text)
+            return
+
+        out_fd, out_path = tempfile.mkstemp(suffix="_kokoro.wav")
+        os.close(out_fd)
+        play_fd, play_path = tempfile.mkstemp(suffix="_play.wav")
+        os.close(play_fd)
+        try:
+            import soundfile as sf
+            lang = "de" if self._detect_language(text) == "de" else "en-us"
+            samples, sr = kokoro.create(text, voice="am_fenrir", speed=1.0, lang=lang)
+            sf.write(out_path, samples, sr)
+
+            # Resample 24kHz → 48kHz stereo + volume boost
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", out_path,
+                     "-ar", "48000", "-ac", "2",
+                     "-filter:a", "volume=2.0",
+                     play_path],
+                    capture_output=True, timeout=15,
+                )
+                if Path(play_path).exists() and Path(play_path).stat().st_size > 100:
+                    out_path, play_path = play_path, out_path  # swap so we play resampled
+            except Exception:
+                pass  # Play raw Kokoro output
+
+            try:
+                subprocess.run(["pw-play", out_path], capture_output=True, timeout=60)
+            except FileNotFoundError:
+                subprocess.run(["paplay", out_path], capture_output=True, timeout=60)
+
+        except Exception as e:
+            LOG.error(f"Kokoro TTS error: {e}")
+            self._tts_piper(text)  # Fallback
+        finally:
+            for p in (out_path, play_path):
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+
+    def _tts_piper(self, text: str):
+        """Generate German speech with Piper (Thorsten voice)."""
         piper_bin = Path.home() / ".local/bin/piper"
         voice_model = Path.home() / ".local/share/frank/voices/de_DE-thorsten-high.onnx"
 
         if not piper_bin.exists() or not voice_model.exists():
-            LOG.error(f"TTS unavailable: piper={piper_bin.exists()}, voice={voice_model.exists()}")
+            LOG.error(f"Piper TTS unavailable: piper={piper_bin.exists()}, voice={voice_model.exists()}")
             return
 
-        raw_fd, raw_path = tempfile.mkstemp(suffix="_raw.wav")
+        raw_fd, raw_path = tempfile.mkstemp(suffix="_piper.wav")
         os.close(raw_fd)
-        out_fd, out_path = tempfile.mkstemp(suffix="_out.wav")
+        out_fd, out_path = tempfile.mkstemp(suffix="_play.wav")
         os.close(out_fd)
         try:
-            # 1) Generate speech with Piper (22050 Hz mono)
             proc = subprocess.Popen(
                 [str(piper_bin), "--model", str(voice_model), "--output_file", raw_path],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -303,11 +398,11 @@ class VoiceMixin:
             proc.communicate(input=text.encode("utf-8"), timeout=30)
 
             if not Path(raw_path).exists() or Path(raw_path).stat().st_size < 100:
-                LOG.error("TTS: Piper produced no audio")
+                LOG.error("Piper TTS: no audio produced")
                 return
 
-            # 2) Resample to 48kHz stereo + volume boost with ffmpeg
-            resample_ok = False
+            # Resample 22050Hz → 48kHz stereo + volume boost
+            play_path = raw_path
             try:
                 subprocess.run(
                     ["ffmpeg", "-y", "-i", raw_path,
@@ -316,20 +411,18 @@ class VoiceMixin:
                      out_path],
                     capture_output=True, timeout=15,
                 )
-                resample_ok = Path(out_path).exists() and Path(out_path).stat().st_size > 100
-            except Exception as e:
-                LOG.warning(f"TTS resample failed, using raw: {e}")
+                if Path(out_path).exists() and Path(out_path).stat().st_size > 100:
+                    play_path = out_path
+            except Exception:
+                pass
 
-            play_path = out_path if resample_ok else raw_path
-
-            # 3) Play via pw-play (native PipeWire) with paplay fallback
             try:
                 subprocess.run(["pw-play", play_path], capture_output=True, timeout=60)
             except FileNotFoundError:
                 subprocess.run(["paplay", play_path], capture_output=True, timeout=60)
 
         except Exception as e:
-            LOG.error(f"TTS speak error: {e}")
+            LOG.error(f"Piper TTS error: {e}")
         finally:
             for p in (raw_path, out_path):
                 try:

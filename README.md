@@ -1,4 +1,4 @@
-# F.R.A.N.K. — Friendly Responsive Autonomous Neural Kernel - A fully integrated local AI companion
+# F.R.A.N.K. — Friendly Responsive Autonomous Neural Kernel
 
 Built by one person in 2 months with zero programming experience. [Read the full story.](ABOUT.md)
 

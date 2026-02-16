@@ -629,7 +629,7 @@ FS_PATH_RE = re.compile(
 # Removed generic "zeig mir", "show me", "schau mal" - too broad, triggers on non-screen requests
 DESKTOP_HINTS_RE = re.compile(
     r"(desktop|desk top|bildschirm|screen|monitor|screenshot|"
-    r"was siehst du|what do you see|schau auf|schau mal|schau dir an|look at|"
+    r"was siehst du|what do you see|schau auf (den |meinen )?(bildschirm|desktop|monitor|screen)|look at (the |my )?(screen|desktop|monitor)|"
     r"was ist auf dem (bildschirm|desktop|monitor|screen)|"
     r"what.s on (the )?(screen|desktop|monitor)|"
     r"guck.*(bildschirm|desktop|monitor|screen)|"

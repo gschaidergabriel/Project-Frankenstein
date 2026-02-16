@@ -864,6 +864,11 @@ class ChatMixin:
         except Exception as _fb_err:
             LOG.debug("Output-feedback-loop error (blocking): %s", _fb_err)
 
+        # Check if user cancelled while we were processing
+        if getattr(self, '_thinking_cancelled', False):
+            LOG.info(f"Reply suppressed (cancelled): '{reply[:50]}...'")
+            return
+
         if voice:
             self._ui_call(lambda r=reply: self._voice_respond(r))
         else:

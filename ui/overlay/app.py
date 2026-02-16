@@ -219,7 +219,8 @@ class ChatOverlay(
         # Voice integration
         self._voice_event_file = Path("/tmp/frank_voice_event.json")
         self._voice_outbox_file = Path("/tmp/frank_voice_outbox.json")
-        self._last_voice_event_ts = 0.0
+        import time as _time
+        self._last_voice_event_ts = _time.time()  # Skip stale events from before restart
         self._voice_listening = False
         self._pending_voice_session: Optional[str] = None
         self._poll_voice_events()

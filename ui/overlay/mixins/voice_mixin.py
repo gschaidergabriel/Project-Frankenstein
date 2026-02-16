@@ -253,6 +253,11 @@ class VoiceMixin:
         if not text:
             return
 
+        # Check if user cancelled while we were processing
+        if getattr(self, '_thinking_cancelled', False):
+            LOG.info(f"Voice response suppressed (cancelled): '{text[:50]}...'")
+            return
+
         LOG.info(f"Voice response: '{text[:50]}...'")
         self._hide_typing()
         self._add_message("Frank", text, is_user=False)
@@ -544,6 +549,7 @@ class VoiceMixin:
     def _ptt_process(self, text: str):
         """Show transcribed text in chat and process through voice pipeline."""
         LOG.info(f"PTT: Processing voice input: '{text}'")
+        self._thinking_cancelled = False  # Reset cancel flag for new request
         self._add_message("Du", text, is_user=True)
         self._show_typing()
         # Process through voice pipeline (responds in chat + TTS)

@@ -338,9 +338,11 @@ class VoiceMixin:
             voices = Path.home() / ".local/share/frank/kokoro/voices-v1.0.bin"
             if model.exists() and voices.exists():
                 try:
+                    # Use all CPU cores for ONNX inference
+                    os.environ.setdefault("OMP_NUM_THREADS", str(os.cpu_count() or 8))
                     from kokoro_onnx import Kokoro
                     cls._kokoro_instance = Kokoro(str(model), str(voices))
-                    LOG.info("Kokoro TTS loaded (am_fenrir voice)")
+                    LOG.info("Kokoro TTS loaded (am_fenrir voice, %d threads)", os.cpu_count() or 8)
                 except Exception as e:
                     LOG.error(f"Kokoro TTS init failed: {e}")
                     cls._kokoro_instance = False  # Mark as failed
@@ -383,12 +385,44 @@ class VoiceMixin:
         else:
             self._tts_kokoro(text)
 
+    @staticmethod
+    def _split_tts_text(text: str, max_len: int = 400) -> list:
+        """Split text into chunks safe for Kokoro (avoids index-out-of-bounds on long text)."""
+        if len(text) <= max_len:
+            return [text]
+        chunks = []
+        # Split on sentence boundaries first
+        import re as _re
+        sentences = _re.split(r'(?<=[.!?])\s+', text)
+        current = ""
+        for sent in sentences:
+            if len(current) + len(sent) + 1 <= max_len:
+                current = (current + " " + sent).strip() if current else sent
+            else:
+                if current:
+                    chunks.append(current)
+                # If single sentence is too long, split on commas/spaces
+                if len(sent) > max_len:
+                    words = sent.split()
+                    current = ""
+                    for w in words:
+                        if len(current) + len(w) + 1 <= max_len:
+                            current = (current + " " + w).strip() if current else w
+                        else:
+                            if current:
+                                chunks.append(current)
+                            current = w
+                else:
+                    current = sent
+        if current:
+            chunks.append(current)
+        return chunks if chunks else [text[:max_len]]
+
     def _tts_kokoro(self, text: str):
         """Generate English speech with Kokoro (am_fenrir deep voice)."""
         kokoro = self._get_kokoro()
         if not kokoro:
-            LOG.warning("Kokoro unavailable, falling back to Piper")
-            self._tts_piper(text)
+            LOG.warning("Kokoro unavailable, no English TTS possible")
             return
 
         out_fd, out_path = tempfile.mkstemp(suffix="_kokoro.wav")
@@ -396,10 +430,27 @@ class VoiceMixin:
         play_fd, play_path = tempfile.mkstemp(suffix="_play.wav")
         os.close(play_fd)
         try:
+            import numpy as np
             import soundfile as sf
             lang = "de" if self._detect_language(text) == "de" else "en-us"
-            samples, sr = kokoro.create(text, voice="am_fenrir", speed=1.0, lang=lang)
-            sf.write(out_path, samples, sr)
+
+            # Split long text into chunks to avoid Kokoro index errors
+            chunks = self._split_tts_text(text)
+            all_samples = []
+            sr = 24000
+            for chunk in chunks:
+                try:
+                    samples, sr = kokoro.create(chunk, voice="am_fenrir", speed=1.0, lang=lang)
+                    all_samples.append(samples)
+                except Exception as chunk_err:
+                    LOG.warning(f"Kokoro chunk failed ({len(chunk)} chars): {chunk_err}")
+
+            if not all_samples:
+                LOG.error("Kokoro: all chunks failed")
+                return
+
+            combined = np.concatenate(all_samples)
+            sf.write(out_path, combined, sr)
 
             # Resample 24kHz → 48kHz stereo + volume boost
             try:
@@ -408,7 +459,7 @@ class VoiceMixin:
                      "-ar", "48000", "-ac", "2",
                      "-filter:a", "volume=2.0",
                      play_path],
-                    capture_output=True, timeout=15,
+                    capture_output=True, timeout=30,
                 )
                 if Path(play_path).exists() and Path(play_path).stat().st_size > 100:
                     out_path, play_path = play_path, out_path  # swap so we play resampled
@@ -419,7 +470,7 @@ class VoiceMixin:
 
         except Exception as e:
             LOG.error(f"Kokoro TTS error: {e}")
-            self._tts_piper(text)  # Fallback
+            # Do NOT fall back to Piper for English — Thorsten can't speak English
         finally:
             for p in (out_path, play_path):
                 try:

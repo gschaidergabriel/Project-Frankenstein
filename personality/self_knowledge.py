@@ -213,6 +213,9 @@ class LocationService:
     _lock = threading.Lock()
 
     # IP Geolocation APIs (kostenlos, kein API-Key noetig)
+    # Priority: ipwhois (reliable, no rate limit) > ip2location > ipinfo > ip-api
+    IPWHOIS_URL = "https://ipwho.is/"
+    IP2LOC_URL = "https://api.ip2location.io/"
     IPINFO_URL = "https://ipinfo.io/json"
     IP_API_URL = "http://ip-api.com/json/?fields=status,country,countryCode,city,timezone,lat,lon,query"
 
@@ -596,10 +599,70 @@ class LocationService:
     def _fetch_ip_geolocation(self) -> Optional[LocationInfo]:
         """Holt Standort via IP-Geolocation API (Stadt-genau).
 
-        Primaer: ipinfo.io (HTTPS, zuverlaessig)
-        Fallback: ip-api.com (HTTP)
+        Tries multiple APIs in order of reliability:
+        1. ipwho.is (no rate limit, reliable)
+        2. ip2location.io (reliable, HTTPS)
+        3. ipinfo.io (HTTPS, rate-limited at ~1000/day)
+        4. ip-api.com (HTTP, DNS can fail)
         """
-        # Primaer: ipinfo.io
+        import logging
+        _log = logging.getLogger("frank.location")
+
+        # 1. ipwho.is - most reliable, no rate limit
+        try:
+            req = urllib.request.Request(
+                self.IPWHOIS_URL,
+                headers={"User-Agent": "Frank-AI-Core/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            if data.get("success") and data.get("city"):
+                country_code = data.get("country_code", "??")
+                tz = data.get("timezone", {})
+                tz_id = tz.get("id", "UTC") if isinstance(tz, dict) else str(tz)
+                return LocationInfo(
+                    city=data["city"],
+                    country=data.get("country", self._country_code_to_name(country_code)),
+                    country_code=country_code,
+                    timezone=tz_id,
+                    latitude=float(data.get("latitude", 0.0)),
+                    longitude=float(data.get("longitude", 0.0)),
+                    accuracy_meters=10000.0,
+                    ip=data.get("ip", ""),
+                    source="ipwhois",
+                    last_update=datetime.now()
+                )
+        except Exception as e:
+            _log.debug("ipwho.is failed: %s", e)
+
+        # 2. ip2location.io
+        try:
+            req = urllib.request.Request(
+                self.IP2LOC_URL,
+                headers={"User-Agent": "Frank-AI-Core/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            if data.get("city_name"):
+                country_code = data.get("country_code", "??")
+                return LocationInfo(
+                    city=data["city_name"],
+                    country=data.get("country_name", self._country_code_to_name(country_code)),
+                    country_code=country_code,
+                    timezone=data.get("time_zone", "UTC"),
+                    latitude=float(data.get("latitude", 0.0)),
+                    longitude=float(data.get("longitude", 0.0)),
+                    accuracy_meters=10000.0,
+                    ip=data.get("ip", ""),
+                    source="ip2location",
+                    last_update=datetime.now()
+                )
+        except Exception as e:
+            _log.debug("ip2location.io failed: %s", e)
+
+        # 3. ipinfo.io (rate-limited)
         try:
             req = urllib.request.Request(
                 self.IPINFO_URL,
@@ -619,7 +682,6 @@ class LocationService:
                     except (ValueError, IndexError):
                         pass
 
-                # Laendername aus Code bestimmen
                 country_code = data.get("country", "??")
                 country_name = self._country_code_to_name(country_code)
 
@@ -630,15 +692,15 @@ class LocationService:
                     timezone=data.get("timezone", "UTC"),
                     latitude=lat,
                     longitude=lon,
-                    accuracy_meters=10000.0,  # IP-Geolocation ~10km
+                    accuracy_meters=10000.0,
                     ip=data.get("ip", ""),
                     source="ipinfo",
                     last_update=datetime.now()
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("ipinfo.io failed: %s", e)
 
-        # Fallback: ip-api.com
+        # 4. ip-api.com (HTTP, DNS sometimes fails)
         try:
             req = urllib.request.Request(
                 self.IP_API_URL,
@@ -660,8 +722,9 @@ class LocationService:
                     source="ip_api",
                     last_update=datetime.now()
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("ip-api.com failed: %s", e)
+
         return None
 
     @staticmethod

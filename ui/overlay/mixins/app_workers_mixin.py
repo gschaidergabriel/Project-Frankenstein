@@ -150,7 +150,7 @@ class AppWorkersMixin:
             self._ui_call(self._hide_typing)
 
             if open_result and open_result.get("ok"):
-                wp_tool("app_open", app_name)
+                wp_tool(f"app_open:{app_name}")
                 _reply(f"Starting {app_name}...")
                 return
             else:
@@ -159,7 +159,7 @@ class AppWorkersMixin:
                     _app_allow(app_id)
                     retry = _app_open(app_id)
                     if retry and retry.get("ok"):
-                        wp_tool("app_open", app_name)
+                        wp_tool(f"app_open:{app_name}")
                         _reply(f"Starting {app_name}...")
                         return
                 # App registry launch failed — fall through to Steam fallback

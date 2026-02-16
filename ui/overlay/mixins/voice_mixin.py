@@ -10,9 +10,14 @@ Handles:
 """
 
 import json
+import os
 import re
+import subprocess
+import tempfile
+import threading
 import time
 import tkinter as tk
+from pathlib import Path
 from overlay.constants import (
     LOG, COLORS, DEFAULT_TIMEOUT_S,
     WALLPAPER_RE, WALLPAPER_START_RE, WALLPAPER_STOP_RE,
@@ -270,20 +275,67 @@ class VoiceMixin:
         self._pending_voice_session = None
 
     def _tts_speak(self, text: str):
-        """Send text to TTS without adding a chat message (for SPEAK button)."""
+        """Speak text via Piper TTS directly (for SPEAK button)."""
         if not text:
             return
-        LOG.info(f"TTS speak: '{text[:50]}...'")
+        LOG.info(f"TTS speak: '{text[:80]}...'")
+        threading.Thread(target=self._tts_speak_worker, args=(text,), daemon=True).start()
+
+    def _tts_speak_worker(self, text: str):
+        """Background worker: generate speech with Piper, resample, and play."""
+        piper_bin = Path.home() / ".local/bin/piper"
+        voice_model = Path.home() / ".local/share/frank/voices/de_DE-thorsten-high.onnx"
+
+        if not piper_bin.exists() or not voice_model.exists():
+            LOG.error(f"TTS unavailable: piper={piper_bin.exists()}, voice={voice_model.exists()}")
+            return
+
+        raw_fd, raw_path = tempfile.mkstemp(suffix="_raw.wav")
+        os.close(raw_fd)
+        out_fd, out_path = tempfile.mkstemp(suffix="_out.wav")
+        os.close(out_fd)
         try:
-            outbox_data = {
-                "type": "frank_response",
-                "session_id": "",
-                "text": text,
-                "timestamp": time.time()
-            }
-            self._voice_outbox_file.write_text(json.dumps(outbox_data, ensure_ascii=False))
+            # 1) Generate speech with Piper (22050 Hz mono)
+            proc = subprocess.Popen(
+                [str(piper_bin), "--model", str(voice_model), "--output_file", raw_path],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            proc.communicate(input=text.encode("utf-8"), timeout=30)
+
+            if not Path(raw_path).exists() or Path(raw_path).stat().st_size < 100:
+                LOG.error("TTS: Piper produced no audio")
+                return
+
+            # 2) Resample to 48kHz stereo + volume boost with ffmpeg
+            resample_ok = False
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", raw_path,
+                     "-ar", "48000", "-ac", "2",
+                     "-filter:a", "volume=2.0",
+                     out_path],
+                    capture_output=True, timeout=15,
+                )
+                resample_ok = Path(out_path).exists() and Path(out_path).stat().st_size > 100
+            except Exception as e:
+                LOG.warning(f"TTS resample failed, using raw: {e}")
+
+            play_path = out_path if resample_ok else raw_path
+
+            # 3) Play via pw-play (native PipeWire) with paplay fallback
+            try:
+                subprocess.run(["pw-play", play_path], capture_output=True, timeout=60)
+            except FileNotFoundError:
+                subprocess.run(["paplay", play_path], capture_output=True, timeout=60)
+
         except Exception as e:
-            LOG.error(f"TTS speak failed: {e}")
+            LOG.error(f"TTS speak error: {e}")
+        finally:
+            for p in (raw_path, out_path):
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
 
     # ---------- Push-to-Talk ----------
     def _on_ptt_press(self, event=None):

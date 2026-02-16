@@ -329,9 +329,17 @@ class CommandRouterMixin:
                 self._io_q.put(("darknet_search", {"query": q, "limit": 8}))
             return
 
-        # Search
-        if low.startswith("suche ") or low.startswith("search "):
-            q = msg.split(" ", 1)[1].strip()
+        # Search (web) — typo-tolerant: "search X", "serch for X",
+        # "search in the web for X", "suche nach X", "such mal X"
+        _WEB_SEARCH_RE = re.compile(
+            r"^(?:se[ae]?r?ch|search|such\w*)\s+"
+            r"(?:(?:in\s+)?(?:the\s+)?(?:web|internet|net|google|bing)\s+(?:for\s+|nach\s+)?)?"
+            r"(?:for\s+|nach\s+|mal\s+)?",
+            re.IGNORECASE,
+        )
+        ws_match = _WEB_SEARCH_RE.match(low)
+        if ws_match:
+            q = msg[ws_match.end():].strip()
             if q:
                 self._add_message("Du", msg, is_user=True)
                 self._add_message("Frank", f"Searching for: {q}", is_system=True)

@@ -897,9 +897,10 @@ EMAIL_GENERAL_RE = re.compile(
 # ── 18. Calendar regex patterns (bilingual DE+EN) ─────────────────
 
 CALENDAR_TODAY_RE = re.compile(
-    r"(was|welche|meine?|habe ich|zeig|gibt|steht|what|show|do i have|any).{0,15}(heute|today).{0,10}(termin|termine|event|events|kalender|calendar|agenda|an|plan|appointment|appointments)"
-    r"|(termin|termine|agenda|appointment|appointments|event|events).{0,10}(heute|today)"
-    r"|appointments?\s+today|today.s\s+(schedule|agenda|appointments?|events?)",
+    r"(was|welche|meine?|habe ich|zeig|gibt|steht|what|show|do i have|any).{0,15}(heute|today).{0,15}(termin|termine|event|events|kalender|calendar|agenda|an|plan|appo\w*ments?)"
+    r"|(was|welche|what|which|do i have|habe ich|show|any).{0,5}(appo\w*ments?|events?|termine?).{0,25}(heute|today)"
+    r"|(termin|termine|agenda|appo\w*ments?|event|events).{0,20}(heute|today)"
+    r"|appo\w*ments?\s+today|today.s\s+(schedule|agenda|appo\w*ments?|events?)",
     re.IGNORECASE,
 )
 CALENDAR_WEEK_RE = re.compile(
@@ -924,7 +925,7 @@ CALENDAR_LIST_RE = re.compile(
     re.IGNORECASE,
 )
 CALENDAR_GENERAL_RE = re.compile(
-    r"\b(termin|termine|kalender|calendar|agenda|meeting|besprechung|appointment|appointments|schedule)\b",
+    r"\b(termin|termine|kalender|calendar|agenda|meeting|besprechung|appo\w*ments?|schedule)\b",
     re.IGNORECASE,
 )
 

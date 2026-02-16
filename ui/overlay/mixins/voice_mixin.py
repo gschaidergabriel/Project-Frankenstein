@@ -270,6 +270,7 @@ class VoiceMixin:
     # ---------- TTS Engine ----------
     _kokoro_instance = None  # Lazy-loaded singleton
     _audio_sink = None  # Detected output device
+    _tts_play_proc = None  # Current pw-play process (for cancellation)
 
     @classmethod
     def _get_audio_sink(cls) -> str:
@@ -312,23 +313,44 @@ class VoiceMixin:
         return cls._audio_sink
 
     @classmethod
+    def _stop_tts_playback(cls):
+        """Stop any currently playing TTS audio."""
+        if cls._tts_play_proc and cls._tts_play_proc.poll() is None:
+            try:
+                cls._tts_play_proc.terminate()
+                cls._tts_play_proc.wait(timeout=2)
+                LOG.info("TTS: stopped previous playback")
+            except Exception:
+                try:
+                    cls._tts_play_proc.kill()
+                except Exception:
+                    pass
+            cls._tts_play_proc = None
+
+    @classmethod
     def _play_audio(cls, wav_path: str):
-        """Play audio file on the correct output device."""
+        """Play audio file on the correct output device (stops previous playback)."""
+        cls._stop_tts_playback()
         sink = cls._get_audio_sink()
         try:
             cmd = ["pw-play"]
             if sink:
                 cmd.extend(["--target", sink])
             cmd.append(wav_path)
-            result = subprocess.run(cmd, capture_output=True, timeout=60)
-            LOG.info(f"TTS play: exit={result.returncode}, sink={sink or 'default'}")
+            cls._tts_play_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cls._tts_play_proc.wait(timeout=120)
+            LOG.info(f"TTS play: exit={cls._tts_play_proc.returncode}, sink={sink or 'default'}")
+        except subprocess.TimeoutExpired:
+            LOG.warning("TTS play timed out")
+            cls._stop_tts_playback()
         except FileNotFoundError:
             cmd = ["paplay"]
             if sink:
                 cmd.extend(["--device", sink])
             cmd.append(wav_path)
-            result = subprocess.run(cmd, capture_output=True, timeout=60)
-            LOG.info(f"TTS paplay: exit={result.returncode}")
+            cls._tts_play_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cls._tts_play_proc.wait(timeout=120)
+            LOG.info(f"TTS paplay: exit={cls._tts_play_proc.returncode}")
 
     @classmethod
     def _get_kokoro(cls):

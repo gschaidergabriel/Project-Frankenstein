@@ -123,9 +123,31 @@ class PushToTalk:
                 LOG.warning("PTT: Recording too short")
                 return
 
-            # Convert raw to WAV
+            # Convert raw to WAV with audio preprocessing
             with open(raw_path, 'rb') as rf:
                 raw_data = rf.read()
+
+            # Preprocess: normalize + noise gate for cleaner Whisper input
+            try:
+                import struct
+                samples = list(struct.unpack(f'{len(raw_data)//2}h', raw_data))
+                peak = max(abs(s) for s in samples) if samples else 0
+
+                # Noise gate: silence samples below threshold (kills background hum)
+                noise_floor = 300
+                samples = [s if abs(s) > noise_floor else 0 for s in samples]
+
+                # Normalize to ~80% of max range for consistent Whisper input levels
+                if peak > 0:
+                    target = int(32767 * 0.8)
+                    factor = target / peak
+                    if factor > 1.05:  # Only boost, don't reduce loud audio
+                        samples = [max(-32767, min(32767, int(s * factor))) for s in samples]
+
+                raw_data = struct.pack(f'{len(samples)}h', *samples)
+                LOG.debug(f"PTT: Audio preprocessed: peak={peak}, noise_floor={noise_floor}")
+            except Exception as pp_err:
+                LOG.debug(f"PTT: Audio preprocessing skipped: {pp_err}")
 
             with wave.open(wav_path, 'wb') as wf:
                 wf.setnchannels(1)

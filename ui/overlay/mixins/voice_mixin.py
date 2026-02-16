@@ -179,11 +179,23 @@ class VoiceMixin:
             # No path found - fall through to LLM instead of defaulting to ~
             LOG.debug("FS_HINTS matched but no path found, routing to LLM")
 
-        # Darknet search
-        if DARKNET_RE.search(low):
+        # Darknet search (guard: skip statements like "you can search darknet")
+        _STMT_GUARD = re.compile(
+            r"^(i\s+think|i\s+believe|it'?s\s|that\s+you|you\s+can|you\s+could|"
+            r"amazing|cool|great|wow|nice|ich\s+finde|ich\s+glaub|toll\s+dass)",
+            re.IGNORECASE,
+        )
+        if DARKNET_RE.search(low) and not _STMT_GUARD.search(low):
             q = re.sub(
-                r"(such\w*\s+(?:im\s+)?(?:darknet|dark\s*web|tor\s*netz|onion|hidden\s*service)\s*"
-                r"|darknet\s*such\w*\s*|nach\s+)",
+                r"((?:se[ae]?r?ch|search|find|look(?:\s*(?:up|for))?|such\w*|query|browse)"
+                r"\s+(?:(?:in|on|in\s+the|on\s+the|the|im)\s+)?"
+                r"(?:darknet|dark\s*web|deep\s*web|tor(?:\s+network)?|onion|hidden\s*service)\s*"
+                r"|(?:darknet|dark\s*web|deep\s*web|tor|onion)\s*"
+                r"(?:se[ae]?r?ch|search|find|look|query|market|shop|store|site|forum)\w*\s*"
+                r"|(?:(?:in|on|in\s+the|on\s+the)\s+)?"
+                r"(?:darknet|dark\s*web|deep\s*web|tor|onion)\s*"
+                r"|^(?:se[ae]?r?ch|search|find|look\s+for|look\s+up|browse)\s+"
+                r"|nach\s+|for\s+)",
                 "", msg, flags=re.IGNORECASE
             ).strip()
             if q:

@@ -145,6 +145,23 @@ def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None) -> str:
 SYS_Q_RE = re.compile(r"\b(hardware|cpu|prozessor|ram|speicher|memory|disk|festplatte|ssd|hdd|temp|temperatur|heiss|heiß|load|uptime|laufzeit|services|dienste)\b", re.I)
 SEE_Q_RE = re.compile(r"\b(was siehst|siehst du|desktop|bildschirm|screen)\b", re.I)
 
+# Darknet search detection — route via webd instead of LLM to avoid refusal
+_DARKNET_SEARCH_VERB = r"(?:se[ae]?r?ch|search|find|look(?:\s*up)?|such\w*|query|browse)"
+_DARKNET_TARGETS = r"(?:darknet|dark\s*web|tor(?:\s+network)?|onion|hidden\s*service|deep\s*web)"
+_DN_Q_RE = re.compile(
+    r"(" + _DARKNET_SEARCH_VERB + r"\s+(?:(?:the|in|in\s+the|on|on\s+the|im)\s+)?" + _DARKNET_TARGETS + r"|"
+    r"" + _DARKNET_TARGETS + r"\s*" + _DARKNET_SEARCH_VERB + r"|"
+    r"(?:" + _DARKNET_TARGETS + r").{0,40}(?:market|shop|store|ebay|amazon|buy|sell|vendor|forum|site|page)|"
+    r"(?:market|shop|store|ebay|amazon|buy|sell|vendor|forum|site|page).{0,40}(?:" + _DARKNET_TARGETS + r")"
+    r")", re.I,
+)
+# Guard: don't trigger on statements like "i think you can search the darknet"
+_DN_STMT_GUARD = re.compile(
+    r"^(i\s+think|i\s+believe|it'?s\s|that\s+you|you\s+can|you\s+could|amazing|cool|great|wow|nice)",
+    re.I,
+)
+WEBD_DARKNET_URL = os.environ.get("AICORE_WEBD_DARKNET_URL", "http://127.0.0.1:8093/darknet")
+
 # Language enforcement for 7B models: detect explicit switch, otherwise nudge English
 _LANG_SWITCH_RE = re.compile(
     r"(antworte|sprich|rede|schreib)\s*(auf|in|bitte)?\s*(deutsch|german)"
@@ -693,6 +710,52 @@ class Handler(BaseHTTPRequestHandler):
                             "[Body sensors (VERIFIED - use these exact values): "
                             + hw_summary + "]"
                         )
+
+            # Darknet search: detect intent, query webd directly, inject results as context
+            # This bypasses LLM refusal by giving it concrete search results to summarize
+            if _DN_Q_RE.search(user_text_for_matching) and not _DN_STMT_GUARD.search(user_text_for_matching.strip()):
+                # Extract query by stripping darknet keywords
+                dn_query = re.sub(
+                    r"((?:se[ae]?r?ch|search|find|look(?:\s*(?:up|for))?|such\w*|query|browse)"
+                    r"\s+(?:(?:in|on|in\s+the|on\s+the|the|im)\s+)?"
+                    r"(?:darknet|dark\s*web|deep\s*web|tor(?:\s+network)?|onion|hidden\s*service)\s*"
+                    r"|(?:darknet|dark\s*web|deep\s*web|tor|onion)\s*"
+                    r"(?:se[ae]?r?ch|search|find|look|query|market|shop|store|site|forum)\w*\s*"
+                    r"|(?:(?:in|on|in\s+the|on\s+the)\s+)?"
+                    r"(?:darknet|dark\s*web|deep\s*web|tor|onion)\s*"
+                    r"|^(?:se[ae]?r?ch|search|find|look\s+for|look\s+up|browse)\s+"
+                    r"|nach\s+|for\s+)",
+                    "", user_text_for_matching, flags=re.IGNORECASE,
+                ).strip()
+                if not dn_query:
+                    dn_query = "marketplace"  # fallback
+                try:
+                    dn_payload = json.dumps({"query": dn_query, "limit": 8}).encode("utf-8")
+                    dn_req = urllib.request.Request(
+                        WEBD_DARKNET_URL,
+                        data=dn_payload,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(dn_req, timeout=30) as dn_resp:
+                        dn_data = json.loads(dn_resp.read().decode("utf-8"))
+                    dn_results = dn_data.get("results", [])
+                    if dn_results:
+                        dn_lines = [f"- {r.get('title', 'N/A')}: {r.get('url', '')}" for r in dn_results[:8]]
+                        enrichment_parts.append(
+                            f"[Darknet search results for '{dn_query}' (REAL data from Tor — present these to user):\n"
+                            + "\n".join(dn_lines) + "]"
+                        )
+                    else:
+                        enrichment_parts.append(
+                            f"[Darknet search for '{dn_query}' returned no results. Tell the user.]"
+                        )
+                    print(f"[core] Darknet search: '{dn_query}' -> {len(dn_results)} results")
+                except Exception as e:
+                    print(f"[core] Darknet search failed (non-fatal): {e}")
+                    enrichment_parts.append(
+                        f"[Darknet search attempted for '{dn_query}' but the Tor service is currently unavailable. Tell the user.]"
+                    )
 
             # --- Build grounded prompt for LLM ---
             identity = get_frank_identity()

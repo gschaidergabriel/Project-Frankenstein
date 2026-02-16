@@ -809,11 +809,17 @@ NEWS_CATEGORY_RE = re.compile(
 )
 
 # 15. Darknet search detection (bilingual DE+EN)
+# NOTE: Must be typo-tolerant — users type "serch", "seach", etc.
+_SEARCH_VERB = r"(?:se[ae]?r?ch|search|find|look(?:\s*up)?|such\w*|query|browse)"
+_DN_TARGETS = r"(?:darknet|dark\s*web|tor(?:\s+network)?|onion|hidden\s*service|deep\s*web)"
 DARKNET_RE = re.compile(
-    r"(such\w*\s+(?:im\s+)?(?:darknet|dark\s*web|tor\s*netz|onion|hidden\s*service)|"
-    r"darknet\s*such|dark\s*web\s*search|tor\s*search|onion\s*such|"
-    r"search\s+(?:the\s+)?(?:darknet|dark\s*web|tor|onion)|"
-    r"(?:darknet|dark\s*web|tor)\s+search|search\s+tor\s+network)",
+    r"(" + _SEARCH_VERB + r"\s+(?:(?:the|in|in\s+the|on|on\s+the|im)\s+)?" + _DN_TARGETS + r"|"
+    r"" + _DN_TARGETS + r"\s*" + _SEARCH_VERB + r"|"
+    r"" + _SEARCH_VERB + r"\s+(?:\S+\s+){0,6}(?:(?:on|in|on\s+the|in\s+the)\s+)?" + _DN_TARGETS + r"|"
+    # Keyword fallback: "darknet" + any commercial/search intent word nearby
+    r"(?:" + _DN_TARGETS + r").{0,40}(?:market|shop|store|ebay|amazon|buy|sell|vendor|forum|site|page)|"
+    r"(?:market|shop|store|ebay|amazon|buy|sell|vendor|forum|site|page).{0,40}(?:" + _DN_TARGETS + r")"
+    r")",
     re.IGNORECASE,
 )
 

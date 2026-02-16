@@ -274,42 +274,22 @@ class VoiceMixin:
 
     @classmethod
     def _get_audio_sink(cls) -> str:
-        """Detect the correct audio output sink (not microphone)."""
+        """Use the system default audio output sink."""
         if cls._audio_sink is not None:
             return cls._audio_sink
         try:
             result = subprocess.run(
-                ["pactl", "list", "sinks", "short"],
+                ["pactl", "get-default-sink"],
                 capture_output=True, text=True, timeout=5,
             )
-            for line in result.stdout.strip().split("\n"):
-                if not line:
-                    continue
-                parts = line.split("\t")
-                if len(parts) >= 2:
-                    name = parts[1].lower()
-                    # Skip microphone sinks (RODE, USB mic, etc.)
-                    if "rode" in name or "usb" in name and "mic" in name:
-                        continue
-                    # Prefer HDMI or built-in analog output
-                    if "hdmi" in name or "analog" in name or "speaker" in name:
-                        cls._audio_sink = parts[1]
-                        LOG.info(f"TTS audio sink: {cls._audio_sink}")
-                        return cls._audio_sink
-            # Fallback: first non-mic sink
-            for line in result.stdout.strip().split("\n"):
-                if not line:
-                    continue
-                parts = line.split("\t")
-                if len(parts) >= 2:
-                    name = parts[1].lower()
-                    if "rode" not in name and "monitor" not in name:
-                        cls._audio_sink = parts[1]
-                        LOG.info(f"TTS audio sink (fallback): {cls._audio_sink}")
-                        return cls._audio_sink
+            default = result.stdout.strip()
+            if default:
+                cls._audio_sink = default
+                LOG.info(f"TTS audio sink (system default): {cls._audio_sink}")
+                return cls._audio_sink
         except Exception as e:
             LOG.warning(f"Audio sink detection failed: {e}")
-        cls._audio_sink = ""  # Empty = use default
+        cls._audio_sink = ""  # Empty = use pw-play default
         return cls._audio_sink
 
     @classmethod

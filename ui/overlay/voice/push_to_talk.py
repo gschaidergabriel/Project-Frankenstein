@@ -49,25 +49,19 @@ class PushToTalk:
         self._detect_mic()
 
     def _detect_mic(self):
-        """Detect the best microphone."""
+        """Use the system default microphone (pactl get-default-source)."""
         self.mic_device = None
         try:
             result = subprocess.run(
-                ["pactl", "list", "sources", "short"],
+                ["pactl", "get-default-source"],
                 capture_output=True, text=True, timeout=5
             )
-            for line in result.stdout.strip().split('\n'):
-                if not line or "monitor" in line.lower():
-                    continue
-                parts = line.split('\t')
-                if len(parts) >= 2:
-                    name = parts[1].lower()
-                    if "rode" in name or "usb" in name:
-                        self.mic_device = parts[1]
-                        LOG.info(f"PTT: Using mic {self.mic_device}")
-                        break
-                    elif self.mic_device is None:
-                        self.mic_device = parts[1]
+            default = result.stdout.strip()
+            if default and "monitor" not in default.lower():
+                self.mic_device = default
+                LOG.info(f"PTT: Using system default mic: {self.mic_device}")
+            else:
+                LOG.warning(f"PTT: Default source is a monitor ({default}), using no --device flag")
         except Exception as e:
             LOG.error(f"PTT: Mic detection failed: {e}")
 

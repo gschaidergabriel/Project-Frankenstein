@@ -87,7 +87,7 @@ class AppWorkersMixin:
                 if appid == "0":
                     # Game not on Steam
                     self._ui_call(self._hide_typing)
-                    _reply(f"{canonical_name} ist nicht auf Steam verfuegbar.", is_system=True)
+                    _reply(f"{canonical_name} is not available on Steam.", is_system=True)
                     return
 
                 # Check if game is installed
@@ -100,7 +100,7 @@ class AppWorkersMixin:
                 # Known alias but not installed — offer to install
                 self._ui_call(self._hide_typing)
                 success, msg = steam.open_store_page(appid, canonical_name)
-                _reply(msg if success else f"{canonical_name} ist nicht installiert.")
+                _reply(msg if success else f"{canonical_name} is not installed.")
                 return
         except Exception as e:
             LOG.debug(f"Steam alias check failed: {e}")
@@ -151,7 +151,7 @@ class AppWorkersMixin:
 
             if open_result and open_result.get("ok"):
                 wp_tool("app_open", app_name)
-                _reply(f"Starte {app_name}...")
+                _reply(f"Starting {app_name}...")
                 return
             else:
                 reason = open_result.get("reason", "start_failed") if open_result else "no_response"
@@ -160,7 +160,7 @@ class AppWorkersMixin:
                     retry = _app_open(app_id)
                     if retry and retry.get("ok"):
                         wp_tool("app_open", app_name)
-                        _reply(f"Starte {app_name}...")
+                        _reply(f"Starting {app_name}...")
                         return
                 # App registry launch failed — fall through to Steam fallback
                 LOG.debug(f"App registry launch failed for '{app}', trying Steam fallback")
@@ -183,7 +183,7 @@ class AppWorkersMixin:
                 if appid != "0":
                     self._ui_call(self._hide_typing)
                     success, msg = steam.open_store_page(appid, canonical_name)
-                    _reply(msg if success else f"{canonical_name} ist nicht installiert.")
+                    _reply(msg if success else f"{canonical_name} is not installed.")
                     return
 
             # ── Step 5: Nothing found — inform user ───────────────────
@@ -191,17 +191,17 @@ class AppWorkersMixin:
             if games:
                 names = [g.name for g in games[:5]]
                 _reply(
-                    f"'{app}' nicht gefunden.\n"
-                    f"Installierte Spiele: {', '.join(names)}",
+                    f"'{app}' not found.\n"
+                    f"Installed games: {', '.join(names)}",
                     is_system=True,
                 )
             else:
-                _reply(f"'{app}' nicht gefunden.", is_system=True)
+                _reply(f"'{app}' not found.", is_system=True)
 
         except Exception as e:
             LOG.error(f"Steam fallback failed: {e}")
             self._ui_call(self._hide_typing)
-            _reply(f"Konnte '{app}' nicht starten: {e}", is_system=True)
+            _reply(f"Could not start '{app}': {e}", is_system=True)
 
     def _verify_game_launch_bg(self, steam, game):
         """Background verification that a game actually launched."""

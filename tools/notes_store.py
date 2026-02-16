@@ -107,7 +107,7 @@ def _sanitize(text: str) -> str:
 def create_note(content: str, tags: str = "") -> Dict[str, Any]:
     """Create a new note."""
     if not content or not content.strip():
-        return {"error": "Kein Inhalt angegeben"}
+        return {"error": "No content provided"}
 
     content = content.strip()[:_MAX_NOTE_LENGTH]
     tags = tags.strip()[:200]
@@ -120,7 +120,7 @@ def create_note(content: str, tags: str = "") -> Dict[str, Any]:
         count = conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
         if count >= _MAX_NOTES:
             conn.close()
-            return {"error": f"Notiz-Limit erreicht ({_MAX_NOTES}). Bitte loesche alte Notizen."}
+            return {"error": f"Note limit reached ({_MAX_NOTES}). Please delete old notes."}
 
         cur = conn.execute(
             "INSERT INTO notes (content, tags, created_at, updated_at) VALUES (?, ?, ?, ?)",
@@ -134,7 +134,7 @@ def create_note(content: str, tags: str = "") -> Dict[str, Any]:
         return {"ok": True, "id": note_id, "content": content, "tags": tags, "created_at": now}
 
     except Exception as e:
-        return {"error": f"Notiz-Fehler: {e}"}
+        return {"error": f"Note error: {e}"}
 
 
 def list_notes(limit: int = 20) -> Dict[str, Any]:
@@ -162,13 +162,13 @@ def list_notes(limit: int = 20) -> Dict[str, Any]:
         return {"ok": True, "notes": notes, "count": len(notes)}
 
     except Exception as e:
-        return {"error": f"Notiz-Fehler: {e}"}
+        return {"error": f"Note error: {e}"}
 
 
 def search_notes(query: str) -> Dict[str, Any]:
     """Full-text search in notes."""
     if not query or not query.strip():
-        return {"error": "Kein Suchbegriff angegeben"}
+        return {"error": "No search term provided"}
 
     query = query.strip()
 
@@ -213,13 +213,13 @@ def search_notes(query: str) -> Dict[str, Any]:
         return {"ok": True, "notes": notes, "count": len(notes), "query": query}
 
     except Exception as e:
-        return {"error": f"Such-Fehler: {e}"}
+        return {"error": f"Search error: {e}"}
 
 
 def get_note(note_id: int) -> Dict[str, Any]:
     """Get a single note by ID."""
     if not note_id:
-        return {"error": "Keine Notiz-ID angegeben"}
+        return {"error": "No note ID provided"}
 
     try:
         conn = _get_db()
@@ -230,7 +230,7 @@ def get_note(note_id: int) -> Dict[str, Any]:
         conn.close()
 
         if not row:
-            return {"error": "Notiz nicht gefunden"}
+            return {"error": "Note not found"}
 
         return {
             "ok": True,
@@ -244,7 +244,7 @@ def get_note(note_id: int) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        return {"error": f"Notiz-Fehler: {e}"}
+        return {"error": f"Note error: {e}"}
 
 
 def update_note(
@@ -254,14 +254,14 @@ def update_note(
 ) -> Dict[str, Any]:
     """Update an existing note."""
     if not note_id:
-        return {"error": "Keine Notiz-ID angegeben"}
+        return {"error": "No note ID provided"}
 
     try:
         conn = _get_db()
         row = conn.execute("SELECT id FROM notes WHERE id = ?", (int(note_id),)).fetchone()
         if not row:
             conn.close()
-            return {"error": "Notiz nicht gefunden"}
+            return {"error": "Note not found"}
 
         now = datetime.now().isoformat(timespec="seconds")
         updates = []
@@ -276,7 +276,7 @@ def update_note(
 
         if not updates:
             conn.close()
-            return {"error": "Nichts zu aendern"}
+            return {"error": "Nothing to change"}
 
         updates.append("updated_at = ?")
         params.append(now)
@@ -290,13 +290,13 @@ def update_note(
         return {"ok": True, "id": int(note_id), "updated_at": now}
 
     except Exception as e:
-        return {"error": f"Update-Fehler: {e}"}
+        return {"error": f"Update error: {e}"}
 
 
 def delete_note(note_id: int) -> Dict[str, Any]:
     """Delete a note by ID."""
     if not note_id:
-        return {"error": "Keine Notiz-ID angegeben"}
+        return {"error": "No note ID provided"}
 
     try:
         conn = _get_db()
@@ -305,13 +305,13 @@ def delete_note(note_id: int) -> Dict[str, Any]:
         conn.close()
 
         if cur.rowcount == 0:
-            return {"error": "Notiz nicht gefunden"}
+            return {"error": "Note not found"}
 
         LOG.info(f"Note deleted: id={note_id}")
         return {"ok": True, "deleted": int(note_id)}
 
     except Exception as e:
-        return {"error": f"Loesch-Fehler: {e}"}
+        return {"error": f"Delete error: {e}"}
 
 
 # ── CLI test ──────────────────────────────────────────────────────

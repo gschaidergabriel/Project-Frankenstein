@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-System Bridge - Treiber-Awareness für Frank
+System Bridge - Driver Awareness for Frank
 
-Ein Übersetzer-Modul das als Bridge zwischen Frank und den System-Treibern fungiert.
-Ermöglicht Frank, undokumentierte Kernel-Module zu verstehen und sicher darauf zuzugreifen.
+A translator module that acts as a bridge between Frank and system drivers.
+Enables Frank to understand undocumented kernel modules and safely access them.
 
-Kategorien:
-  - lib*:    Bibliotheken (libX11, libXau, etc.)
-  - drm*:    Grafiktreiber (drm_kms_helper, amdgpu, etc.)
-  - snd*:    Audio-Treiber (snd_hda_codec, snd_usb_audio, etc.)
-  - i2c*:    I2C-Schnittstellen (i2c_dev, i2c_piix4, etc.)
-  - rfkill*: Funk-Steuerung (rfkill, rfkill_default)
-  - usb*:    USB-Treiber (usbhid, usb_storage, etc.)
-  - net*:    Netzwerk-Treiber (r8169, iwlwifi, etc.)
+Categories:
+  - lib*:    Libraries (libX11, libXau, etc.)
+  - drm*:    Graphics drivers (drm_kms_helper, amdgpu, etc.)
+  - snd*:    Audio drivers (snd_hda_codec, snd_usb_audio, etc.)
+  - i2c*:    I2C interfaces (i2c_dev, i2c_piix4, etc.)
+  - rfkill*: Radio control (rfkill, rfkill_default)
+  - usb*:    USB drivers (usbhid, usb_storage, etc.)
+  - net*:    Network drivers (r8169, iwlwifi, etc.)
 
 Database: /home/ai-core-node/aicore/database/system_bridge.db
 """
@@ -32,7 +32,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 LOG = logging.getLogger("system_bridge")
 
-# Database path (IMMER diesen Ordner verwenden!)
+# Database path (ALWAYS use this directory!)
 try:
     from config.paths import DB_DIR, get_db
     BRIDGE_DB = get_db("system_bridge")
@@ -42,69 +42,69 @@ except ImportError:
 
 
 # =============================================================================
-# Vordefinierte Treiber-Beschreibungen (Basis-Wissen)
+# Predefined Driver Descriptions (Base Knowledge)
 # =============================================================================
 
 DRIVER_KNOWLEDGE_BASE = {
-    # Grafik (DRM)
+    # Graphics (DRM)
     "amdgpu": {
         "category": "graphics",
-        "description": "AMD GPU Kernel-Treiber für Radeon Grafikkarten",
-        "description_de": "AMD GPU Kernel-Treiber für Radeon Grafikkarten (RX 5000/6000/7000 Serie)",
-        "capabilities": ["3D-Beschleunigung", "Video-Dekodierung", "Display-Ausgabe", "Vulkan", "OpenGL"],
+        "description": "AMD GPU kernel driver for Radeon graphics cards",
+        "description_de": "AMD GPU kernel driver for Radeon graphics cards (RX 5000/6000/7000 series)",
+        "capabilities": ["3D acceleration", "Video decoding", "Display output", "Vulkan", "OpenGL"],
         "config_paths": ["/sys/class/drm/card0", "/sys/kernel/debug/dri/0"],
         "safe_to_query": True,
     },
     "drm": {
         "category": "graphics",
-        "description": "Direct Rendering Manager - Basis-Framework für GPU-Treiber",
-        "description_de": "Direct Rendering Manager - Basis für alle GPU-Treiber unter Linux",
-        "capabilities": ["Display-Management", "Framebuffer", "Mode-Setting"],
+        "description": "Direct Rendering Manager - base framework for GPU drivers",
+        "description_de": "Direct Rendering Manager - base for all GPU drivers on Linux",
+        "capabilities": ["Display management", "Framebuffer", "Mode setting"],
         "safe_to_query": True,
     },
     "drm_kms_helper": {
         "category": "graphics",
-        "description": "Kernel Mode Setting Helper für DRM",
-        "description_de": "Hilfsmodul für Kernel Mode Setting (Auflösung, Refresh-Rate)",
-        "capabilities": ["Mode-Setting", "Hotplug-Erkennung"],
+        "description": "Kernel Mode Setting Helper for DRM",
+        "description_de": "Helper module for kernel mode setting (resolution, refresh rate)",
+        "capabilities": ["Mode setting", "Hotplug detection"],
         "safe_to_query": True,
     },
     "drm_display_helper": {
         "category": "graphics",
-        "description": "Display-Helper für DRM Subsystem",
-        "description_de": "Hilfsmodul für Display-Verwaltung und EDID-Parsing",
+        "description": "Display helper for DRM subsystem",
+        "description_de": "Helper module for display management and EDID parsing",
         "safe_to_query": True,
     },
     "drm_buddy": {
         "category": "graphics",
-        "description": "Buddy-Allocator für DRM Speicherverwaltung",
-        "description_de": "Speicher-Allocator für GPU-VRAM Management",
+        "description": "Buddy allocator for DRM memory management",
+        "description_de": "Memory allocator for GPU VRAM management",
         "safe_to_query": True,
     },
     "drm_ttm_helper": {
         "category": "graphics",
-        "description": "Translation Table Maps Helper für GPU-Speicher",
-        "description_de": "TTM-Hilfsmodul für GPU-Speicherverwaltung",
+        "description": "Translation Table Maps Helper for GPU memory",
+        "description_de": "TTM helper module for GPU memory management",
         "safe_to_query": True,
     },
     "i915": {
         "category": "graphics",
-        "description": "Intel Integrated Graphics Treiber",
-        "description_de": "Intel iGPU Treiber (HD Graphics, Iris, UHD)",
-        "capabilities": ["3D-Beschleunigung", "Video-Dekodierung", "Display"],
+        "description": "Intel Integrated Graphics driver",
+        "description_de": "Intel iGPU driver (HD Graphics, Iris, UHD)",
+        "capabilities": ["3D acceleration", "Video decoding", "Display"],
         "safe_to_query": True,
     },
     "nvidia": {
         "category": "graphics",
-        "description": "NVIDIA proprietärer GPU-Treiber",
-        "description_de": "NVIDIA GPU Treiber (GeForce, RTX Serie)",
-        "capabilities": ["CUDA", "3D-Beschleunigung", "NVENC"],
+        "description": "NVIDIA proprietary GPU driver",
+        "description_de": "NVIDIA GPU driver (GeForce, RTX series)",
+        "capabilities": ["CUDA", "3D acceleration", "NVENC"],
         "safe_to_query": True,
     },
     "nouveau": {
         "category": "graphics",
-        "description": "Open-Source NVIDIA Treiber",
-        "description_de": "Freier NVIDIA-Treiber (eingeschränkte Leistung)",
+        "description": "Open-source NVIDIA driver",
+        "description_de": "Free NVIDIA driver (limited performance)",
         "safe_to_query": True,
     },
 
@@ -112,39 +112,39 @@ DRIVER_KNOWLEDGE_BASE = {
     "snd": {
         "category": "audio",
         "description": "ALSA Sound Core",
-        "description_de": "Advanced Linux Sound Architecture - Basis-Audiomodul",
-        "capabilities": ["PCM-Wiedergabe", "Mixer-Kontrolle", "MIDI"],
+        "description_de": "Advanced Linux Sound Architecture - base audio module",
+        "capabilities": ["PCM playback", "Mixer control", "MIDI"],
         "safe_to_query": True,
     },
     "snd_hda_intel": {
         "category": "audio",
-        "description": "Intel HD Audio Controller Treiber",
-        "description_de": "Treiber für Intel High Definition Audio (HDA) Chips",
+        "description": "Intel HD Audio Controller driver",
+        "description_de": "Driver for Intel High Definition Audio (HDA) chips",
         "config_paths": ["/proc/asound"],
         "safe_to_query": True,
     },
     "snd_hda_codec": {
         "category": "audio",
-        "description": "HD Audio Codec Treiber",
-        "description_de": "Generischer HDA Codec-Treiber",
+        "description": "HD Audio Codec driver",
+        "description_de": "Generic HDA codec driver",
         "safe_to_query": True,
     },
     "snd_hda_codec_realtek": {
         "category": "audio",
         "description": "Realtek HD Audio Codec",
-        "description_de": "Realtek Audio-Codec Treiber (ALC-Serie)",
+        "description_de": "Realtek audio codec driver (ALC series)",
         "safe_to_query": True,
     },
     "snd_hda_codec_hdmi": {
         "category": "audio",
         "description": "HDMI Audio Codec",
-        "description_de": "Audio-Ausgabe über HDMI/DisplayPort",
+        "description_de": "Audio output via HDMI/DisplayPort",
         "safe_to_query": True,
     },
     "snd_usb_audio": {
         "category": "audio",
-        "description": "USB Audio Treiber",
-        "description_de": "Treiber für USB-Audiogeräte (DACs, Headsets, Mikrofone)",
+        "description": "USB Audio driver",
+        "description_de": "Driver for USB audio devices (DACs, headsets, microphones)",
         "safe_to_query": True,
     },
     "snd_sof": {
@@ -155,14 +155,14 @@ DRIVER_KNOWLEDGE_BASE = {
     },
     "snd_sof_amd_acp": {
         "category": "audio",
-        "description": "AMD Audio Co-Processor SOF Treiber",
-        "description_de": "AMD Audio-Prozessor mit Sound Open Firmware",
+        "description": "AMD Audio Co-Processor SOF driver",
+        "description_de": "AMD audio processor with Sound Open Firmware",
         "safe_to_query": True,
     },
     "snd_pcm": {
         "category": "audio",
         "description": "ALSA PCM Subsystem",
-        "description_de": "Pulse Code Modulation - digitale Audio-Streams",
+        "description_de": "Pulse Code Modulation - digital audio streams",
         "safe_to_query": True,
     },
 
@@ -170,33 +170,33 @@ DRIVER_KNOWLEDGE_BASE = {
     "i2c_core": {
         "category": "i2c",
         "description": "I2C Bus Core",
-        "description_de": "Inter-Integrated Circuit Bus - Kommunikation mit Sensoren/Chips",
-        "capabilities": ["Sensor-Kommunikation", "EEPROM-Zugriff", "Hardware-Monitoring"],
+        "description_de": "Inter-Integrated Circuit Bus - communication with sensors/chips",
+        "capabilities": ["Sensor communication", "EEPROM access", "Hardware monitoring"],
         "safe_to_query": True,
     },
     "i2c_piix4": {
         "category": "i2c",
-        "description": "AMD/Intel PIIX4 SMBus Treiber",
-        "description_de": "SMBus-Controller für AMD/Intel Chipsätze",
+        "description": "AMD/Intel PIIX4 SMBus driver",
+        "description_de": "SMBus controller for AMD/Intel chipsets",
         "safe_to_query": True,
     },
     "i2c_dev": {
         "category": "i2c",
         "description": "I2C Userspace Device Interface",
-        "description_de": "Erlaubt Userspace-Zugriff auf I2C-Bus (/dev/i2c-*)",
+        "description_de": "Allows userspace access to I2C bus (/dev/i2c-*)",
         "config_paths": ["/dev/i2c-0", "/dev/i2c-1"],
         "safe_to_query": True,
     },
     "i2c_hid": {
         "category": "i2c",
         "description": "I2C HID Transport Layer",
-        "description_de": "Human Interface Devices über I2C (Touchpads, Touchscreens)",
+        "description_de": "Human Interface Devices over I2C (touchpads, touchscreens)",
         "safe_to_query": True,
     },
     "i2c_algo_bit": {
         "category": "i2c",
-        "description": "I2C Bit-Banging Algorithmus",
-        "description_de": "Software-I2C Implementation",
+        "description": "I2C Bit-Banging Algorithm",
+        "description_de": "Software I2C implementation",
         "safe_to_query": True,
     },
 
@@ -204,192 +204,192 @@ DRIVER_KNOWLEDGE_BASE = {
     "usbcore": {
         "category": "usb",
         "description": "USB Core Subsystem",
-        "description_de": "Universal Serial Bus - Basis für alle USB-Geräte",
+        "description_de": "Universal Serial Bus - base for all USB devices",
         "capabilities": ["USB 1.1", "USB 2.0", "USB 3.x", "Hotplug"],
         "safe_to_query": True,
     },
     "usbhid": {
         "category": "usb",
-        "description": "USB Human Interface Device Treiber",
-        "description_de": "Treiber für USB-Tastaturen, Mäuse, Gamepads",
+        "description": "USB Human Interface Device driver",
+        "description_de": "Driver for USB keyboards, mice, gamepads",
         "safe_to_query": True,
     },
     "usb_storage": {
         "category": "usb",
-        "description": "USB Mass Storage Treiber",
-        "description_de": "Treiber für USB-Sticks und externe Festplatten",
+        "description": "USB Mass Storage driver",
+        "description_de": "Driver for USB sticks and external hard drives",
         "safe_to_query": True,
     },
     "xhci_hcd": {
         "category": "usb",
         "description": "USB 3.0 xHCI Host Controller",
-        "description_de": "USB 3.0/3.1/3.2 Controller-Treiber",
+        "description_de": "USB 3.0/3.1/3.2 controller driver",
         "safe_to_query": True,
     },
     "ehci_hcd": {
         "category": "usb",
         "description": "USB 2.0 EHCI Host Controller",
-        "description_de": "USB 2.0 Controller-Treiber",
+        "description_de": "USB 2.0 controller driver",
         "safe_to_query": True,
     },
 
-    # Funk/Wireless
+    # Radio/Wireless
     "rfkill": {
         "category": "wireless",
         "description": "RF Kill Switch Subsystem",
-        "description_de": "Steuerung von Funknetzwerken (WLAN, Bluetooth an/aus)",
-        "capabilities": ["WLAN-Kontrolle", "Bluetooth-Kontrolle", "Hardware-Kill-Switch"],
+        "description_de": "Control of radio networks (WLAN, Bluetooth on/off)",
+        "capabilities": ["WLAN control", "Bluetooth control", "Hardware kill switch"],
         "config_paths": ["/sys/class/rfkill"],
         "safe_to_query": True,
     },
     "cfg80211": {
         "category": "wireless",
         "description": "Linux Wireless Configuration API",
-        "description_de": "Konfigurations-Framework für WLAN-Treiber",
+        "description_de": "Configuration framework for WLAN drivers",
         "safe_to_query": True,
     },
     "mac80211": {
         "category": "wireless",
         "description": "IEEE 802.11 Wireless Stack",
-        "description_de": "Software-MAC-Layer für WLAN",
+        "description_de": "Software MAC layer for WLAN",
         "safe_to_query": True,
     },
     "iwlwifi": {
         "category": "wireless",
-        "description": "Intel Wireless WiFi Treiber",
-        "description_de": "Intel WLAN-Adapter (AX200, AX210, etc.)",
+        "description": "Intel Wireless WiFi driver",
+        "description_de": "Intel WLAN adapter (AX200, AX210, etc.)",
         "safe_to_query": True,
     },
     "bluetooth": {
         "category": "wireless",
         "description": "Bluetooth Core",
-        "description_de": "Bluetooth-Protokoll-Stack",
-        "capabilities": ["Bluetooth LE", "Audio-Profile", "HID-Profile"],
+        "description_de": "Bluetooth protocol stack",
+        "capabilities": ["Bluetooth LE", "Audio profiles", "HID profiles"],
         "safe_to_query": True,
     },
     "btusb": {
         "category": "wireless",
-        "description": "Bluetooth USB Treiber",
-        "description_de": "USB-Bluetooth-Adapter Treiber",
+        "description": "Bluetooth USB driver",
+        "description_de": "USB Bluetooth adapter driver",
         "safe_to_query": True,
     },
 
-    # Netzwerk
+    # Network
     "r8169": {
         "category": "network",
-        "description": "Realtek RTL8169 Ethernet Treiber",
+        "description": "Realtek RTL8169 Ethernet driver",
         "description_de": "Realtek Gigabit Ethernet (RTL8111/8168/8169)",
         "safe_to_query": True,
     },
     "e1000e": {
         "category": "network",
-        "description": "Intel Gigabit Ethernet Treiber",
-        "description_de": "Intel PRO/1000 Netzwerkkarten",
+        "description": "Intel Gigabit Ethernet driver",
+        "description_de": "Intel PRO/1000 network cards",
         "safe_to_query": True,
     },
     "igb": {
         "category": "network",
         "description": "Intel Gigabit Ethernet (igb)",
-        "description_de": "Intel Server-Netzwerkkarten (I210, I350)",
+        "description_de": "Intel server network cards (I210, I350)",
         "safe_to_query": True,
     },
 
-    # Bibliotheken
+    # Libraries
     "libcrc32c": {
         "category": "library",
-        "description": "CRC32c Bibliothek",
-        "description_de": "Schnelle CRC32c Prüfsummen-Berechnung",
+        "description": "CRC32c Library",
+        "description_de": "Fast CRC32c checksum calculation",
         "safe_to_query": True,
     },
     "libarc4": {
         "category": "library",
-        "description": "ARC4 Cipher Bibliothek",
-        "description_de": "ARC4 Stream-Cipher (für ältere Protokolle)",
+        "description": "ARC4 Cipher Library",
+        "description_de": "ARC4 stream cipher (for legacy protocols)",
         "safe_to_query": True,
     },
 
-    # Virtualisierung
+    # Virtualization
     "kvm": {
         "category": "virtualization",
         "description": "Kernel Virtual Machine",
-        "description_de": "Hardware-Virtualisierung für VMs (QEMU/libvirt)",
-        "capabilities": ["VM-Ausführung", "Hardware-Passthrough"],
+        "description_de": "Hardware virtualization for VMs (QEMU/libvirt)",
+        "capabilities": ["VM execution", "Hardware passthrough"],
         "safe_to_query": True,
     },
     "kvm_amd": {
         "category": "virtualization",
         "description": "KVM AMD-V Support",
-        "description_de": "AMD Virtualisierungs-Erweiterungen (SVM)",
+        "description_de": "AMD virtualization extensions (SVM)",
         "safe_to_query": True,
     },
     "kvm_intel": {
         "category": "virtualization",
         "description": "KVM Intel VT-x Support",
-        "description_de": "Intel Virtualisierungs-Erweiterungen (VMX)",
+        "description_de": "Intel virtualization extensions (VMX)",
         "safe_to_query": True,
     },
 
-    # Speicher/Dateisystem
+    # Storage/Filesystem
     "ext4": {
         "category": "filesystem",
-        "description": "EXT4 Dateisystem",
-        "description_de": "Standard Linux Dateisystem",
+        "description": "EXT4 Filesystem",
+        "description_de": "Standard Linux filesystem",
         "safe_to_query": True,
     },
     "btrfs": {
         "category": "filesystem",
-        "description": "BTRFS Dateisystem",
-        "description_de": "Copy-on-Write Dateisystem mit Snapshots",
+        "description": "BTRFS Filesystem",
+        "description_de": "Copy-on-write filesystem with snapshots",
         "safe_to_query": True,
     },
     "nvme": {
         "category": "storage",
-        "description": "NVMe Controller Treiber",
-        "description_de": "Treiber für NVMe SSDs",
+        "description": "NVMe Controller driver",
+        "description_de": "Driver for NVMe SSDs",
         "safe_to_query": True,
     },
     "ahci": {
         "category": "storage",
         "description": "AHCI SATA Controller",
-        "description_de": "SATA-Controller für Festplatten/SSDs",
+        "description_de": "SATA controller for hard drives/SSDs",
         "safe_to_query": True,
     },
 
-    # Eingabegeräte
+    # Input Devices
     "hid": {
         "category": "input",
         "description": "Human Interface Device Core",
-        "description_de": "Basis für Eingabegeräte (Tastatur, Maus, Gamepad)",
+        "description_de": "Base for input devices (keyboard, mouse, gamepad)",
         "safe_to_query": True,
     },
     "hid_generic": {
         "category": "input",
-        "description": "Generic HID Treiber",
-        "description_de": "Generischer Treiber für HID-konforme Geräte",
+        "description": "Generic HID driver",
+        "description_de": "Generic driver for HID-compliant devices",
         "safe_to_query": True,
     },
     "evdev": {
         "category": "input",
         "description": "Event Device Interface",
-        "description_de": "Linux Input-Event Schnittstelle (/dev/input/event*)",
+        "description_de": "Linux input event interface (/dev/input/event*)",
         "safe_to_query": True,
     },
 }
 
-# Kategorie-Beschreibungen
+# Category Descriptions
 CATEGORY_DESCRIPTIONS = {
-    "graphics": "Grafikkarten und Display-Treiber",
-    "audio": "Audio-Treiber und Sound-Subsystem",
-    "i2c": "I2C/SMBus Hardware-Kommunikation",
-    "usb": "USB-Controller und Geräte-Treiber",
-    "wireless": "WLAN, Bluetooth und Funk-Steuerung",
-    "network": "Netzwerk-Adapter und Ethernet",
-    "library": "Kernel-Bibliotheken und Hilfsfunktionen",
-    "virtualization": "Virtualisierung (KVM, Container)",
-    "filesystem": "Dateisysteme",
-    "storage": "Speicher-Controller (NVMe, SATA)",
-    "input": "Eingabegeräte (Tastatur, Maus)",
-    "unknown": "Unbekannte/Undokumentierte Module",
+    "graphics": "Graphics cards and display drivers",
+    "audio": "Audio drivers and sound subsystem",
+    "i2c": "I2C/SMBus hardware communication",
+    "usb": "USB controllers and device drivers",
+    "wireless": "WLAN, Bluetooth and radio control",
+    "network": "Network adapters and Ethernet",
+    "library": "Kernel libraries and helper functions",
+    "virtualization": "Virtualization (KVM, containers)",
+    "filesystem": "Filesystems",
+    "storage": "Storage controllers (NVMe, SATA)",
+    "input": "Input devices (keyboard, mouse)",
+    "unknown": "Unknown/undocumented modules",
 }
 
 
@@ -399,7 +399,7 @@ CATEGORY_DESCRIPTIONS = {
 
 @dataclass
 class DriverInfo:
-    """Information über einen Kernel-Treiber."""
+    """Information about a kernel driver."""
     name: str
     category: str = "unknown"
     description: str = ""
@@ -434,7 +434,7 @@ class DriverInfo:
 # =============================================================================
 
 class BridgeDB:
-    """SQLite Datenbank für System Bridge."""
+    """SQLite database for System Bridge."""
 
     SCHEMA = """
     CREATE TABLE IF NOT EXISTS drivers (
@@ -512,23 +512,23 @@ class BridgeDB:
 
 class SystemBridge:
     """
-    System Bridge - Übersetzer zwischen Frank und Kernel-Treibern.
+    System Bridge - Translator between Frank and kernel drivers.
 
-    Ermöglicht:
-    - Erkennung geladener Module
-    - Lookup von Treiber-Beschreibungen
-    - Hinzufügen eigener Beschreibungen
-    - Sichere Abfrage von Treiber-Informationen
+    Enables:
+    - Detection of loaded modules
+    - Lookup of driver descriptions
+    - Adding custom descriptions
+    - Safe querying of driver information
     """
 
     def __init__(self):
         self.db = BridgeDB()
         self._lock = threading.Lock()
         self._populate_base_knowledge()
-        LOG.info("System Bridge initialisiert (DB: %s)", BRIDGE_DB)
+        LOG.info("System Bridge initialized (DB: %s)", BRIDGE_DB)
 
     def _populate_base_knowledge(self):
-        """Fülle DB mit Basis-Wissen aus DRIVER_KNOWLEDGE_BASE."""
+        """Populate DB with base knowledge from DRIVER_KNOWLEDGE_BASE."""
         now = datetime.now().isoformat()
         for name, info in DRIVER_KNOWLEDGE_BASE.items():
             existing = self.db.fetchone("SELECT name FROM drivers WHERE name = ?", (name,))
@@ -552,8 +552,8 @@ class SystemBridge:
 
     def scan_loaded_modules(self) -> List[DriverInfo]:
         """
-        Scanne aktuell geladene Kernel-Module.
-        Returns Liste von DriverInfo Objekten.
+        Scan currently loaded kernel modules.
+        Returns list of DriverInfo objects.
         """
         modules = []
         now = datetime.now().isoformat()
@@ -572,7 +572,7 @@ class SystemBridge:
                     size_kb = int(parts[1]) // 1024 if parts[1].isdigit() else 0
                     used_by = parts[3].split(",") if len(parts) >= 4 and parts[3] != "-" else []
 
-                    # Lookup in DB oder Knowledge Base
+                    # Lookup in DB or Knowledge Base
                     info = self.get_driver_info(name)
                     info.is_loaded = True
                     info.size_kb = size_kb
@@ -591,16 +591,16 @@ class SystemBridge:
             self.db.commit()
 
         except Exception as e:
-            LOG.error("Fehler beim Scannen der Module: %s", e)
+            LOG.error("Error scanning modules: %s", e)
 
         return modules
 
     def get_driver_info(self, name: str) -> DriverInfo:
         """
-        Hole Informationen über einen Treiber.
-        Kombiniert DB-Wissen mit Knowledge Base.
+        Get information about a driver.
+        Combines DB knowledge with Knowledge Base.
         """
-        # Erst DB prüfen
+        # Check DB first
         row = self.db.fetchone("SELECT * FROM drivers WHERE name = ?", (name,))
 
         if row:
@@ -616,7 +616,7 @@ class SystemBridge:
                 last_seen=row["last_seen"],
             )
 
-        # Dann Knowledge Base prüfen
+        # Then check Knowledge Base
         if name in DRIVER_KNOWLEDGE_BASE:
             kb = DRIVER_KNOWLEDGE_BASE[name]
             return DriverInfo(
@@ -629,10 +629,10 @@ class SystemBridge:
                 safe_to_query=kb.get("safe_to_query", True),
             )
 
-        # Versuche Kategorie aus Namen abzuleiten
+        # Try to infer category from name
         category = self._infer_category(name)
 
-        # Neuer unbekannter Treiber - in DB speichern
+        # New unknown driver - save to DB
         now = datetime.now().isoformat()
         self.db.execute("""
             INSERT OR IGNORE INTO drivers
@@ -644,13 +644,13 @@ class SystemBridge:
         return DriverInfo(
             name=name,
             category=category,
-            description=f"Kernel-Modul '{name}' (keine Beschreibung verfügbar)",
-            description_de=f"Kernel-Modul '{name}' (keine Beschreibung verfügbar)",
+            description=f"Kernel module '{name}' (no description available)",
+            description_de=f"Kernel module '{name}' (no description available)",
             last_seen=now,
         )
 
     def _infer_category(self, name: str) -> str:
-        """Leite Kategorie aus Modulnamen ab."""
+        """Infer category from module name."""
         name_lower = name.lower()
 
         if name_lower.startswith("snd") or "audio" in name_lower or "sound" in name_lower:
@@ -682,18 +682,18 @@ class SystemBridge:
                         capabilities: List[str] = None,
                         custom_notes: str = None) -> bool:
         """
-        Füge oder aktualisiere eine Treiber-Beschreibung.
+        Add or update a driver description.
 
         Args:
-            name: Modulname
-            description: Englische Beschreibung
-            description_de: Deutsche Beschreibung (optional)
-            category: Kategorie (optional)
-            capabilities: Liste von Fähigkeiten (optional)
-            custom_notes: Eigene Notizen (optional)
+            name: Module name
+            description: English description
+            description_de: German description (optional)
+            category: Category (optional)
+            capabilities: List of capabilities (optional)
+            custom_notes: Custom notes (optional)
 
         Returns:
-            True bei Erfolg
+            True on success
         """
         now = datetime.now().isoformat()
 
@@ -743,11 +743,11 @@ class SystemBridge:
             ))
 
         self.db.commit()
-        LOG.info("Treiber-Beschreibung aktualisiert: %s", name)
+        LOG.info("Driver description updated: %s", name)
         return True
 
     def get_modules_by_category(self, category: str) -> List[DriverInfo]:
-        """Hole alle Module einer Kategorie."""
+        """Get all modules of a category."""
         rows = self.db.fetchall(
             "SELECT * FROM drivers WHERE category = ?", (category,)
         )
@@ -765,24 +765,24 @@ class SystemBridge:
         ]
 
     def get_undocumented_modules(self) -> List[DriverInfo]:
-        """Finde Module ohne Beschreibung."""
+        """Find modules without description."""
         modules = self.scan_loaded_modules()
         return [m for m in modules if not m.description or m.category == "unknown"]
 
     def query_module_details(self, name: str) -> Dict:
         """
-        Sichere Abfrage von Modul-Details aus /sys und modinfo.
+        Safe query of module details from /sys and modinfo.
 
-        Returns dict mit erweiterten Informationen.
+        Returns dict with extended information.
         """
         info = self.get_driver_info(name)
         result = info.to_dict()
 
         if not info.safe_to_query:
-            result["warning"] = "Modul als unsicher für Abfragen markiert"
+            result["warning"] = "Module marked as unsafe for queries"
             return result
 
-        # modinfo abfragen
+        # Query modinfo
         try:
             modinfo = subprocess.run(
                 ["modinfo", name],
@@ -796,9 +796,9 @@ class SystemBridge:
                         key = key.strip().lower().replace(" ", "_")
                         result["modinfo"][key] = val.strip()
         except Exception as e:
-            LOG.debug("modinfo fehlgeschlagen für %s: %s", name, e)
+            LOG.debug("modinfo failed for %s: %s", name, e)
 
-        # Parameter aus /sys/module/
+        # Parameters from /sys/module/
         sys_path = Path(f"/sys/module/{name}/parameters")
         if sys_path.exists():
             result["parameters"] = {}
@@ -807,14 +807,14 @@ class SystemBridge:
                     try:
                         result["parameters"][param.name] = param.read_text().strip()
                     except:
-                        result["parameters"][param.name] = "(nicht lesbar)"
+                        result["parameters"][param.name] = "(not readable)"
             except:
                 pass
 
         return result
 
     def get_summary(self) -> Dict:
-        """Zusammenfassung des System-Zustands."""
+        """Summary of the system state."""
         modules = self.scan_loaded_modules()
 
         by_category = {}
@@ -838,18 +838,18 @@ class SystemBridge:
 
     def context_for_frank(self, query: str = None) -> str:
         """
-        Generiere Kontext-String für Frank's Prompt-Injection.
+        Generate context string for Frank's prompt injection.
 
         Args:
-            query: Optionale Suchanfrage um relevante Module zu filtern
+            query: Optional search query to filter relevant modules
 
         Returns:
-            Formatierter Kontext-String
+            Formatted context string
         """
-        lines = ["[System Bridge - Treiber-Wissen:"]
+        lines = ["[System Bridge - Driver Knowledge:"]
 
         if query:
-            # Suche relevante Module
+            # Search for relevant modules
             query_lower = query.lower()
             relevant = []
 
@@ -863,17 +863,17 @@ class SystemBridge:
 
             if relevant:
                 for r in relevant[:5]:
-                    desc = r["description_de"] or r["description"] or "Keine Beschreibung"
+                    desc = r["description_de"] or r["description"] or "No description"
                     lines.append(f"  - {r['name']} ({r['category']}): {desc}")
             else:
-                lines.append(f"  Keine Module gefunden für: {query}")
+                lines.append(f"  No modules found for: {query}")
         else:
-            # Allgemeine Zusammenfassung
+            # General summary
             summary = self.get_summary()
-            lines.append(f"  {summary['total_modules']} Module geladen ({summary['total_size_mb']} MB)")
+            lines.append(f"  {summary['total_modules']} modules loaded ({summary['total_size_mb']} MB)")
             for cat, count in summary["by_category"].items():
                 cat_desc = CATEGORY_DESCRIPTIONS.get(cat, cat)
-                lines.append(f"  - {cat}: {count} Module ({cat_desc})")
+                lines.append(f"  - {cat}: {count} modules ({cat_desc})")
 
         lines.append("]")
         return "\n".join(lines)
@@ -887,7 +887,7 @@ _bridge: Optional[SystemBridge] = None
 
 
 def get_bridge() -> SystemBridge:
-    """Hole oder erstelle System Bridge Instanz."""
+    """Get or create System Bridge instance."""
     global _bridge
     if _bridge is None:
         _bridge = SystemBridge()
@@ -895,27 +895,27 @@ def get_bridge() -> SystemBridge:
 
 
 def scan() -> List[Dict]:
-    """Scanne geladene Module."""
+    """Scan loaded modules."""
     return [m.to_dict() for m in get_bridge().scan_loaded_modules()]
 
 
 def lookup(name: str) -> Dict:
-    """Lookup eines Treibers."""
+    """Lookup a driver."""
     return get_bridge().get_driver_info(name).to_dict()
 
 
 def describe(name: str, description: str, **kwargs) -> bool:
-    """Füge Beschreibung hinzu."""
+    """Add description."""
     return get_bridge().add_description(name, description, **kwargs)
 
 
 def summary() -> Dict:
-    """System-Zusammenfassung."""
+    """System summary."""
     return get_bridge().get_summary()
 
 
 def context(query: str = None) -> str:
-    """Kontext für Frank."""
+    """Context for Frank."""
     return get_bridge().context_for_frank(query)
 
 
@@ -927,25 +927,25 @@ def _cli_main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="System Bridge - Treiber-Awareness für Frank",
+        description="System Bridge - Driver Awareness for Frank",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Befehle:
-  scan            Scanne geladene Kernel-Module
-  lookup NAME     Zeige Info zu einem Modul
-  describe NAME   Füge Beschreibung hinzu
-  category CAT    Zeige Module einer Kategorie
-  undocumented    Zeige Module ohne Beschreibung
-  summary         System-Zusammenfassung
-  context [QUERY] Generiere Kontext für Frank
+Commands:
+  scan            Scan loaded kernel modules
+  lookup NAME     Show info about a module
+  describe NAME   Add description
+  category CAT    Show modules of a category
+  undocumented    Show modules without description
+  summary         System summary
+  context [QUERY] Generate context for Frank
         """
     )
     parser.add_argument("command", nargs="?", default="summary")
-    parser.add_argument("arg", nargs="?", help="Argument für Befehl")
-    parser.add_argument("--desc", help="Beschreibung (für describe)")
-    parser.add_argument("--desc-de", help="Deutsche Beschreibung")
-    parser.add_argument("--category", help="Kategorie")
-    parser.add_argument("--json", action="store_true", help="JSON-Ausgabe")
+    parser.add_argument("arg", nargs="?", help="Argument for command")
+    parser.add_argument("--desc", help="Description (for describe)")
+    parser.add_argument("--desc-de", help="German description")
+    parser.add_argument("--category", help="Category")
+    parser.add_argument("--json", action="store_true", help="JSON output")
 
     args = parser.parse_args()
     bridge = get_bridge()
@@ -975,16 +975,16 @@ Befehle:
     cmd = args.command.lower()
 
     if cmd == "scan":
-        print("=== Geladene Kernel-Module ===")
+        print("=== Loaded Kernel Modules ===")
         modules = bridge.scan_loaded_modules()
         for m in sorted(modules, key=lambda x: x.category):
-            desc = m.description_de or m.description or "(keine Beschreibung)"
+            desc = m.description_de or m.description or "(no description)"
             print(f"[{m.category:12}] {m.name:30} {m.size_kb:6} KB  {desc[:50]}")
-        print(f"\nGesamt: {len(modules)} Module")
+        print(f"\nTotal: {len(modules)} modules")
 
     elif cmd == "lookup":
         if not args.arg:
-            print("Fehler: Modulname erforderlich")
+            print("Error: module name required")
             return
         info = bridge.query_module_details(args.arg)
         print(f"=== {args.arg} ===")
@@ -992,10 +992,10 @@ Befehle:
 
     elif cmd == "describe":
         if not args.arg:
-            print("Fehler: Modulname erforderlich")
+            print("Error: module name required")
             return
         if not args.desc:
-            print("Fehler: --desc erforderlich")
+            print("Error: --desc required")
             return
         bridge.add_description(
             args.arg,
@@ -1003,25 +1003,25 @@ Befehle:
             description_de=args.desc_de,
             category=args.category
         )
-        print(f"Beschreibung für '{args.arg}' aktualisiert")
+        print(f"Description for '{args.arg}' updated")
 
     elif cmd == "category":
         if not args.arg:
-            print("Verfügbare Kategorien:")
+            print("Available categories:")
             for cat, desc in CATEGORY_DESCRIPTIONS.items():
                 print(f"  {cat:15} - {desc}")
             return
         modules = bridge.get_modules_by_category(args.arg)
-        print(f"=== Kategorie: {args.arg} ===")
+        print(f"=== Category: {args.arg} ===")
         for m in modules:
-            print(f"  {m.name}: {m.description_de or m.description or '(keine Beschreibung)'}")
+            print(f"  {m.name}: {m.description_de or m.description or '(no description)'}")
 
     elif cmd == "undocumented":
-        print("=== Module ohne Beschreibung ===")
+        print("=== Modules Without Description ===")
         modules = bridge.get_undocumented_modules()
         for m in modules:
             print(f"  [{m.category}] {m.name}")
-        print(f"\n{len(modules)} undokumentierte Module")
+        print(f"\n{len(modules)} undocumented modules")
 
     elif cmd == "summary":
         print("=== System Bridge Summary ===")

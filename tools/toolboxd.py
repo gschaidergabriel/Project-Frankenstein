@@ -993,11 +993,11 @@ def sys_usb_mount(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Mount a USB storage device via udisksctl (no root needed)."""
     device = str(payload.get("device", payload.get("label", ""))).strip()
     if not device:
-        return {"ok": False, "error": "missing_device", "msg": "Kein Geraet angegeben."}
+        return {"ok": False, "error": "missing_device", "msg": "No device specified."}
 
     resolved = _resolve_usb_device(device)
     if not resolved:
-        return {"ok": False, "error": "not_found", "msg": f"Geraet '{device}' nicht gefunden."}
+        return {"ok": False, "error": "not_found", "msg": f"Device '{device}' not found."}
 
     if _which("udisksctl"):
         rc, out = _run(["udisksctl", "mount", "-b", resolved, "--no-user-interaction"], timeout=15.0)
@@ -1007,52 +1007,52 @@ def sys_usb_mount(payload: Dict[str, Any]) -> Dict[str, Any]:
             m = re.search(r"at\s+(/\S+)", out)
             if m:
                 mp = m.group(1)
-            return {"ok": True, "device": resolved, "mountpoint": mp, "msg": f"Gemountet: {resolved} → {mp}"}
+            return {"ok": True, "device": resolved, "mountpoint": mp, "msg": f"Mounted: {resolved} → {mp}"}
         return {"ok": False, "error": "mount_failed", "msg": out.strip()}
 
     if _which("gio"):
         rc, out = _run(["gio", "mount", "-d", resolved], timeout=15.0)
         if rc == 0:
-            return {"ok": True, "device": resolved, "mountpoint": "", "msg": f"Gemountet via gio: {resolved}"}
+            return {"ok": True, "device": resolved, "mountpoint": "", "msg": f"Mounted via gio: {resolved}"}
         return {"ok": False, "error": "mount_failed", "msg": out.strip()}
 
-    return {"ok": False, "error": "no_tool", "msg": "Weder udisksctl noch gio verfuegbar."}
+    return {"ok": False, "error": "no_tool", "msg": "Neither udisksctl nor gio available."}
 
 
 def sys_usb_unmount(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Unmount a USB storage device via udisksctl."""
     device = str(payload.get("device", payload.get("mountpoint", payload.get("label", "")))).strip()
     if not device:
-        return {"ok": False, "error": "missing_device", "msg": "Kein Geraet angegeben."}
+        return {"ok": False, "error": "missing_device", "msg": "No device specified."}
 
     resolved = _resolve_usb_device(device)
     if not resolved:
-        return {"ok": False, "error": "not_found", "msg": f"Geraet '{device}' nicht gefunden."}
+        return {"ok": False, "error": "not_found", "msg": f"Device '{device}' not found."}
 
     if _which("udisksctl"):
         rc, out = _run(["udisksctl", "unmount", "-b", resolved, "--no-user-interaction"], timeout=15.0)
         if rc == 0:
-            return {"ok": True, "device": resolved, "msg": f"Unmountet: {resolved}"}
+            return {"ok": True, "device": resolved, "msg": f"Unmounted: {resolved}"}
         return {"ok": False, "error": "unmount_failed", "msg": out.strip()}
 
-    return {"ok": False, "error": "no_tool", "msg": "udisksctl nicht verfuegbar."}
+    return {"ok": False, "error": "no_tool", "msg": "udisksctl not available."}
 
 
 def sys_usb_eject(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Safely eject a USB device: unmount all partitions, then power-off."""
     device = str(payload.get("device", payload.get("label", ""))).strip()
     if not device:
-        return {"ok": False, "error": "missing_device", "msg": "Kein Geraet angegeben."}
+        return {"ok": False, "error": "missing_device", "msg": "No device specified."}
 
     resolved = _resolve_usb_device(device)
     if not resolved:
-        return {"ok": False, "error": "not_found", "msg": f"Geraet '{device}' nicht gefunden."}
+        return {"ok": False, "error": "not_found", "msg": f"Device '{device}' not found."}
 
     # Find parent disk (e.g. /dev/sdb from /dev/sdb1)
     disk = re.sub(r"\d+$", "", resolved)
 
     if not _which("udisksctl"):
-        return {"ok": False, "error": "no_tool", "msg": "udisksctl nicht verfuegbar."}
+        return {"ok": False, "error": "no_tool", "msg": "udisksctl not available."}
 
     # Unmount all partitions of this disk
     if _which("lsblk"):
@@ -1072,7 +1072,7 @@ def sys_usb_eject(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Power off the disk
     rc, out = _run(["udisksctl", "power-off", "-b", disk, "--no-user-interaction"], timeout=15.0)
     if rc == 0:
-        return {"ok": True, "device": disk, "msg": f"Sicher ausgeworfen: {disk}"}
+        return {"ok": True, "device": disk, "msg": f"Safely ejected: {disk}"}
     return {"ok": False, "error": "eject_failed", "msg": out.strip()}
 
 
@@ -1627,7 +1627,7 @@ class Handler(BaseHTTPRequestHandler):
             from app_registry import app_open
             app_id = str(payload.get("app", payload.get("app_id", "")))
             if not app_id:
-                self._send(400, {"ok": False, "error": "missing_app", "message": "Parameter 'app' fehlt"})
+                self._send(400, {"ok": False, "error": "missing_app", "message": "Parameter 'app' is missing"})
                 return
             self._send(200, app_open(app_id))
             return
@@ -1636,7 +1636,7 @@ class Handler(BaseHTTPRequestHandler):
             from app_registry import app_close
             app_id = str(payload.get("app", payload.get("app_id", "")))
             if not app_id:
-                self._send(400, {"ok": False, "error": "missing_app", "message": "Parameter 'app' fehlt"})
+                self._send(400, {"ok": False, "error": "missing_app", "message": "Parameter 'app' is missing"})
                 return
             self._send(200, app_close(app_id))
             return
@@ -1646,7 +1646,7 @@ class Handler(BaseHTTPRequestHandler):
             app_id = str(payload.get("app", payload.get("app_id", "")))
             permanent = bool(payload.get("permanent", False))
             if not app_id:
-                self._send(400, {"ok": False, "error": "missing_app", "message": "Parameter 'app' fehlt"})
+                self._send(400, {"ok": False, "error": "missing_app", "message": "Parameter 'app' is missing"})
                 return
             self._send(200, app_allow(app_id, permanent))
             return
@@ -1687,7 +1687,7 @@ class Handler(BaseHTTPRequestHandler):
             from steam_integration import launch_game_by_name
             game_name = str(payload.get("game", payload.get("name", "")))
             if not game_name:
-                self._send(400, {"ok": False, "error": "missing_game", "message": "Parameter 'game' fehlt"})
+                self._send(400, {"ok": False, "error": "missing_game", "message": "Parameter 'game' is missing"})
                 return
             success, msg = launch_game_by_name(game_name)
             self._send(200, {"ok": success, "message": msg})

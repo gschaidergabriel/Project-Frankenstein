@@ -148,10 +148,10 @@ def _check_local_knowledge(query: str) -> str:
             for fact_key, fact_value in data["facts"].items():
                 if fact_key in query_lower or any(word in query_lower for word in fact_key.split("_")):
                     LOG.info(f"Local knowledge match: {topic}.{fact_key}")
-                    return f"[Bekannter Fakt: {fact_value}]"
+                    return f"[Known fact: {fact_value}]"
             # If topic matches but no specific fact, return general info if available
             if "aussehen" in data["facts"]:
-                return f"[Bekannter Fakt: {data['facts']['aussehen']}]"
+                return f"[Known fact: {data['facts']['aussehen']}]"
     return ""
 
 
@@ -252,10 +252,10 @@ def _akam_quick_search(query: str) -> str:
 
     # CRITICAL: Add instruction for LLM to USE the search results
     context = (
-        "[WICHTIG: Nutze die folgenden Internet-Recherche Ergebnisse für deine Antwort. "
-        "Wenn die Ergebnisse die Antwort enthalten, nutze diese Fakten. "
-        "Erfinde KEINE Informationen!]\n\n"
-        "[Internet-Recherche Ergebnisse]\n" + "\n".join(ctx_parts)
+        "[IMPORTANT: Use the following internet search results for your answer. "
+        "If the results contain the answer, use these facts. "
+        "Do NOT make up information!]\n\n"
+        "[Internet search results]\n" + "\n".join(ctx_parts)
     )
     LOG.info(f"AKAM: Injecting search context ({len(context)} chars)")
     return context
@@ -293,7 +293,7 @@ def _format_fetched_content(result: Dict[str, Any]) -> str:
     if not result.get("ok"):
         error = result.get("error", "unknown")
         detail = result.get("detail", "")
-        return f"Konnte die Seite nicht abrufen: {error} {detail}".strip()
+        return f"Could not retrieve the page: {error} {detail}".strip()
 
     parts = []
     title = result.get("title", "")
@@ -309,11 +309,11 @@ def _format_fetched_content(result: Dict[str, Any]) -> str:
         # Truncate for display (LLM will get more)
         display_text = text[:3000]
         if len(text) > 3000:
-            display_text += f"\n\n[... {result.get('chars', len(text))} Zeichen insgesamt]"
+            display_text += f"\n\n[... {result.get('chars', len(text))} characters total]"
         parts.append(display_text)
 
     if not parts:
-        return "Seite abgerufen, aber kein lesbarer Text gefunden."
+        return "Page retrieved, but no readable text found."
 
     return "\n".join(parts)
 
@@ -327,9 +327,9 @@ def _fetch_url_for_llm(url: str) -> str:
     title = result.get("title", "")
     text = result.get("text", "")[:6000]
 
-    context = f"[Webseiten-Inhalt von {url}]\n"
+    context = f"[Webpage content from {url}]\n"
     if title:
-        context += f"Titel: {title}\n"
+        context += f"Title: {title}\n"
     context += f"\n{text}"
     return context
 
@@ -370,10 +370,10 @@ def _format_rss_result(result: Dict[str, Any]) -> str:
 
     items = result.get("items", [])
     if not items:
-        return "Feed ist leer oder enthält keine Einträge."
+        return "Feed is empty or contains no entries."
 
     for i, item in enumerate(items[:15], 1):
-        title = item.get("title", "Ohne Titel")
+        title = item.get("title", "Untitled")
         link = item.get("link", "")
         published = item.get("published", "")
         summary = item.get("summary", "")
@@ -420,9 +420,9 @@ def _format_news_result(result: Dict[str, Any]) -> str:
     if not result.get("ok"):
         error = result.get("error", "unknown")
         available = result.get("available", [])
-        msg = f"News konnten nicht geladen werden: {error}"
+        msg = f"News could not be loaded: {error}"
         if available:
-            msg += f"\n\nVerfügbare Kategorien: {', '.join(available)}"
+            msg += f"\n\nAvailable categories: {', '.join(available)}"
         return msg
 
     return _format_rss_result(result)

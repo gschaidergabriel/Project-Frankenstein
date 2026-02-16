@@ -360,7 +360,7 @@ class RepairActionGenerator:
             if pid:
                 return self._action(
                     diagnosis, urgency,
-                    description_de=f"CPU-Prozess '{comm}' (PID {pid}) beenden",
+                    description_de=f"Terminate CPU process '{comm}' (PID {pid})",
                     description_en=f"Terminate CPU-hogging process '{comm}' (PID {pid})",
                     command=f"kill -TERM {pid}",
                 )
@@ -370,7 +370,7 @@ class RepairActionGenerator:
             if pid:
                 return self._action(
                     diagnosis, urgency,
-                    description_de=f"Speicherfresser '{comm}' (PID {pid}) beenden",
+                    description_de=f"Terminate memory hog '{comm}' (PID {pid})",
                     description_en=f"Terminate memory-hogging process '{comm}' (PID {pid})",
                     command=f"kill -TERM {pid}",
                 )
@@ -379,7 +379,7 @@ class RepairActionGenerator:
         if "disk" in atype:
             return self._action(
                 diagnosis, urgency,
-                description_de="Alte temp-Dateien und Journal-Logs bereinigen",
+                description_de="Clean old temp files and journal logs",
                 description_en="Clean old temp files and journal logs",
                 command="find /tmp -type f -mtime +7 -delete; journalctl --user --vacuum-time=3d",
             )
@@ -389,7 +389,7 @@ class RepairActionGenerator:
             if service:
                 return self._action(
                     diagnosis, urgency,
-                    description_de=f"Dienst '{service}' neu starten",
+                    description_de=f"Restart service '{service}'",
                     description_en=f"Restart service '{service}'",
                     command=f"systemctl --user restart {service}",
                 )
@@ -399,7 +399,7 @@ class RepairActionGenerator:
             if pid:
                 return self._action(
                     diagnosis, urgency,
-                    description_de=f"I/O-Prioritaet von '{comm}' (PID {pid}) senken",
+                    description_de=f"Lower I/O priority of '{comm}' (PID {pid})",
                     description_en=f"Lower I/O priority of '{comm}' (PID {pid})",
                     command=f"ionice -c 3 -p {pid}",
                 )
@@ -413,14 +413,14 @@ class RepairActionGenerator:
             if "wallpaper" in tp_comm.lower():
                 return self._action(
                     diagnosis, urgency,
-                    description_de="frank-wallpaper Dienst stoppen (Thermal)",
+                    description_de="Stop frank-wallpaper service (thermal)",
                     description_en="Stop frank-wallpaper service (thermal issue)",
                     command="systemctl --user stop frank-wallpaper",
                 )
             if tp_pid:
                 return self._action(
                     diagnosis, urgency,
-                    description_de=f"Prozess '{tp_comm}' (PID {tp_pid}) herunterstufen (renice)",
+                    description_de=f"Renice process '{tp_comm}' (PID {tp_pid})",
                     description_en=f"Renice process '{tp_comm}' (PID {tp_pid}) to lower priority",
                     command=f"renice +15 -p {tp_pid}",
                 )
@@ -430,7 +430,7 @@ class RepairActionGenerator:
             if pid:
                 return self._action(
                     diagnosis, urgency,
-                    description_de=f"Groessten Speicherverbraucher '{comm}' (PID {pid}) beenden",
+                    description_de=f"Terminate largest memory consumer '{comm}' (PID {pid})",
                     description_en=f"Terminate largest memory consumer '{comm}' (PID {pid})",
                     command=f"kill -TERM {pid}",
                 )
@@ -549,10 +549,10 @@ class AutoRepairManager:
                         category="auto_repair",
                         title_de=action.description_de,
                         detail_de=(
-                            f"Diagnose: {diagnosis.root_cause}\n"
-                            f"Befehl: {action.command}\n"
-                            f"Konfidenz: {diagnosis.confidence:.0%}\n"
-                            f"Risiko: {action.risk_level.value}"
+                            f"Diagnosis: {diagnosis.root_cause}\n"
+                            f"Command: {action.command}\n"
+                            f"Confidence: {diagnosis.confidence:.0%}\n"
+                            f"Risk: {action.risk_level.value}"
                         ),
                         action_payload={
                             "repair_id": action.id,

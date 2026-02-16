@@ -118,10 +118,10 @@ def is_initialized() -> bool:
 def init_store(master_password: str) -> Dict[str, Any]:
     """Initialize the store with a new master password (first-time setup)."""
     if not master_password or len(master_password) < 4:
-        return {"ok": False, "error": "Master-Passwort muss mindestens 4 Zeichen haben"}
+        return {"ok": False, "error": "Master password must be at least 4 characters"}
 
     if is_initialized():
-        return {"ok": False, "error": "Store ist bereits initialisiert. Nutze unlock()."}
+        return {"ok": False, "error": "Store is already initialized. Use unlock()."}
 
     global _session_fernet
 
@@ -146,7 +146,7 @@ def unlock(master_password: str) -> Dict[str, Any]:
     global _session_fernet
 
     if not is_initialized():
-        return {"ok": False, "error": "Store nicht initialisiert"}
+        return {"ok": False, "error": "Store not initialized"}
 
     db = _get_db()
     salt_row = db.execute("SELECT value FROM _meta WHERE key='salt'").fetchone()
@@ -154,14 +154,14 @@ def unlock(master_password: str) -> Dict[str, Any]:
     db.close()
 
     if not salt_row or not check_row:
-        return {"ok": False, "error": "Store-Metadaten beschaedigt"}
+        return {"ok": False, "error": "Store metadata corrupted"}
 
     salt = base64.b64decode(salt_row["value"])
     key = _derive_key(master_password, salt)
     check = _key_check_hash(key)
 
     if check != check_row["value"]:
-        return {"ok": False, "error": "Falsches Master-Passwort"}
+        return {"ok": False, "error": "Wrong master password"}
 
     _session_fernet = Fernet(key)
     LOG.info("Password store unlocked")
@@ -185,13 +185,13 @@ def add_password(name: str, username: str, password: str,
                  url: str = "", notes: str = "") -> Dict[str, Any]:
     """Add a new password entry (encrypted)."""
     if not is_unlocked():
-        return {"ok": False, "error": "Store ist gesperrt"}
+        return {"ok": False, "error": "Store is locked"}
     if not name or not name.strip():
-        return {"ok": False, "error": "Name ist erforderlich"}
+        return {"ok": False, "error": "Name is required"}
     if not username:
-        return {"ok": False, "error": "Username ist erforderlich"}
+        return {"ok": False, "error": "Username is required"}
     if not password:
-        return {"ok": False, "error": "Passwort ist erforderlich"}
+        return {"ok": False, "error": "Password is required"}
 
     now = datetime.now().isoformat(timespec="seconds")
     try:
@@ -213,7 +213,7 @@ def add_password(name: str, username: str, password: str,
 def list_passwords() -> Dict[str, Any]:
     """List all entries (name + url only, NO credentials)."""
     if not is_unlocked():
-        return {"ok": False, "error": "Store ist gesperrt"}
+        return {"ok": False, "error": "Store is locked"}
 
     try:
         db = _get_db()
@@ -234,14 +234,14 @@ def list_passwords() -> Dict[str, Any]:
 def get_password(entry_id: int) -> Dict[str, Any]:
     """Get a single entry with decrypted credentials."""
     if not is_unlocked():
-        return {"ok": False, "error": "Store ist gesperrt"}
+        return {"ok": False, "error": "Store is locked"}
 
     try:
         db = _get_db()
         row = db.execute("SELECT * FROM passwords WHERE id=?", (entry_id,)).fetchone()
         db.close()
         if not row:
-            return {"ok": False, "error": "Eintrag nicht gefunden"}
+            return {"ok": False, "error": "Entry not found"}
 
         return {
             "ok": True,
@@ -257,7 +257,7 @@ def get_password(entry_id: int) -> Dict[str, Any]:
             },
         }
     except InvalidToken:
-        return {"ok": False, "error": "Entschluesselung fehlgeschlagen (falscher Key?)"}
+        return {"ok": False, "error": "Decryption failed (wrong key?)"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -265,7 +265,7 @@ def get_password(entry_id: int) -> Dict[str, Any]:
 def search_passwords(query: str) -> Dict[str, Any]:
     """Search by name (plaintext). Returns entries WITH decrypted username."""
     if not is_unlocked():
-        return {"ok": False, "error": "Store ist gesperrt"}
+        return {"ok": False, "error": "Store is locked"}
 
     try:
         db = _get_db()
@@ -295,7 +295,7 @@ def search_passwords(query: str) -> Dict[str, Any]:
 def update_password(entry_id: int, **fields) -> Dict[str, Any]:
     """Update specific fields of an entry."""
     if not is_unlocked():
-        return {"ok": False, "error": "Store ist gesperrt"}
+        return {"ok": False, "error": "Store is locked"}
 
     allowed = {"name", "username", "password", "url", "notes"}
     updates = {}
@@ -308,7 +308,7 @@ def update_password(entry_id: int, **fields) -> Dict[str, Any]:
             updates[k] = v.strip() if isinstance(v, str) else v
 
     if not updates:
-        return {"ok": False, "error": "Keine gueltigen Felder"}
+        return {"ok": False, "error": "No valid fields"}
 
     updates["updated_at"] = datetime.now().isoformat(timespec="seconds")
     set_clause = ", ".join(f"{k}=?" for k in updates)
@@ -320,7 +320,7 @@ def update_password(entry_id: int, **fields) -> Dict[str, Any]:
         db.commit()
         db.close()
         if cur.rowcount == 0:
-            return {"ok": False, "error": "Eintrag nicht gefunden"}
+            return {"ok": False, "error": "Entry not found"}
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -329,7 +329,7 @@ def update_password(entry_id: int, **fields) -> Dict[str, Any]:
 def delete_password(entry_id: int) -> Dict[str, Any]:
     """Delete a password entry."""
     if not is_unlocked():
-        return {"ok": False, "error": "Store ist gesperrt"}
+        return {"ok": False, "error": "Store is locked"}
 
     try:
         db = _get_db()
@@ -337,7 +337,7 @@ def delete_password(entry_id: int) -> Dict[str, Any]:
         db.commit()
         db.close()
         if cur.rowcount == 0:
-            return {"ok": False, "error": "Eintrag nicht gefunden"}
+            return {"ok": False, "error": "Entry not found"}
         return {"ok": True, "deleted_id": entry_id}
     except Exception as e:
         return {"ok": False, "error": str(e)}

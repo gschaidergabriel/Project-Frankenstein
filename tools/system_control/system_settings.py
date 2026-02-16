@@ -210,19 +210,19 @@ class DisplayManager:
         if not display and displays:
             display = list(displays.keys())[0]
 
-        preview = f"""AUFLÖSUNG ÄNDERN:
+        preview = f"""CHANGE RESOLUTION:
 
 Display: {display}
-Aktuelle Auflösung: {current.width}x{current.height}@{current.refresh_rate}Hz
-Neue Auflösung: {width}x{height}@{refresh_rate}Hz
+Current resolution: {current.width}x{current.height}@{current.refresh_rate}Hz
+New resolution: {width}x{height}@{refresh_rate}Hz
 
-ACHTUNG: Die Änderung wird nach {DISPLAY_REVERT_SECONDS} Sekunden
-automatisch rückgängig gemacht, wenn du nicht bestätigst!
+WARNING: The change will be automatically reverted after {DISPLAY_REVERT_SECONDS} seconds
+if you do not confirm!
 """
 
         return request_confirmation(
             action_type="display_resolution",
-            description=f"Auflösung ändern auf {width}x{height}",
+            description=f"Change resolution to {width}x{height}",
             preview=preview,
             params={
                 "display": display,
@@ -244,11 +244,11 @@ automatisch rückgängig gemacht, wenn du nicht bestätigst!
     def execute_resolution_change(self, action_id: str) -> Tuple[bool, str]:
         """Execute confirmed resolution change."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         action = get_handler().get_action(action_id)
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         display = action.params["display"]
         width = action.params["width"]
@@ -270,16 +270,15 @@ automatisch rückgängig gemacht, wenn du nicht bestätigst!
 
             if success:
                 mark_action_executed(action_id, revert_callback)
-                return True, f"""Auflösung geändert auf {width}x{height}@{rate}Hz
+                return True, f"""Resolution changed to {width}x{height}@{rate}Hz
 
-Die Änderung wird in {DISPLAY_REVERT_SECONDS} Sekunden automatisch
-rückgängig gemacht. Sage 'behalten' oder 'passt so' um die
-Änderung zu behalten."""
+The change will be automatically reverted in {DISPLAY_REVERT_SECONDS} seconds.
+Say 'keep' or 'looks good' to keep the change."""
             else:
-                return False, "Auflösungsänderung fehlgeschlagen"
+                return False, "Resolution change failed"
 
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def _set_resolution(self, display: str, width: int, height: int, rate: float) -> bool:
         """Set display resolution using xrandr."""
@@ -405,10 +404,10 @@ class AudioManager:
                 timeout=5
             )
             if result.returncode == 0:
-                return True, f"Audio-Ausgabe auf '{device_name}' gesetzt"
-            return False, f"Konnte Audio-Ausgabe nicht setzen: {result.stderr}"
+                return True, f"Audio output set to '{device_name}'"
+            return False, f"Could not set audio output: {result.stderr}"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def set_default_input(self, device_name: str) -> Tuple[bool, str]:
         """Set default audio input."""
@@ -420,10 +419,10 @@ class AudioManager:
                 timeout=5
             )
             if result.returncode == 0:
-                return True, f"Audio-Eingabe auf '{device_name}' gesetzt"
-            return False, f"Konnte Audio-Eingabe nicht setzen: {result.stderr}"
+                return True, f"Audio input set to '{device_name}'"
+            return False, f"Could not set audio input: {result.stderr}"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def set_volume(self, volume: int, device_type: str = "sink") -> Tuple[bool, str]:
         """Set volume for default device."""
@@ -437,10 +436,10 @@ class AudioManager:
                 timeout=5
             )
             if result.returncode == 0:
-                return True, f"Lautstärke auf {volume}% gesetzt"
-            return False, f"Konnte Lautstärke nicht setzen: {result.stderr}"
+                return True, f"Volume set to {volume}%"
+            return False, f"Could not set volume: {result.stderr}"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def toggle_mute(self, device_type: str = "sink") -> Tuple[bool, str]:
         """Toggle mute for default device."""
@@ -453,10 +452,10 @@ class AudioManager:
                 timeout=5
             )
             if result.returncode == 0:
-                return True, "Stummschaltung umgeschaltet"
-            return False, f"Konnte Stummschaltung nicht ändern: {result.stderr}"
+                return True, "Mute toggled"
+            return False, f"Could not toggle mute: {result.stderr}"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
 
 class BluetoothManager:
@@ -553,16 +552,16 @@ class BluetoothManager:
 
     def request_pair(self, mac: str, name: str) -> Tuple[str, str]:
         """Request Bluetooth pairing with confirmation."""
-        preview = f"""BLUETOOTH KOPPELN:
+        preview = f"""BLUETOOTH PAIRING:
 
-Gerät: {name}
+Device: {name}
 MAC: {mac}
 
-Das Gerät wird gekoppelt und als vertrauenswürdig markiert.
+The device will be paired and marked as trusted.
 """
         return request_confirmation(
             action_type="bluetooth_pair",
-            description=f"Bluetooth-Gerät koppeln: {name}",
+            description=f"Pair Bluetooth device: {name}",
             preview=preview,
             params={"mac": mac, "name": name},
             level=ConfirmationLevel.SINGLE
@@ -571,11 +570,11 @@ Das Gerät wird gekoppelt und als vertrauenswürdig markiert.
     def execute_pair(self, action_id: str) -> Tuple[bool, str]:
         """Execute Bluetooth pairing."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         action = get_handler().get_action(action_id)
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         mac = action.params["mac"]
         name = action.params["name"]
@@ -590,7 +589,7 @@ Das Gerät wird gekoppelt und als vertrauenswürdig markiert.
             )
 
             if "Failed" in result.stdout or result.returncode != 0:
-                return False, f"Kopplung fehlgeschlagen: {result.stdout}"
+                return False, f"Pairing failed: {result.stdout}"
 
             # Trust
             subprocess.run(["bluetoothctl", "trust", mac], timeout=5)
@@ -599,12 +598,12 @@ Das Gerät wird gekoppelt und als vertrauenswürdig markiert.
             subprocess.run(["bluetoothctl", "connect", mac], timeout=10)
 
             mark_action_executed(action_id)
-            return True, f"Bluetooth-Gerät '{name}' erfolgreich gekoppelt!"
+            return True, f"Bluetooth device '{name}' successfully paired!"
 
         except subprocess.TimeoutExpired:
-            return False, "Kopplung Timeout - stelle sicher, dass das Gerät im Pairing-Modus ist"
+            return False, "Pairing timeout - make sure the device is in pairing mode"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def disconnect(self, mac: str) -> Tuple[bool, str]:
         """Disconnect a Bluetooth device."""
@@ -616,10 +615,10 @@ Das Gerät wird gekoppelt und als vertrauenswürdig markiert.
                 timeout=5
             )
             if result.returncode == 0:
-                return True, "Bluetooth-Gerät getrennt"
-            return False, f"Trennung fehlgeschlagen: {result.stderr}"
+                return True, "Bluetooth device disconnected"
+            return False, f"Disconnection failed: {result.stderr}"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
 
 class SystemSettings:

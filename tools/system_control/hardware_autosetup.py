@@ -387,7 +387,7 @@ class DriverInstaller:
         """
         if driver.source == "system":
             # Already installed
-            return True, f"Treiber bereits installiert: {driver.name}"
+            return True, f"Driver already installed: {driver.name}"
 
         if driver.package_name:
             return self._install_apt_package(driver.package_name)
@@ -395,7 +395,7 @@ class DriverInstaller:
         if driver.download_url:
             return self._download_and_install(driver)
 
-        return False, "Keine Installationsmethode verfügbar"
+        return False, "No installation method available"
 
     def _install_apt_package(self, package: str) -> Tuple[bool, str]:
         """Install driver via apt."""
@@ -418,14 +418,14 @@ class DriverInstaller:
             )
 
             if result.returncode == 0:
-                return True, f"Treiber-Paket '{package}' erfolgreich installiert"
+                return True, f"Driver package '{package}' successfully installed"
             else:
-                return False, f"Installation fehlgeschlagen: {result.stderr[:200]}"
+                return False, f"Installation failed: {result.stderr[:200]}"
 
         except subprocess.TimeoutExpired:
-            return False, "Installation Timeout"
+            return False, "Installation timeout"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def _download_and_install(self, driver: DriverInfo) -> Tuple[bool, str]:
         """Download and install driver from URL."""
@@ -455,7 +455,7 @@ class DriverInstaller:
                 )
 
                 if result.returncode == 0:
-                    return True, f"Treiber installiert: {filename}"
+                    return True, f"Driver installed: {filename}"
 
             elif filename.endswith(".ppd") or filename.endswith(".ppd.gz"):
                 # Copy PPD to system location
@@ -464,12 +464,12 @@ class DriverInstaller:
                     ["sudo", "cp", str(download_path), str(ppd_dir)],
                     timeout=10
                 )
-                return True, f"PPD-Datei installiert: {filename}"
+                return True, f"PPD file installed: {filename}"
 
-            return False, f"Unbekannter Dateityp: {filename}"
+            return False, f"Unknown file type: {filename}"
 
         except Exception as e:
-            return False, f"Download/Installation fehlgeschlagen: {e}"
+            return False, f"Download/installation failed: {e}"
 
 
 class PrinterSetup:
@@ -532,12 +532,12 @@ class PrinterSetup:
                     timeout=10
                 )
 
-                return True, f"Drucker '{printer_name}' erfolgreich eingerichtet!"
+                return True, f"Printer '{printer_name}' successfully configured!"
             else:
-                return False, f"Einrichtung fehlgeschlagen: {result.stderr}"
+                return False, f"Setup failed: {result.stderr}"
 
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
 
 class HardwareAutoSetup:
@@ -581,25 +581,25 @@ class HardwareAutoSetup:
 
         driver = DriverInfo(**driver_info) if driver_info else None
 
-        preview = f"""DRUCKER EINRICHTEN:
+        preview = f"""PRINTER SETUP:
 
-Drucker: {printer.name}
-Hersteller: {printer.manufacturer}
-Modell: {printer.model}
-Verbindung: {printer.connection_type}
+Printer: {printer.name}
+Manufacturer: {printer.manufacturer}
+Model: {printer.model}
+Connection: {printer.connection_type}
 URI: {printer.uri}
 
-Treiber: {driver.name if driver else 'Automatisch suchen'}
-Quelle: {driver.source if driver else 'System/OpenPrinting'}
+Driver: {driver.name if driver else 'Search automatically'}
+Source: {driver.source if driver else 'System/OpenPrinting'}
 
-Der Drucker wird konfiguriert und als Standarddrucker gesetzt.
+The printer will be configured and set as default printer.
 """
         if driver and driver.package_name:
-            preview += f"\nPaket wird installiert: {driver.package_name}"
+            preview += f"\nPackage will be installed: {driver.package_name}"
 
         return request_confirmation(
             action_type="printer_setup",
-            description=f"Drucker einrichten: {printer.name}",
+            description=f"Set up printer: {printer.name}",
             preview=preview,
             params={
                 "printer": printer_info,
@@ -611,13 +611,13 @@ Der Drucker wird konfiguriert und als Standarddrucker gesetzt.
     def execute_printer_setup(self, action_id: str) -> Tuple[bool, str]:
         """Execute confirmed printer setup."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         from .sensitive_actions import get_handler
         action = get_handler().get_action(action_id)
 
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         printer_info = action.params["printer"]
         driver_info = action.params.get("driver")
@@ -628,7 +628,7 @@ Der Drucker wird konfiguriert und als Standarddrucker gesetzt.
         if not driver_info:
             drivers = self.driver_search.search_driver(printer)
             if not drivers:
-                return False, "Kein passender Treiber gefunden"
+                return False, "No matching driver found"
             driver_info = drivers[0].to_dict()
 
         driver = DriverInfo(**driver_info)
@@ -637,7 +637,7 @@ Der Drucker wird konfiguriert und als Standarddrucker gesetzt.
         if driver.package_name:
             success, msg = self.driver_installer.install_driver(driver)
             if not success:
-                return False, f"Treiber-Installation fehlgeschlagen: {msg}"
+                return False, f"Driver installation failed: {msg}"
 
         # Set up printer
         success, msg = self.printer_setup.setup_printer(printer, driver)
@@ -657,13 +657,13 @@ Der Drucker wird konfiguriert und als Standarddrucker gesetzt.
         printers = self.detector.detect_all()
 
         if not printers:
-            return None, "Keine neuen Drucker gefunden"
+            return None, "No new printers found"
 
         # Filter out already configured printers
         new_printers = [p for p in printers if not p.is_configured]
 
         if not new_printers:
-            return None, "Alle erkannten Drucker sind bereits konfiguriert"
+            return None, "All detected printers are already configured"
 
         # Set up the first new printer
         printer = new_printers[0]
@@ -715,16 +715,16 @@ def auto_setup_new_printer() -> Tuple[Optional[str], str]:
 def format_printer_list(printers: List[Dict[str, Any]]) -> str:
     """Format printer list for display."""
     if not printers:
-        return "Keine Drucker gefunden."
+        return "No printers found."
 
-    lines = ["ERKANNTE DRUCKER:", "=" * 40, ""]
+    lines = ["DETECTED PRINTERS:", "=" * 40, ""]
 
     for p in printers:
-        conn_type = "USB" if p["connection_type"] == "usb" else "Netzwerk"
-        status = "Konfiguriert" if p["is_configured"] else "Neu"
+        conn_type = "USB" if p["connection_type"] == "usb" else "Network"
+        status = "Configured" if p["is_configured"] else "New"
 
         lines.append(f"{p['manufacturer']} {p['model']}")
-        lines.append(f"  Verbindung: {conn_type}")
+        lines.append(f"  Connection: {conn_type}")
         lines.append(f"  Status: {status}")
         if p["ip_address"]:
             lines.append(f"  IP: {p['ip_address']}")

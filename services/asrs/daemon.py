@@ -542,7 +542,7 @@ class ASRSDaemon:
                 feature.status = FeatureStatus.STABLE
                 feature.confidence_score = min(100, feature.confidence_score + 40)
                 LOG.info(f"Feature #{feature.feature_id} is now STABLE (confidence: {feature.confidence_score})")
-                self._notify_user(f"Feature '{feature.feature_name}' ist jetzt stabil.", "low")
+                self._notify_user(f"Feature '{feature.feature_name}' is now stable.", "low")
 
         elif feature.status == FeatureStatus.REVALIDATING:
             # FIX MEDIUM #7: Check for revalidation timeout
@@ -556,7 +556,7 @@ class ASRSDaemon:
                 feature.issues.append(f"REVALIDATION_TIMEOUT: Exceeded {REVALIDATION_TIMEOUT}s")
                 self._quarantine_feature(feature)
                 self._notify_user(
-                    f"Feature '{feature.feature_name}' Revalidierung fehlgeschlagen (Timeout).",
+                    f"Feature '{feature.feature_name}' revalidation failed (timeout).",
                     "critical"
                 )
                 with self._revalidation_lock:
@@ -566,7 +566,7 @@ class ASRSDaemon:
                 feature.status = FeatureStatus.STABLE
                 feature.confidence_score = 50  # Reset to moderate confidence
                 LOG.info(f"Feature #{feature.feature_id} revalidation PASSED")
-                self._notify_user(f"Feature '{feature.feature_name}' wurde erfolgreich revalidiert.", "low")
+                self._notify_user(f"Feature '{feature.feature_name}' was successfully revalidated.", "low")
                 with self._revalidation_lock:
                     self._revalidating_feature = None
 
@@ -675,7 +675,7 @@ class ASRSDaemon:
             feature.issues.append(f"REVALIDATION_FAILED: {problems}")
             self._quarantine_feature(feature)
             self._notify_user(
-                f"Feature '{feature.feature_name}' hat die Revalidierung nicht bestanden.",
+                f"Feature '{feature.feature_name}' failed revalidation.",
                 "critical"
             )
             # Clear revalidation state
@@ -721,7 +721,7 @@ class ASRSDaemon:
 
         if not suspects:
             LOG.error("No suspect features found - manual intervention required")
-            self._notify_user("KRITISCH: Systemprobleme erkannt, aber keine verdächtigen Features gefunden.", "critical")
+            self._notify_user("CRITICAL: System problems detected, but no suspect features found.", "critical")
             return
 
         LOG.info(f"Identified {len(suspects)} suspect features")
@@ -739,7 +739,7 @@ class ASRSDaemon:
             LOG.info(f"High confidence culprit: Feature #{culprit.feature_id}")
             self._rollback_feature(culprit)
             self._notify_user(
-                f"Feature '{culprit.feature_name}' wurde als Problemursache identifiziert und zurückgerollt.",
+                f"Feature '{culprit.feature_name}' identified as problem cause and rolled back.",
                 "critical"
             )
         else:
@@ -766,7 +766,7 @@ class ASRSDaemon:
         if not all_services_ok:
             LOG.error("System still unstable after mass rollback - manual intervention required")
             self._notify_user(
-                "KRITISCH: System instabil trotz Rollback. Manuelle Intervention erforderlich.",
+                "CRITICAL: System unstable despite rollback. Manual intervention required.",
                 "critical"
             )
             return
@@ -779,8 +779,8 @@ class ASRSDaemon:
             self._revalidation_queue = [f.feature_id for f in sorted(suspects, key=lambda x: x.integrated_at)]
 
         self._notify_user(
-            f"{len(suspects)} Features wurden zurückgerollt. "
-            f"Automatische Revalidierung startet um das fehlerhafte Feature zu identifizieren.",
+            f"{len(suspects)} features rolled back. "
+            f"Automatic revalidation starting to identify the faulty feature.",
             "critical"
         )
 

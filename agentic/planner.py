@@ -68,47 +68,47 @@ class Plan:
 
 
 # System prompt for the planner LLM
-PLANNER_SYSTEM_PROMPT = """Du bist ein Planungsagent. Erstelle einen konkreten Ausfuehrungsplan mit Tool-Aufrufen.
+PLANNER_SYSTEM_PROMPT = """You are a planning agent. Create a concrete execution plan with tool calls.
 
 ## Tools
 {tools_description}
 
-## WICHTIG
-- Jeder Schritt MUSS ein tool_name haben (fs_write, code_execute, oder bash_execute).
-- Fuer Programmieraufgaben: Erstelle die Dateien mit fs_write, dann fuehre sie mit bash_execute aus.
-- Kein Schritt ohne tool_name!
-- NIEMALS Backslashes in Pfaden! Weder im JSON noch im tool_input content!
-  FALSCH: /home/user/mein\\ ordner   RICHTIG: /home/user/mein ordner
-- Bei fs_write IMMER "overwrite": true setzen!
-- EINE Datei pro fs_write Schritt. Teile grosse Programme in mehrere Dateien auf.
-- Halte jede Datei unter 150 Zeilen.
-- Schreibe NUR valides JSON. Doppelte Anfuehrungszeichen und Doppelpunkt als Separator.
-- Im generierten Python-Code: Pfade OHNE Backslashes!
-  FALSCH: open('/pfad/mein\\ ordner/datei.txt')
-  RICHTIG: open('/pfad/mein ordner/datei.txt')
+## IMPORTANT
+- Every step MUST have a tool_name (fs_write, code_execute, or bash_execute).
+- For programming tasks: Create files with fs_write, then execute them with bash_execute.
+- No step without tool_name!
+- NEVER use backslashes in paths! Neither in JSON nor in tool_input content!
+  WRONG: /home/user/my\\ folder   RIGHT: /home/user/my folder
+- For fs_write ALWAYS set "overwrite": true!
+- ONE file per fs_write step. Split large programs into multiple files.
+- Keep each file under 150 lines.
+- Write ONLY valid JSON. Double quotes and colon as separator.
+- In generated Python code: Paths WITHOUT backslashes!
+  WRONG: open('/path/my\\ folder/file.txt')
+  RIGHT: open('/path/my folder/file.txt')
 
-## Antwortformat
-NUR JSON, kein anderer Text:
+## Response format
+ONLY JSON, no other text:
 ```json
 {{
-  "reasoning": "Kurze Begruendung",
+  "reasoning": "Brief reasoning",
   "steps": [
     {{
-      "description": "Verzeichnis erstellen",
+      "description": "Create directory",
       "tool_name": "bash_execute",
-      "tool_input": {{"command": "mkdir -p '/home/user/mein ordner'"}},
+      "tool_input": {{"command": "mkdir -p '/home/user/my folder'"}},
       "estimated_risk": 0.1
     }},
     {{
-      "description": "Hauptdatei schreiben",
+      "description": "Write main file",
       "tool_name": "fs_write",
-      "tool_input": {{"path": "/home/user/mein ordner/main.py", "content": "#!/usr/bin/env python3\\nprint('hello')\\n", "overwrite": true}},
+      "tool_input": {{"path": "/home/user/my folder/main.py", "content": "#!/usr/bin/env python3\\nprint('hello')\\n", "overwrite": true}},
       "estimated_risk": 0.3
     }},
     {{
-      "description": "Programm starten",
+      "description": "Start program",
       "tool_name": "bash_execute",
-      "tool_input": {{"command": "cd '/home/user/mein ordner' && python3 main.py"}},
+      "tool_input": {{"command": "cd '/home/user/my folder' && python3 main.py"}},
       "estimated_risk": 0.3
     }}
   ],
@@ -156,9 +156,9 @@ class Planner:
         tools_desc = self.registry.get_schema_for_prompt(max_tools=25)
         system_prompt = PLANNER_SYSTEM_PROMPT.format(tools_description=tools_desc)
 
-        user_prompt = f"Ziel: {goal}"
+        user_prompt = f"Goal: {goal}"
         if context:
-            user_prompt += f"\n\nKontext:\n{context}"
+            user_prompt += f"\n\nContext:\n{context}"
 
         # Call LLM for planning
         try:
@@ -171,14 +171,14 @@ class Planner:
 
         # Check if clarification needed
         if plan_data.get("needs_user_input"):
-            question = plan_data.get("clarification_question", "Kannst du das genauer erklären?")
-            return Plan(goal=goal, steps=[], reasoning="Brauche mehr Informationen"), question
+            question = plan_data.get("clarification_question", "Can you explain that in more detail?")
+            return Plan(goal=goal, steps=[], reasoning="Need more information"), question
 
         # Build plan from response
         steps = []
         for i, step_data in enumerate(plan_data.get("steps", [])[:max_steps]):
             step = PlanStep(
-                description=step_data.get("description", f"Schritt {i+1}"),
+                description=step_data.get("description", f"Step {i+1}"),
                 tool_name=step_data.get("tool_name"),
                 tool_input=step_data.get("tool_input", {}),
                 estimated_risk=float(step_data.get("estimated_risk", 0.1)),
@@ -211,22 +211,22 @@ class Planner:
         """
         # Build context from execution history
         context_parts = [
-            f"Ursprüngliches Ziel: {state.goal}",
+            f"Original goal: {state.goal}",
             "",
-            "Bereits ausgeführte Schritte:",
+            "Already executed steps:",
         ]
 
         for step in state.plan_steps:
             if step.status == StepStatus.COMPLETED:
                 context_parts.append(f"✓ {step.description}")
             elif step.status == StepStatus.FAILED:
-                context_parts.append(f"✗ {step.description} - FEHLGESCHLAGEN: {step.error}")
+                context_parts.append(f"✗ {step.description} - FAILED: {step.error}")
 
         context_parts.extend([
             "",
-            f"Letzter Fehler: {failure_reason}",
+            f"Last error: {failure_reason}",
             "",
-            "Bitte erstelle einen neuen Plan, der das Problem umgeht.",
+            "Please create a new plan that works around the problem.",
         ])
 
         context = "\n".join(context_parts)
@@ -248,8 +248,11 @@ class Planner:
         complexity_indicators = {
             "und dann": 1,
             "danach": 1,
+            "afterwards": 1,
             "anschließend": 1,
+            "subsequently": 1,
             "mehrere": 1,
+            "several": 1,
             "alle": 1,
             "jede": 1,
             "automatisch": 1,
@@ -351,13 +354,13 @@ class Planner:
             goal=goal,
             steps=[
                 PlanStep(
-                    description=f"Direkte Antwort auf: {goal}",
+                    description=f"Direct answer to: {goal}",
                     tool_name=None,
                     estimated_risk=0.0,
-                    reasoning=f"Fallback wegen Planungsfehler: {error}",
+                    reasoning=f"Fallback due to planning error: {error}",
                 )
             ],
-            reasoning="Fallback-Plan nach Planungsfehler",
+            reasoning="Fallback plan after planning error",
             estimated_total_risk=0.0,
         )
 
@@ -390,7 +393,7 @@ def analyze_and_plan(
                     estimated_risk=0.1,
                 )
             ],
-            reasoning="Einfaches Ziel - direkte Ausführung",
+            reasoning="Simple goal - direct execution",
         ), None
 
     # Complex goal - full planning

@@ -266,7 +266,7 @@ class EmailMixin:
             read_result = _toolbox_call("/email/read", read_payload, timeout_s=15.0)
 
             if not read_result or not read_result.get("ok"):
-                error = (read_result or {}).get("error", "Email nicht gefunden")
+                error = (read_result or {}).get("error", "Email not found")
                 self._ui_call(self._hide_typing)
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
                 return

@@ -319,7 +319,7 @@ class ChatIntegration:
             cancel_pending_action(self._pending_action_id)
             self._pending_action_id = None
             self._pending_action_type = None
-            return True, "Aktion abgebrochen."
+            return True, "Action cancelled."
 
         # Not a confirmation - might be a new request
         return False, None
@@ -327,7 +327,7 @@ class ChatIntegration:
     def _execute_confirmed_action(self) -> Tuple[bool, str]:
         """Execute the confirmed action based on type."""
         if not self._pending_action_id or not self._pending_action_type:
-            return False, "Keine bestätigte Aktion vorhanden"
+            return False, "No confirmed action available"
 
         action_type = self._pending_action_type
 
@@ -367,7 +367,7 @@ class ChatIntegration:
                 packages = action.params.get("packages", [])
                 backend = PackageBackend(action.params.get("backend", "apt"))
                 return mgr.install(packages, backend)
-            return False, "Installationsdetails nicht gefunden."
+            return False, "Installation details not found."
 
         elif action_type == "package_remove":
             from .package_manager import get_manager as get_pkg_manager, PackageBackend
@@ -377,13 +377,13 @@ class ChatIntegration:
                 packages = action.params.get("packages", [])
                 backend = PackageBackend(action.params.get("backend", "apt"))
                 return mgr.remove(packages, backend)
-            return False, "Entfernungsdetails nicht gefunden."
+            return False, "Removal details not found."
 
         elif action_type == "system_update":
             from .package_manager import get_manager as get_pkg_manager
             return get_pkg_manager().execute_update()
 
-        return False, f"Unbekannter Aktionstyp: {action_type}"
+        return False, f"Unknown action type: {action_type}"
 
     def _handle_undo_request(self) -> Tuple[bool, Optional[str]]:
         """Handle undo request."""
@@ -391,7 +391,7 @@ class ChatIntegration:
 
         preview = get_undo_preview()
         if not preview:
-            return True, "Keine rückgängig machbare Aktion gefunden."
+            return True, "No undoable action found."
 
         success, msg = undo_last_organization()
         return True, msg
@@ -408,7 +408,7 @@ class ChatIntegration:
         action_id, msg = request_organization(
             source_folder=folder,
             strategy="by_type",
-            description=f"Dateien in {folder} nach Typ sortieren"
+            description=f"Sort files in {folder} by type"
         )
 
         if action_id:
@@ -481,7 +481,7 @@ class ChatIntegration:
 
         # Not clear what to do - show status
         enabled, status = get_manager().get_wifi_status()
-        return True, f"{status}\n\nSage 'WiFi aus' oder 'WiFi ein' zum Umschalten."
+        return True, f"{status}\n\nSay 'WiFi off' or 'WiFi on' to toggle."
 
     def _handle_app_close(self, message: str) -> Tuple[bool, Optional[str]]:
         """Handle app close request - NO confirmation needed."""
@@ -491,7 +491,7 @@ class ChatIntegration:
         app_name = self._extract_app_name(message)
 
         if not app_name:
-            return True, "Welche App soll ich schließen? Sage z.B. 'Schließ Discord' oder 'Beende Firefox'."
+            return True, "Which app should I close? Say e.g. 'close Discord' or 'quit Firefox'."
 
         success, msg = close_app(app_name)
         return True, msg
@@ -542,22 +542,22 @@ class ChatIntegration:
         devices = scan_bluetooth(scan_time=5)
 
         if not devices:
-            return True, "Keine Bluetooth-Geräte gefunden. Stelle sicher, dass die Geräte im Pairing-Modus sind."
+            return True, "No Bluetooth devices found. Make sure devices are in pairing mode."
 
-        lines = ["BLUETOOTH-GERÄTE:", "=" * 40, ""]
+        lines = ["BLUETOOTH DEVICES:", "=" * 40, ""]
         for d in devices:
             status = []
             if d["connected"]:
-                status.append("Verbunden")
+                status.append("Connected")
             if d["paired"]:
-                status.append("Gekoppelt")
+                status.append("Paired")
 
             status_str = f" ({', '.join(status)})" if status else ""
             lines.append(f"  {d['name']}{status_str}")
             lines.append(f"    MAC: {d['mac']}")
             lines.append("")
 
-        lines.append("Sage z.B. 'Koppel mit <Gerätename>' zum Verbinden.")
+        lines.append("Say e.g. 'pair with <device name>' to connect.")
 
         return True, "\n".join(lines)
 
@@ -584,22 +584,22 @@ class ChatIntegration:
         displays = get_displays()
         current = get_current_resolution()
 
-        lines = ["DISPLAY-EINSTELLUNGEN:", "=" * 40, ""]
+        lines = ["DISPLAY SETTINGS:", "=" * 40, ""]
 
         if current:
-            lines.append(f"Aktuelle Auflösung: {current['width']}x{current['height']}@{current['refresh_rate']}Hz")
+            lines.append(f"Current resolution: {current['width']}x{current['height']}@{current['refresh_rate']}Hz")
             lines.append("")
 
-        lines.append("Verfügbare Modi:")
+        lines.append("Available modes:")
         for name, modes in displays.items():
             lines.append(f"\n{name}:")
             for mode in modes[:8]:
                 marker = " *" if mode['is_current'] else ""
-                pref = " (empfohlen)" if mode['is_preferred'] else ""
+                pref = " (recommended)" if mode['is_preferred'] else ""
                 lines.append(f"  {mode['width']}x{mode['height']}@{mode['refresh_rate']}Hz{marker}{pref}")
 
         lines.append("")
-        lines.append("Sage z.B. 'Auflösung 1920x1080@60Hz' zum Ändern.")
+        lines.append("Say e.g. 'resolution 1920x1080@60Hz' to change.")
 
         return True, "\n".join(lines)
 
@@ -622,16 +622,16 @@ class ChatIntegration:
         # Show audio devices - no confirmation needed
         outputs = get_audio_outputs()
 
-        lines = ["AUDIO-AUSGABEN:", "=" * 40, ""]
+        lines = ["AUDIO OUTPUTS:", "=" * 40, ""]
 
         for out in outputs:
-            default = " (STANDARD)" if out['is_default'] else ""
+            default = " (DEFAULT)" if out['is_default'] else ""
             vol = f" [{out['volume']}%]" if out['volume'] else ""
-            muted = " [STUMM]" if out['muted'] else ""
+            muted = " [MUTED]" if out['muted'] else ""
             lines.append(f"  {out['description']}{default}{vol}{muted}")
 
         lines.append("")
-        lines.append("Sage z.B. 'Lautstärke 50' oder 'Mute' zum Ändern.")
+        lines.append("Say e.g. 'volume 50' or 'mute' to change.")
 
         return True, "\n".join(lines)
 
@@ -642,7 +642,7 @@ class ChatIntegration:
         printers = detect_printers()
 
         if not printers:
-            return True, "Keine Drucker gefunden. Stelle sicher, dass der Drucker angeschlossen und eingeschaltet ist."
+            return True, "No printers found. Make sure the printer is connected and turned on."
 
         # Check if setting up specific printer
         if re.search(r'einricht|setup|install|hinzufügen|add', message, re.IGNORECASE):
@@ -655,7 +655,7 @@ class ChatIntegration:
                 return True, msg
             else:
                 # Multiple printers - show list
-                return True, format_printer_list(printers) + "\n\nSage welchen Drucker ich einrichten soll."
+                return True, format_printer_list(printers) + "\n\nSay which printer I should set up."
 
         return True, format_printer_list(printers)
 
@@ -692,7 +692,7 @@ class ChatIntegration:
             from .sensitive_actions import get_handler as get_sa_handler, ConfirmationLevel
             action_id = get_sa_handler().register_action(
                 action_type="system_update",
-                description=f"System-Update: {count} Pakete aktualisieren",
+                description=f"System update: {count} packages to update",
                 preview=summary,
                 params={"count": count},
                 level=ConfirmationLevel.SINGLE,
@@ -701,12 +701,12 @@ class ChatIntegration:
             self._pending_action_type = "system_update"
 
             lines = [
-                "SYSTEM-UPDATE:",
+                "SYSTEM UPDATE:",
                 "=" * 40,
                 "",
                 summary,
                 "",
-                "Sag 'ja' zum Bestaetigen oder 'nein' zum Abbrechen.",
+                "Say 'yes' to confirm or 'no' to cancel.",
             ]
             return True, "\n".join(lines)
 
@@ -715,17 +715,17 @@ class ChatIntegration:
         packages = mgr.extract_packages(message)
 
         if not packages:
-            return True, "Welche Pakete soll ich installieren? Sage z.B. 'Installiere htop' oder 'pip install requests'."
+            return True, "Which packages should I install? Say e.g. 'install htop' or 'pip install requests'."
 
         # Validate first
         ok, err = mgr.validate(packages, backend)
         if not ok:
-            return True, f"Kann nicht installieren: {err}"
+            return True, f"Cannot install: {err}"
 
         # Gather info for preview
-        info_lines = ["PAKET-INSTALLATION:", "=" * 40, ""]
+        info_lines = ["PACKAGE INSTALLATION:", "=" * 40, ""]
         info_lines.append(f"Backend: {backend.value}")
-        info_lines.append(f"Pakete:  {', '.join(packages)}")
+        info_lines.append(f"Packages: {', '.join(packages)}")
         info_lines.append("")
 
         for pkg in packages:
@@ -735,19 +735,19 @@ class ChatIntegration:
                 if info.version:
                     info_lines.append(f"    Version: {info.version}")
                 if info.description:
-                    info_lines.append(f"    Beschreibung: {info.description}")
+                    info_lines.append(f"    Description: {info.description}")
                 if info.size_human:
-                    info_lines.append(f"    Groesse: {info.size_human}")
+                    info_lines.append(f"    Size: {info.size_human}")
                 info_lines.append("")
             else:
-                info_lines.append(f"  {pkg} (keine Details verfuegbar)")
+                info_lines.append(f"  {pkg} (no details available)")
                 info_lines.append("")
 
         # Register as pending action
         from .sensitive_actions import get_handler as get_sa_handler, ConfirmationLevel
         action_id = get_sa_handler().register_action(
             action_type="package_install",
-            description=f"Pakete installieren: {', '.join(packages)} ({backend.value})",
+            description=f"Install packages: {', '.join(packages)} ({backend.value})",
             preview="\n".join(info_lines),
             params={"packages": packages, "backend": backend.value},
             level=ConfirmationLevel.SINGLE,
@@ -755,7 +755,7 @@ class ChatIntegration:
         self._pending_action_id = action_id
         self._pending_action_type = "package_install"
 
-        info_lines.append("Sag 'ja' zum Bestaetigen oder 'nein' zum Abbrechen.")
+        info_lines.append("Say 'yes' to confirm or 'no' to cancel.")
         return True, "\n".join(info_lines)
 
     def _handle_package_search(self, message: str) -> Tuple[bool, Optional[str]]:
@@ -773,21 +773,21 @@ class ChatIntegration:
         term = cleaned.split()[0] if cleaned.split() else ""
 
         if not term or len(term) < 2:
-            return True, "Was soll ich suchen? Sage z.B. 'Suche Paket htop' oder 'Suche pip requests'."
+            return True, "What should I search for? Say e.g. 'search package htop' or 'search pip requests'."
 
         results = mgr.search(term, backend if backend != mgr.detect_backend("") else None)
 
         if not results:
-            return True, f"Keine Pakete gefunden fuer '{term}'."
+            return True, f"No packages found for '{term}'."
 
-        lines = [f"PAKET-SUCHE: '{term}'", "=" * 40, ""]
+        lines = [f"PACKAGE SEARCH: '{term}'", "=" * 40, ""]
         for r in results:
             lines.append(f"  [{r.backend.value}] {r.name}")
             if r.description:
                 lines.append(f"    {r.description}")
             lines.append("")
 
-        lines.append("Sage z.B. 'Installiere <paketname>' zum Installieren.")
+        lines.append("Say e.g. 'install <package name>' to install.")
         return True, "\n".join(lines)
 
     def _handle_package_remove(self, message: str) -> Tuple[bool, Optional[str]]:
@@ -799,17 +799,17 @@ class ChatIntegration:
         packages = mgr.extract_packages(message)
 
         if not packages:
-            return True, "Welche Pakete soll ich entfernen? Sage z.B. 'Deinstalliere htop'."
+            return True, "Which packages should I remove? Say e.g. 'uninstall htop'."
 
         # Validate
         ok, err = mgr.validate(packages, backend)
         if not ok:
-            return True, f"Kann nicht entfernen: {err}"
+            return True, f"Cannot remove: {err}"
 
         # Check reverse dependencies for apt packages
-        info_lines = ["PAKET-ENTFERNUNG:", "=" * 40, ""]
+        info_lines = ["PACKAGE REMOVAL:", "=" * 40, ""]
         info_lines.append(f"Backend: {backend.value}")
-        info_lines.append(f"Pakete:  {', '.join(packages)}")
+        info_lines.append(f"Packages: {', '.join(packages)}")
         info_lines.append("")
 
         from .package_manager import PackageBackend as PB
@@ -817,20 +817,20 @@ class ChatIntegration:
             for pkg in packages:
                 rdeps = mgr._check_rdeps(pkg)
                 if rdeps:
-                    info_lines.append(f"  WARNUNG: '{pkg}' wird von {len(rdeps)} Paketen benoetigt:")
+                    info_lines.append(f"  WARNING: '{pkg}' is required by {len(rdeps)} packages:")
                     for dep in rdeps[:5]:
                         info_lines.append(f"    - {dep}")
                     if len(rdeps) > 5:
-                        info_lines.append(f"    ... und {len(rdeps) - 5} weitere")
+                        info_lines.append(f"    ... and {len(rdeps) - 5} more")
                     info_lines.append("")
-                    info_lines.append("Entfernung koennte andere Programme beeintraechtigen!")
+                    info_lines.append("Removal could affect other programs!")
                     info_lines.append("")
 
         # Register as pending action
         from .sensitive_actions import get_handler as get_sa_handler, ConfirmationLevel
         action_id = get_sa_handler().register_action(
             action_type="package_remove",
-            description=f"Pakete entfernen: {', '.join(packages)} ({backend.value})",
+            description=f"Remove packages: {', '.join(packages)} ({backend.value})",
             preview="\n".join(info_lines),
             params={"packages": packages, "backend": backend.value},
             level=ConfirmationLevel.SINGLE,
@@ -838,7 +838,7 @@ class ChatIntegration:
         self._pending_action_id = action_id
         self._pending_action_type = "package_remove"
 
-        info_lines.append("Sag 'ja' zum Bestaetigen oder 'nein' zum Abbrechen.")
+        info_lines.append("Say 'yes' to confirm or 'no' to cancel.")
         return True, "\n".join(info_lines)
 
     def _extract_folder_path(self, message: str) -> Optional[str]:
@@ -868,7 +868,7 @@ class ChatIntegration:
                 if "downloads" in matched_text:
                     return "~/Downloads"
                 elif "dokument" in matched_text or "document" in matched_text:
-                    return "~/Dokumente"
+                    return "~/Documents"
                 elif "desktop" in matched_text:
                     return "~/Desktop"
 

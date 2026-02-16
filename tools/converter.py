@@ -258,11 +258,11 @@ def convert_units(value: float, from_unit: str, to_unit: str) -> Dict[str, Any]:
     cat_to = _find_category(tu)
 
     if not cat_from:
-        return {"error": f"Unbekannte Einheit: {from_unit}"}
+        return {"error": f"Unknown unit: {from_unit}"}
     if not cat_to:
-        return {"error": f"Unbekannte Einheit: {to_unit}"}
+        return {"error": f"Unknown unit: {to_unit}"}
     if cat_from[0] != cat_to[0]:
-        return {"error": f"Kann {from_unit} ({cat_from[0]}) nicht in {to_unit} ({cat_to[0]}) umrechnen"}
+        return {"error": f"Cannot convert {from_unit} ({cat_from[0]}) to {to_unit} ({cat_to[0]})"}
 
     table = cat_from[1]
     from_factor = table[fu]
@@ -298,7 +298,7 @@ def convert_currency(value: float, from_cur: str, to_cur: str) -> Dict[str, Any]
         rate, ts = _currency_cache[cache_key]
         if now - ts < _CACHE_TTL:
             result = value * rate
-            fmt = f"{value:g} {fc} = {result:,.2f} {tc} (Kurs: {rate:.4f})"
+            fmt = f"{value:g} {fc} = {result:,.2f} {tc} (rate: {rate:.4f})"
             return {"ok": True, "result": result, "rate": rate, "formatted": fmt}
 
     # Fetch from API
@@ -310,7 +310,7 @@ def convert_currency(value: float, from_cur: str, to_cur: str) -> Dict[str, Any]
 
         rates = data.get("rates", {})
         if tc not in rates:
-            return {"error": f"Kein Wechselkurs fuer {fc} → {tc} verfuegbar"}
+            return {"error": f"No exchange rate for {fc} → {tc} available"}
 
         result = rates[tc]
         rate = result / value if value else 0
@@ -318,15 +318,15 @@ def convert_currency(value: float, from_cur: str, to_cur: str) -> Dict[str, Any]
         # Cache the rate
         _currency_cache[cache_key] = (rate, now)
 
-        fmt = f"{value:g} {fc} = {result:,.2f} {tc} (Kurs: {rate:.4f})"
+        fmt = f"{value:g} {fc} = {result:,.2f} {tc} (rate: {rate:.4f})"
         return {"ok": True, "result": result, "rate": rate, "formatted": fmt}
 
     except urllib.error.URLError as e:
         LOG.warning(f"Currency API error: {e}")
-        return {"error": "Waehrungskurs nicht verfuegbar (Netzwerk-Fehler)"}
+        return {"error": "Currency rate not available (network error)"}
     except Exception as e:
         LOG.warning(f"Currency conversion error: {e}")
-        return {"error": f"Waehrungsfehler: {e}"}
+        return {"error": f"Currency error: {e}"}
 
 
 def parse_conversion(text: str) -> Optional[Tuple[float, str, str]]:
@@ -365,7 +365,7 @@ def convert(text: str) -> Dict[str, Any]:
     """High-level: parse text and perform conversion."""
     parsed = parse_conversion(text)
     if not parsed:
-        return {"error": "Konnte keine Umrechnung aus der Nachricht lesen"}
+        return {"error": "Could not parse a conversion from the message"}
 
     value, from_raw, to_raw = parsed
     fu = _normalize_unit(from_raw)
@@ -379,7 +379,7 @@ def convert(text: str) -> Dict[str, Any]:
         return convert_currency(value, from_raw, to_raw)
     elif fu_is_cur or tu_is_cur:
         # Mixed — one is currency, other isn't
-        return {"error": f"Kann keine Einheit ({from_raw}) in Waehrung ({to_raw}) umrechnen"}
+        return {"error": f"Cannot convert unit ({from_raw}) to currency ({to_raw})"}
     else:
         return convert_units(value, from_raw, to_raw)
 

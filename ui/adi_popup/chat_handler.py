@@ -143,7 +143,7 @@ Always answer concisely. Be friendly but precise."""
             response_text = self._call_llm()
         except Exception as e:
             LOG.error(f"LLM call failed: {e}")
-            response_text = "Entschuldigung, ich konnte die Anfrage nicht verarbeiten. Bitte versuche es erneut."
+            response_text = "Sorry, I could not process the request. Please try again."
             self.messages.append(ChatMessage(role="assistant", content=response_text))
             return (response_text, None)
 
@@ -191,12 +191,12 @@ Always answer concisely. Be friendly but precise."""
     def _rollback_to_proposal(self, proposal_id: int) -> Tuple[str, Optional[Dict]]:
         """Rollback to a specific proposal."""
         if proposal_id < 1 or proposal_id > len(self.proposals):
-            return (f"Vorschlag {proposal_id} existiert nicht. Ich habe {len(self.proposals)} Vorschläge.", None)
+            return (f"Proposal {proposal_id} does not exist. I have {len(self.proposals)} proposals.", None)
 
         proposal = self.proposals[proposal_id - 1]
         self.current_layout = proposal["layout"].copy()
 
-        response = f"Zurück zu Vorschlag {proposal_id}: {proposal['description'][:50]}..."
+        response = f"Back to proposal {proposal_id}: {proposal['description'][:50]}..."
         return (response, self.current_layout)
 
     def _call_llm(self) -> str:
@@ -282,8 +282,8 @@ Always answer concisely. Be friendly but precise."""
         return new_layout
 
     def _translate_position(self, pos: str) -> str:
-        """Translate position to German."""
-        return "Links" if pos == "left" else "Rechts" if pos == "right" else pos.capitalize()
+        """Translate position to display string."""
+        return "Left" if pos == "left" else "Right" if pos == "right" else pos.capitalize()
 
     def get_initial_message(self, is_new_monitor: bool = True) -> str:
         """Generate the initial message from Frank."""
@@ -292,33 +292,33 @@ Always answer concisely. Be friendly but precise."""
         pos_german = self._translate_position(layout.get('position', 'left'))
 
         if is_new_monitor:
-            return f"""Ich habe einen neuen Monitor erkannt!
+            return f"""I detected a new monitor!
 
 **{monitor.get('manufacturer', '')} {monitor.get('model', monitor.get('name', 'Monitor'))}**
-Auflösung: {monitor.get('resolution', [0, 0])[0]}x{monitor.get('resolution', [0, 0])[1]}
+Resolution: {monitor.get('resolution', [0, 0])[0]}x{monitor.get('resolution', [0, 0])[1]}
 
-Mein Vorschlag für optimale Nutzung:
-• Fenster: {layout.get('width', 420)}x{layout.get('height', 720)} Pixel
+My suggestion for optimal usage:
+• Window: {layout.get('width', 420)}x{layout.get('height', 720)} pixels
 • Position: {pos_german}
 • Font size: {layout.get('font_size', 14)}px
 
-Das sollte auf diesem {'kleinen ' if monitor.get('resolution', [1920])[0] < 1200 else ''}Display gut lesbar sein. Was meinst du?"""
+This should be well readable on this {'small ' if monitor.get('resolution', [1920])[0] < 1200 else ''}display. What do you think?"""
         else:
-            return f"""Display-Einstellungen für **{monitor.get('model', monitor.get('name', 'Monitor'))}**
+            return f"""Display settings for **{monitor.get('model', monitor.get('name', 'Monitor'))}**
 
-Aktuelle Konfiguration:
-• Größe: {layout.get('width', 420)}x{layout.get('height', 720)}
-• Schrift: {layout.get('font_size', 14)}px
-• Seite: {pos_german}
+Current configuration:
+• Size: {layout.get('width', 420)}x{layout.get('height', 720)}
+• Font: {layout.get('font_size', 14)}px
+• Side: {pos_german}
 
-Was möchtest du anpassen?"""
+What would you like to adjust?"""
 
     def get_proposals_summary(self) -> str:
         """Get a summary of all proposals."""
         if not self.proposals:
-            return "Noch keine Vorschläge."
+            return "No proposals yet."
 
-        lines = ["Bisherige Vorschläge:"]
+        lines = ["Previous proposals:"]
         for p in self.proposals:
             layout = p['layout']
             lines.append(f"#{p['id']}: {layout.get('width')}x{layout.get('height')}, Font {layout.get('font_size')}")

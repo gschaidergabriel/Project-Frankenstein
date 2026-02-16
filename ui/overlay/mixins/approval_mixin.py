@@ -152,11 +152,11 @@ class ApprovalMixin:
         self._approval_daily_count += 1
         self._approval_update_queue_status(req["request_id"], "shown")
 
-        tag = "DRINGEND: " if req["urgency"] == "critical" else ""
+        tag = "URGENT: " if req["urgency"] == "critical" else ""
         msg = (
             f"{tag}{req['title_de']}\n"
             f"{req['detail_de']}\n\n"
-            f"Sag 'ja' oder 'nein'."
+            f"Say 'yes' or 'no'."
         )
         self._add_message("Frank", msg, is_system=False)
         LOG.info(f"Approval shown: {req['request_id']} ({req['daemon']}/{req['urgency']})")
@@ -168,7 +168,7 @@ class ApprovalMixin:
         self._approval_daily_count += 1
 
         count = len(requests)
-        msg = f"{count} Vorschlaege warten. Sag 'zeig' zum Anschauen, oder ignorier es einfach."
+        msg = f"{count} proposals waiting. Say 'show' to view them, or just ignore."
         self._add_message("Frank", msg, is_system=False)
 
     def _approval_show_batch_detail(self):
@@ -179,7 +179,7 @@ class ApprovalMixin:
         lines = []
         for i, req in enumerate(items, 1):
             lines.append(f"{i}. {req['title_de']} ({req['daemon']})")
-        msg = "\n".join(lines) + "\n\nSag 'ja' fuer alle, 'nein' fuer alle, oder 'ja 2' / 'nein 1' fuer einzelne."
+        msg = "\n".join(lines) + "\n\nSay 'yes' for all, 'no' for all, or 'yes 2' / 'no 1' for individual items."
         self._add_message("Frank", msg, is_system=False)
 
     # ---- User Input Handling ----
@@ -207,7 +207,7 @@ class ApprovalMixin:
                 for item in self._approval_pending["items"]:
                     self._approval_write_response(item["request_id"], "approved", msg)
                     self._approval_origin_chain.add(item["request_id"])
-                self._add_message("Frank", f"Alle {len(self._approval_pending['items'])} genehmigt.", is_system=True)
+                self._add_message("Frank", f"All {len(self._approval_pending['items'])} approved.", is_system=True)
                 self._approval_pending = None
                 return True
 
@@ -215,7 +215,7 @@ class ApprovalMixin:
                 self._add_message("Du", msg, is_user=True)
                 for item in self._approval_pending["items"]:
                     self._approval_write_response(item["request_id"], "rejected", msg)
-                self._add_message("Frank", "Alle abgelehnt.", is_system=True)
+                self._add_message("Frank", "All rejected.", is_system=True)
                 self._approval_pending = None
                 return True
 
@@ -232,7 +232,7 @@ class ApprovalMixin:
                         self._approval_origin_chain.add(items[idx]["request_id"])
                     items.pop(idx)
                     if not items:
-                        self._add_message("Frank", "Alle bearbeitet.", is_system=True)
+                        self._add_message("Frank", "All processed.", is_system=True)
                         self._approval_pending = None
                     else:
                         self._approval_show_batch_detail()
@@ -248,7 +248,7 @@ class ApprovalMixin:
             self._add_message("Du", msg, is_user=True)
             self._approval_write_response(rid, "approved", msg)
             self._approval_origin_chain.add(rid)
-            self._add_message("Frank", "Genehmigt.", is_system=True)
+            self._add_message("Frank", "Approved.", is_system=True)
             self._approval_pending = None
             return True
 
@@ -256,7 +256,7 @@ class ApprovalMixin:
             rid = self._approval_pending["request_id"]
             self._add_message("Du", msg, is_user=True)
             self._approval_write_response(rid, "rejected", msg)
-            self._add_message("Frank", "Abgelehnt.", is_system=True)
+            self._add_message("Frank", "Rejected.", is_system=True)
             self._approval_pending = None
             return True
 

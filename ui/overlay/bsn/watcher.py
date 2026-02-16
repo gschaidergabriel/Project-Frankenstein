@@ -5,7 +5,7 @@ from overlay.constants import LOG
 
 
 class WindowWatcher:
-    """Überwacht neue Fenster und triggert Layout-Anpassung."""
+    """Monitors new windows and triggers layout adjustment."""
 
     def __init__(self, layout_controller):
         self.controller = layout_controller
@@ -14,7 +14,7 @@ class WindowWatcher:
         self._thread = None
 
     def start(self):
-        """Startet den Watcher."""
+        """Starts the watcher."""
         self.running = True
         self.known_windows = self._get_windows()
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -22,12 +22,12 @@ class WindowWatcher:
         LOG.info("BSN: WindowWatcher started")
 
     def stop(self):
-        """Stoppt den Watcher."""
+        """Stops the watcher."""
         self.running = False
         LOG.info("BSN: WindowWatcher stopped")
 
     def _loop(self):
-        """Hauptschleife - prüft alle 250ms auf neue Fenster."""
+        """Main loop - checks every 250ms for new windows."""
         while self.running:
             try:
                 current = self._get_windows()
@@ -43,7 +43,7 @@ class WindowWatcher:
             time.sleep(0.25)
 
     def _get_windows(self) -> set:
-        """Holt alle Window-IDs via wmctrl."""
+        """Gets all window IDs via wmctrl."""
         try:
             result = subprocess.run(
                 ["wmctrl", "-l"],
@@ -60,23 +60,23 @@ class WindowWatcher:
             return set()
 
     def _handle_new_window(self, win_id: str):
-        """Behandelt ein neues Fenster."""
+        """Handles a new window."""
         # Gaming Mode Check
         if self.controller.is_gaming_mode():
             LOG.debug(f"BSN: Gaming mode - ignoring {win_id}")
             return
 
-        # Skip Frank selbst
+        # Skip Frank itself
         if self._is_frank_window(win_id):
             LOG.debug(f"BSN: Frank window - ignoring {win_id}")
             return
 
-        # Skip kleine Dialoge
+        # Skip small dialogs
         if self._is_dialog(win_id):
             LOG.debug(f"BSN: Dialog detected - ignoring {win_id}")
             return
 
-        # Skip Games (vollständig ausgenommen von Positionierung)
+        # Skip games (completely excluded from positioning)
         if self._is_game(win_id):
             LOG.info(f"BSN: Game window detected - ignoring {win_id}")
             return
@@ -88,13 +88,13 @@ class WindowWatcher:
 
         LOG.info(f"BSN: New window detected: {win_id}")
 
-        # Kurz warten bis Fenster vollständig gerendert
+        # Wait briefly until window is fully rendered
         time.sleep(0.1)
 
         self.controller.handle_new_window(win_id)
 
     def _is_frank_window(self, win_id: str) -> bool:
-        """Prüft ob es das Frank-Fenster ist."""
+        """Checks if it is the Frank window."""
         try:
             result = subprocess.run(
                 ["xdotool", "getwindowname", win_id],
@@ -106,7 +106,7 @@ class WindowWatcher:
             return False
 
     def _is_wallpaper(self, win_id: str) -> bool:
-        """Prüft ob es das Wallpaper-Fenster ist (FRANK NEURAL CORE)."""
+        """Checks if it is the wallpaper window (FRANK NEURAL CORE)."""
         try:
             result = subprocess.run(
                 ["xdotool", "getwindowname", win_id],
@@ -118,7 +118,7 @@ class WindowWatcher:
             return False
 
     def _is_dialog(self, win_id: str) -> bool:
-        """Prüft ob es ein kleiner Dialog ist."""
+        """Checks if it is a small dialog."""
         try:
             result = subprocess.run(
                 ["xdotool", "getwindowgeometry", "--shell", win_id],
@@ -133,15 +133,15 @@ class WindowWatcher:
             w = geo.get("WIDTH", 0)
             h = geo.get("HEIGHT", 0)
 
-            # Dialoge sind typischerweise klein
+            # Dialogs are typically small
             return w < 400 and h < 300
         except Exception:
             return False
 
     def _is_game(self, win_id: str) -> bool:
         """
-        Prüft ob es ein Game-Fenster ist (Games werden nicht repositioniert).
-        Erkennung via WM_CLASS und bekannte Game-Patterns.
+        Checks if it is a game window (games are not repositioned).
+        Detection via WM_CLASS and known game patterns.
         """
         try:
             # Get WM_CLASS via xprop

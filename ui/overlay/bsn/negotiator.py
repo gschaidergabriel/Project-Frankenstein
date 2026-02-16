@@ -4,9 +4,9 @@ from overlay.constants import LOG
 
 class SpaceNegotiator:
     """
-    Berechnet optimales Layout für Frank + App.
-    App füllt IMMER den gesamten verfügbaren Platz.
-    Alle Berechnungen beschränkt auf den primären Monitor.
+    Calculates optimal layout for Frank + App.
+    App ALWAYS fills the entire available space.
+    All calculations restricted to the primary monitor.
     """
 
     def __init__(self, overlay):
@@ -19,7 +19,7 @@ class SpaceNegotiator:
         self.usable_h = None
 
     def _ensure_screen_info(self):
-        """Erkennt primären Monitor und cached die Werte."""
+        """Detects primary monitor and caches the values."""
         if self.screen_w is None:
             self.monitor = _get_primary_monitor()
             self.screen_w = self.monitor["width"]
@@ -30,7 +30,7 @@ class SpaceNegotiator:
             LOG.debug(f"BSN: Using primary monitor bounds: {self.screen_w}x{self.screen_h}+{self.screen_x}+{self.screen_y}")
 
     def get_frank_geometry(self) -> dict:
-        """Aktuelle Frank-Geometrie."""
+        """Current Frank geometry."""
         return {
             "x": self.overlay.winfo_x(),
             "y": self.overlay.winfo_y(),
@@ -40,7 +40,7 @@ class SpaceNegotiator:
 
     def negotiate(self) -> dict:
         """
-        Berechnet optimales Layout.
+        Calculates optimal layout.
 
         Returns:
             {"success", "frank_action", "frank": {geometry}, "app": {geometry}}
@@ -48,31 +48,31 @@ class SpaceNegotiator:
         self._ensure_screen_info()
         frank = self.get_frank_geometry()
 
-        # Strategie 1: Frank bleibt, App füllt den Rest
+        # Strategy 1: Frank stays, app fills the rest
         result = self._try_keep_frank(frank)
         if result["success"]:
             return result
 
-        # Strategie 2: Frank schrumpft horizontal
+        # Strategy 2: Frank shrinks horizontally
         result = self._try_shrink_frank(frank)
         if result["success"]:
             return result
 
-        # Strategie 3: Frank verschiebt sich an den linken Rand
+        # Strategy 3: Frank moves to the left edge
         result = self._try_move_frank(frank)
         if result["success"]:
             return result
 
-        # Strategie 4: Frank schrumpft UND verschiebt sich
+        # Strategy 4: Frank shrinks AND moves
         result = self._try_shrink_and_move()
         if result["success"]:
             return result
 
-        # Strategie 5: Notfall-Layout
+        # Strategy 5: Emergency layout
         return self._emergency_layout()
 
     def _try_keep_frank(self, frank: dict) -> dict:
-        """Strategie 1: Frank bleibt, App passt daneben."""
+        """Strategy 1: Frank stays, app fits beside it."""
         frank_right = frank["x"] + frank["width"]
         available_w = self.screen_w - frank_right - BSNConstants.GAP
 
@@ -89,7 +89,7 @@ class SpaceNegotiator:
                 }
             }
 
-        # Prüfe links von Frank
+        # Check left of Frank
         available_left = frank["x"] - BSNConstants.GAP
         if available_left >= BSNConstants.APP_MIN_WIDTH:
             return {
@@ -107,7 +107,7 @@ class SpaceNegotiator:
         return {"success": False}
 
     def _try_shrink_frank(self, frank: dict) -> dict:
-        """Strategie 2: Frank schrumpft horizontal."""
+        """Strategy 2: Frank shrinks horizontally."""
         max_frank_w = self.screen_w - BSNConstants.GAP - BSNConstants.APP_MIN_WIDTH
 
         if max_frank_w < BSNConstants.FRANK_MIN_WIDTH:
@@ -141,7 +141,7 @@ class SpaceNegotiator:
         return {"success": False}
 
     def _try_move_frank(self, frank: dict) -> dict:
-        """Strategie 3: Frank verschiebt sich an linken Rand."""
+        """Strategy 3: Frank moves to the left edge."""
         new_frank = {
             "x": 0,
             "y": BSNConstants.PANEL_HEIGHT,
@@ -167,7 +167,7 @@ class SpaceNegotiator:
         return {"success": False}
 
     def _try_shrink_and_move(self) -> dict:
-        """Strategie 4: Frank auf Minimum und an linken Rand."""
+        """Strategy 4: Frank at minimum size and at left edge."""
         new_frank = {
             "x": 0,
             "y": BSNConstants.PANEL_HEIGHT,
@@ -193,7 +193,7 @@ class SpaceNegotiator:
         return {"success": False}
 
     def _emergency_layout(self) -> dict:
-        """Strategie 5: Notfall für sehr kleine Screens."""
+        """Strategy 5: Emergency for very small screens."""
         LOG.warning(f"BSN EMERGENCY: Screen too small ({self.screen_w}x{self.screen_h})")
 
         frank = {

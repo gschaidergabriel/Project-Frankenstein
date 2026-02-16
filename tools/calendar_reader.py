@@ -103,11 +103,11 @@ def _caldav_request(
     """
     token = _get_access_token()
     if not token:
-        raise RuntimeError("Kein OAuth2-Token verfuegbar")
+        raise RuntimeError("No OAuth2 token available")
 
     user = _get_user_email()
     if not user:
-        raise RuntimeError("Keine User-Email gefunden")
+        raise RuntimeError("No user email found")
 
     url = f"{_CALDAV_BASE}/{urllib.parse.quote(user)}/events{path}"
 
@@ -247,7 +247,7 @@ def _parse_vevent(ics_text: str) -> Optional[Dict[str, Any]]:
         return None
 
     # Defaults
-    event.setdefault("title", "(Kein Titel)")
+    event.setdefault("title", "(No title)")
     event.setdefault("description", "")
     event.setdefault("location", "")
     event.setdefault("status", "CONFIRMED")
@@ -262,7 +262,7 @@ def _format_dt(dt: Optional[datetime], all_day: bool = False) -> str:
     if dt is None:
         return "?"
     if all_day:
-        return dt.strftime("%d.%m.%Y (ganztaegig)")
+        return dt.strftime("%d.%m.%Y (all day)")
     return dt.strftime("%d.%m.%Y %H:%M")
 
 
@@ -337,7 +337,7 @@ def list_events(
             try:
                 start_dt = datetime.strptime(start, "%Y-%m-%d")
             except ValueError:
-                return {"error": f"Ungueltiges Startdatum: {start}"}
+                return {"error": f"Invalid start date: {start}"}
     else:
         start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -348,7 +348,7 @@ def list_events(
             try:
                 end_dt = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)
             except ValueError:
-                return {"error": f"Ungueltiges Enddatum: {end}"}
+                return {"error": f"Invalid end date: {end}"}
     else:
         end_dt = start_dt + timedelta(days=7)
 
@@ -376,7 +376,7 @@ def list_events(
             extra_headers={"Depth": "1"},
         )
         if status not in (200, 207):
-            return {"error": f"CalDAV-Fehler: HTTP {status}"}
+            return {"error": f"CalDAV error: HTTP {status}"}
 
         events = _parse_caldav_response(body)
 
@@ -399,7 +399,7 @@ def list_events(
         return {"ok": True, "events": result_events, "count": len(result_events)}
 
     except Exception as e:
-        return {"error": f"Kalender-Fehler: {e}"}
+        return {"error": f"Calendar error: {e}"}
 
 
 def get_today_events() -> Dict[str, Any]:
@@ -421,20 +421,20 @@ def get_week_events() -> Dict[str, Any]:
 def get_event(event_uid: str) -> Dict[str, Any]:
     """Get a single event by UID."""
     if not event_uid:
-        return {"error": "Keine Event-UID angegeben"}
+        return {"error": "No event UID provided"}
 
     # Fetch the event directly by href
     path = f"/{event_uid}.ics" if not event_uid.endswith(".ics") else f"/{event_uid}"
     try:
         status, body = _caldav_request("GET", path, content_type="text/calendar")
         if status == 404:
-            return {"error": "Event nicht gefunden"}
+            return {"error": "Event not found"}
         if status != 200:
-            return {"error": f"CalDAV-Fehler: HTTP {status}"}
+            return {"error": f"CalDAV error: HTTP {status}"}
 
         ev = _parse_vevent(body)
         if not ev:
-            return {"error": "Event konnte nicht geparst werden"}
+            return {"error": "Event could not be parsed"}
 
         return {
             "ok": True,
@@ -450,7 +450,7 @@ def get_event(event_uid: str) -> Dict[str, Any]:
             },
         }
     except Exception as e:
-        return {"error": f"Kalender-Fehler: {e}"}
+        return {"error": f"Calendar error: {e}"}
 
 
 def create_event(
@@ -474,9 +474,9 @@ def create_event(
         {"ok": True, "uid": "...", "title": "..."} or {"error": "..."}
     """
     if not title:
-        return {"error": "Kein Titel angegeben"}
+        return {"error": "No title provided"}
     if not start:
-        return {"error": "Keine Startzeit angegeben"}
+        return {"error": "No start time provided"}
 
     # Parse start
     try:
@@ -485,7 +485,7 @@ def create_event(
         else:
             start_dt = datetime.strptime(start, "%Y-%m-%d")
     except ValueError:
-        return {"error": f"Ungueltiges Startdatum: {start}"}
+        return {"error": f"Invalid start date: {start}"}
 
     # Parse or default end
     all_day = "T" not in start
@@ -558,16 +558,16 @@ def create_event(
                 "end": _format_dt(end_dt, all_day),
             }
         else:
-            return {"error": f"CalDAV PUT fehlgeschlagen: HTTP {status}"}
+            return {"error": f"CalDAV PUT failed: HTTP {status}"}
 
     except Exception as e:
-        return {"error": f"Event-Erstellung fehlgeschlagen: {e}"}
+        return {"error": f"Event creation failed: {e}"}
 
 
 def delete_event(event_uid: str) -> Dict[str, Any]:
     """Delete a calendar event by UID."""
     if not event_uid:
-        return {"error": "Keine Event-UID angegeben"}
+        return {"error": "No event UID provided"}
 
     path = f"/{event_uid}.ics" if not event_uid.endswith(".ics") else f"/{event_uid}"
     try:
@@ -576,11 +576,11 @@ def delete_event(event_uid: str) -> Dict[str, Any]:
             LOG.info(f"Calendar event deleted: {event_uid}")
             return {"ok": True, "deleted": event_uid}
         elif status == 404:
-            return {"error": "Event nicht gefunden"}
+            return {"error": "Event not found"}
         else:
-            return {"error": f"CalDAV DELETE fehlgeschlagen: HTTP {status}"}
+            return {"error": f"CalDAV DELETE failed: HTTP {status}"}
     except Exception as e:
-        return {"error": f"Loeschen fehlgeschlagen: {e}"}
+        return {"error": f"Deletion failed: {e}"}
 
 
 def check_upcoming(minutes: int = 15) -> Dict[str, Any]:

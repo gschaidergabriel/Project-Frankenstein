@@ -17,68 +17,68 @@ except ImportError:
 # Capabilities that may be missing from the personality module
 OVERLAY_CAPABILITIES = {
     "system_control": {
-        "name": "System-Steuerung",
-        "description": "WiFi, Bluetooth, Audio, Display, Drucker, Datei-Organisation mit Bestaetigungssystem",
+        "name": "System Control",
+        "description": "WiFi, Bluetooth, Audio, Display, Printer, File Organization with Confirmation System",
     },
     "package_management": {
-        "name": "Paket-Management",
-        "description": "Software installieren/entfernen via apt, pip, snap, flatpak mit Sicherheitslimits",
+        "name": "Package Management",
+        "description": "Install/remove software via apt, pip, snap, flatpak with security limits",
     },
     "monitoring": {
-        "name": "System-Monitoring (ASRS)",
-        "description": "CPU/GPU/Memory/Disk/Thermal/I/O Echtzeit-Ueberwachung mit 4-Stufen-Eskalation",
+        "name": "System Monitoring (ASRS)",
+        "description": "CPU/GPU/Memory/Disk/Thermal/I/O real-time monitoring with 4-level escalation",
     },
     "auto_repair": {
-        "name": "Auto-Reparatur",
-        "description": "Automatische Diagnose und Reparatur von Systemproblemen (mit Benutzer-Genehmigung)",
+        "name": "Auto-Repair",
+        "description": "Automatic diagnosis and repair of system issues (with user approval)",
     },
     "display_intelligence": {
         "name": "Display Intelligence (ADI)",
-        "description": "Multi-Monitor-Profile und adaptive Layout-Konfiguration",
+        "description": "Multi-Monitor Profiles and Adaptive Layout Configuration",
     },
     "wallpaper_control": {
-        "name": "Wallpaper-Steuerung",
-        "description": "Live-Wallpaper starten/stoppen mit Event-Reaktionen",
+        "name": "Wallpaper Control",
+        "description": "Start/stop live wallpaper with event reactions",
     },
     "network_intelligence": {
-        "name": "Netzwerk-Intelligenz (Sentinel)",
-        "description": "Geraete-Erkennung, Port-Scanning, ARP-Spoofing-Erkennung, Sicherheits-Analyse",
+        "name": "Network Intelligence (Sentinel)",
+        "description": "Device detection, port scanning, ARP spoofing detection, security analysis",
     },
     "voice_control": {
-        "name": "Sprach-Steuerung",
-        "description": "Wake-Word (Hey Frank), Push-to-Talk, Text-to-Speech (Thorsten-Stimme)",
+        "name": "Voice Control",
+        "description": "Wake word (Hey Frank), Push-to-Talk, Text-to-Speech (Thorsten voice)",
     },
     "gaming_mode": {
-        "name": "Gaming-Modus",
-        "description": "Automatische Spielerkennung, Ressourcen-Optimierung, Anti-Cheat-Schutz",
+        "name": "Gaming Mode",
+        "description": "Automatic Game Detection, Resource Optimization, Anti-Cheat Protection",
     },
     "personality_system": {
-        "name": "Persoenlichkeit (E-PQ)",
-        "description": "Dynamisches Temperament und Stimmungs-Evolution ueber Zeit",
+        "name": "Personality (E-PQ)",
+        "description": "Dynamic temperament and mood evolution over time",
     },
     "self_improvement": {
-        "name": "Selbst-Verbesserung (Genesis)",
-        "description": "Kontrollierte Selbstverbesserung mit Sandbox-Testing und Benutzer-Genehmigung",
+        "name": "Self-Improvement (Genesis)",
+        "description": "Controlled self-improvement with sandbox testing and user approval",
     },
     "experience_memory": {
-        "name": "Erfahrungsgedaechtnis",
-        "description": "Eigenes Weltmodell mit kausaler Mustererkennung und Lernen aus Erfahrungen",
+        "name": "Experience Memory",
+        "description": "Own world model with causal pattern recognition and learning from experience",
     },
     "url_fetching": {
-        "name": "URL-Abruf",
-        "description": "Webseiten-Inhalte direkt abrufen und Text extrahieren (fetch URL, lies Seite)",
+        "name": "URL Fetching",
+        "description": "Retrieve webpage content directly and extract text (fetch URL, read page)",
     },
     "rss_feeds": {
-        "name": "RSS/Atom-Feeds",
-        "description": "Nachrichten-Feeds lesen, aktuelle Headlines und Artikel abrufen",
+        "name": "RSS/Atom Feeds",
+        "description": "Read news feeds, retrieve current headlines and articles",
     },
     "system_actions": {
-        "name": "System-Aktionen",
-        "description": "Echte System-Veraenderungen: Pakete, Apps, Dateien, Services, sysctl/gsettings. Letztes Guardrail: Kein Root (bewusstes Design).",
+        "name": "System Actions",
+        "description": "Real system changes: packages, apps, files, services, sysctl/gsettings. Last guardrail: no root (by design).",
     },
     "skill_system": {
-        "name": "Skill/Plugin-System",
-        "description": "Erweiterbare Skills (native Python + OpenClaw). Neue Skills per Marketplace installierbar.",
+        "name": "Skill/Plugin System",
+        "description": "Extensible skills (native Python + OpenClaw). New skills installable via marketplace.",
     },
 }
 
@@ -94,7 +94,7 @@ def get_all_capabilities():
 
 
 def get_capabilities_summary():
-    """Generate human-readable capabilities summary in German."""
+    """Generate human-readable capabilities summary."""
     caps = get_all_capabilities()
     lines = []
     for key, info in caps.items():
@@ -115,16 +115,16 @@ def get_capabilities_summary():
         skills = get_skill_registry().list_all()
         if skills:
             skill_names = [s.name for s in skills]
-            lines.append(f"\nInstallierte Skills ({len(skills)}): {', '.join(skill_names)}")
-            lines.append("Neue Skills installierbar aus dem OpenClaw Marketplace.")
+            lines.append(f"\nInstalled Skills ({len(skills)}): {', '.join(skill_names)}")
+            lines.append("New skills installable from the OpenClaw Marketplace.")
     except Exception:
         pass
 
-    return "Meine Faehigkeiten:\n\n" + "\n".join(lines)
+    return "My Capabilities:\n\n" + "\n".join(lines)
 
 
 def get_capabilities_for_prompt():
     """Generate concise capabilities list for LLM system prompt injection."""
     caps = get_all_capabilities()
     parts = [info.get("name", key) for key, info in caps.items()]
-    return "Faehigkeiten: " + ", ".join(parts)
+    return "Capabilities: " + ", ".join(parts)

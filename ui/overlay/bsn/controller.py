@@ -11,7 +11,7 @@ from overlay.bsn.watcher import WindowWatcher
 
 
 class LayoutController:
-    """Zentrale Steuerung des BSN Systems."""
+    """Central control of the BSN system."""
 
     def __init__(self, overlay):
         self.overlay = overlay
@@ -21,7 +21,7 @@ class LayoutController:
         self._started = False
 
     def start(self):
-        """Startet das Layout-System."""
+        """Starts the layout system."""
         if self._started:
             return
         self._started = True
@@ -33,12 +33,12 @@ class LayoutController:
         LOG.info("BSN: LayoutController started")
 
     def stop(self):
-        """Stoppt das Layout-System."""
+        """Stops the layout system."""
         self.watcher.stop()
         self._started = False
 
     def is_gaming_mode(self) -> bool:
-        """Prüft ob Gaming-Mode aktiv ist."""
+        """Checks if gaming mode is active."""
         try:
             state_file = Path("/tmp/gaming_mode_state.json")
             if state_file.exists():
@@ -68,7 +68,7 @@ class LayoutController:
             LOG.error(f"BSN: Failed to apply geometry: {e}")
 
     def handle_new_window(self, win_id: str):
-        """Wird aufgerufen wenn ein neues Fenster erkannt wird."""
+        """Called when a new window is detected."""
         try:
             layout = self.negotiator.negotiate()
 

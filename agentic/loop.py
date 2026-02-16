@@ -71,38 +71,38 @@ EventCallback = Callable[[AgentEvent], None]
 
 
 # System prompt for the agent's reasoning
-AGENT_SYSTEM_PROMPT = """Du bist ein Code-Agent. Antworte NUR mit einem JSON Tool-Aufruf.
+AGENT_SYSTEM_PROMPT = """You are a code agent. Respond ONLY with a JSON tool call.
 
-## Ziel
+## Goal
 {goal}
 
-## Kontext
+## Context
 {context}
 
 ## Plan
 {plan}
 
-## WICHTIGE Regeln
-1. Antworte NUR mit JSON - kein Text davor oder danach.
-2. Benutze die echten Pfade aus dem Ziel - NIEMALS Platzhalter.
-3. ERSTER Schritt: Verzeichnis mit bash_execute erstellen.
-4. ZWEITER Schritt: Dateien mit fs_write schreiben. EINE Datei pro Aufruf!
-5. final_answer NUR wenn mindestens ein fs_write ERFOLGREICH war.
-6. NIEMALS Backslashes in Pfaden! Weder im JSON noch im generierten Code!
-   FALSCH: /home/user/mein\\ ordner oder first\\ programming
-   RICHTIG: /home/user/mein ordner oder first programming
-7. Schreibe NUR valides JSON. IMMER doppelte Anfuehrungszeichen (") und Doppelpunkt (:).
-8. Bei fs_write IMMER "overwrite":true setzen.
-9. Halte jede Datei unter 150 Zeilen. Teile grosse Programme in Module auf.
-10. Im generierten Python-Code: Pfade mit Leerzeichen OHNE Backslashes schreiben!
-    FALSCH: open('/pfad/mein\\ ordner/datei.txt')
-    RICHTIG: open('/pfad/mein ordner/datei.txt')
+## IMPORTANT Rules
+1. Respond ONLY with JSON - no text before or after.
+2. Use the real paths from the goal - NEVER placeholders.
+3. FIRST step: Create directory with bash_execute.
+4. SECOND step: Write files with fs_write. ONE file per call!
+5. final_answer ONLY when at least one fs_write was SUCCESSFUL.
+6. NEVER use backslashes in paths! Neither in JSON nor in generated code!
+   WRONG: /home/user/my\\ folder or first\\ programming
+   RIGHT: /home/user/my folder or first programming
+7. Write ONLY valid JSON. ALWAYS use double quotes (") and colon (:).
+8. For fs_write ALWAYS set "overwrite":true.
+9. Keep each file under 150 lines. Split large programs into modules.
+10. In generated Python code: Write paths with spaces WITHOUT backslashes!
+    WRONG: open('/path/my\\ folder/file.txt')
+    RIGHT: open('/path/my folder/file.txt')
 
-## JSON Formate
-Verzeichnis: {{"action":"bash_execute","action_input":{{"command":"mkdir -p '/home/user/mein ordner'"}}}}
-Datei: {{"action":"fs_write","action_input":{{"path":"/home/user/mein ordner/datei.py","content":"#!/usr/bin/env python3\\nprint('hello')\\n","overwrite":true}}}}
-Ausfuehren: {{"action":"bash_execute","action_input":{{"command":"cd '/home/user/mein ordner' && python3 datei.py"}}}}
-Fertig: {{"action":"final_answer","action_input":{{"response":"Beschreibung"}}}}
+## JSON Formats
+Directory: {{"action":"bash_execute","action_input":{{"command":"mkdir -p '/home/user/my folder'"}}}}
+File: {{"action":"fs_write","action_input":{{"path":"/home/user/my folder/file.py","content":"#!/usr/bin/env python3\\nprint('hello')\\n","overwrite":true}}}}
+Execute: {{"action":"bash_execute","action_input":{{"command":"cd '/home/user/my folder' && python3 file.py"}}}}
+Done: {{"action":"final_answer","action_input":{{"response":"Description"}}}}
 """
 
 
@@ -198,7 +198,7 @@ class AgentLoop:
             state.mark_failed(str(e))
             self.store.save(state)
             self._emit_event("failed", {"error": str(e)})
-            return f"Fehler bei der Ausführung: {e}", state
+            return f"Execution error: {e}", state
 
     def _capture_visual_context(self, context: str) -> None:
         """Capture error screenshot for visual debugging (non-blocking, rate-limited)."""
@@ -223,7 +223,7 @@ class AgentLoop:
                 )
                 state.mark_failed("Too many consecutive failures")
                 self.store.save(state)
-                return "Zu viele aufeinanderfolgende Fehler. Abbruch.", state
+                return "Too many consecutive errors. Aborting.", state
 
             # THINK: Analyze state and decide action
             self._emit_event("thinking", {"iteration": iteration})
@@ -238,10 +238,10 @@ class AgentLoop:
                     # No successful tool calls yet — force continuation
                     LOG.warning("Blocked premature final_answer (no successful tools yet)")
                     state.record_failure()
-                    state.add_context("BLOCKED: final_answer nicht erlaubt bevor mindestens ein Tool erfolgreich war. Benutze fs_write!")
+                    state.add_context("BLOCKED: final_answer not allowed before at least one tool was successful. Use fs_write!")
                     self.store.save(state)
                     continue
-                response = tool_call.action_input.get("response", "Aufgabe abgeschlossen.")
+                response = tool_call.action_input.get("response", "Task completed.")
                 state.mark_completed(response)
                 self.store.save(state)
                 self._emit_event("completed", {"response": response})
@@ -249,7 +249,7 @@ class AgentLoop:
 
             # Check for user question
             if tool_call and tool_call.action == "ask_user":
-                question = tool_call.action_input.get("question", "Kannst du das genauer erklären?")
+                question = tool_call.action_input.get("question", "Can you explain that in more detail?")
                 state.add_message("assistant", question)
                 state.status = "waiting_input"
                 self.store.save(state)
@@ -262,7 +262,7 @@ class AgentLoop:
                     self._replan(state, "No valid action parsed from response")
                     continue
                 else:
-                    return thought or "Ich konnte keine passende Aktion finden.", state
+                    return thought or "I could not find a suitable action.", state
 
             # Validate tool call
             validation_error = validate_tool_call(tool_call, self.registry)
@@ -324,7 +324,7 @@ class AgentLoop:
         # Max iterations reached
         state.mark_failed("Maximum iterations reached")
         self.store.save(state)
-        return "Maximale Anzahl an Schritten erreicht. Bitte präzisiere dein Ziel.", state
+        return "Maximum number of steps reached. Please clarify your goal.", state
 
     def _think(self, state: AgentState) -> Tuple[str, Optional[ParsedToolCall]]:
         """
@@ -333,9 +333,9 @@ class AgentLoop:
         Returns (thought_text, parsed_tool_call)
         """
         # Build prompt
-        context = state.get_context_string() or "Noch keine Aktionen ausgefuehrt."
+        context = state.get_context_string() or "No actions executed yet."
 
-        plan_desc = "Kein Plan."
+        plan_desc = "No plan."
         if state.plan_steps:
             plan_lines = []
             for i, step in enumerate(state.plan_steps):
@@ -356,14 +356,14 @@ class AgentLoop:
 
         # Get recent messages
         messages = state.get_messages_for_llm(max_messages=5)
-        user_prompt = "Antworte NUR mit einem JSON Tool-Aufruf. Welches Tool rufst du als naechstes auf?"
+        user_prompt = "Respond ONLY with a JSON tool call. Which tool do you call next?"
 
         # Call LLM
         try:
             response = self._call_llm(system_prompt, user_prompt, messages)
         except Exception as e:
             LOG.error(f"LLM call failed: {e}")
-            return f"Fehler beim Denken: {e}", None
+            return f"Error during thinking: {e}", None
 
         # Parse tool call from response
         tool_call = parse_tool_call(response)
@@ -403,7 +403,7 @@ class AgentLoop:
         formatted_text = user_prompt
         if messages:
             context_parts = [f"{m['role']}: {m['content']}" for m in messages[-3:]]
-            formatted_text = "\n".join(context_parts) + "\n\nAktuell: " + user_prompt
+            formatted_text = "\n".join(context_parts) + "\n\nCurrent: " + user_prompt
 
         payload = {
             "text": formatted_text,
@@ -460,10 +460,10 @@ class AgentLoop:
         """
         state = self.store.load(state_id)
         if not state:
-            return "Konnte den Zustand nicht finden.", None
+            return "Could not find the state.", None
 
         if state.status != "waiting_input":
-            return "Der Agent wartet nicht auf Eingabe.", state
+            return "The agent is not waiting for input.", state
 
         # Add user input and resume
         state.add_message("user", user_input)

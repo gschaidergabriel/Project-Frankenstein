@@ -471,7 +471,7 @@ class AppRegistry:
             return {
                 "ok": False,
                 "reason": "not_found",
-                "message": f"App '{app_id_or_name}' nicht gefunden. Nicht installiert?",
+                "message": f"App '{app_id_or_name}' not found. Not installed?",
                 "app": None,
             }
 
@@ -480,7 +480,7 @@ class AppRegistry:
             return {
                 "ok": False,
                 "reason": "no_gui",
-                "message": f"Kann '{app.name}' nicht starten - keine Desktop-Session verfügbar (DISPLAY nicht gesetzt).",
+                "message": f"Cannot start '{app.name}' - no desktop session available (DISPLAY not set).",
                 "app": app.to_dict(),
             }
 
@@ -489,7 +489,7 @@ class AppRegistry:
             return {
                 "ok": False,
                 "reason": "policy_blocked",
-                "message": f"'{app.name}' ist vorhanden aber nicht freigegeben. Sage 'erlaube {app.name}' um es zu aktivieren.",
+                "message": f"'{app.name}' is present but not allowed. Say 'allow {app.name}' to enable it.",
                 "app": app.to_dict(),
             }
 
@@ -512,7 +512,7 @@ class AppRegistry:
             return {
                 "ok": True,
                 "reason": "ok",
-                "message": f"Starte {app.name}...",
+                "message": f"Starting {app.name}...",
                 "app": app.to_dict(),
             }
 
@@ -520,7 +520,7 @@ class AppRegistry:
             return {
                 "ok": False,
                 "reason": "start_failed",
-                "message": f"Fehler beim Starten von '{app.name}': {e}",
+                "message": f"Error starting '{app.name}': {e}",
                 "app": app.to_dict(),
             }
 
@@ -547,7 +547,7 @@ class AppRegistry:
             return {
                 "ok": False,
                 "reason": "not_found",
-                "message": f"App '{app_id_or_name}' nicht gefunden.",
+                "message": f"App '{app_id_or_name}' not found.",
             }
 
         try:
@@ -572,26 +572,26 @@ class AppRegistry:
                     return {
                         "ok": True,
                         "reason": "ok",
-                        "message": f"{app.name} wird geschlossen...",
+                        "message": f"Closing {app.name}...",
                     }
                 else:
                     return {
                         "ok": False,
                         "reason": "not_running",
-                        "message": f"{app.name} scheint nicht zu laufen.",
+                        "message": f"{app.name} does not seem to be running.",
                     }
 
             return {
                 "ok": False,
                 "reason": "unknown_process",
-                "message": f"Kann Prozess für {app.name} nicht ermitteln.",
+                "message": f"Cannot determine process for {app.name}.",
             }
 
         except Exception as e:
             return {
                 "ok": False,
                 "reason": "close_failed",
-                "message": f"Fehler beim Schließen von '{app.name}': {e}",
+                "message": f"Error closing '{app.name}': {e}",
             }
 
     def allow_app(self, app_id_or_name: str, permanent: bool = False) -> Dict[str, Any]:
@@ -616,7 +616,7 @@ class AppRegistry:
         if not app:
             return {
                 "ok": False,
-                "message": f"App '{app_id_or_name}' nicht gefunden.",
+                "message": f"App '{app_id_or_name}' not found.",
                 "app": None,
             }
 
@@ -624,11 +624,11 @@ class AppRegistry:
             self._allowlist.add(app.id)
             self._allowlist.add(app.name.lower())
             self._save_policy()
-            msg = f"'{app.name}' wurde dauerhaft freigegeben."
+            msg = f"'{app.name}' has been permanently allowed."
         else:
             self._session_allowed.add(app.id)
             self._session_allowed.add(app.name.lower())
-            msg = f"'{app.name}' wurde für diese Session freigegeben."
+            msg = f"'{app.name}' has been allowed for this session."
 
         # Update app entry
         app.allowed = True

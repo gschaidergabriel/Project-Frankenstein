@@ -78,11 +78,11 @@ def _carddav_request(
     """
     token = _get_access_token()
     if not token:
-        raise RuntimeError("Kein OAuth2-Token verfuegbar")
+        raise RuntimeError("No OAuth2 token available")
 
     user = _get_user_email()
     if not user:
-        raise RuntimeError("Keine User-Email gefunden")
+        raise RuntimeError("No user email found")
 
     url = f"{_CARDDAV_BASE}/{urllib.parse.quote(user)}/lists/default{path}"
 
@@ -308,13 +308,13 @@ def list_contacts() -> Dict[str, Any]:
         return {"ok": True, "contacts": result, "count": len(result)}
 
     except Exception as e:
-        return {"error": f"Kontakt-Fehler: {e}"}
+        return {"error": f"Contact error: {e}"}
 
 
 def search_contacts(query: str) -> Dict[str, Any]:
     """Search contacts by name, email, or phone."""
     if not query:
-        return {"error": "Kein Suchbegriff angegeben"}
+        return {"error": "No search term provided"}
 
     result = list_contacts()
     if "error" in result:
@@ -337,18 +337,18 @@ def search_contacts(query: str) -> Dict[str, Any]:
 def get_contact(uid: str) -> Dict[str, Any]:
     """Get a single contact by UID (Google's server-assigned hex ID)."""
     if not uid:
-        return {"error": "Keine Kontakt-UID angegeben"}
+        return {"error": "No contact UID provided"}
 
     try:
         status, body = _carddav_request("GET", f"/{uid}", content_type="text/vcard")
         if status == 404:
-            return {"error": "Kontakt nicht gefunden"}
+            return {"error": "Contact not found"}
         if status != 200:
-            return {"error": f"CardDAV-Fehler: HTTP {status}"}
+            return {"error": f"CardDAV error: HTTP {status}"}
 
         contact = _parse_vcard(body)
         if not contact:
-            return {"error": "Kontakt konnte nicht geparst werden"}
+            return {"error": "Contact could not be parsed"}
 
         return {
             "ok": True,
@@ -362,7 +362,7 @@ def get_contact(uid: str) -> Dict[str, Any]:
             },
         }
     except Exception as e:
-        return {"error": f"Kontakt-Fehler: {e}"}
+        return {"error": f"Contact error: {e}"}
 
 
 def create_contact(
@@ -373,7 +373,7 @@ def create_contact(
 ) -> Dict[str, Any]:
     """Create a new contact via CardDAV PUT."""
     if not name:
-        return {"error": "Kein Name angegeben"}
+        return {"error": "No name provided"}
 
     slug = uuid.uuid4().hex[:12]
 
@@ -409,15 +409,15 @@ def create_contact(
                         break
             return {"ok": True, "uid": server_uid or f"frank-{slug}", "name": name}
         else:
-            return {"error": f"CardDAV PUT fehlgeschlagen: HTTP {status}"}
+            return {"error": f"CardDAV PUT failed: HTTP {status}"}
     except Exception as e:
-        return {"error": f"Kontakt-Erstellung fehlgeschlagen: {e}"}
+        return {"error": f"Contact creation failed: {e}"}
 
 
 def delete_contact(uid: str) -> Dict[str, Any]:
     """Delete a contact by UID (Google's server-assigned hex ID)."""
     if not uid:
-        return {"error": "Keine Kontakt-UID angegeben"}
+        return {"error": "No contact UID provided"}
 
     try:
         status, body = _carddav_request("DELETE", f"/{uid}")
@@ -425,11 +425,11 @@ def delete_contact(uid: str) -> Dict[str, Any]:
             LOG.info(f"Contact deleted: {uid}")
             return {"ok": True, "deleted": uid}
         elif status == 404:
-            return {"error": "Kontakt nicht gefunden"}
+            return {"error": "Contact not found"}
         else:
-            return {"error": f"CardDAV DELETE fehlgeschlagen: HTTP {status}"}
+            return {"error": f"CardDAV DELETE failed: HTTP {status}"}
     except Exception as e:
-        return {"error": f"Loeschen fehlgeschlagen: {e}"}
+        return {"error": f"Deletion failed: {e}"}
 
 
 # ── CLI test ──────────────────────────────────────────────────────
@@ -455,7 +455,7 @@ if __name__ == "__main__":
         for c in result["contacts"]:
             phones = ", ".join(c.get("phones", []))
             emails = ", ".join(c.get("emails", []))
-            print(f"  {c['name']} [uid={c['uid']}]: {phones or emails or '(keine Daten)'}")
+            print(f"  {c['name']} [uid={c['uid']}]: {phones or emails or '(no data)'}")
         print(f"Total: {result['count']}")
     else:
         print(f"  Error: {result.get('error')}")

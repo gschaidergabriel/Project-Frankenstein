@@ -330,48 +330,48 @@ class ManifestationGate:
 
         # Title based on type and target
         type_titles = {
-            "optimization": "Performance-Optimierung",
-            "feature": "Neues Feature",
+            "optimization": "Performance Optimization",
+            "feature": "New Feature",
             "fix": "Bugfix",
-            "exploration": "Erkundung",
+            "exploration": "Exploration",
         }
-        crystal.title = f"{type_titles.get(genome.idea_type, 'Verbesserung')}: {genome.target}"
+        crystal.title = f"{type_titles.get(genome.idea_type, 'Improvement')}: {genome.target}"
 
         # Description based on approach
         approach_descriptions = {
-            "caching": "Implementierung eines Caching-Mechanismus zur Beschleunigung",
-            "refactoring": "Code-Refactoring für bessere Wartbarkeit und Performance",
-            "new_tool": "Erstellung eines neuen Tools für diese Aufgabe",
-            "config_change": "Konfigurationsänderung zur Optimierung",
-            "parallel": "Parallelisierung für höheren Durchsatz",
-            "lazy_load": "Lazy Loading zur Reduzierung der Initialisierungszeit",
-            "precompute": "Vorberechnung häufig genutzter Werte",
+            "caching": "Implementing a caching mechanism for acceleration",
+            "refactoring": "Code refactoring for better maintainability and performance",
+            "new_tool": "Creating a new tool for this task",
+            "config_change": "Configuration change for optimization",
+            "parallel": "Parallelization for higher throughput",
+            "lazy_load": "Lazy loading to reduce initialization time",
+            "precompute": "Precomputation of frequently used values",
         }
         crystal.approach = approach_descriptions.get(genome.approach, genome.approach)
 
         crystal.description = (
-            f"Emergente Idee zur Verbesserung von '{genome.target}' "
-            f"durch {crystal.approach.lower()}. "
-            f"Ursprung: {genome.origin}."
+            f"Emergent idea for improving '{genome.target}' "
+            f"via {crystal.approach.lower()}. "
+            f"Origin: {genome.origin}."
         )
 
         # Risk assessment
         risk = genome.traits.get("risk", 0.5)
         if risk < 0.3:
-            crystal.risk_assessment = "Niedriges Risiko - sichere Änderung"
+            crystal.risk_assessment = "Low risk - safe change"
         elif risk < 0.6:
-            crystal.risk_assessment = "Mittleres Risiko - sorgfältige Prüfung empfohlen"
+            crystal.risk_assessment = "Medium risk - careful review recommended"
         else:
-            crystal.risk_assessment = "Höheres Risiko - umfangreiche Tests erforderlich"
+            crystal.risk_assessment = "Higher risk - extensive testing required"
 
         # Expected benefit
         impact = genome.traits.get("impact", 0.5)
         if impact > 0.7:
-            crystal.expected_benefit = "Hoher erwarteter Nutzen"
+            crystal.expected_benefit = "High expected benefit"
         elif impact > 0.4:
-            crystal.expected_benefit = "Moderater erwarteter Nutzen"
+            crystal.expected_benefit = "Moderate expected benefit"
         else:
-            crystal.expected_benefit = "Inkrementelle Verbesserung"
+            crystal.expected_benefit = "Incremental improvement"
 
         # Source info
         crystal.source_info = {

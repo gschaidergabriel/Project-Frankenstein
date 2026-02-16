@@ -110,7 +110,7 @@ def _sanitize(text: str) -> str:
 def create_todo(content: str, due_date: Optional[str] = None) -> Dict[str, Any]:
     """Create a new todo item."""
     if not content or not content.strip():
-        return {"error": "Kein Inhalt angegeben"}
+        return {"error": "No content provided"}
 
     content = content.strip()[:_MAX_TODO_LENGTH]
     now = datetime.now().isoformat(timespec="seconds")
@@ -122,7 +122,7 @@ def create_todo(content: str, due_date: Optional[str] = None) -> Dict[str, Any]:
         count = conn.execute("SELECT COUNT(*) FROM todos").fetchone()[0]
         if count >= _MAX_TODOS:
             conn.close()
-            return {"error": f"Todo-Limit erreicht ({_MAX_TODOS}). Bitte loesche alte Aufgaben."}
+            return {"error": f"Todo limit reached ({_MAX_TODOS}). Please delete old tasks."}
 
         cur = conn.execute(
             "INSERT INTO todos (content, status, due_date, created_at, updated_at) VALUES (?, 'pending', ?, ?, ?)",
@@ -136,7 +136,7 @@ def create_todo(content: str, due_date: Optional[str] = None) -> Dict[str, Any]:
         return {"ok": True, "id": todo_id, "content": content, "due_date": due_date, "created_at": now}
 
     except Exception as e:
-        return {"error": f"Todo-Fehler: {e}"}
+        return {"error": f"Todo error: {e}"}
 
 
 def list_todos(status: str = "pending", limit: int = 20) -> Dict[str, Any]:
@@ -179,13 +179,13 @@ def list_todos(status: str = "pending", limit: int = 20) -> Dict[str, Any]:
         return {"ok": True, "todos": todos, "count": len(todos)}
 
     except Exception as e:
-        return {"error": f"Todo-Fehler: {e}"}
+        return {"error": f"Todo error: {e}"}
 
 
 def search_todos(query: str) -> Dict[str, Any]:
     """Full-text search in todos."""
     if not query or not query.strip():
-        return {"error": "Kein Suchbegriff angegeben"}
+        return {"error": "No search term provided"}
 
     query = query.strip()
 
@@ -230,20 +230,20 @@ def search_todos(query: str) -> Dict[str, Any]:
         return {"ok": True, "todos": todos, "count": len(todos), "query": query}
 
     except Exception as e:
-        return {"error": f"Such-Fehler: {e}"}
+        return {"error": f"Search error: {e}"}
 
 
 def complete_todo(todo_id: int) -> Dict[str, Any]:
     """Mark a todo as completed."""
     if not todo_id:
-        return {"error": "Keine Todo-ID angegeben"}
+        return {"error": "No todo ID provided"}
 
     try:
         conn = _get_db()
         row = conn.execute("SELECT id, content, status FROM todos WHERE id = ?", (int(todo_id),)).fetchone()
         if not row:
             conn.close()
-            return {"error": "Aufgabe nicht gefunden"}
+            return {"error": "Task not found"}
 
         if row["status"] == "completed":
             conn.close()
@@ -261,13 +261,13 @@ def complete_todo(todo_id: int) -> Dict[str, Any]:
         return {"ok": True, "id": int(todo_id), "content": row["content"], "completed_at": now}
 
     except Exception as e:
-        return {"error": f"Todo-Fehler: {e}"}
+        return {"error": f"Todo error: {e}"}
 
 
 def delete_todo(todo_id: int) -> Dict[str, Any]:
     """Delete a todo by ID."""
     if not todo_id:
-        return {"error": "Keine Todo-ID angegeben"}
+        return {"error": "No todo ID provided"}
 
     try:
         conn = _get_db()
@@ -276,13 +276,13 @@ def delete_todo(todo_id: int) -> Dict[str, Any]:
         conn.close()
 
         if cur.rowcount == 0:
-            return {"error": "Aufgabe nicht gefunden"}
+            return {"error": "Task not found"}
 
         LOG.info(f"Todo deleted: id={todo_id}")
         return {"ok": True, "deleted": int(todo_id)}
 
     except Exception as e:
-        return {"error": f"Loesch-Fehler: {e}"}
+        return {"error": f"Delete error: {e}"}
 
 
 def get_due_todos(within_minutes: int = 15) -> Dict[str, Any]:
@@ -315,7 +315,7 @@ def get_due_todos(within_minutes: int = 15) -> Dict[str, Any]:
         return {"ok": True, "todos": todos, "count": len(todos)}
 
     except Exception as e:
-        return {"error": f"Due-Check-Fehler: {e}"}
+        return {"error": f"Due check error: {e}"}
 
 
 # ── CLI test ──────────────────────────────────────────────────────
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     result = list_todos()
     if result.get("ok"):
         for t in result["todos"]:
-            due = f" [faellig: {t['due_date'][:16]}]" if t["due_date"] else ""
+            due = f" [due: {t['due_date'][:16]}]" if t["due_date"] else ""
             print(f"  [{t['id']}] {t['content'][:50]}{due} ({t['status']})")
         print(f"  Total: {result['count']}")
 

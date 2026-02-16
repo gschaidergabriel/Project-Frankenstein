@@ -584,9 +584,9 @@ class NetworkManager:
                 timeout=5
             )
             enabled = "enabled" in result.stdout.lower()
-            return enabled, "WiFi ist AN" if enabled else "WiFi ist AUS"
+            return enabled, "WiFi is ON" if enabled else "WiFi is OFF"
         except Exception as e:
-            return False, f"Status unbekannt: {e}"
+            return False, f"Status unknown: {e}"
 
     def set_wifi_enabled(self, enabled: bool) -> Tuple[str, str]:
         """
@@ -595,8 +595,8 @@ class NetworkManager:
         Returns:
             (action_id, confirmation_message)
         """
-        action = "einschalten" if enabled else "ausschalten"
-        preview = f"WiFi wird {'aktiviert' if enabled else 'deaktiviert'}."
+        action = "turn on" if enabled else "turn off"
+        preview = f"WiFi will be {'enabled' if enabled else 'disabled'}."
 
         return request_confirmation(
             action_type="wifi_toggle",
@@ -609,13 +609,13 @@ class NetworkManager:
     def execute_wifi_toggle(self, action_id: str) -> Tuple[bool, str]:
         """Execute confirmed WiFi toggle."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         from .sensitive_actions import get_handler
         action = get_handler().get_action(action_id)
 
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         enabled = action.params.get("enabled", True)
 
@@ -630,12 +630,12 @@ class NetworkManager:
 
             if result.returncode == 0:
                 mark_action_executed(action_id)
-                return True, f"WiFi {'eingeschaltet' if enabled else 'ausgeschaltet'}!"
+                return True, f"WiFi {'turned on' if enabled else 'turned off'}!"
             else:
-                return False, f"Fehler: {result.stderr}"
+                return False, f"Error: {result.stderr}"
 
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def _load_known_networks(self) -> Dict[str, str]:
         """Load known networks (SSID -> password)."""
@@ -702,25 +702,25 @@ class NetworkManager:
         if key_image_path and not password:
             password = self.key_extractor.extract_key_from_image(key_image_path)
             if not password:
-                return "", "Konnte kein WiFi-Passwort aus dem Bild extrahieren"
+                return "", "Could not extract WiFi password from the image"
 
         # Check if open or secured
         if network and network.is_open:
             # Open network
-            preview = f"Verbinde mit offenem Netzwerk: {ssid}\nSignal: {network.signal_strength} dBm"
+            preview = f"Connecting to open network: {ssid}\nSignal: {network.signal_strength} dBm"
         else:
             # Secured network
             if not password:
-                return "", f"Netzwerk '{ssid}' erfordert ein Passwort"
+                return "", f"Network '{ssid}' requires a password"
 
-            preview = f"Verbinde mit geschütztem Netzwerk: {ssid}\nSicherheit: {network.security.value if network else 'WPA2'}"
+            preview = f"Connecting to secured network: {ssid}\nSecurity: {network.security.value if network else 'WPA2'}"
 
         # Single confirmation for all network operations
         level = ConfirmationLevel.SINGLE
 
         return request_confirmation(
             action_type="wifi_connect",
-            description=f"Mit WiFi verbinden: {ssid}",
+            description=f"Connect to WiFi: {ssid}",
             preview=preview,
             params={
                 "ssid": ssid,
@@ -733,13 +733,13 @@ class NetworkManager:
     def execute_wifi_connect(self, action_id: str) -> Tuple[bool, str]:
         """Execute confirmed WiFi connection."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         from .sensitive_actions import get_handler
         action = get_handler().get_action(action_id)
 
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         ssid = action.params["ssid"]
         password = action.params.get("password")
@@ -769,31 +769,31 @@ class NetworkManager:
                     self._save_known_networks()
 
                 mark_action_executed(action_id)
-                return True, f"Erfolgreich mit '{ssid}' verbunden!"
+                return True, f"Successfully connected to '{ssid}'!"
             else:
-                return False, f"Verbindung fehlgeschlagen: {result.stderr}"
+                return False, f"Connection failed: {result.stderr}"
 
         except subprocess.TimeoutExpired:
-            return False, "Verbindung Timeout"
+            return False, "Connection timeout"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def format_wifi_list(self, networks: List[Dict[str, Any]]) -> str:
         """Format WiFi networks for display."""
-        lines = ["VERFÜGBARE WLAN-NETZWERKE:", "=" * 40, ""]
+        lines = ["AVAILABLE WIFI NETWORKS:", "=" * 40, ""]
 
         open_nets = [n for n in networks if n["is_open"]]
         secured_nets = [n for n in networks if not n["is_open"]]
 
         if open_nets:
-            lines.append("OFFENE NETZWERKE (keine Authentifizierung):")
+            lines.append("OPEN NETWORKS (no authentication):")
             for n in open_nets:
                 signal = self._signal_bars(n["signal_strength"])
                 lines.append(f"  {signal} {n['ssid']} ({n['frequency']}GHz)")
             lines.append("")
 
         if secured_nets:
-            lines.append("GESCHÜTZTE NETZWERKE:")
+            lines.append("SECURED NETWORKS:")
             for n in secured_nets:
                 signal = self._signal_bars(n["signal_strength"])
                 security = n["security"].upper()
@@ -816,20 +816,20 @@ class NetworkManager:
 
     def format_device_list(self, devices: Dict[str, List[Dict[str, Any]]]) -> str:
         """Format discovered devices for display."""
-        lines = ["ERKANNTE NETZWERK-GERÄTE:", "=" * 40, ""]
+        lines = ["DETECTED NETWORK DEVICES:", "=" * 40, ""]
 
         category_names = {
             "router": "ROUTER/ACCESS POINTS",
-            "computer": "COMPUTER",
+            "computer": "COMPUTERS",
             "phone": "SMARTPHONES",
             "tablet": "TABLETS",
             "tv": "TVs & STREAMING",
-            "printer": "DRUCKER",
-            "camera": "KAMERAS",
-            "nas": "NETZWERKSPEICHER",
-            "gaming": "GAMING-GERÄTE",
+            "printer": "PRINTERS",
+            "camera": "CAMERAS",
+            "nas": "NETWORK STORAGE",
+            "gaming": "GAMING DEVICES",
             "iot": "SMART HOME/IOT",
-            "unknown": "SONSTIGE"
+            "unknown": "OTHER"
         }
 
         for cat, cat_devices in devices.items():
@@ -841,7 +841,7 @@ class NetworkManager:
                 lines.append("")
 
         if not devices:
-            lines.append("Keine Geräte gefunden.")
+            lines.append("No devices found.")
 
         return "\n".join(lines)
 

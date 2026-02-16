@@ -156,14 +156,14 @@ class PackageManager:
     def validate(self, packages: List[str], backend: PackageBackend) -> Tuple[bool, str]:
         """Validate packages before install. Returns (ok, message)."""
         if len(packages) > MAX_PACKAGES_PER_REQUEST:
-            return False, f"Max {MAX_PACKAGES_PER_REQUEST} Pakete pro Anfrage."
+            return False, f"Max {MAX_PACKAGES_PER_REQUEST} packages per request."
 
         for pkg in packages:
             if pkg.lower() in BLACKLISTED_PACKAGES:
-                return False, f"Paket '{pkg}' ist geschuetzt und darf nicht veraendert werden."
+                return False, f"Package '{pkg}' is protected and must not be modified."
             # Sanitize: only allow alphanumeric, dash, dot, underscore, plus
             if not re.match(r'^[a-zA-Z0-9._+\-]+$', pkg):
-                return False, f"Ungueltiger Paketname: '{pkg}'"
+                return False, f"Invalid package name: '{pkg}'"
 
         return True, ""
 
@@ -186,7 +186,7 @@ class PackageManager:
                 return self._install_flatpak(packages)
         except Exception as e:
             return False, str(e)
-        return False, "Unbekanntes Backend"
+        return False, "Unknown backend"
 
     def _install_apt(self, packages: List[str]) -> Tuple[bool, str]:
         # Try using E-SMC Sovereign if available
@@ -208,8 +208,8 @@ class PackageManager:
         )
         self._log_action("install", packages, "apt", r.returncode == 0)
         if r.returncode == 0:
-            return True, f"Installiert: {pkg_str}"
-        return False, f"Fehler: {r.stderr[:300]}"
+            return True, f"Installed: {pkg_str}"
+        return False, f"Error: {r.stderr[:300]}"
 
     def _install_pip(self, packages: List[str]) -> Tuple[bool, str]:
         r = subprocess.run(
@@ -218,12 +218,12 @@ class PackageManager:
         )
         self._log_action("install", packages, "pip", r.returncode == 0)
         if r.returncode == 0:
-            return True, f"Python-Pakete installiert: {', '.join(packages)}"
-        return False, f"Fehler: {r.stderr[:300]}"
+            return True, f"Python packages installed: {', '.join(packages)}"
+        return False, f"Error: {r.stderr[:300]}"
 
     def _install_snap(self, packages: List[str]) -> Tuple[bool, str]:
         if not shutil.which("snap"):
-            return False, "Snap ist nicht installiert."
+            return False, "Snap is not installed."
         results = []
         for pkg in packages:
             r = subprocess.run(["snap", "install", pkg], capture_output=True, text=True, timeout=120)
@@ -231,12 +231,12 @@ class PackageManager:
         self._log_action("install", packages, "snap", all(ok for _, ok, _ in results))
         failed = [(p, e) for p, ok, e in results if not ok]
         if not failed:
-            return True, f"Snap-Pakete installiert: {', '.join(packages)}"
-        return False, f"Fehler: {'; '.join(f'{p}: {e}' for p, e in failed)}"
+            return True, f"Snap packages installed: {', '.join(packages)}"
+        return False, f"Error: {'; '.join(f'{p}: {e}' for p, e in failed)}"
 
     def _install_flatpak(self, packages: List[str]) -> Tuple[bool, str]:
         if not shutil.which("flatpak"):
-            return False, "Flatpak ist nicht installiert."
+            return False, "Flatpak is not installed."
         results = []
         for pkg in packages:
             r = subprocess.run(["flatpak", "install", "-y", "flathub", pkg], capture_output=True, text=True, timeout=180)
@@ -244,8 +244,8 @@ class PackageManager:
         self._log_action("install", packages, "flatpak", all(ok for _, ok, _ in results))
         failed = [(p, e) for p, ok, e in results if not ok]
         if not failed:
-            return True, f"Flatpak-Pakete installiert: {', '.join(packages)}"
-        return False, f"Fehler: {'; '.join(f'{p}: {e}' for p, e in failed)}"
+            return True, f"Flatpak packages installed: {', '.join(packages)}"
+        return False, f"Error: {'; '.join(f'{p}: {e}' for p, e in failed)}"
 
     # === REMOVE ===
 
@@ -260,25 +260,25 @@ class PackageManager:
             for pkg in packages:
                 rdeps = self._check_rdeps(pkg)
                 if rdeps:
-                    return False, f"'{pkg}' wird von {len(rdeps)} anderen Paketen benoetigt: {', '.join(rdeps[:5])}"
+                    return False, f"'{pkg}' is needed by {len(rdeps)} other packages: {', '.join(rdeps[:5])}"
             r = subprocess.run(["sudo", "apt-get", "remove", "-y"] + packages, capture_output=True, text=True, timeout=120)
             self._log_action("remove", packages, "apt", r.returncode == 0)
             return r.returncode == 0, r.stdout[:300] if r.returncode == 0 else r.stderr[:300]
         elif backend == PackageBackend.PIP:
             r = subprocess.run(["pip", "uninstall", "-y"] + packages, capture_output=True, text=True, timeout=60)
             self._log_action("remove", packages, "pip", r.returncode == 0)
-            return r.returncode == 0, "Entfernt" if r.returncode == 0 else r.stderr[:300]
+            return r.returncode == 0, "Removed" if r.returncode == 0 else r.stderr[:300]
         elif backend == PackageBackend.SNAP:
             for pkg in packages:
                 subprocess.run(["snap", "remove", pkg], capture_output=True, text=True, timeout=60)
             self._log_action("remove", packages, "snap", True)
-            return True, f"Snap-Pakete entfernt: {', '.join(packages)}"
+            return True, f"Snap packages removed: {', '.join(packages)}"
         elif backend == PackageBackend.FLATPAK:
             for pkg in packages:
                 subprocess.run(["flatpak", "uninstall", "-y", pkg], capture_output=True, text=True, timeout=60)
             self._log_action("remove", packages, "flatpak", True)
-            return True, f"Flatpak-Pakete entfernt: {', '.join(packages)}"
-        return False, "Unbekanntes Backend"
+            return True, f"Flatpak packages removed: {', '.join(packages)}"
+        return False, "Unknown backend"
 
     def _check_rdeps(self, package: str) -> List[str]:
         r = subprocess.run(["apt-cache", "rdepends", "--installed", package], capture_output=True, text=True, timeout=10)
@@ -297,19 +297,19 @@ class PackageManager:
         r = subprocess.run(["apt", "list", "--upgradeable"], capture_output=True, text=True, timeout=30)
         lines = [l for l in r.stdout.strip().splitlines() if "/" in l]
         if not lines:
-            return 0, "System ist aktuell."
+            return 0, "System is up to date."
         summary = "\n".join(lines[:15])
         if len(lines) > 15:
-            summary += f"\n... und {len(lines) - 15} weitere"
-        return len(lines), f"{len(lines)} Aktualisierungen verfuegbar:\n{summary}"
+            summary += f"\n... and {len(lines) - 15} more"
+        return len(lines), f"{len(lines)} updates available:\n{summary}"
 
     def execute_update(self) -> Tuple[bool, str]:
         """Execute system update after confirmation."""
         r = subprocess.run(["sudo", "apt-get", "upgrade", "-y"], capture_output=True, text=True, timeout=600)
         self._log_action("update", ["system"], "apt", r.returncode == 0)
         if r.returncode == 0:
-            return True, "System wurde aktualisiert."
-        return False, f"Update-Fehler: {r.stderr[:300]}"
+            return True, "System has been updated."
+        return False, f"Update error: {r.stderr[:300]}"
 
     # === DETECT BACKEND ===
 

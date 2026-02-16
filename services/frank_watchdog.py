@@ -58,7 +58,7 @@ MONITORED_SERVICES = {
         "max_restarts": 15,     # Max restarts before giving up
         "cooldown": 30,         # Seconds between restart attempts
         "reset_after": 600,     # Reset counter after N seconds of uptime
-        "description": "Chat-Overlay (Haupt-UI)",
+        "description": "Chat Overlay (Main UI)",
     },
     "aicore-core": {
         "critical": True,
@@ -66,7 +66,7 @@ MONITORED_SERVICES = {
         "max_restarts": 20,
         "cooldown": 15,
         "reset_after": 300,
-        "description": "Core Chat-Orchestrator",
+        "description": "Core Chat Orchestrator",
     },
     "aicore-router": {
         "critical": True,
@@ -74,7 +74,7 @@ MONITORED_SERVICES = {
         "max_restarts": 20,
         "cooldown": 15,
         "reset_after": 300,
-        "description": "Model-Router",
+        "description": "Model Router",
     },
     "aicore-llama3-gpu": {
         "critical": True,
@@ -82,7 +82,7 @@ MONITORED_SERVICES = {
         "max_restarts": 10,
         "cooldown": 60,
         "reset_after": 600,
-        "description": "Llama3 GPU (Primäres LLM)",
+        "description": "Llama3 GPU (Primary LLM)",
     },
     "frank-wallpaper": {
         "critical": False,      # Nice to have, not critical
@@ -90,7 +90,7 @@ MONITORED_SERVICES = {
         "max_restarts": 10,
         "cooldown": 60,
         "reset_after": 600,
-        "description": "Live-Wallpaper (NEC)",
+        "description": "Live Wallpaper (NEC)",
     },
     "aicore-toolboxd": {
         "critical": True,
@@ -98,7 +98,7 @@ MONITORED_SERVICES = {
         "max_restarts": 20,
         "cooldown": 15,
         "reset_after": 300,
-        "description": "System-Toolbox",
+        "description": "System Toolbox",
     },
     "aicore-voice": {
         "critical": False,
@@ -106,7 +106,7 @@ MONITORED_SERVICES = {
         "max_restarts": 10,
         "cooldown": 60,
         "reset_after": 600,
-        "description": "Voice-Daemon",
+        "description": "Voice Daemon",
     },
 }
 

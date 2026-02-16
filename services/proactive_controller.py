@@ -140,16 +140,16 @@ class ProactiveController:
             result = list_events(start=now.isoformat(), end=end.isoformat())
             events = result.get("events", []) if result.get("ok") else []
             if events:
-                parts.append(f"**{len(events)} Termine heute**")
+                parts.append(f"**{len(events)} appointments today**")
                 for ev in events[:3]:
                     t = ev.get("start", "?")
                     try:
                         t = datetime.fromisoformat(t).strftime("%H:%M")
                     except (ValueError, TypeError):
                         pass
-                    parts.append(f"  - {ev.get('title', '?')} um {t}")
+                    parts.append(f"  - {ev.get('title', '?')} at {t}")
             else:
-                parts.append("Keine Termine heute")
+                parts.append("No appointments today")
         except Exception:
             pass
 
@@ -161,11 +161,11 @@ class ProactiveController:
             if todos:
                 due_today = [t for t in todos if self._is_due_today(t.get("due_date"))]
                 if due_today:
-                    parts.append(f"**{len(due_today)} Aufgaben faellig heute**")
+                    parts.append(f"**{len(due_today)} tasks due today**")
                     for t in due_today[:3]:
                         parts.append(f"  - {t.get('content', '?')}")
                 else:
-                    parts.append(f"{len(todos)} offene Aufgaben")
+                    parts.append(f"{len(todos)} open tasks")
         except Exception:
             pass
 
@@ -174,7 +174,7 @@ class ProactiveController:
             from tools.email_reader import count_unread
             result = count_unread()
             if result and result.get("ok") and result.get("total", 0) > 0:
-                parts.append(f"**{result['total']} ungelesene E-Mails**")
+                parts.append(f"**{result['total']} unread emails**")
         except Exception:
             pass
 
@@ -196,12 +196,12 @@ class ProactiveController:
 
         self._state["last_morning_briefing_date"] = today_str
 
-        body = "Guten Morgen! Dein Tag:\n" + "\n".join(parts)
+        body = "Good morning! Your day:\n" + "\n".join(parts)
 
         return {
             "id": f"morning_briefing_{today_str}",
             "category": "morning_briefing",
-            "title": "Morgenbriefing",
+            "title": "Morning Briefing",
             "body": body,
             "urgency": "low",
             "timestamp": datetime.now().isoformat(),
@@ -264,21 +264,21 @@ class ProactiveController:
 
         body_lines = []
         if urgent_emails:
-            body_lines.append(f"**{len(urgent_emails)} dringende E-Mail(s):**")
+            body_lines.append(f"**{len(urgent_emails)} urgent email(s):**")
             for em in urgent_emails[:3]:
                 sender_short = em.get("from", "?").split("<")[0].strip()[:30]
-                subject = (em.get("subject", "") or "(kein Betreff)")[:50]
+                subject = (em.get("subject", "") or "(no subject)")[:50]
                 body_lines.append(f"  - {sender_short}: {subject}")
 
         if frequent_senders:
             for s in frequent_senders[:2]:
                 name = s.split("@")[0].replace(".", " ").title()[:25]
-                body_lines.append(f"  - {sender_counts[s]} Mails von {name}")
+                body_lines.append(f"  - {sender_counts[s]} emails from {name}")
 
         return [{
             "id": f"email_priority_{datetime.now().strftime('%Y%m%d_%H')}",
             "category": "email_priority",
-            "title": "Wichtige E-Mails",
+            "title": "Important Emails",
             "body": "\n".join(body_lines),
             "urgency": "normal",
             "timestamp": datetime.now().isoformat(),
@@ -315,8 +315,8 @@ class ProactiveController:
                 notifications.append({
                     "id": f"sys_cpu_{datetime.now().strftime('%Y%m%d_%H%M')}",
                     "category": "system_health",
-                    "title": "Hohe CPU-Auslastung",
-                    "body": f"CPU bei {cpu_pct:.0f}% (Top: {top_proc})",
+                    "title": "High CPU Usage",
+                    "body": f"CPU at {cpu_pct:.0f}% (Top: {top_proc})",
                     "urgency": "low",
                     "timestamp": datetime.now().isoformat(),
                     "read": False,
@@ -336,8 +336,8 @@ class ProactiveController:
                 notifications.append({
                     "id": f"sys_ram_{datetime.now().strftime('%Y%m%d_%H%M')}",
                     "category": "system_health",
-                    "title": "Hohe RAM-Auslastung",
-                    "body": f"RAM bei {ram_pct:.0f}% ({free_mb} MB frei)",
+                    "title": "High RAM Usage",
+                    "body": f"RAM at {ram_pct:.0f}% ({free_mb} MB free)",
                     "urgency": "normal" if ram_pct > 95 else "low",
                     "timestamp": datetime.now().isoformat(),
                     "read": False,
@@ -357,8 +357,8 @@ class ProactiveController:
                 notifications.append({
                     "id": f"sys_disk_{datetime.now().strftime('%Y%m%d')}",
                     "category": "system_health",
-                    "title": "Wenig Speicherplatz",
-                    "body": f"Festplatte zu {disk_pct:.0f}% voll ({free_gb:.1f} GB frei)",
+                    "title": "Low Disk Space",
+                    "body": f"Disk {disk_pct:.0f}% full ({free_gb:.1f} GB free)",
                     "urgency": "normal",
                     "timestamp": datetime.now().isoformat(),
                     "read": False,
@@ -410,7 +410,7 @@ class ProactiveController:
                     notifications.append({
                         "id": f"download_{name}_{int(fstat.st_mtime)}",
                         "category": "download",
-                        "title": "Download fertig",
+                        "title": "Download complete",
                         "body": f"{name} ({size_mb:.1f} MB)",
                         "urgency": "low",
                         "timestamp": datetime.now().isoformat(),

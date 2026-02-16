@@ -3,22 +3,22 @@
 E-CPMM Autonomous Training Daemon v2.1
 ======================================
 
-Vollständig autonomes 10-Stunden Training mit ECHTER Tool-Erstellung
-und CLAUDE FEEDBACK Integration.
+Fully autonomous 10-hour training with REAL tool creation
+and CLAUDE FEEDBACK integration.
 
-NEU in v2.0:
-- Extrahiert Code aus Frank's Antworten
-- Schreibt echte Python-Dateien in Sandbox
-- Führt Syntax-Check durch
-- Testet in isolierter Sandbox
-- Registriert erfolgreiche Tools
-- Updated E-CPMM Graph mit neuen Edges
+NEW in v2.0:
+- Extracts code from Frank's responses
+- Writes real Python files to sandbox
+- Performs syntax check
+- Tests in isolated sandbox
+- Registers successful tools
+- Updates E-CPMM graph with new edges
 
-NEU in v2.1:
-- Claude Code Review für jeden Code-Vorschlag
-- Feedback-Loop: Claude sagt Frank was funktioniert/nicht funktioniert
-- Bessere Prompts mit konkreten Code-Beispielen
-- Iterative Code-Verbesserung (max 3 Versuche)
+NEW in v2.1:
+- Claude code review for every code proposal
+- Feedback loop: Claude tells Frank what works/doesn't work
+- Better prompts with concrete code examples
+- Iterative code improvement (max 3 attempts)
 
 Author: Projekt Frankenstein
 """
@@ -87,12 +87,12 @@ LOG_FILE = LOG_DIR / f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 STATE_FILE = LOG_DIR / "training_state.json"
 PROPOSALS_FILE = LOG_DIR / "proposals.jsonl"
 
-# NEW: Sandbox paths - Basis-Verzeichnis, Session-Ordner wird zur Laufzeit erstellt
+# NEW: Sandbox paths - Base directory, session folder created at runtime
 SANDBOX_BASE_DIR = _CFG_SANDBOX_DIR
 SANDBOX_DB = get_db("sandbox_awareness")
 ECPMM_DB = get_db("e_cpmm")
 
-# SANDBOX_DIR wird zur Laufzeit mit Timestamp gesetzt (siehe AutonomousTrainingDaemon.__init__)
+# SANDBOX_DIR is set at runtime with timestamp (see AutonomousTrainingDaemon.__init__)
 SANDBOX_DIR = None  # Placeholder
 
 # Claude CLI

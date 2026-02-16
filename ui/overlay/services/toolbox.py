@@ -52,7 +52,7 @@ def _is_path_forbidden(path: str) -> bool:
 def _list_files(path: str = "~", recursive: bool = False, max_entries: int = 100) -> Optional[Dict[str, Any]]:
     """List files in a directory using toolbox API."""
     if _is_path_forbidden(path):
-        return {"ok": False, "error": "forbidden", "detail": "Zugriff auf diesen Ordner ist nicht erlaubt."}
+        return {"ok": False, "error": "forbidden", "detail": "Access to this folder is not allowed."}
     return _toolbox_call("/fs/list", {
         "path": path,
         "recursive": recursive,
@@ -64,28 +64,28 @@ def _list_files(path: str = "~", recursive: bool = False, max_entries: int = 100
 def _read_file_via_toolbox(path: str, max_bytes: int = 100000) -> Optional[Dict[str, Any]]:
     """Read a file using toolbox API."""
     if _is_path_forbidden(path):
-        return {"ok": False, "error": "forbidden", "detail": "Zugriff auf diese Datei ist nicht erlaubt."}
+        return {"ok": False, "error": "forbidden", "detail": "Access to this file is not allowed."}
     return _toolbox_call("/fs/read", {"path": path, "max_bytes": max_bytes}, timeout_s=5.0)
 
 
 def _move_file(src: str, dst: str) -> Optional[Dict[str, Any]]:
     """Move/rename a file using toolbox API."""
     if _is_path_forbidden(src) or _is_path_forbidden(dst):
-        return {"ok": False, "error": "forbidden", "detail": "Zugriff auf diesen Pfad ist nicht erlaubt."}
+        return {"ok": False, "error": "forbidden", "detail": "Access to this path is not allowed."}
     return _toolbox_call("/fs/move", {"src": src, "dst": dst}, timeout_s=5.0)
 
 
 def _copy_file(src: str, dst: str) -> Optional[Dict[str, Any]]:
     """Copy a file using toolbox API."""
     if _is_path_forbidden(src) or _is_path_forbidden(dst):
-        return {"ok": False, "error": "forbidden", "detail": "Zugriff auf diesen Pfad ist nicht erlaubt."}
+        return {"ok": False, "error": "forbidden", "detail": "Access to this path is not allowed."}
     return _toolbox_call("/fs/copy", {"src": src, "dst": dst}, timeout_s=5.0)
 
 
 def _delete_file(path: str) -> Optional[Dict[str, Any]]:
     """Delete a file using toolbox API."""
     if _is_path_forbidden(path):
-        return {"ok": False, "error": "forbidden", "detail": "Loeschen in diesem Pfad ist nicht erlaubt."}
+        return {"ok": False, "error": "forbidden", "detail": "Deleting in this path is not allowed."}
     return _toolbox_call("/fs/delete", {"path": path}, timeout_s=5.0)
 
 

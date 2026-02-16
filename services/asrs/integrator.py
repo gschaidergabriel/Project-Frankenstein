@@ -78,7 +78,7 @@ class FeatureIntegrator:
         LOG.info(f"Starting integration for {feature_name} (#{feature_id})")
 
         if on_progress:
-            on_progress(f"Bereite Integration vor: {feature_name}")
+            on_progress(f"Preparing integration: {feature_name}")
 
         # Determine what files might be affected
         files_to_modify = self._determine_affected_files(feature)
@@ -93,7 +93,7 @@ class FeatureIntegrator:
                 feature_name=feature_name,
                 success=True,
                 status="integrated",
-                message="Integration erfolgreich, System stabil",
+                message="Integration successful, system stable",
             )
             final_result[0] = result
             self._integration_results[feature_id] = result
@@ -112,7 +112,7 @@ class FeatureIntegrator:
                 feature_name=feature_name,
                 success=False,
                 status="quarantined",
-                message=f"Integration fehlgeschlagen: {report.probable_cause}",
+                message=f"Integration failed: {report.probable_cause}",
                 report=report,
                 alternatives=alternatives,
             )
@@ -130,7 +130,7 @@ class FeatureIntegrator:
         try:
             # Begin monitored integration
             if on_progress:
-                on_progress(f"Erstelle Baseline-Snapshot...")
+                on_progress(f"Creating baseline snapshot...")
 
             baseline = self.orchestrator.begin_integration(
                 feature_id=feature_id,
@@ -141,13 +141,13 @@ class FeatureIntegrator:
             )
 
             if on_progress:
-                on_progress(f"Führe Integration durch...")
+                on_progress(f"Performing integration...")
 
             # Perform actual integration
             self._perform_integration(feature, on_progress)
 
             if on_progress:
-                on_progress(f"Starte Überwachung ({self.config.observation_window_sec}s)...")
+                on_progress(f"Starting monitoring ({self.config.observation_window_sec}s)...")
 
             # Start observation
             self.orchestrator.start_observation()
@@ -160,7 +160,7 @@ class FeatureIntegrator:
                     feature_name=feature_name,
                     success=False,
                     status="timeout",
-                    message="Timeout während Überwachung",
+                    message="Timeout during monitoring",
                 )
             else:
                 # Return immediately, result will come via callback
@@ -169,7 +169,7 @@ class FeatureIntegrator:
                     feature_name=feature_name,
                     success=True,
                     status="monitoring",
-                    message=f"Integration läuft, Überwachung für {self.config.observation_window_sec}s",
+                    message=f"Integration running, monitoring for {self.config.observation_window_sec}s",
                 )
 
         except Exception as e:
@@ -181,7 +181,7 @@ class FeatureIntegrator:
                 feature_name=feature_name,
                 success=False,
                 status="failed",
-                message=f"Integration fehlgeschlagen: {str(e)}",
+                message=f"Integration failed: {str(e)}",
             )
             self._integration_results[feature_id] = result
 
@@ -224,7 +224,7 @@ class FeatureIntegrator:
 
         if code and target_file:
             if on_progress:
-                on_progress(f"Wende Code-Änderungen an...")
+                on_progress(f"Applying code changes...")
 
             # For now, we just log what would happen
             # Actual code integration would be done here
@@ -238,7 +238,7 @@ class FeatureIntegrator:
 
         elif feature.get("config_changes"):
             if on_progress:
-                on_progress(f"Wende Konfigurationsänderungen an...")
+                on_progress(f"Applying configuration changes...")
 
             # Apply config changes
             LOG.info(f"Would apply config changes")
@@ -246,7 +246,7 @@ class FeatureIntegrator:
         else:
             # Feature might be a suggestion without direct code
             if on_progress:
-                on_progress(f"Feature als approved markiert...")
+                on_progress(f"Feature marked as approved...")
 
             LOG.info(f"Feature #{feature_id} marked as approved (no direct integration)")
 

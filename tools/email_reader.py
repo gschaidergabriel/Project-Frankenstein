@@ -188,7 +188,7 @@ def sanitize_email_content(raw_text: str) -> str:
 
     # 7. Truncate
     if len(text) > MAX_BODY_CHARS:
-        text = text[:MAX_BODY_CHARS] + "\n[... gekuerzt]"
+        text = text[:MAX_BODY_CHARS] + "\n[... truncated]"
 
     return text
 
@@ -196,11 +196,11 @@ def sanitize_email_content(raw_text: str) -> str:
 def _sanitize_subject(subject: str) -> str:
     """Sanitize email subject line."""
     if not subject:
-        return "(kein Betreff)"
+        return "(no subject)"
     # Strip HTML and injection patterns
     subject = _HTML_TAG_RE.sub("", subject)
     if _INJECTION_PATTERNS.search(subject):
-        subject = "[Betreff entfernt - Sicherheitsfilter]"
+        subject = "[Subject removed - security filter]"
     return subject[:MAX_SUBJECT_CHARS]
 
 
@@ -273,11 +273,11 @@ def get_unread_count(profile: Optional[Path] = None) -> Dict[str, Any]:
     if profile is None:
         profile = find_thunderbird_profile()
     if not profile:
-        return {"error": "Thunderbird-Profil nicht gefunden"}
+        return {"error": "Thunderbird profile not found"}
 
     cache_file = profile / "folderCache.json"
     if not cache_file.exists():
-        return {"error": "folderCache.json nicht gefunden"}
+        return {"error": "folderCache.json not found"}
 
     try:
         data = json.loads(cache_file.read_text())
@@ -311,15 +311,15 @@ def list_emails(
     if profile is None:
         profile = find_thunderbird_profile()
     if not profile:
-        return [{"error": "Thunderbird-Profil nicht gefunden"}]
+        return [{"error": "Thunderbird profile not found"}]
 
     imap_dir = _get_imap_dir(profile)
     if not imap_dir:
-        return [{"error": "Kein IMAP-Verzeichnis gefunden"}]
+        return [{"error": "No IMAP directory found"}]
 
     mbox_path = _folder_path(imap_dir, folder)
     if not mbox_path:
-        return [{"error": f"Ordner '{folder}' nicht gefunden"}]
+        return [{"error": f"Folder '{folder}' not found"}]
 
     try:
         mbox = mailbox.mbox(str(mbox_path))
@@ -407,15 +407,15 @@ def read_email(
     if profile is None:
         profile = find_thunderbird_profile()
     if not profile:
-        return {"error": "Thunderbird-Profil nicht gefunden"}
+        return {"error": "Thunderbird profile not found"}
 
     imap_dir = _get_imap_dir(profile)
     if not imap_dir:
-        return {"error": "Kein IMAP-Verzeichnis gefunden"}
+        return {"error": "No IMAP directory found"}
 
     mbox_path = _folder_path(imap_dir, folder)
     if not mbox_path:
-        return {"error": f"Ordner '{folder}' nicht gefunden"}
+        return {"error": f"Folder '{folder}' not found"}
 
     try:
         mbox = mailbox.mbox(str(mbox_path))
@@ -430,7 +430,7 @@ def read_email(
             target_msg = mbox[idx]
         except (KeyError, IndexError):
             mbox.close()
-            return {"error": f"Email mit Index {idx} nicht gefunden"}
+            return {"error": f"Email with index {idx} not found"}
     elif msg_id:
         # Search by Message-ID
         for key in mbox.keys():
@@ -451,7 +451,7 @@ def read_email(
 
     if target_msg is None:
         mbox.close()
-        return {"error": "Email nicht gefunden"}
+        return {"error": "Email not found"}
 
     # Extract full content
     from_addr = _decode_header(target_msg.get("From", ""))
@@ -729,7 +729,7 @@ def delete_emails(
 
     creds = _get_imap_credentials(profile)
     if not creds:
-        return {"error": "IMAP-Zugangsdaten nicht gefunden. Thunderbird-Profil pruefen."}
+        return {"error": "IMAP credentials not found. Check Thunderbird profile."}
 
     imap_folder = _resolve_imap_folder(folder)
 
@@ -748,7 +748,7 @@ def delete_emails(
         status, data = imap.select(imap_folder)
         if status != "OK":
             imap.logout()
-            return {"error": f"Ordner '{folder}' nicht gefunden auf dem Server"}
+            return {"error": f"Folder '{folder}' not found on server"}
 
         # Search for emails to delete
         if delete_all:
@@ -762,12 +762,12 @@ def delete_emails(
             status, msg_ids = imap.search(None, f'(OR FROM "{q}" SUBJECT "{q}")')
         else:
             imap.logout()
-            return {"error": "Kein Suchkriterium angegeben (query, msg_id oder delete_all)"}
+            return {"error": "No search criteria provided (query, msg_id, or delete_all)"}
 
         if status != "OK" or not msg_ids[0]:
             imap.close()
             imap.logout()
-            return {"ok": True, "deleted": 0, "message": "Keine passenden Emails gefunden"}
+            return {"ok": True, "deleted": 0, "message": "No matching emails found"}
 
         ids = msg_ids[0].split()
         count = len(ids)
@@ -785,9 +785,9 @@ def delete_emails(
         return {"ok": True, "deleted": count}
 
     except imaplib.IMAP4.error as e:
-        return {"error": f"IMAP-Fehler: {e}"}
+        return {"error": f"IMAP error: {e}"}
     except Exception as e:
-        return {"error": f"Verbindungsfehler: {e}"}
+        return {"error": f"Connection error: {e}"}
 
 
 # ── IMAP move to spam ─────────────────────────────────────────────
@@ -814,7 +814,7 @@ def move_to_spam(
 
     creds = _get_imap_credentials(profile)
     if not creds:
-        return {"error": "IMAP-Zugangsdaten nicht gefunden."}
+        return {"error": "IMAP credentials not found."}
 
     imap_folder = _resolve_imap_folder(folder)
     spam_folder = "[Gmail]/Spam"
@@ -831,7 +831,7 @@ def move_to_spam(
         status, data = imap.select(imap_folder)
         if status != "OK":
             imap.logout()
-            return {"error": f"Ordner '{folder}' nicht gefunden"}
+            return {"error": f"Folder '{folder}' not found"}
 
         # Search by Message-ID or query
         if msg_id:
@@ -843,12 +843,12 @@ def move_to_spam(
         else:
             imap.close()
             imap.logout()
-            return {"error": "Kein Suchkriterium angegeben (msg_id oder query)"}
+            return {"error": "No search criteria provided (msg_id or query)"}
 
         if status != "OK" or not msg_ids[0]:
             imap.close()
             imap.logout()
-            return {"ok": True, "moved": 0, "message": "Email nicht gefunden"}
+            return {"ok": True, "moved": 0, "message": "Email not found"}
 
         # Move only first match
         target_id = msg_ids[0].split()[0]
@@ -858,7 +858,7 @@ def move_to_spam(
         if status != "OK":
             imap.close()
             imap.logout()
-            return {"error": f"COPY nach Spam fehlgeschlagen"}
+            return {"error": f"COPY to spam failed"}
 
         imap.store(target_id, "+FLAGS", "\\Deleted")
         imap.expunge()
@@ -869,9 +869,9 @@ def move_to_spam(
         return {"ok": True, "moved": 1}
 
     except imaplib.IMAP4.error as e:
-        return {"error": f"IMAP-Fehler: {e}"}
+        return {"error": f"IMAP error: {e}"}
     except Exception as e:
-        return {"error": f"Verbindungsfehler: {e}"}
+        return {"error": f"Connection error: {e}"}
 
 
 # ── CLI test ────────────────────────────────────────────────────────
@@ -903,10 +903,10 @@ if __name__ == "__main__":
         if "error" in em:
             print(f"  ERROR: {em['error']}")
             break
-        status = "gelesen" if em["read"] else "NEU"
+        status = "read" if em["read"] else "NEW"
         print(f"  [{status}] {em['from'][:40]}")
-        print(f"    Betreff: {em['subject'][:60]}")
-        print(f"    Datum: {em['date'][:30]}")
+        print(f"    Subject: {em['subject'][:60]}")
+        print(f"    Date: {em['date'][:30]}")
         print(f"    Snippet: {em['snippet'][:80]}...")
         print()
 

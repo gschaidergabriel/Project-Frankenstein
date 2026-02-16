@@ -239,7 +239,7 @@ class NotificationDaemon:
             events = _check_calendar(window)
             for ev in events:
                 uid = ev.get("uid", "")
-                title = ev.get("title", "Termin")
+                title = ev.get("title", "Appointment")
                 minutes_until = ev.get("minutes_until", window)
                 start_time = ev.get("start_iso", "?")
 
@@ -255,13 +255,13 @@ class NotificationDaemon:
                     time_str = start_time
 
                 urgency = _determine_urgency(minutes_until)
-                body = f"In {minutes_until} Minuten: {title} um {time_str}"
+                body = f"In {minutes_until} minutes: {title} at {time_str}"
                 if ev.get("location"):
                     body += f" ({ev['location']})"
 
                 LOG.info(f"Calendar reminder: {body} (urgency={urgency})")
 
-                _send_desktop_notification("Kalender-Erinnerung", body, urgency)
+                _send_desktop_notification("Calendar Reminder", body, urgency)
                 _write_notification_json({
                     "id": dedup_key,
                     "category": "calendar",
@@ -284,7 +284,7 @@ class NotificationDaemon:
             todos = _check_todos(15)
             for t in todos:
                 tid = t.get("id", 0)
-                content = t.get("content", "Aufgabe")
+                content = t.get("content", "Task")
                 due_date = t.get("due_date", "?")
 
                 dedup_key = f"todo_{tid}_{datetime.now().strftime('%Y-%m-%d')}"
@@ -303,13 +303,13 @@ class NotificationDaemon:
 
                 urgency = _determine_urgency(minutes_until)
                 if minutes_until <= 0:
-                    body = f"Ueberfaellig: {content} (faellig um {time_str})"
+                    body = f"Overdue: {content} (due at {time_str})"
                 else:
-                    body = f"In {minutes_until} Min faellig: {content}"
+                    body = f"Due in {minutes_until} min: {content}"
 
                 LOG.info(f"Todo reminder: {body} (urgency={urgency})")
 
-                _send_desktop_notification("Todo-Erinnerung", body, urgency)
+                _send_desktop_notification("Todo Reminder", body, urgency)
                 _write_notification_json({
                     "id": dedup_key,
                     "category": "todo",

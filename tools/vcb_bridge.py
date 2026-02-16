@@ -3,16 +3,16 @@
 """
 Visual-Causal-Bridge (VCB) v3.0 - Frank's Eyes (Local Only)
 
-100% lokale Bildanalyse mit Moondream 2 via Ollama.
-Keine externen API-Abhängigkeiten mehr.
+100% local image analysis with Moondream 2 via Ollama.
+No external API dependencies.
 
 Features:
-- Moondream 2 als einziger Vision-Backend (via Ollama)
-- Error-Screenshot für automatische Fehleranalyse
-- Loop-Protection gegen System-Blockierung
-- UOLG Integration für Log-Korrelation
-- Gaming Mode Protection
-- Privacy: Screenshots nach Analyse gelöscht
+- Moondream 2 as the only vision backend (via Ollama)
+- Error screenshot for automatic error analysis
+- Loop protection against system blocking
+- UOLG integration for log correlation
+- Gaming mode protection
+- Privacy: Screenshots deleted after analysis
 
 Usage:
     from tools.vcb_bridge import take_screenshot, analyze_screen, analyze_image
@@ -506,10 +506,10 @@ class SystemInfo:
             m = monitors[0]
             display = m.get("display_name", m["name"])
             return (
-                f"WICHTIG - HARDWARE-FAKT: Es ist nur EIN EINZIGER Monitor angeschlossen "
+                f"IMPORTANT - HARDWARE FACT: There is only ONE SINGLE monitor connected "
                 f"({display}, {m['name']}, {m['resolution']}). "
-                f"Was du als 'mehrere Monitore' interpretierst, sind FENSTER auf EINEM Bildschirm. "
-                f"Sage NIEMALS 'mehrere Monitore' oder 'multiple monitors'."
+                f"What you interpret as 'multiple monitors' are WINDOWS on ONE screen. "
+                f"NEVER say 'multiple monitors' or 'mehrere Monitore'."
             )
         else:
             details = []
@@ -517,7 +517,7 @@ class SystemInfo:
                 display = m.get("display_name", m["name"])
                 primary = " [PRIMARY]" if m.get("primary") else ""
                 details.append(f"Monitor {i+1}: {display} ({m['name']}, {m['resolution']}{primary})")
-            return f"HARDWARE-FAKT: Es sind {len(monitors)} Monitore angeschlossen:\n" + "\n".join(details)
+            return f"HARDWARE FACT: There are {len(monitors)} monitors connected:\n" + "\n".join(details)
 
 
 # =============================================================================
@@ -674,8 +674,8 @@ class LocalVisionVLM:
             prompt_parts.append(
                 "You are Frank, an AI system. You are looking at your own desktop.\n\n"
                 f"{self_awareness}\n\n"
-                "Wenn du deine eigenen Komponenten siehst, benenne sie als DEINE "
-                "(z.B. 'mein Chat-Overlay' statt 'ein Fenster')."
+                "When you see your own components, name them as YOURS "
+                "(e.g. 'my chat overlay' instead of 'a window')."
             )
 
         if monitor_info:
@@ -917,19 +917,19 @@ class VisualCausalBridge:
         # Build grounding context from OCR
         ocr_context = ""
         if window_titles:
-            ocr_context += f"Erkannte Fenstertitel: {', '.join(window_titles[:3])}\n"
+            ocr_context += f"Detected window titles: {', '.join(window_titles[:3])}\n"
         if ocr_text:
             # Limit OCR text to prevent prompt overflow
             ocr_preview = ocr_text[:500].replace('\n', ' ').strip()
             if ocr_preview:
-                ocr_context += f"Erkannter Text (OCR): {ocr_preview}...\n"
+                ocr_context += f"Detected text (OCR): {ocr_preview}...\n"
 
         # Step 2: Vision model analysis (with OCR grounding)
         if not self.moondream.is_available():
             # Fallback to OCR-only if no vision model
             if ocr_context:
                 LOG.info("VCB: Using OCR-only (no vision model available)")
-                return f"[OCR-Analyse]\n{ocr_context}", "ocr_only"
+                return f"[OCR Analysis]\n{ocr_context}", "ocr_only"
             LOG.error("Neither vision model nor OCR available")
             return None, ""
 
@@ -938,16 +938,16 @@ class VisualCausalBridge:
         # Build vision prompt with OCR grounding
         if ocr_context:
             grounded_prompt = (
-                f"OCR hat bereits folgenden Text erkannt:\n{ocr_context}\n\n"
-                "Beschreibe NUR was du WIRKLICH siehst. "
-                "Erfinde KEINE Details die nicht sichtbar sind. "
-                "Welche Fenster/Programme sind offen? Beschreibe das Layout kurz."
+                f"OCR has already detected the following text:\n{ocr_context}\n\n"
+                "Describe ONLY what you ACTUALLY see. "
+                "Do NOT invent details that are not visible. "
+                "Which windows/programs are open? Describe the layout briefly."
             )
             if question:
-                grounded_prompt += f"\n\nFrage: {question}"
+                grounded_prompt += f"\n\nQuestion: {question}"
         else:
             grounded_prompt = question if question else (
-                "Beschreibe NUR was du tatsächlich siehst. Keine Vermutungen."
+                "Describe ONLY what you actually see. No guessing."
             )
 
         vision_desc, model = self.moondream.caption_image(

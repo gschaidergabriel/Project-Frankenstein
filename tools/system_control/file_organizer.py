@@ -104,11 +104,11 @@ class FileOrganizer:
     FILE_CATEGORIES = {
         "images": {
             "extensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico", ".tiff", ".raw", ".heic"],
-            "folder": "Bilder"
+            "folder": "Images"
         },
         "documents": {
             "extensions": [".pdf", ".doc", ".docx", ".odt", ".txt", ".rtf", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".md"],
-            "folder": "Dokumente"
+            "folder": "Documents"
         },
         "videos": {
             "extensions": [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpeg"],
@@ -116,11 +116,11 @@ class FileOrganizer:
         },
         "audio": {
             "extensions": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a", ".opus"],
-            "folder": "Musik"
+            "folder": "Music"
         },
         "archives": {
             "extensions": [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz"],
-            "folder": "Archive"
+            "folder": "Archives"
         },
         "code": {
             "extensions": [".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".html", ".css", ".json", ".xml", ".sh", ".go", ".rs"],
@@ -128,7 +128,7 @@ class FileOrganizer:
         },
         "executables": {
             "extensions": [".exe", ".msi", ".deb", ".rpm", ".AppImage", ".sh", ".run"],
-            "folder": "Programme"
+            "folder": "Programs"
         }
     }
 
@@ -136,15 +136,15 @@ class FileOrganizer:
     STRUCTURE_TEMPLATES = {
         "projekt": {
             "folders": ["src", "docs", "tests", "assets", "config"],
-            "description": "Projekt-Struktur mit src, docs, tests, assets, config"
+            "description": "Project structure with src, docs, tests, assets, config"
         },
         "foto_sammlung": {
-            "folders": ["Roh", "Bearbeitet", "Export", "Aussortiert"],
-            "description": "Foto-Sammlung mit Workflow-Ordnern"
+            "folders": ["Raw", "Edited", "Export", "Rejected"],
+            "description": "Photo collection with workflow folders"
         },
         "musik_sammlung": {
-            "folders": ["Alben", "Singles", "Playlists", "Podcasts"],
-            "description": "Musik-Sammlung nach Format"
+            "folders": ["Albums", "Singles", "Playlists", "Podcasts"],
+            "description": "Music collection by format"
         }
     }
 
@@ -226,10 +226,10 @@ class FileOrganizer:
         """
         source = Path(source_folder).expanduser()
         if not source.exists():
-            return [], f"Ordner existiert nicht: {source_folder}"
+            return [], f"Folder does not exist: {source_folder}"
 
         moves: List[FileMove] = []
-        preview_lines = [f"ORGANISATION VON: {source}", "=" * 50, ""]
+        preview_lines = [f"ORGANIZING: {source}", "=" * 50, ""]
 
         if target_folder:
             target = Path(target_folder).expanduser()
@@ -248,11 +248,11 @@ class FileOrganizer:
                 if cat_info:
                     subfolder_name = cat_info["folder"]
                 else:
-                    subfolder_name = "Sonstiges"
+                    subfolder_name = "Other"
 
                 dest_folder = target / subfolder_name
 
-                preview_lines.append(f"{subfolder_name}/ ({len(files)} Dateien)")
+                preview_lines.append(f"{subfolder_name}/ ({len(files)} files)")
 
                 for file_path in files:
                     file = Path(file_path)
@@ -289,14 +289,14 @@ class FileOrganizer:
                 by_date[date_folder].append(Path(move.source).name)
 
             for date, files in sorted(by_date.items()):
-                preview_lines.append(f"{date}/ ({len(files)} Dateien)")
+                preview_lines.append(f"{date}/ ({len(files)} files)")
                 for f in files[:5]:
                     preview_lines.append(f"  - {f}")
                 if len(files) > 5:
-                    preview_lines.append(f"  ... und {len(files) - 5} weitere")
+                    preview_lines.append(f"  ... and {len(files) - 5} more")
                 preview_lines.append("")
 
-        preview_lines.append(f"GESAMT: {len(moves)} Dateien werden verschoben")
+        preview_lines.append(f"TOTAL: {len(moves)} files will be moved")
         preview = "\n".join(preview_lines)
 
         return moves, preview
@@ -317,7 +317,7 @@ class FileOrganizer:
         moves, preview = self.plan_organization(source_folder, target_folder, strategy)
 
         if not moves:
-            return "", "Keine Dateien zum Organisieren gefunden"
+            return "", "No files found to organize"
 
         # Determine confirmation level
         level = determine_confirmation_level(
@@ -325,7 +325,7 @@ class FileOrganizer:
             file_count=len(moves)
         )
 
-        desc = description or f"Organisiere {len(moves)} Dateien in {source_folder}"
+        desc = description or f"Organize {len(moves)} files in {source_folder}"
 
         return request_confirmation(
             action_type="file_organize",
@@ -347,13 +347,13 @@ class FileOrganizer:
     def execute_organization(self, action_id: str) -> Tuple[bool, str]:
         """Execute confirmed file organization."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         from .sensitive_actions import get_handler
         action = get_handler().get_action(action_id)
 
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         moves_data = action.params.get("moves", [])
         moves = [FileMove.from_dict(m) for m in moves_data]
@@ -412,9 +412,9 @@ class FileOrganizer:
         mark_action_executed(action_id)
 
         if error_count == 0:
-            return True, f"Organisation abgeschlossen: {success_count} Dateien verschoben"
+            return True, f"Organization completed: {success_count} files moved"
         else:
-            return True, f"Organisation abgeschlossen: {success_count} erfolgreich, {error_count} Fehler"
+            return True, f"Organization completed: {success_count} successful, {error_count} errors"
 
     def undo_last_operation(self) -> Tuple[bool, str]:
         """Undo the last file organization operation."""
@@ -423,7 +423,7 @@ class FileOrganizer:
             if op.completed and not op.undone:
                 return self._undo_operation(op)
 
-        return False, "Keine rückgängig machbare Operation gefunden"
+        return False, "No undoable operation found"
 
     def _undo_operation(self, operation: OrganizeOperation) -> Tuple[bool, str]:
         """Undo a specific operation."""
@@ -460,29 +460,29 @@ class FileOrganizer:
         self._save_history()
 
         if error_count == 0:
-            return True, f"Rückgängig gemacht: {success_count} Dateien zurück verschoben"
+            return True, f"Undone: {success_count} files moved back"
         elif success_count > 0:
-            return True, f"Teilweise rückgängig: {success_count} erfolgreich, {error_count} Fehler"
+            return True, f"Partially undone: {success_count} successful, {error_count} errors"
         else:
-            return False, f"Rückgängig machen fehlgeschlagen: {error_count} Fehler"
+            return False, f"Undo failed: {error_count} errors"
 
     def get_undo_preview(self) -> Optional[str]:
         """Get preview of what would be undone."""
         for op in reversed(self._undo_history):
             if op.completed and not op.undone:
                 lines = [
-                    f"LETZTE OPERATION RÜCKGÄNGIG MACHEN:",
+                    f"UNDO LAST OPERATION:",
                     f"'{op.description}'",
-                    f"Zeitpunkt: {op.timestamp}",
-                    f"Betroffene Dateien: {len([m for m in op.moves if m.success])}",
+                    f"Timestamp: {op.timestamp}",
+                    f"Affected files: {len([m for m in op.moves if m.success])}",
                     "",
-                    "Beispiele:"
+                    "Examples:"
                 ]
                 for move in op.moves[:5]:
                     if move.success:
                         lines.append(f"  {Path(move.destination).name} -> {Path(move.source).parent}")
                 if len(op.moves) > 5:
-                    lines.append(f"  ... und {len(op.moves) - 5} weitere")
+                    lines.append(f"  ... and {len(op.moves) - 5} more")
                 return "\n".join(lines)
 
         return None
@@ -504,11 +504,11 @@ class FileOrganizer:
             base_path: Where to create the structure
             structure: Dict defining the structure, e.g.:
                 {
-                    "Projekte": {
-                        "Projekt_A": ["src", "docs", "tests"],
-                        "Projekt_B": ["src", "docs", "tests"]
+                    "Projects": {
+                        "Project_A": ["src", "docs", "tests"],
+                        "Project_B": ["src", "docs", "tests"]
                     },
-                    "Archive": [],
+                    "Archives": [],
                     "Temp": []
                 }
             description: Description for the operation
@@ -520,7 +520,7 @@ class FileOrganizer:
 
         # Build preview and collect folders to create
         folders_to_create = []
-        preview_lines = [f"ORDNER-STRUKTUR ERSTELLEN IN: {base}", "=" * 50, ""]
+        preview_lines = [f"CREATE FOLDER STRUCTURE IN: {base}", "=" * 50, ""]
 
         def process_structure(current_path: Path, struct: Any, indent: int = 0):
             prefix = "  " * indent
@@ -541,10 +541,10 @@ class FileOrganizer:
         process_structure(base, structure)
 
         preview_lines.append("")
-        preview_lines.append(f"GESAMT: {len(folders_to_create)} Ordner werden erstellt")
+        preview_lines.append(f"TOTAL: {len(folders_to_create)} folders will be created")
         preview = "\n".join(preview_lines)
 
-        desc = description or f"Erstelle {len(folders_to_create)} Ordner in {base_path}"
+        desc = description or f"Creating {len(folders_to_create)} folders in {base_path}"
 
         return request_confirmation(
             action_type="file_structure",
@@ -564,13 +564,13 @@ class FileOrganizer:
     def execute_structure_creation(self, action_id: str) -> Tuple[bool, str]:
         """Execute confirmed folder structure creation."""
         if not is_action_confirmed(action_id):
-            return False, "Aktion nicht bestätigt"
+            return False, "Action not confirmed"
 
         from .sensitive_actions import get_handler
         action = get_handler().get_action(action_id)
 
         if not action:
-            return False, "Aktion nicht gefunden"
+            return False, "Action not found"
 
         folders = action.params.get("folders", [])
         created_count = 0
@@ -589,9 +589,9 @@ class FileOrganizer:
         mark_action_executed(action_id)
 
         if error_count == 0:
-            return True, f"Struktur erstellt: {created_count} Ordner angelegt"
+            return True, f"Structure created: {created_count} folders created"
         else:
-            return True, f"Struktur erstellt: {created_count} OK, {error_count} Fehler"
+            return True, f"Structure created: {created_count} OK, {error_count} errors"
 
     def plan_custom_organization(
         self,
@@ -606,9 +606,9 @@ class FileOrganizer:
             rules: List of rules, e.g.:
                 [
                     {"pattern": "*.pdf", "target": "PDFs"},
-                    {"pattern": "*.jpg", "target": "Fotos/2024"},
-                    {"contains": "invoice", "target": "Rechnungen"},
-                    {"extension": ".mp4", "target": "Videos/Filme"}
+                    {"pattern": "*.jpg", "target": "Photos/2024"},
+                    {"contains": "invoice", "target": "Invoices"},
+                    {"extension": ".mp4", "target": "Videos/Movies"}
                 ]
 
         Returns:
@@ -618,10 +618,10 @@ class FileOrganizer:
 
         source = Path(source_folder).expanduser()
         if not source.exists():
-            return [], f"Ordner existiert nicht: {source_folder}"
+            return [], f"Folder does not exist: {source_folder}"
 
         moves: List[FileMove] = []
-        preview_lines = [f"CUSTOM ORGANISATION VON: {source}", "=" * 50, ""]
+        preview_lines = [f"CUSTOM ORGANIZING: {source}", "=" * 50, ""]
 
         # Group moves by target folder for preview
         by_target: Dict[str, List[str]] = {}
@@ -665,14 +665,14 @@ class FileOrganizer:
 
         # Build preview
         for target, files in by_target.items():
-            preview_lines.append(f"{target}/ ({len(files)} Dateien)")
+            preview_lines.append(f"{target}/ ({len(files)} files)")
             for f in files[:5]:
                 preview_lines.append(f"  - {f}")
             if len(files) > 5:
-                preview_lines.append(f"  ... und {len(files) - 5} weitere")
+                preview_lines.append(f"  ... and {len(files) - 5} more")
             preview_lines.append("")
 
-        preview_lines.append(f"GESAMT: {len(moves)} Dateien werden verschoben")
+        preview_lines.append(f"TOTAL: {len(moves)} files will be moved")
         preview = "\n".join(preview_lines)
 
         return moves, preview
@@ -692,9 +692,9 @@ class FileOrganizer:
         moves, preview = self.plan_custom_organization(source_folder, rules)
 
         if not moves:
-            return "", "Keine Dateien entsprechen den Regeln"
+            return "", "No files match the rules"
 
-        desc = description or f"Custom Organisation: {len(moves)} Dateien"
+        desc = description or f"Custom organization: {len(moves)} files"
 
         return request_confirmation(
             action_type="file_organize",
@@ -777,11 +777,11 @@ def create_folder_structure(
 
     Example structure:
         {
-            "Projekte": {
-                "Projekt_A": ["src", "docs", "tests"],
-                "Projekt_B": ["src", "docs", "tests"]
+            "Projects": {
+                "Project_A": ["src", "docs", "tests"],
+                "Project_B": ["src", "docs", "tests"]
             },
-            "Archive": []
+            "Archives": []
         }
     """
     return get_organizer().create_folder_structure(base_path, structure, description)
@@ -803,8 +803,8 @@ def request_custom_organization(
     Example rules:
         [
             {"pattern": "*.pdf", "target": "PDFs"},
-            {"pattern": "*.jpg", "target": "Fotos/2024"},
-            {"contains": "invoice", "target": "Rechnungen"}
+            {"pattern": "*.jpg", "target": "Photos/2024"},
+            {"contains": "invoice", "target": "Invoices"}
         ]
     """
     return get_organizer().request_custom_organization(source_folder, rules, description)

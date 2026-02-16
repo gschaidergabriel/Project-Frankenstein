@@ -196,7 +196,7 @@ class ChatMemoryDB:
                 lines.append(line)
                 chars += len(line) + 1
             if lines:
-                block = "[Bisheriges Gespraech:\n" + "\n".join(lines) + "]"
+                block = "[Previous conversation:\n" + "\n".join(lines) + "]"
                 parts.append(block)
                 budget -= len(block)
 
@@ -236,7 +236,7 @@ class ChatMemoryDB:
                     lines.append(line)
                     chars += len(line) + 1
                 if lines:
-                    block = "[Session-Zusammenfassungen:\n" + "\n".join(lines) + "]"
+                    block = "[Session summaries:\n" + "\n".join(lines) + "]"
                     parts.append(block)
 
         return "\n".join(parts) + "\n" if parts else ""
@@ -306,11 +306,11 @@ class ChatMemoryDB:
         """Format timestamp as relative age string."""
         delta = time.time() - ts
         if delta < 3600:
-            return f"vor {int(delta / 60)} Min"
+            return f"{int(delta / 60)} min ago"
         if delta < 86400:
-            return f"vor {int(delta / 3600)} Std"
+            return f"{int(delta / 3600)} h ago"
         days = int(delta / 86400)
-        return f"vor {days} Tag{'en' if days != 1 else ''}"
+        return f"{days} day{'s' if days != 1 else ''} ago"
 
     # ── Session Management ────────────────────────────────────────
 
@@ -399,9 +399,9 @@ class ChatMemoryDB:
         cutoff = time.time() - (retention_days * 86400)
         with self._lock:
             cur = self._conn.execute(
-                """UPDATE messages SET text = '[archiviert]'
+                """UPDATE messages SET text = '[archived]'
                    WHERE timestamp < ?
-                     AND text != '[archiviert]'
+                     AND text != '[archived]'
                      AND id NOT IN (
                        SELECT id FROM messages ORDER BY timestamp DESC LIMIT 200
                      )""",

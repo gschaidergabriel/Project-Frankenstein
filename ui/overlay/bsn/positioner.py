@@ -5,23 +5,23 @@ from overlay.constants import LOG
 
 
 class WindowPositioner:
-    """Wendet berechnetes Layout an mit aggressiver Multi-Stage Positionierung."""
+    """Applies calculated layout with aggressive multi-stage positioning."""
 
     def __init__(self, overlay):
         self.overlay = overlay
 
     def apply_layout(self, layout: dict, win_id: str):
-        """Wendet das Layout an."""
-        # 1. Frank anpassen falls nötig
+        """Applies the layout."""
+        # 1. Adjust Frank if necessary
         if layout["frank_action"] != "none":
             self._adjust_frank(layout["frank"], layout["frank_action"])
             time.sleep(0.15)
 
-        # 2. App positionieren (aggressiv)
+        # 2. Position app (aggressive)
         self._position_app_aggressive(win_id, layout["app"])
 
     def _adjust_frank(self, geometry: dict, action: str):
-        """Passt Frank an (thread-safe via after())."""
+        """Adjusts Frank (thread-safe via after())."""
         LOG.info(f"BSN: Adjusting Frank ({action}) -> {geometry['width']}x{geometry['height']} at ({geometry['x']},{geometry['y']})")
 
         x, y = geometry["x"], geometry["y"]
@@ -47,35 +47,35 @@ class WindowPositioner:
             pass  # Overlay may be destroyed
 
     def _position_app_aggressive(self, win_id: str, geometry: dict):
-        """Positioniert App mit 5-Stufen Eskalation."""
+        """Positions app with 5-stage escalation."""
         x, y = geometry["x"], geometry["y"]
         w, h = geometry["width"], geometry["height"]
 
         def _do_position():
             LOG.debug(f"BSN: Positioning {win_id} to {w}x{h} at ({x},{y})")
 
-            # Stage 1: Sofort
+            # Stage 1: Immediately
             self._wmctrl_position(win_id, x, y, w, h)
 
-            # Stage 2: Nach 150ms
+            # Stage 2: After 150ms
             time.sleep(0.15)
             if not self._verify_position(win_id, x):
                 LOG.debug(f"BSN: Stage 2 retry for {win_id}")
                 self._wmctrl_position(win_id, x, y, w, h)
 
-            # Stage 3: Nach 350ms
+            # Stage 3: After 350ms
             time.sleep(0.2)
             if not self._verify_position(win_id, x):
                 LOG.debug(f"BSN: Stage 3 retry for {win_id}")
                 self._wmctrl_position(win_id, x, y, w, h)
 
-            # Stage 4: Nach 650ms - FORCE
+            # Stage 4: After 650ms - FORCE
             time.sleep(0.3)
             if not self._verify_position(win_id, x):
                 LOG.debug(f"BSN: Stage 4 FORCE for {win_id}")
                 self._force_position(win_id, x, y, w, h)
 
-            # Stage 5: Finale Verifikation
+            # Stage 5: Final verification
             time.sleep(0.4)
             if self._verify_position(win_id, x):
                 LOG.info(f"BSN: Window {win_id} positioned successfully")
@@ -85,7 +85,7 @@ class WindowPositioner:
         threading.Thread(target=_do_position, daemon=True).start()
 
     def _wmctrl_position(self, win_id: str, x: int, y: int, w: int, h: int):
-        """Standard wmctrl Positionierung."""
+        """Standard wmctrl positioning."""
         try:
             # Unmaximize
             subprocess.run([
@@ -93,7 +93,7 @@ class WindowPositioner:
                 "-b", "remove,maximized_vert,maximized_horz"
             ], capture_output=True, timeout=2)
 
-            # Position setzen
+            # Set position
             subprocess.run([
                 "wmctrl", "-i", "-r", win_id,
                 "-e", f"0,{x},{y},{w},{h}"
@@ -102,7 +102,7 @@ class WindowPositioner:
             LOG.error(f"BSN: wmctrl error: {e}")
 
     def _force_position(self, win_id: str, x: int, y: int, w: int, h: int):
-        """Aggressive Positionierung mit wmctrl + xdotool."""
+        """Aggressive positioning with wmctrl + xdotool."""
         self._wmctrl_position(win_id, x, y, w, h)
         time.sleep(0.05)
 
@@ -116,7 +116,7 @@ class WindowPositioner:
             LOG.debug(f"BSN: xdotool fallback error: {e}")
 
     def _verify_position(self, win_id: str, expected_x: int) -> bool:
-        """Prüft ob Fenster korrekt positioniert ist."""
+        """Checks if window is correctly positioned."""
         try:
             result = subprocess.run(
                 ["xdotool", "getwindowgeometry", "--shell", win_id],

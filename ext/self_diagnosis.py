@@ -2,17 +2,17 @@
 """
 Self-Diagnosis Daemon v1.0
 ==========================
-Überwacht Log-Dateien auf wiederkehrende Fehler, analysiert betroffenen
-Quellcode und erstellt Genesis-Proposals mit konkreten Fix-Vorschlägen.
+Monitors log files for recurring errors, analyzes affected
+source code and creates Genesis proposals with concrete fix suggestions.
 
-Das Genesis-Popup im Overlay zeigt die Proposals sofort an.
+The Genesis popup in the overlay displays the proposals immediately.
 
-Erkannte Patterns:
-  - NameError     → Ähnlichste Variable im Scope finden
-  - AttributeError → None-Guard vorschlagen
-  - ImportError   → Import-Statement vorschlagen
-  - TypeError     → Signatur-Mismatch erkennen
-  - KeyError      → .get() mit Default vorschlagen
+Recognized patterns:
+  - NameError     -> Find closest variable in scope
+  - AttributeError -> Suggest None guard
+  - ImportError   -> Suggest import statement
+  - TypeError     -> Detect signature mismatch
+  - KeyError      -> Suggest .get() with default
 """
 
 import ast
@@ -45,7 +45,7 @@ LOG_DIR = AICORE_LOG
 DIAGNOSIS_LOG = LOG_DIR / "self_diagnosis.log"
 PROPOSALS_FILE = TRAINING_LOG_DIR / "proposals.jsonl"
 
-# Log-Dateien die überwacht werden
+# Log files being monitored
 WATCHED_LOGS = [
     Path("/tmp/overlay.log"),
     LOG_DIR / "core.log",
@@ -69,10 +69,10 @@ LOG = logging.getLogger("self_diagnosis")
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-CHECK_INTERVAL_S = 60        # Alle 60 Sekunden Logs prüfen
-ERROR_THRESHOLD = 3          # Ab 3 gleichen Fehlern → Proposal
-WINDOW_SECONDS = 600         # 10-Minuten-Fenster für Fehler-Gruppierung
-MAX_PROPOSALS_PER_HOUR = 5   # Rate-Limit für Proposals
+CHECK_INTERVAL_S = 60        # Check logs every 60 seconds
+ERROR_THRESHOLD = 3          # After 3 identical errors -> Proposal
+WINDOW_SECONDS = 600         # 10-minute window for error grouping
+MAX_PROPOSALS_PER_HOUR = 5   # Rate limit for proposals
 
 
 # ---------------------------------------------------------------------------
@@ -80,26 +80,26 @@ MAX_PROPOSALS_PER_HOUR = 5   # Rate-Limit für Proposals
 # ---------------------------------------------------------------------------
 @dataclass
 class ErrorEntry:
-    """Ein einzelner Fehler-Eintrag aus dem Log."""
+    """A single error entry from the log."""
     timestamp: str
     level: str              # ERROR, CRITICAL
-    message: str            # Die Fehlermeldung
-    exception_type: str     # z.B. NameError, AttributeError
-    exception_msg: str      # Die konkrete Exception-Nachricht
-    source_file: str        # Datei aus Traceback
-    line_number: int        # Zeile aus Traceback
-    function_name: str      # Funktion aus Traceback
-    full_traceback: str     # Kompletter Traceback
+    message: str            # The error message
+    exception_type: str     # e.g. NameError, AttributeError
+    exception_msg: str      # The concrete exception message
+    source_file: str        # File from traceback
+    line_number: int        # Line from traceback
+    function_name: str      # Function from traceback
+    full_traceback: str     # Complete traceback
 
 
 @dataclass
 class ErrorGroup:
-    """Gruppierung gleicher Fehler."""
+    """Grouping of identical errors."""
     key: Tuple[str, str, str]   # (exception_type, source_file, function_name)
     entries: List[ErrorEntry] = field(default_factory=list)
     first_seen: float = 0.0
     last_seen: float = 0.0
-    proposed: bool = False      # Wurde bereits ein Proposal erstellt?
+    proposed: bool = False      # Was a proposal already created?
     proposal_id: Optional[int] = None
 
     @property
@@ -109,14 +109,14 @@ class ErrorGroup:
 
 @dataclass
 class DiagnosisResult:
-    """Ergebnis einer Fehler-Analyse."""
+    """Result of an error analysis."""
     error_type: str
     source_file: str
     line_number: int
     function_name: str
-    description: str        # Beschreibung des Problems
-    fix_suggestion: str     # Vorgeschlagener Fix (Text)
-    fix_code: Optional[str] # Konkreter Code-Fix
+    description: str        # Description of the problem
+    fix_suggestion: str     # Suggested fix (text)
+    fix_code: Optional[str] # Concrete code fix
     confidence: float       # 0.0-1.0
     risk: float             # 0.0-1.0
     occurrence_count: int
@@ -126,24 +126,24 @@ class DiagnosisResult:
 # ---------------------------------------------------------------------------
 # Error parsing
 # ---------------------------------------------------------------------------
-# Regex für Log-Zeilen: [2026-02-06 22:41:33,123] ERROR: ...
+# Regex for log lines: [2026-02-06 22:41:33,123] ERROR: ...
 _LOG_LINE_RE = re.compile(
     r"\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[^\]]*)\]\s+(ERROR|CRITICAL)[\s:]+(.+)"
 )
 
-# Traceback-Extraktion: File "...", line X, in func
+# Traceback extraction: File "...", line X, in func
 _TRACEBACK_FILE_RE = re.compile(
     r'File\s+"([^"]+)",\s+line\s+(\d+),\s+in\s+(\S+)'
 )
 
-# Exception-Zeile: ExceptionType: message
+# Exception line: ExceptionType: message
 _EXCEPTION_RE = re.compile(
     r"^(\w+(?:Error|Exception|Warning|Interrupt))\s*:\s*(.+)"
 )
 
 
 def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
-    """Parse Log-Zeilen in ErrorEntry-Objekte."""
+    """Parse log lines into ErrorEntry objects."""
     entries = []
     i = 0
     while i < len(lines):
@@ -157,8 +157,8 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
         level = m.group(2)
         message = m.group(3)
 
-        # Sammle Traceback-Zeilen (folgende Zeilen die mit Whitespace beginnen
-        # oder "Traceback" / "File " / Exception-Typ enthalten)
+        # Collect traceback lines (following lines that start with whitespace
+        # or contain "Traceback" / "File " / exception type)
         tb_lines = [line]
         j = i + 1
         while j < len(lines):
@@ -174,7 +174,7 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
 
         full_tb = "\n".join(tb_lines)
 
-        # Extrahiere Source-Info aus Traceback (letztes File-Match = Fehlerquelle)
+        # Extract source info from traceback (last File match = error source)
         file_matches = _TRACEBACK_FILE_RE.findall(full_tb)
         source_file = ""
         line_number = 0
@@ -185,7 +185,7 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
             line_number = int(last[1])
             function_name = last[2]
 
-        # Extrahiere Exception-Typ
+        # Extract exception type
         exception_type = ""
         exception_msg = ""
         for tb_line in reversed(tb_lines):
@@ -195,7 +195,7 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
                 exception_msg = exc_m.group(2)
                 break
 
-        # Wenn kein expliziter Exception-Typ gefunden, aus Message extrahieren
+        # If no explicit exception type found, extract from message
         if not exception_type:
             exc_m = _EXCEPTION_RE.search(message)
             if exc_m:
@@ -205,7 +205,7 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
                 exception_type = "UnknownError"
                 exception_msg = message
 
-        if source_file:  # Nur Fehler mit identifizierbarer Quelle
+        if source_file:  # Only errors with identifiable source
             entries.append(ErrorEntry(
                 timestamp=timestamp,
                 level=level,
@@ -218,7 +218,7 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
                 full_traceback=full_tb,
             ))
 
-        i = j  # Springe über Traceback-Zeilen
+        i = j  # Skip over traceback lines
 
     return entries
 
@@ -228,7 +228,7 @@ def parse_error_entries(lines: List[str]) -> List[ErrorEntry]:
 # ---------------------------------------------------------------------------
 
 def _read_source_context(filepath: str, line_num: int, context: int = 15) -> str:
-    """Lies Quellcode um die Fehlerzeile herum."""
+    """Read source code around the error line."""
     try:
         path = Path(filepath)
         if not path.exists():
@@ -244,7 +244,7 @@ def _read_source_context(filepath: str, line_num: int, context: int = 15) -> str
 
 
 def _find_similar_names(filepath: str, wrong_name: str) -> List[str]:
-    """Finde ähnliche Variablennamen im gleichen File via AST."""
+    """Find similar variable names in the same file via AST."""
     try:
         source = Path(filepath).read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -264,14 +264,14 @@ def _find_similar_names(filepath: str, wrong_name: str) -> List[str]:
                 if isinstance(target, ast.Name):
                     names.add(target.id)
 
-    # Finde ähnlichste Namen
+    # Find closest matching names
     matches = difflib.get_close_matches(wrong_name, list(names), n=3, cutoff=0.5)
     return matches
 
 
 def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
-    """Analysiere eine Fehlergruppe und erstelle Fix-Vorschlag."""
-    entry = group.entries[-1]  # Neuester Eintrag
+    """Analyze an error group and create fix suggestion."""
+    entry = group.entries[-1]  # Most recent entry
     exc_type = entry.exception_type
     exc_msg = entry.exception_msg
     src = entry.source_file
@@ -294,11 +294,11 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
                 function_name=func,
                 description=(
                     f"NameError in {Path(src).name}:{line} ({func}): "
-                    f"Variable '{wrong_name}' existiert nicht. "
-                    f"Wahrscheinlich Tippfehler — ähnliche Namen: {similar}"
+                    f"Variable '{wrong_name}' does not exist. "
+                    f"Likely a typo -- similar names: {similar}"
                 ),
-                fix_suggestion=f"Ersetze '{wrong_name}' durch '{best}' in Zeile {line}",
-                fix_code=f"# In {Path(src).name}, Zeile {line}:\n# Ersetze: {wrong_name}\n# Durch:   {best}",
+                fix_suggestion=f"Replace '{wrong_name}' with '{best}' on line {line}",
+                fix_code=f"# In {Path(src).name}, line {line}:\n# Replace: {wrong_name}\n# With:    {best}",
                 confidence=0.9,
                 risk=0.1,
                 occurrence_count=group.count,
@@ -312,9 +312,9 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
                 function_name=func,
                 description=(
                     f"NameError in {Path(src).name}:{line} ({func}): "
-                    f"Variable '{wrong_name}' nicht definiert. Kein ähnlicher Name gefunden."
+                    f"Variable '{wrong_name}' not defined. No similar name found."
                 ),
-                fix_suggestion=f"Prüfe ob '{wrong_name}' definiert wurde oder importiert werden muss",
+                fix_suggestion=f"Check whether '{wrong_name}' was defined or needs to be imported",
                 fix_code=None,
                 confidence=0.6,
                 risk=0.2,
@@ -333,10 +333,10 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
             function_name=func,
             description=(
                 f"AttributeError in {Path(src).name}:{line} ({func}): "
-                f"Zugriff auf '.{attr}' auf None-Objekt. Fehlende None-Prüfung."
+                f"Access to '.{attr}' on None object. Missing None check."
             ),
-            fix_suggestion=f"Füge 'if obj is not None:' Guard vor Zeile {line} ein",
-            fix_code=f"# In {Path(src).name}, Zeile {line}:\n# Füge hinzu: if variable is not None:",
+            fix_suggestion=f"Add 'if obj is not None:' guard before line {line}",
+            fix_code=f"# In {Path(src).name}, line {line}:\n# Add: if variable is not None:",
             confidence=0.85,
             risk=0.1,
             occurrence_count=group.count,
@@ -354,11 +354,11 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
             function_name=func,
             description=(
                 f"ImportError in {Path(src).name}:{line}: "
-                f"Modul '{module}' nicht gefunden. Entweder nicht installiert "
-                f"oder falscher Modulname."
+                f"Module '{module}' not found. Either not installed "
+                f"or wrong module name."
             ),
-            fix_suggestion=f"Prüfe: pip install {module} oder korrigiere den Import-Pfad",
-            fix_code=f"# pip install {module}\n# Oder prüfe ob der Modulname korrekt ist",
+            fix_suggestion=f"Check: pip install {module} or correct the import path",
+            fix_code=f"# pip install {module}\n# Or check if the module name is correct",
             confidence=0.7,
             risk=0.15,
             occurrence_count=group.count,
@@ -376,11 +376,11 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
             function_name=func,
             description=(
                 f"TypeError in {Path(src).name}:{line} ({func}): "
-                f"Unerwartetes Keyword-Argument '{kwarg}'. "
-                f"Funktionssignatur stimmt nicht überein."
+                f"Unexpected keyword argument '{kwarg}'. "
+                f"Function signature mismatch."
             ),
-            fix_suggestion=f"Prüfe die Signatur der aufgerufenen Funktion — '{kwarg}' entfernen oder umbenennen",
-            fix_code=f"# Prüfe Funktionssignatur an der Aufrufstelle\n# Entferne oder korrigiere: {kwarg}=...",
+            fix_suggestion=f"Check the signature of the called function -- remove or rename '{kwarg}'",
+            fix_code=f"# Check function signature at the call site\n# Remove or fix: {kwarg}=...",
             confidence=0.8,
             risk=0.1,
             occurrence_count=group.count,
@@ -398,17 +398,17 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
             function_name=func,
             description=(
                 f"KeyError in {Path(src).name}:{line} ({func}): "
-                f"Key '{key}' nicht im Dictionary. Fehlender .get()-Aufruf."
+                f"Key '{key}' not in dictionary. Missing .get() call."
             ),
-            fix_suggestion=f"Ersetze dict['{key}'] durch dict.get('{key}', default_value)",
-            fix_code=f"# In {Path(src).name}, Zeile {line}:\n# Ersetze: data['{key}']\n# Durch:   data.get('{key}', None)",
+            fix_suggestion=f"Replace dict['{key}'] with dict.get('{key}', default_value)",
+            fix_code=f"# In {Path(src).name}, line {line}:\n# Replace: data['{key}']\n# With:    data.get('{key}', None)",
             confidence=0.85,
             risk=0.1,
             occurrence_count=group.count,
             traceback=entry.full_traceback,
         )
 
-    # ---- Generischer Fehler ----
+    # ---- Generic error ----
     return DiagnosisResult(
         error_type=exc_type,
         source_file=src,
@@ -417,7 +417,7 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
         description=(
             f"{exc_type} in {Path(src).name}:{line} ({func}): {exc_msg}"
         ),
-        fix_suggestion="Manuelle Analyse erforderlich",
+        fix_suggestion="Manual analysis required",
         fix_code=None,
         confidence=0.5,
         risk=0.2,
@@ -431,7 +431,7 @@ def analyze_error(group: ErrorGroup) -> Optional[DiagnosisResult]:
 # ---------------------------------------------------------------------------
 
 def _get_next_proposal_id() -> int:
-    """Nächste freie Proposal-ID aus JSONL lesen."""
+    """Read next free proposal ID from JSONL."""
     max_id = 0
     if PROPOSALS_FILE.exists():
         try:
@@ -453,19 +453,19 @@ def _get_next_proposal_id() -> int:
 
 
 def create_proposal(diagnosis: DiagnosisResult) -> Optional[int]:
-    """Erstelle Genesis-Proposal aus Diagnose-Ergebnis. Gibt Proposal-ID zurück."""
+    """Create Genesis proposal from diagnosis result. Returns proposal ID."""
     try:
         PROPOSALS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
         pid = _get_next_proposal_id()
 
-        # Beschreibung mit Kontext für das Popup
+        # Description with context for the popup
         desc_parts = [
-            f"🔍 AUTO-DIAGNOSE: {diagnosis.error_type}",
+            f"🔍 AUTO-DIAGNOSIS: {diagnosis.error_type}",
             f"",
-            f"Datei: {diagnosis.source_file}:{diagnosis.line_number}",
-            f"Funktion: {diagnosis.function_name}",
-            f"Auftreten: {diagnosis.occurrence_count}x",
+            f"File: {diagnosis.source_file}:{diagnosis.line_number}",
+            f"Function: {diagnosis.function_name}",
+            f"Occurrences: {diagnosis.occurrence_count}x",
             f"",
             f"Problem: {diagnosis.description}",
             f"",
@@ -482,7 +482,7 @@ def create_proposal(diagnosis: DiagnosisResult) -> Optional[int]:
             "confidence": diagnosis.confidence,
             "risk": diagnosis.risk,
             "causal_reasoning": (
-                f"Fehler {diagnosis.error_type} trat {diagnosis.occurrence_count}x auf "
+                f"Error {diagnosis.error_type} occurred {diagnosis.occurrence_count}x "
                 f"in {diagnosis.source_file}:{diagnosis.line_number} ({diagnosis.function_name}). "
                 f"Traceback: {diagnosis.traceback[:300]}"
             ),
@@ -501,11 +501,11 @@ def create_proposal(diagnosis: DiagnosisResult) -> Optional[int]:
         with open(PROPOSALS_FILE, "a") as f:
             f.write(json.dumps(proposal) + "\n")
 
-        LOG.info(f"Genesis Proposal #{pid} erstellt: {diagnosis.error_type} in {Path(diagnosis.source_file).name}:{diagnosis.line_number}")
+        LOG.info(f"Genesis Proposal #{pid} created: {diagnosis.error_type} in {Path(diagnosis.source_file).name}:{diagnosis.line_number}")
         return pid
 
     except Exception as e:
-        LOG.error(f"Konnte Proposal nicht erstellen: {e}", exc_info=True)
+        LOG.error(f"Could not create proposal: {e}", exc_info=True)
         return None
 
 
@@ -514,49 +514,49 @@ def create_proposal(diagnosis: DiagnosisResult) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 class SelfDiagnosisDaemon:
-    """Überwacht Logs auf Fehler und erstellt automatisch Fix-Proposals."""
+    """Monitors logs for errors and automatically creates fix proposals."""
 
     def __init__(self):
         self._running = False
         self._shutdown_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-        # Log-Positionen (tail-artig)
+        # Log positions (tail-like)
         self._log_positions: Dict[str, int] = {}
 
-        # Fehler-Gruppierung: (exc_type, file, func) → ErrorGroup
+        # Error grouping: (exc_type, file, func) -> ErrorGroup
         self._error_groups: Dict[Tuple[str, str, str], ErrorGroup] = {}
 
-        # Bereits vorgeschlagene Fixes (verhindert Doppel-Proposals)
+        # Already proposed fixes (prevents duplicate proposals)
         self._proposed_keys: Set[Tuple[str, str, str]] = set()
 
-        # Rate-Limiting
+        # Rate limiting
         self._proposals_this_hour: List[float] = []
 
-        LOG.info("Self-Diagnosis Daemon initialisiert")
+        LOG.info("Self-Diagnosis Daemon initialized")
 
     def start(self):
-        """Starte den Daemon."""
+        """Start the daemon."""
         if self._running:
-            LOG.warning("Daemon läuft bereits")
+            LOG.warning("Daemon is already running")
             return
         self._running = True
         self._shutdown_event.clear()
         self._thread = threading.Thread(target=self._daemon_loop, daemon=True)
         self._thread.start()
-        LOG.info("Self-Diagnosis Daemon gestartet")
+        LOG.info("Self-Diagnosis Daemon started")
 
     def stop(self):
-        """Stoppe den Daemon."""
-        LOG.info("Stoppe Self-Diagnosis Daemon...")
+        """Stop the daemon."""
+        LOG.info("Stopping Self-Diagnosis Daemon...")
         self._running = False
         self._shutdown_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
-        LOG.info("Self-Diagnosis Daemon gestoppt")
+        LOG.info("Self-Diagnosis Daemon stopped")
 
     def get_status(self) -> Dict:
-        """Status-Abfrage."""
+        """Status query."""
         return {
             "running": self._running,
             "watched_logs": [str(p) for p in WATCHED_LOGS],
@@ -570,9 +570,9 @@ class SelfDiagnosisDaemon:
         }
 
     def _daemon_loop(self):
-        """Haupt-Loop."""
-        LOG.info("Diagnosis-Loop gestartet")
-        # Initiale Positionen auf Ende setzen (nur neue Fehler erkennen)
+        """Main loop."""
+        LOG.info("Diagnosis loop started")
+        # Set initial positions to end (only detect new errors)
         for log_path in WATCHED_LOGS:
             if log_path.exists():
                 self._log_positions[str(log_path)] = log_path.stat().st_size
@@ -581,33 +581,33 @@ class SelfDiagnosisDaemon:
             try:
                 self._scan_cycle()
             except Exception as e:
-                LOG.error(f"Scan-Cycle Fehler: {e}", exc_info=True)
+                LOG.error(f"Scan cycle error: {e}", exc_info=True)
             self._shutdown_event.wait(CHECK_INTERVAL_S)
 
-        LOG.info("Diagnosis-Loop beendet")
+        LOG.info("Diagnosis loop ended")
 
     def _scan_cycle(self):
-        """Ein Scan-Durchlauf: Logs lesen → Fehler parsen → gruppieren → analysieren."""
+        """One scan pass: read logs -> parse errors -> group -> analyze."""
         now = time.time()
 
-        # Rate-Limit prüfen
+        # Check rate limit
         self._proposals_this_hour = [
             t for t in self._proposals_this_hour if now - t < 3600
         ]
 
-        # 1. Neue Log-Zeilen lesen
+        # 1. Read new log lines
         new_lines = self._read_new_lines()
         if not new_lines:
             return
 
-        # 2. Fehler parsen
+        # 2. Parse errors
         errors = parse_error_entries(new_lines)
         if not errors:
             return
 
-        LOG.info(f"Gefunden: {len(errors)} neue Fehler-Einträge")
+        LOG.info(f"Found: {len(errors)} new error entries")
 
-        # 3. Gruppieren
+        # 3. Group
         for err in errors:
             key = (err.exception_type, err.source_file, err.function_name)
             if key not in self._error_groups:
@@ -618,7 +618,7 @@ class SelfDiagnosisDaemon:
             group.entries.append(err)
             group.last_seen = now
 
-        # 4. Alte Einträge bereinigen (außerhalb des Fensters)
+        # 4. Clean up old entries (outside the window)
         for key, group in list(self._error_groups.items()):
             group.entries = [
                 e for e in group.entries
@@ -627,28 +627,28 @@ class SelfDiagnosisDaemon:
             if not group.entries:
                 del self._error_groups[key]
 
-        # 5. Analysieren und Proposals erstellen
+        # 5. Analyze and create proposals
         for key, group in self._error_groups.items():
             if group.proposed or key in self._proposed_keys:
                 continue
             if group.count < ERROR_THRESHOLD:
                 continue
             if len(self._proposals_this_hour) >= MAX_PROPOSALS_PER_HOUR:
-                LOG.warning("Rate-Limit erreicht, keine weiteren Proposals")
+                LOG.warning("Rate limit reached, no further proposals")
                 break
 
-            # Analysieren
+            # Analyze
             diagnosis = analyze_error(group)
             if diagnosis is None:
                 continue
 
             LOG.info(
-                f"Diagnose: {diagnosis.error_type} in "
+                f"Diagnosis: {diagnosis.error_type} in "
                 f"{Path(diagnosis.source_file).name}:{diagnosis.line_number} "
-                f"({group.count}x) — Confidence: {diagnosis.confidence:.0%}"
+                f"({group.count}x) -- Confidence: {diagnosis.confidence:.0%}"
             )
 
-            # Proposal erstellen
+            # Create proposal
             pid = create_proposal(diagnosis)
             if pid is not None:
                 group.proposed = True
@@ -657,7 +657,7 @@ class SelfDiagnosisDaemon:
                 self._proposals_this_hour.append(now)
 
     def _read_new_lines(self) -> List[str]:
-        """Lies neue Zeilen aus allen überwachten Log-Dateien."""
+        """Read new lines from all monitored log files."""
         all_lines = []
         for log_path in WATCHED_LOGS:
             path_str = str(log_path)
@@ -668,7 +668,7 @@ class SelfDiagnosisDaemon:
                 current_size = log_path.stat().st_size
                 last_pos = self._log_positions.get(path_str, 0)
 
-                # Log wurde rotiert/gekürzt
+                # Log was rotated/truncated
                 if current_size < last_pos:
                     last_pos = 0
 
@@ -684,15 +684,15 @@ class SelfDiagnosisDaemon:
                 all_lines.extend(lines)
 
             except OSError as e:
-                LOG.warning(f"Konnte {log_path} nicht lesen: {e}")
+                LOG.warning(f"Could not read {log_path}: {e}")
             except Exception as e:
-                LOG.error(f"Fehler beim Lesen von {log_path}: {e}", exc_info=True)
+                LOG.error(f"Error reading {log_path}: {e}", exc_info=True)
 
         return all_lines
 
     @staticmethod
     def _parse_ts(ts_str: str) -> float:
-        """Parse Timestamp-String zu Unix-Time."""
+        """Parse timestamp string to Unix time."""
         try:
             # Format: 2026-02-06 22:41:33,123 oder 2026-02-06 22:41:33
             clean = ts_str.split(",")[0].strip()
@@ -710,7 +710,7 @@ _daemon_lock = threading.Lock()
 
 
 def get_self_diagnosis() -> SelfDiagnosisDaemon:
-    """Singleton-Zugriff auf den Daemon."""
+    """Singleton access to the daemon."""
     global _daemon
     if _daemon is None:
         with _daemon_lock:
@@ -720,7 +720,7 @@ def get_self_diagnosis() -> SelfDiagnosisDaemon:
 
 
 def get_diagnosis_status() -> Dict:
-    """Status des Daemons abfragen."""
+    """Query daemon status."""
     return get_self_diagnosis().get_status()
 
 
@@ -728,9 +728,9 @@ def get_diagnosis_status() -> Dict:
 # Standalone entry point
 # ---------------------------------------------------------------------------
 def main():
-    """Standalone-Start des Daemons."""
+    """Standalone start of the daemon."""
     def _signal_handler(signum, frame):
-        LOG.info(f"Signal {signum} empfangen")
+        LOG.info(f"Signal {signum} received")
         if _daemon:
             _daemon.stop()
 
@@ -740,11 +740,11 @@ def main():
     daemon = get_self_diagnosis()
     try:
         daemon.start()
-        LOG.info("Self-Diagnosis Daemon läuft — Ctrl+C zum Beenden")
+        LOG.info("Self-Diagnosis Daemon running -- Ctrl+C to stop")
         while daemon._running:
             time.sleep(1)
     except KeyboardInterrupt:
-        LOG.info("Unterbrochen durch Benutzer")
+        LOG.info("Interrupted by user")
     finally:
         daemon.stop()
 

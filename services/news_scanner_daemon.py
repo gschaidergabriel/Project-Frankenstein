@@ -1027,7 +1027,7 @@ def context_inject(user_message: str, max_items: int = 5) -> str:
         return ""
 
     return (
-        "[Aktuelle News aus Franks taeglichem Scan:\n"
+        "[Recent news from Frank's daily scan:\n"
         + "\n".join(lines)
         + "]\n"
     )
@@ -1095,9 +1095,9 @@ def _format_digest(digest: dict) -> str:
     features = digest.get("feature_candidates", [])
 
     if not articles:
-        lines.append("Keine Artikel in den letzten %d Tagen." % digest.get("period_days", 1))
+        lines.append("No articles in the last %d days." % digest.get("period_days", 1))
     else:
-        lines.append(f"=== News Digest ({len(articles)} Artikel) ===\n")
+        lines.append(f"=== News Digest ({len(articles)} articles) ===\n")
         # Group by source
         by_source: Dict[str, list] = {}
         for a in articles:
@@ -1106,14 +1106,14 @@ def _format_digest(digest: dict) -> str:
         for src, arts in by_source.items():
             lines.append(f"--- {src} ({len(arts)}) ---")
             for a in arts[:5]:
-                title = a.get("title", "(kein Titel)")[:80]
+                title = a.get("title", "(no title)")[:80]
                 lines.append(f"  * {title}")
             if len(arts) > 5:
-                lines.append(f"  ... und {len(arts) - 5} weitere")
+                lines.append(f"  ... and {len(arts) - 5} more")
             lines.append("")
 
     if features:
-        lines.append(f"\n=== Feature-Kandidaten ({len(features)}) ===\n")
+        lines.append(f"\n=== Feature Candidates ({len(features)}) ===\n")
         for f in features:
             title = f.get("title", "")[:60]
             kw = f.get("feature_keywords_matched", "")
@@ -1163,9 +1163,9 @@ def main():
     if args.features:
         features = daemon.get_feature_candidates(days=7)
         if not features:
-            print("Keine Feature-Kandidaten in den letzten 7 Tagen.")
+            print("No feature candidates in the last 7 days.")
         else:
-            print(f"=== Feature-Kandidaten ({len(features)}) ===\n")
+            print(f"=== Feature Candidates ({len(features)}) ===\n")
             for f in features:
                 print(f"  * {f.get('title', '')[:80]}")
                 print(f"    URL: {f.get('url', '')}")

@@ -190,7 +190,7 @@ class AppManager:
         apps = self.find_app_by_name(app_name)
 
         if not apps:
-            return False, f"Keine laufende App namens '{app_name}' gefunden."
+            return False, f"No running app named '{app_name}' found."
 
         closed_count = 0
         errors = []
@@ -214,7 +214,7 @@ class AppManager:
                         timeout=5
                     )
                     if kill_result.returncode != 0:
-                        errors.append(f"{app.name}: kill fehlgeschlagen")
+                        errors.append(f"{app.name}: kill failed")
                         continue
 
                 closed_count += 1
@@ -226,10 +226,10 @@ class AppManager:
 
         if closed_count > 0:
             if errors:
-                return True, f"{closed_count} App(s) geschlossen, {len(errors)} Fehler."
-            return True, f"{app_name} geschlossen."
+                return True, f"{closed_count} app(s) closed, {len(errors)} errors."
+            return True, f"{app_name} closed."
 
-        return False, f"Konnte {app_name} nicht schließen: {', '.join(errors)}"
+        return False, f"Could not close {app_name}: {', '.join(errors)}"
 
     def close_app_by_pid(self, pid: int) -> Tuple[bool, str]:
         """Close app by PID (graceful)."""
@@ -242,20 +242,20 @@ class AppManager:
                 timeout=5
             )
             if result.returncode == 0:
-                return True, f"App (PID {pid}) geschlossen."
+                return True, f"App (PID {pid}) closed."
             else:
-                return False, f"Konnte PID {pid} nicht beenden: {result.stderr}"
+                return False, f"Could not terminate PID {pid}: {result.stderr}"
         except Exception as e:
-            return False, f"Fehler: {e}"
+            return False, f"Error: {e}"
 
     def list_running_apps(self) -> str:
         """Format list of running apps."""
         apps = self.get_running_apps()
 
         if not apps:
-            return "Keine GUI-Anwendungen gefunden."
+            return "No GUI applications found."
 
-        lines = ["LAUFENDE ANWENDUNGEN:", "=" * 40, ""]
+        lines = ["RUNNING APPLICATIONS:", "=" * 40, ""]
 
         # Group by name
         by_name: Dict[str, List[RunningApp]] = {}
@@ -275,10 +275,10 @@ class AppManager:
                 if title:
                     lines.append(f"    '{title}'")
             else:
-                lines.append(f"  {name} ({len(app_list)} Fenster)")
+                lines.append(f"  {name} ({len(app_list)} windows)")
 
         lines.append("")
-        lines.append("Sage z.B. 'Schließ Discord' oder 'Beende Blender'")
+        lines.append("Say e.g. 'close Discord' or 'quit Blender'")
 
         return "\n".join(lines)
 

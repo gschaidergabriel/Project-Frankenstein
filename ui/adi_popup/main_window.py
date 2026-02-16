@@ -183,7 +183,7 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         title.set_halign(Gtk.Align.START)
         title_box.append(title)
 
-        status_text = "NEUER MONITOR ERKANNT" if self.is_new_monitor else "KONFIGURATION BEARBEITEN"
+        status_text = "NEW MONITOR DETECTED" if self.is_new_monitor else "EDIT CONFIGURATION"
         subtitle = Gtk.Label(label=status_text)
         subtitle.add_css_class("adi-subtitle")
         subtitle.set_halign(Gtk.Align.START)
@@ -230,7 +230,7 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         # Monitor info
         info_text = f"<b>{self.monitor.get_display_name()}</b> | {self.monitor.width}x{self.monitor.height} @ {self.monitor.refresh}Hz"
         if self.is_new_monitor:
-            info_text += " | <span color='#00ff88'>NEU ERKANNT</span>"
+            info_text += " | <span color='#00ff88'>NEWLY DETECTED</span>"
 
         monitor_info = Gtk.Label()
         monitor_info.add_css_class("adi-monitor-info")
@@ -249,7 +249,7 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         parent.append(chat_container)
 
         # Label
-        label = Gtk.Label(label="CHAT MIT FRANK")
+        label = Gtk.Label(label="CHAT WITH FRANK")
         label.add_css_class("adi-chat-label")
         label.set_halign(Gtk.Align.START)
         chat_container.append(label)
@@ -280,12 +280,12 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
 
         self.chat_input = Gtk.Entry()
         self.chat_input.add_css_class("adi-chat-input")
-        self.chat_input.set_placeholder_text("Schreibe hier...")
+        self.chat_input.set_placeholder_text("Type here...")
         self.chat_input.set_hexpand(True)
         self.chat_input.connect("activate", self._on_send_message)
         input_box.append(self.chat_input)
 
-        send_btn = Gtk.Button(label="SENDEN")
+        send_btn = Gtk.Button(label="SEND")
         send_btn.add_css_class("adi-send-button")
         send_btn.connect("clicked", self._on_send_message)
         input_box.append(send_btn)
@@ -302,13 +302,13 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         parent.append(actions)
 
         # Apply button
-        apply_btn = Gtk.Button(label="ANWENDEN")
+        apply_btn = Gtk.Button(label="APPLY")
         apply_btn.add_css_class("adi-button-primary")
         apply_btn.connect("clicked", self._on_apply)
         actions.append(apply_btn)
 
         # Later button
-        later_btn = Gtk.Button(label="SPÄTER")
+        later_btn = Gtk.Button(label="LATER")
         later_btn.add_css_class("adi-button-secondary")
         later_btn.connect("clicked", self._on_later)
         actions.append(later_btn)
@@ -580,7 +580,7 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         msg_box.add_css_class(f"adi-message-{sender}")
 
         # Sender label
-        sender_label = Gtk.Label(label="FRANK" if sender == "frank" else "DU")
+        sender_label = Gtk.Label(label="FRANK" if sender == "frank" else "YOU")
         sender_label.add_css_class("adi-message-sender")
         sender_label.add_css_class(f"adi-message-sender-{sender}")
         sender_label.set_halign(Gtk.Align.START)
@@ -636,7 +636,7 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
             GLib.idle_add(
                 self._add_message,
                 "frank",
-                "Entschuldigung, da ist etwas schiefgelaufen. Bitte versuche es erneut."
+                "Sorry, something went wrong. Please try again."
             )
 
     def _on_chat_response(self, response: str, new_layout: Optional[dict]):
@@ -691,7 +691,7 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         self._write_apply_signal()
 
         # Add confirmation message
-        self._add_message("frank", "Konfiguration gespeichert! Die Einstellungen werden angewendet.")
+        self._add_message("frank", "Configuration saved! Settings will be applied.")
 
         # Close after short delay
         timer_id = GLib.timeout_add(1500, self.close)

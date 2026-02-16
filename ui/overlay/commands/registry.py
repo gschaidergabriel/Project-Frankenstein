@@ -27,7 +27,7 @@ class Command:
 COMMANDS: List[Command] = [
     # ── Search & Web ──
     Command("/search",    "Search",          "Web search",                     "search {query}",       icon="S", category="search"),
-    Command("/darknet",   "Darknet",         "Darknet / .onion search",        "darknet {query}",      icon="D", category="search"),
+    Command("/darknet",   "Darknet",         "Darknet / .onion search",        "search darknet {query}", icon="D", category="search"),
     Command("/news",      "News",            "News on a topic",                "news {topic}",         icon="N", category="search"),
     Command("/fetch",     "Fetch URL",       "Fetch & summarize a URL",        "fetch {url}",          icon="F", category="search"),
     Command("/rss",       "RSS Feed",        "Read an RSS feed",               "rss {url}",            icon="R", category="search"),
@@ -40,7 +40,7 @@ COMMANDS: List[Command] = [
     Command("/contacts",  "Contacts",        "List contacts",                  "list contacts",        icon="P", category="comm"),
 
     # ── Tasks & Notes ──
-    Command("/todo",      "Todo",            "Create a reminder/task",         "reminder {text}",      icon="T", category="tasks"),
+    Command("/todo",      "Todo",            "Create a reminder/task",         "todo {text}",          icon="T", category="tasks"),
     Command("/todos",     "Todo list",       "Show all todos",                 "list todos",           icon="T", category="tasks"),
     Command("/note",      "Note",            "Save a note",                    "note: {text}",         icon="N", category="tasks"),
     Command("/notes",     "Notes",           "List recent notes",              "list notes",           icon="N", category="tasks"),
@@ -50,7 +50,7 @@ COMMANDS: List[Command] = [
     # ── System ──
     Command("/screenshot","Screenshot",      "Analyze the screen",             "screenshot",           icon="X", category="system"),
     Command("/system",    "System",          "System health status",           "system status",        icon="G", category="system"),
-    Command("/usb",       "USB",             "List USB devices",               "usb storage",          icon="U", category="system"),
+    Command("/usb",       "USB",             "List USB devices",               "usb devices",          icon="U", category="system"),
     Command("/print",     "Printer",         "Printer status",                 "print status",         icon="P", category="system"),
     Command("/qr",        "QR Code",         "Scan or generate QR code",       "qr scan",              icon="Q", category="system"),
     Command("/network",   "Network",         "Network information",            "network info",         icon="W", category="system"),

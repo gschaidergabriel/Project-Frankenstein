@@ -818,15 +818,16 @@ class CommandRouterMixin:
             self._io_q.put(("email_general", {"user_msg": msg}))
             return
 
-        # Calendar commands — create → delete → today → week → list → general
-        if CALENDAR_CREATE_RE.search(low):
-            self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("calendar_create", {"user_msg": msg}))
-            return
-
+        # Calendar commands — delete → create → today → week → list → general
+        # DELETE must be checked before CREATE (both can match "delete ... lege an")
         if CALENDAR_DELETE_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("calendar_delete", {"query": msg, "user_msg": msg}))
+            return
+
+        if CALENDAR_CREATE_RE.search(low):
+            self._add_message("Du", msg, is_user=True)
+            self._io_q.put(("calendar_create", {"user_msg": msg}))
             return
 
         if CALENDAR_TODAY_RE.search(low):

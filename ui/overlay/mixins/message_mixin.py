@@ -70,10 +70,10 @@ class MessageMixin:
             if _last_user:
                 _retry_msg = _last_user
                 _on_retry = lambda m=_retry_msg: self._retry_last_message(m)
-            # Speak: TTS the message
-            if hasattr(self, '_voice_respond'):
+            # Speak: TTS the message (no chat duplication)
+            if hasattr(self, '_tts_speak'):
                 _speak_msg = message
-                _on_speak = lambda m=_speak_msg: self._voice_respond(m)
+                _on_speak = lambda m=_speak_msg: self._tts_speak(m)
 
         bubble = MessageBubble(
             self.messages_frame,
@@ -481,9 +481,9 @@ class MessageMixin:
             if _last_user:
                 _retry_msg = _last_user
                 _on_retry = lambda m=_retry_msg: self._retry_last_message(m)
-            if hasattr(self, '_voice_respond'):
+            if hasattr(self, '_tts_speak'):
                 _speak_text = full_text
-                _on_speak = lambda m=_speak_text: self._voice_respond(m)
+                _on_speak = lambda m=_speak_text: self._tts_speak(m)
 
             bubble = MessageBubble(
                 self.messages_frame, sender="Frank", message=full_text,

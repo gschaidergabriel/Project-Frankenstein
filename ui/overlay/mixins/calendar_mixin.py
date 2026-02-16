@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 
 from overlay.constants import LOG, FRANK_IDENTITY
 from overlay.services.core_api import _core_chat
@@ -292,15 +293,30 @@ class CalendarMixin:
         if not events:
             return
 
-        # Track reminded UIDs to avoid duplicates
+        # Track reminded UIDs to avoid duplicates (persisted to file)
         if not hasattr(self, "_reminded_calendar_uids"):
             self._reminded_calendar_uids = set()
+            _reminded_file = Path("/tmp/frank_reminded_uids.txt")
+            try:
+                if _reminded_file.exists():
+                    self._reminded_calendar_uids = set(
+                        _reminded_file.read_text().strip().split("\n")
+                    ) - {""}
+            except Exception:
+                pass
 
         for ev in events:
             uid = ev.get("uid", "")
             if uid in self._reminded_calendar_uids:
                 continue
             self._reminded_calendar_uids.add(uid)
+            # Persist so restarts don't re-remind
+            try:
+                Path("/tmp/frank_reminded_uids.txt").write_text(
+                    "\n".join(self._reminded_calendar_uids)
+                )
+            except Exception:
+                pass
 
             title = ev.get("title", "Appointment")
             start = ev.get("start", "?")

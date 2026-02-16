@@ -13,6 +13,22 @@ from overlay.widgets.message_bubble import MessageBubble
 
 class PersistenceMixin:
 
+    def _build_bubble_callbacks(self, text: str, is_user: bool):
+        """Build on_retry / on_speak callbacks for a history bubble."""
+        on_retry = None
+        on_speak = None
+        if not is_user:
+            # Find last user message in history for retry
+            for h in reversed(self._chat_history):
+                if h.get("role") == "user":
+                    _m = h.get("text", "")
+                    on_retry = lambda m=_m: self._retry_last_message(m)
+                    break
+            # TTS callback (no message duplication)
+            if hasattr(self, '_tts_speak'):
+                on_speak = lambda m=text: self._tts_speak(m)
+        return on_retry, on_speak
+
     def _save_chat_history(self):
         """Save chat history to JSON (backward compat -- SQLite is primary now)."""
         try:
@@ -48,13 +64,16 @@ class PersistenceMixin:
                         text = msg.get("text", "")
                         is_user = bool(msg.get("is_user", False))
                         if text:
+                            on_retry, on_speak = self._build_bubble_callbacks(text, is_user)
                             bubble = MessageBubble(
                                 self.messages_frame,
                                 sender=sender,
                                 message=text,
                                 is_user=is_user,
                                 is_system=False,
-                                on_link_click=lambda url: self._io_q.put(("open", url))
+                                on_link_click=lambda url: self._io_q.put(("open", url)),
+                                on_retry=on_retry,
+                                on_speak=on_speak,
                             )
                             bubble.pack(fill="x", anchor="w" if not is_user else "e")
                     # Force full layout: update_idletasks + update ensures all
@@ -84,13 +103,16 @@ class PersistenceMixin:
                 text = msg.get("text", "")
                 is_user = msg.get("is_user", msg.get("role") == "user")
                 if text:
+                    on_retry, on_speak = self._build_bubble_callbacks(text, is_user)
                     bubble = MessageBubble(
                         self.messages_frame,
                         sender=sender,
                         message=text,
                         is_user=is_user,
                         is_system=False,
-                        on_link_click=lambda url: self._io_q.put(("open", url))
+                        on_link_click=lambda url: self._io_q.put(("open", url)),
+                        on_retry=on_retry,
+                        on_speak=on_speak,
                     )
                     bubble.pack(fill="x", anchor="w" if not is_user else "e")
 

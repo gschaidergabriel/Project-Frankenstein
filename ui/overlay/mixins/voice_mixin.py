@@ -269,6 +269,22 @@ class VoiceMixin:
 
         self._pending_voice_session = None
 
+    def _tts_speak(self, text: str):
+        """Send text to TTS without adding a chat message (for SPEAK button)."""
+        if not text:
+            return
+        LOG.info(f"TTS speak: '{text[:50]}...'")
+        try:
+            outbox_data = {
+                "type": "frank_response",
+                "session_id": "",
+                "text": text,
+                "timestamp": time.time()
+            }
+            self._voice_outbox_file.write_text(json.dumps(outbox_data, ensure_ascii=False))
+        except Exception as e:
+            LOG.error(f"TTS speak failed: {e}")
+
     # ---------- Push-to-Talk ----------
     def _on_ptt_press(self, event=None):
         """Start recording when PTT button is pressed."""

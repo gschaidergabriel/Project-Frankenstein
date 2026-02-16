@@ -1,0 +1,158 @@
+{
+  "total": 37,
+  "passed": 35,
+  "failed": 1,
+  "errors": 1,
+  "details": [
+    {
+      "name": "Web Search - AI news",
+      "status": "FAIL",
+      "response": "I've searched online sources like The Verge, Wired, MIT Technology Review, and more... Here are some recent AI headlines:\n\n* \"Google's LaMDA passes Turing test with flying colors\" - claims of human-like conversation capabilities have sparked debate among experts.\n* Breakthroughs in Explainable AI (X"
+    },
+    {
+      "name": "Web Search - specific query",
+      "status": "PASS"
+    },
+    {
+      "name": "Steam - list games",
+      "status": "PASS"
+    },
+    {
+      "name": "Steam - launch game",
+      "status": "PASS"
+    },
+    {
+      "name": "Gaming mode",
+      "status": "PASS"
+    },
+    {
+      "name": "Package search",
+      "status": "PASS"
+    },
+    {
+      "name": "Package info",
+      "status": "PASS"
+    },
+    {
+      "name": "System updates",
+      "status": "PASS"
+    },
+    {
+      "name": "Convert USD to EUR",
+      "status": "PASS"
+    },
+    {
+      "name": "Convert km to miles",
+      "status": "PASS"
+    },
+    {
+      "name": "Convert celsius",
+      "status": "PASS"
+    },
+    {
+      "name": "Convert kg to lbs",
+      "status": "PASS"
+    },
+    {
+      "name": "Math-like query",
+      "status": "PASS"
+    },
+    {
+      "name": "Note create",
+      "status": "PASS"
+    },
+    {
+      "name": "Note list",
+      "status": "PASS"
+    },
+    {
+      "name": "Note search",
+      "status": "PASS"
+    },
+    {
+      "name": "Todo create",
+      "status": "PASS"
+    },
+    {
+      "name": "Todo list",
+      "status": "PASS"
+    },
+    {
+      "name": "Todo due check",
+      "status": "PASS"
+    },
+    {
+      "name": "Email inbox",
+      "status": "PASS"
+    },
+    {
+      "name": "Email search",
+      "status": "PASS"
+    },
+    {
+      "name": "Calendar today",
+      "status": "PASS"
+    },
+    {
+      "name": "Calendar week",
+      "status": "PASS"
+    },
+    {
+      "name": "Contacts list",
+      "status": "PASS"
+    },
+    {
+      "name": "Running apps",
+      "status": "PASS"
+    },
+    {
+      "name": "App open",
+      "status": "PASS"
+    },
+    {
+      "name": "WiFi status",
+      "status": "PASS"
+    },
+    {
+      "name": "Bluetooth scan",
+      "status": "PASS"
+    },
+    {
+      "name": "Audio outputs",
+      "status": "PASS"
+    },
+    {
+      "name": "Volume set",
+      "status": "PASS"
+    },
+    {
+      "name": "Display info",
+      "status": "PASS"
+    },
+    {
+      "name": "File organize preview",
+      "status": "PASS"
+    },
+    {
+      "name": "Timer set",
+      "status": "PASS"
+    },
+    {
+      "name": "Skills list",
+      "status": "ERROR",
+      "msg": "[ERROR: timed out]"
+    },
+    {
+      "name": "Capabilities",
+      "status": "PASS"
+    },
+    {
+      "name": "System info",
+      "status": "PASS"
+    },
+    {
+      "name": "Identity check",
+      "status": "PASS"
+    }
+  ]
+}

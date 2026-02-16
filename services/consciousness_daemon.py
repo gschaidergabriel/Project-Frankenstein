@@ -259,6 +259,7 @@ class ConsciousnessDaemon:
         self._reflect_paused_until: float = 0.0
         self._reflecting: bool = False
         self._reflect_chat_ts_snapshot: float = 0.0
+        self._idle_think_count: int = 0  # Counter for goal extraction
 
         # Feature training state
         self._last_feature_training_ts: float = 0.0
@@ -281,6 +282,7 @@ class ConsciousnessDaemon:
         self._attention_competing: str = ""
         self._attention_current_source: str = "idle"
         self._attention_focus_since: float = time.time()
+        self._attention_consecutive_wins: int = 0  # Repetition penalty counter
 
         # --- Persistent Goal Structure (AE) ---
         self._active_goals_summary: str = ""
@@ -1084,6 +1086,13 @@ class ConsciousnessDaemon:
                     mood_after=mood_before,  # Will be updated next mood poll
                 )
                 LOG.info("Idle thought [%s]: %s", prompt_question[:30], result[:80])
+                # Extract goals from every 5th idle thought
+                self._idle_think_count += 1
+                if self._idle_think_count % 5 == 0:
+                    try:
+                        self.extract_goal_from_reflection(result.strip())
+                    except Exception:
+                        pass
         except Exception as e:
             LOG.warning("Idle think LLM call failed: %s", e)
 
@@ -1899,17 +1908,19 @@ class ConsciousnessDaemon:
 
         with self._lock:
             p = self._current_perceptual
+            prev_p = self._prev_perceptual
             ws = self._current_workspace
 
         # Dims 0-7: Hardware/body (continuous, normalized 0-1)
-        vec[0] = min(1.0, p.cpu_load)
-        vec[1] = min(1.0, p.gpu_load)
+        # Use a mix of absolute values AND deltas for better discrimination
+        vec[0] = min(1.0, p.cpu_load * 0.7 + abs(p.cpu_load - prev_p.cpu_load) * 2.0)
+        vec[1] = min(1.0, p.gpu_load * 0.7 + abs(p.gpu_load - prev_p.gpu_load) * 2.0)
         vec[2] = min(1.0, p.ram_pct / 100.0)
-        vec[3] = min(1.0, p.cpu_temp / 100.0)
-        vec[4] = min(1.0, p.gpu_temp / 100.0)
+        vec[3] = min(1.0, p.cpu_temp / 100.0 + abs(p.cpu_temp - prev_p.cpu_temp) / 20.0)
+        vec[4] = min(1.0, p.gpu_temp / 100.0 + abs(p.gpu_temp - prev_p.gpu_temp) / 20.0)
         vec[5] = min(1.0, p.mouse_idle_s / 3600.0)
         vec[6] = ws.energy_level
-        vec[7] = min(1.0, p.delta_magnitude)
+        vec[7] = min(1.0, p.delta_magnitude * 2.0)  # Amplify delta signal
 
         # Dims 8-15: Mood/affect (continuous)
         vec[8] = (ws.mood_value + 1.0) / 2.0  # normalize -1..1 → 0..1
@@ -1934,13 +1945,21 @@ class ConsciousnessDaemon:
         vec[14] = silence
         vec[15] = min(1.0, len(self._interaction_times) / 50.0)
 
-        # Dims 16-31: Attention/topic (hash-projected)
+        # Dims 16-31: Attention + perceptual events (hash-projected)
         attention = self._attention_focus or ""
         for word in attention.replace(",", " ").split():
             word = word.strip().lower()
             if word:
                 h = hash(word) % 16
                 vec[16 + h] = min(1.0, vec[16 + h] + 0.3)
+        # Also encode perceptual event types (adds variation)
+        for event in self._perception_events_window[-10:]:
+            h = hash(event.strip().lower()) % 16
+            vec[16 + h] = min(1.0, vec[16 + h] + 0.15)
+        # Encode attention source type
+        src = self._attention_current_source or "idle"
+        h = hash(src) % 16
+        vec[16 + h] = min(1.0, vec[16 + h] + 0.4)
 
         # Dims 32-47: Recent experience (hash of last reflections)
         conn = self._get_conn()
@@ -2111,14 +2130,16 @@ class ConsciousnessDaemon:
                 timestamp=now,
             ))
 
-        # Source 3: Perceptual events
+        # Source 3: Perceptual events (with novelty weighting)
         with self._lock:
             recent_events = list(self._perception_events_window[-5:])
         if recent_events:
-            event_salience = min(0.8, 0.3 * len(recent_events))
+            # Deduplicate: unique event types count more
+            unique_events = set(recent_events)
+            event_salience = min(0.8, 0.2 * len(unique_events) + 0.1 * len(recent_events))
             candidates.append(AttentionSource(
                 name="perceptual_event",
-                focus=", ".join(recent_events[-3:]),
+                focus=", ".join(list(unique_events)[:3]),
                 salience=event_salience,
                 timestamp=now,
             ))
@@ -2159,6 +2180,14 @@ class ConsciousnessDaemon:
                 timestamp=now,
             ))
 
+        # Repetition penalty: reduce salience of source that won many times in a row
+        old_source = self._attention_current_source
+        if self._attention_consecutive_wins > 3:
+            penalty = 0.85 ** (self._attention_consecutive_wins - 3)
+            for c in candidates:
+                if c.name == old_source:
+                    c.salience *= penalty
+
         # Sort by salience
         candidates.sort(key=lambda c: c.salience, reverse=True)
         winner = candidates[0]
@@ -2166,7 +2195,6 @@ class ConsciousnessDaemon:
 
         # Self-correction detection
         correction = ""
-        old_source = self._attention_current_source
         old_focus = self._attention_focus
 
         # Check stale focus
@@ -2194,6 +2222,9 @@ class ConsciousnessDaemon:
             self._attention_current_source = winner.name
             if winner.name != old_source:
                 self._attention_focus_since = now
+                self._attention_consecutive_wins = 1
+            else:
+                self._attention_consecutive_wins += 1
             self._attention_correction = correction
             self._attention_competing = (
                 f"Also noticing: {runner_up.focus} ({runner_up.name})"

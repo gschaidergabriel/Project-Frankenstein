@@ -8,8 +8,9 @@ from __future__ import annotations
 import hashlib
 import re
 import sys
+import tkinter as tk
 
-from overlay.constants import LOG
+from overlay.constants import COLORS, LOG, URL_REGEX
 
 # Ensure tools/ is importable
 try:
@@ -37,9 +38,92 @@ class ClipboardMixin:
                 if h != self._last_clipboard_hash:
                     self._last_clipboard_hash = h
                     self._io_q.put(("clipboard_capture", {"content": current}))
+                    # Auto-analyze hint
+                    self._show_clipboard_hint(current)
         except Exception:
             pass  # TclError when clipboard is empty or contains binary data
         self.after(_CLIPBOARD_POLL_MS, self._clipboard_poll_timer)
+
+    # ── Clipboard Auto-Analyze Hint ──────────────────────────────────
+
+    def _show_clipboard_hint(self, content: str):
+        """Show a contextual hint bar when clipboard changes with actionable content."""
+        if not content or len(content) < 20:
+            return
+
+        # Determine content type and action
+        label = None
+        command = None
+
+        if URL_REGEX.search(content):
+            url = URL_REGEX.search(content).group(1)
+            label = "URL copied \u2014 Summarize?"
+            command = f"fetch {url}"
+        elif len(content) > 150 and any(kw in content for kw in
+                ['def ', 'function ', 'class ', 'import ', '#include', 'const ', 'var ', 'let ']):
+            label = "Code copied \u2014 Analyze?"
+            command = f"Analyze this code:\n```\n{content[:2000]}\n```"
+        elif len(content) > 200:
+            label = "Text copied \u2014 Summarize?"
+            command = f"Summarize: {content[:2000]}"
+        else:
+            return
+
+        # Dismiss old hint
+        self._dismiss_clipboard_hint()
+
+        try:
+            # Create hint bar above input area
+            if not hasattr(self, '_status_bar'):
+                return
+
+            self._clipboard_hint_bar = tk.Frame(
+                self._status_bar.master,  # main frame
+                bg=COLORS["bg_elevated"], height=24,
+            )
+            # Insert just above the status bar
+            self._clipboard_hint_bar.pack(side="bottom", fill="x", before=self._status_bar)
+            self._clipboard_hint_bar.pack_propagate(False)
+
+            # Content
+            hint_lbl = tk.Label(
+                self._clipboard_hint_bar, text=f"  \u25c6 {label}",
+                bg=COLORS["bg_elevated"], fg=COLORS["accent_secondary"],
+                font=("Consolas", 8), cursor="hand2",
+            )
+            hint_lbl.pack(side="left", padx=4)
+            hint_lbl.bind("<Button-1>", lambda e, c=command: self._execute_clipboard_action(c))
+            hint_lbl.bind("<Enter>", lambda e: hint_lbl.configure(fg=COLORS["neon_cyan"]))
+            hint_lbl.bind("<Leave>", lambda e: hint_lbl.configure(fg=COLORS["accent_secondary"]))
+
+            dismiss_lbl = tk.Label(
+                self._clipboard_hint_bar, text="\u2715",
+                bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+                font=("Consolas", 8), cursor="hand2", padx=6,
+            )
+            dismiss_lbl.pack(side="right")
+            dismiss_lbl.bind("<Button-1>", lambda e: self._dismiss_clipboard_hint())
+
+            # Auto-dismiss after 8 seconds
+            self.after(8000, self._dismiss_clipboard_hint)
+
+        except Exception as e:
+            LOG.debug(f"Clipboard hint error: {e}")
+
+    def _execute_clipboard_action(self, command: str):
+        """Execute a clipboard hint action."""
+        self._dismiss_clipboard_hint()
+        if hasattr(self, '_route_message'):
+            self._route_message(command)
+
+    def _dismiss_clipboard_hint(self):
+        """Remove clipboard hint bar."""
+        if hasattr(self, '_clipboard_hint_bar') and self._clipboard_hint_bar:
+            try:
+                self._clipboard_hint_bar.destroy()
+            except Exception:
+                pass
+            self._clipboard_hint_bar = None
 
     # ── Workers (IO thread) ──────────────────────────────────────────
 

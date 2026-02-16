@@ -147,6 +147,10 @@ class CommandRouterMixin:
             return
         self.entry.delete(0, "end")
 
+        # Record in input history for arrow-key recall
+        if hasattr(self, 'entry') and hasattr(self.entry, 'add_to_history'):
+            self.entry.add_to_history(msg)
+
         try:
             self._route_message(msg)
         except Exception as e:

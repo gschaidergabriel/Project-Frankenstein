@@ -224,6 +224,41 @@ class UiMixin:
         )
         self.send_btn.pack(side="right")
 
+        # ═══════════════════════════════════════════════════════════════
+        # STATUS BAR (bottom, thin, service health + hint)
+        # ═══════════════════════════════════════════════════════════════
+        self._status_bar = tk.Frame(main, bg=COLORS["bg_deep"], height=20)
+        self._status_bar.pack(side="bottom", fill="x")
+        self._status_bar.pack_propagate(False)
+
+        # Service health dots
+        self._svc_dots = {}
+        for svc_name in ("Core", "LLM", "Tools", "Voice"):
+            dot = tk.Label(
+                self._status_bar, text="\u25cf",
+                font=("Consolas", 7),
+                fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
+            )
+            dot.pack(side="left", padx=2)
+            name_lbl = tk.Label(
+                self._status_bar, text=svc_name,
+                font=("Consolas", 7),
+                fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
+            )
+            name_lbl.pack(side="left", padx=(0, 6))
+            self._svc_dots[svc_name] = dot
+
+        # Hint text (right side)
+        self._status_hint = tk.Label(
+            self._status_bar, text="/ for commands  |  \u2191\u2193 history",
+            font=("Consolas", 7),
+            fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
+        )
+        self._status_hint.pack(side="right", padx=8)
+
+        # Start health polling after UI is up
+        self.after(5000, self._poll_service_health)
+
         # DnD support
         if DND_AVAILABLE:
             try:
@@ -508,3 +543,46 @@ class UiMixin:
         for child in list(self.results_container.winfo_children()):
             child.destroy()
         self.results_container.pack_forget()
+
+    # ---- Status Bar Health Polling ----
+
+    def _poll_service_health(self):
+        """Check service health and update status bar dots. Runs on IO thread."""
+        import threading
+
+        def _check():
+            import urllib.request
+            checks = {
+                "Core":  "http://127.0.0.1:8088/health",
+                "LLM":   "http://127.0.0.1:8101/health",
+                "Tools": "http://127.0.0.1:8096/health",
+                "Voice": "http://127.0.0.1:8197/health",
+            }
+            results = {}
+            for name, url in checks.items():
+                try:
+                    req = urllib.request.Request(url, method="GET")
+                    with urllib.request.urlopen(req, timeout=2) as resp:
+                        results[name] = resp.status == 200
+                except Exception:
+                    results[name] = False
+
+            # Update UI on main thread
+            def _update():
+                if not hasattr(self, '_svc_dots'):
+                    return
+                for name, ok in results.items():
+                    if name in self._svc_dots:
+                        color = COLORS["neon_cyan"] if ok else COLORS["error"]
+                        try:
+                            self._svc_dots[name].configure(fg=color)
+                        except Exception:
+                            pass
+            try:
+                self.after(0, _update)
+            except Exception:
+                pass
+
+        threading.Thread(target=_check, daemon=True).start()
+        # Re-poll every 30 seconds
+        self.after(30000, self._poll_service_health)

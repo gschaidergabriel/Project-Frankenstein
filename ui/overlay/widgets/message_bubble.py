@@ -2,6 +2,7 @@ import re
 import tkinter as tk
 import webbrowser
 from overlay.constants import COLORS, URL_REGEX, LOG
+from overlay.widgets.action_button import ActionButton
 
 
 # ── Markdown Parsing ─────────────────────────────────────────────
@@ -140,10 +141,13 @@ class MessageBubble(tk.Frame):
     """Cyberpunk-styled chat message with selectable text and markdown rendering."""
 
     def __init__(self, parent, sender: str, message: str, is_user: bool = False,
-                 is_system: bool = False, on_link_click=None):
+                 is_system: bool = False, on_link_click=None,
+                 on_retry=None, on_speak=None):
         super().__init__(parent, bg=COLORS["bg_chat"])
 
         self.on_link_click = on_link_click
+        self.on_retry = on_retry
+        self.on_speak = on_speak
         self.message = message
         self._is_user = is_user
 
@@ -202,6 +206,31 @@ class MessageBubble(tk.Frame):
 
         # Message text - SELECTABLE with right-click copy + markdown rendering
         self._create_message_text(content, message, text_color, bubble_bg, border_color)
+
+        # Action bar for Frank messages (not user, not system)
+        if not is_user and not is_system:
+            self._build_action_bar(content, bubble_bg)
+
+    def _build_action_bar(self, parent, bg_color):
+        """Add Copy / Retry / Speak action buttons below Frank's message."""
+        bar = tk.Frame(parent, bg=bg_color)
+        bar.pack(anchor="w", fill="x", pady=(4, 0))
+
+        ActionButton(bar, "COPY", self._copy_all_message, icon="\u2398").pack(side="left", padx=(0, 2))
+
+        if self.on_retry:
+            ActionButton(bar, "RETRY", self.on_retry, icon="\u21bb").pack(side="left", padx=(0, 2))
+
+        if self.on_speak:
+            ActionButton(bar, "SPEAK", self.on_speak, icon="\u266a").pack(side="left", padx=(0, 2))
+
+    def _copy_all_message(self):
+        """Copy entire message to clipboard."""
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(self.message)
+        except Exception:
+            pass
 
     def _create_message_text(self, parent, message: str, text_color: str, bg_color: str, accent_color: str = None):
         """Create SELECTABLE message text with markdown rendering, clickable links, and copy support."""

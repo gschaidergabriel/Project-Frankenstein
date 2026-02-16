@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from overlay.constants import LOG, COLORS
+from overlay.widgets.agent_progress import AgentProgressBar
 
 
 class AgenticMixin:
@@ -32,6 +33,7 @@ class AgenticMixin:
         self._agentic_state_id: Optional[str] = None
         self._agentic_cancel_requested = False
         self._agentic_lock = threading.Lock()  # Thread safety for flags
+        self._agent_progress_widget: Optional[AgentProgressBar] = None
 
         # Event queue for agent updates
         self._agent_event_queue: "queue.Queue" = queue.Queue()
@@ -220,28 +222,49 @@ class AgenticMixin:
             event = {"type": event_type, **event.data}
 
         if event_type == "planning":
-            self._update_agent_status("📋 Creating execution plan...")
+            self._ensure_agent_progress()
+            self._agent_progress_widget.set_status("Creating execution plan...")
 
         elif event_type == "started":
             steps = event.get("steps", 0)
-            self._update_agent_status(f"🚀 Plan created: {steps} steps")
+            self._ensure_agent_progress()
+            self._agent_progress_widget.set_status(f"Plan created: {steps} steps")
 
         elif event_type == "thinking":
             iteration = event.get("iteration", 0)
-            self._update_agent_status(f"🧠 Analyzing... (step {iteration})")
+            total = event.get("total", 0)
+            self._ensure_agent_progress()
+            self._agent_progress_widget.update_step(
+                step=iteration, total=total,
+                description="Analyzing...", status="running"
+            )
 
         elif event_type == "acting":
             tool = event.get("tool", "?")
-            self._update_agent_status(f"⚡ Executing: {tool}")
+            iteration = event.get("iteration", 0)
+            total = event.get("total", 0)
+            desc = event.get("description", "")
+            self._ensure_agent_progress()
+            self._agent_progress_widget.update_step(
+                step=iteration, total=total,
+                tool=tool, description=desc, status="running"
+            )
 
         elif event_type == "observing":
             tool = event.get("tool", "?")
-            success = "✓" if event.get("success") else "✗"
-            self._update_agent_status(f"{success} {tool} completed")
+            iteration = event.get("iteration", 0)
+            total = event.get("total", 0)
+            success = event.get("success", True)
+            self._ensure_agent_progress()
+            self._agent_progress_widget.update_step(
+                step=iteration, total=total,
+                tool=tool, status="done" if success else "error"
+            )
 
         elif event_type == "replanning":
             reason = event.get("reason", "")[:50]
-            self._update_agent_status(f"🔄 Replanning: {reason}...")
+            self._ensure_agent_progress()
+            self._agent_progress_widget.set_status(f"Replanning: {reason}...")
 
         elif event_type == "waiting_approval":
             tool = event.get("tool", "?")
@@ -249,31 +272,50 @@ class AgenticMixin:
 
         elif event_type == "completed":
             response = event.get("response", "Task completed.")
-            self._add_message("Frank", f"✅ **Done**\n\n{response}")
+            self._remove_agent_progress()
+            self._add_message("Frank", response)
 
         elif event_type == "failed":
             error = event.get("error", "Unknown error")
-            self._add_message("Frank", f"❌ **Failed**\n\n{error}", is_system=True)
+            if self._agent_progress_widget:
+                self._agent_progress_widget.mark_failed(error)
+            else:
+                self._add_message("Frank", f"Failed: {error}", is_system=True)
 
         elif event_type == "final":
             response = event.get("response", "")
+            self._remove_agent_progress()
             if response:
                 self._add_message("Frank", response)
 
         elif event_type == "error":
             error = event.get("error", "Unknown error")
-            self._add_message("Frank", f"⚠️ Error: {error}", is_system=True)
+            if self._agent_progress_widget:
+                self._agent_progress_widget.mark_failed(error)
+            else:
+                self._add_message("Frank", f"Error: {error}", is_system=True)
 
-    def _update_agent_status(self, status: str) -> None:
-        """Update the agent status display."""
-        # Use UI queue for thread safety
-        def update():
-            # Update the last system message or add new one
-            # For now, just add to chat
-            LOG.info(f"Agent status: {status}")
-            # Could update a status bar here instead
+    def _ensure_agent_progress(self):
+        """Create progress widget if not exists."""
+        if self._agent_progress_widget is None:
+            self._agent_progress_widget = AgentProgressBar(
+                self.messages_frame,
+                on_cancel=self._cancel_agentic_execution,
+            )
+            self._agent_progress_widget.pack(fill="x")
+            # Scroll to show it
+            self.messages_frame.update_idletasks()
+            self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+            self.chat_canvas.yview_moveto(1.0)
 
-        self._ui_queue.put(update)
+    def _remove_agent_progress(self):
+        """Remove the progress widget."""
+        if self._agent_progress_widget:
+            try:
+                self._agent_progress_widget.destroy()
+            except Exception:
+                pass
+            self._agent_progress_widget = None
 
     def _show_approval_request(self, tool: str, risk: float) -> None:
         """Show approval request for risky action."""

@@ -10,10 +10,13 @@ class ModernEntry(tk.Frame):
     - Click anywhere to position cursor
     - Enter sends (no newlines)
     - Scrollable when content exceeds max lines
+    - Arrow Up/Down cycles through input history
+    - '/' as first character opens command palette
     """
 
     MIN_LINES = 1
     MAX_LINES = 4
+    MAX_HISTORY = 100
 
     def __init__(self, parent, height=40, **kwargs):
         kwargs.pop('height', None)
@@ -46,16 +49,30 @@ class ModernEntry(tk.Frame):
         )
         self.text.pack(fill="both", expand=True)
 
+        # ── Input History ──
+        self._history = []
+        self._history_idx = -1  # -1 = live input (not browsing)
+        self._history_draft = ""  # save current input when browsing
+
+        # ── Command Palette ──
+        self._palette = None  # Active CommandPalette instance
+        self._palette_callback = None  # Set by overlay to handle command selection
+
         # CRITICAL: Click to force focus (needed for overrideredirect windows)
         self.text.bind("<Button-1>", self._on_click)
         self.inner.bind("<Button-1>", self._on_click)
         self.bind("<Button-1>", self._on_click)
 
         # Auto-resize on content change - multiple triggers for reliability
-        self.text.bind("<KeyRelease>", self._schedule_resize)
+        self.text.bind("<KeyRelease>", self._on_key_release)
         self.text.bind("<Key>", self._schedule_resize)
         self.text.bind("<<Modified>>", self._on_modified)
         self._resize_scheduled = False
+
+        # History navigation / palette navigation
+        self.text.bind("<Up>", self._history_prev)
+        self.text.bind("<Down>", self._history_next)
+        self.text.bind("<Escape>", self._on_escape)
 
         # Focus effects
         self.text.bind("<FocusIn>", self._on_focus_in)
@@ -72,13 +89,189 @@ class ModernEntry(tk.Frame):
         # Store send callback (set via bind)
         self._send_callback = None
 
+    # ── History ──
+
+    def add_to_history(self, text: str):
+        """Record a sent message in history. Called by chat after send."""
+        text = text.strip()
+        if not text:
+            return
+        # Don't duplicate consecutive identical entries
+        if self._history and self._history[-1] == text:
+            return
+        self._history.append(text)
+        if len(self._history) > self.MAX_HISTORY:
+            self._history = self._history[-self.MAX_HISTORY:]
+        self._history_idx = -1
+
+    def _history_prev(self, event):
+        """Arrow Up: navigate palette (if open) or show previous sent message."""
+        # If palette is open, navigate it instead
+        if self._palette and hasattr(self._palette, 'winfo_exists'):
+            try:
+                if self._palette.winfo_exists():
+                    self._palette._on_up(event)
+                    return "break"
+            except Exception:
+                pass
+
+        # Only when cursor is on the first display line
+        try:
+            bbox = self.text.bbox("insert")
+            first_bbox = self.text.bbox("1.0")
+            if bbox and first_bbox and bbox[1] > first_bbox[1] + 2:
+                return  # cursor not on first line, let normal arrow work
+        except Exception:
+            pass
+
+        if not self._history:
+            return "break"
+
+        # Save draft when starting to browse
+        if self._history_idx == -1:
+            self._history_draft = self.text.get("1.0", "end-1c")
+
+        if self._history_idx < len(self._history) - 1:
+            self._history_idx += 1
+            self._set_text(self._history[-(self._history_idx + 1)])
+
+        return "break"
+
+    def _history_next(self, event):
+        """Arrow Down: navigate palette (if open) or show next sent message."""
+        # If palette is open, navigate it instead
+        if self._palette and hasattr(self._palette, 'winfo_exists'):
+            try:
+                if self._palette.winfo_exists():
+                    self._palette._on_down(event)
+                    return "break"
+            except Exception:
+                pass
+
+        # Only when cursor is on the last display line
+        try:
+            bbox = self.text.bbox("insert")
+            end_bbox = self.text.bbox("end-1c")
+            if bbox and end_bbox and bbox[1] < end_bbox[1] - 2:
+                return  # cursor not on last line, let normal arrow work
+        except Exception:
+            pass
+
+        if self._history_idx > 0:
+            self._history_idx -= 1
+            self._set_text(self._history[-(self._history_idx + 1)])
+        elif self._history_idx == 0:
+            self._history_idx = -1
+            self._set_text(self._history_draft)
+
+        return "break"
+
+    def _set_text(self, text: str):
+        """Replace entry content."""
+        self.text.delete("1.0", "end")
+        self.text.insert("1.0", text)
+        self.text.mark_set("insert", "end-1c")
+        self._auto_resize()
+
+    def _on_escape(self, event):
+        """Escape: dismiss palette and clear slash prefix."""
+        if self._palette and hasattr(self._palette, 'winfo_exists'):
+            try:
+                if self._palette.winfo_exists():
+                    self._dismiss_palette()
+                    self._set_text("")
+                    return "break"
+            except Exception:
+                pass
+
+    # ── Command Palette ──
+
+    def _on_key_release(self, event=None):
+        """Handle key release: check for slash commands + resize."""
+        self._schedule_resize(event)
+        self._check_slash_trigger()
+
+    def _check_slash_trigger(self):
+        """Check if '/' was typed as first char to open palette."""
+        try:
+            content = self.text.get("1.0", "end-1c")
+            if content.startswith("/") and len(content) >= 1:
+                if self._palette is None or not self._palette.winfo_exists():
+                    self._open_palette()
+                else:
+                    # Update filter
+                    query = content[1:]
+                    self._palette.update_filter(query)
+            else:
+                # Close palette if / was removed
+                self._dismiss_palette()
+        except Exception:
+            pass
+
+    def _open_palette(self):
+        """Open the command palette."""
+        try:
+            from overlay.widgets.command_palette import CommandPalette
+            root = self.winfo_toplevel()
+            self._palette = CommandPalette(
+                root, self.text, on_select=self._on_palette_select
+            )
+        except Exception as e:
+            LOG.debug(f"Failed to open command palette: {e}")
+
+    def _on_palette_select(self, command):
+        """Handle command selection from palette."""
+        self._dismiss_palette()
+
+        if command.action == "file_dialog":
+            # Trigger file attach
+            root = self.winfo_toplevel()
+            if hasattr(root, '_on_attach'):
+                self._set_text("")
+                root._on_attach()
+            return
+
+        if command.template:
+            # Insert template into entry
+            template = command.template
+            self._set_text(template)
+
+            # Position cursor at first placeholder
+            idx = template.find("{")
+            if idx >= 0:
+                end_idx = template.find("}", idx)
+                if end_idx >= 0:
+                    self.text.tag_add("sel", f"1.0+{idx}c", f"1.0+{end_idx + 1}c")
+                    self.text.mark_set("insert", f"1.0+{end_idx + 1}c")
+            else:
+                # No placeholder, put cursor at end
+                self.text.mark_set("insert", "end-1c")
+
+            self.text.focus_set()
+        else:
+            self._set_text("")
+
+        # Notify external callback if set
+        if self._palette_callback:
+            self._palette_callback(command)
+
+    def _dismiss_palette(self):
+        """Close the palette if open."""
+        if self._palette is not None:
+            try:
+                if self._palette.winfo_exists():
+                    self._palette.dismiss()
+            except Exception:
+                pass
+            self._palette = None
+
+    # ── Click / Focus ──
+
     def _on_click(self, event):
         """Force focus on click - triggers window focus hack."""
-        # Get the root window and trigger its focus hack
         root = self.winfo_toplevel()
         if hasattr(root, '_on_window_click_focus'):
             root._on_window_click_focus(event)
-        # Let the click propagate to position cursor
         return None
 
     def _schedule_resize(self, event=None):
@@ -106,15 +299,12 @@ class ModernEntry(tk.Frame):
             new_height = self.MIN_LINES
         else:
             try:
-                # Method: Use displaylines count (most accurate for wrapped text)
-                # This counts actual displayed lines including word-wrapped ones
                 display_lines = self.text.count("1.0", "end", "displaylines")
                 if display_lines:
                     new_height = display_lines[0] if isinstance(display_lines, tuple) else display_lines
                 else:
-                    # Fallback: estimate based on character count
-                    widget_width = max(self.text.winfo_width() - 20, 100)  # subtract padding
-                    char_width = 8  # approximate width per character in Consolas 11
+                    widget_width = max(self.text.winfo_width() - 20, 100)
+                    char_width = 8
                     chars_per_line = max(widget_width // char_width, 20)
                     new_height = max(1, (len(content) + chars_per_line - 1) // chars_per_line)
             except tk.TclError:
@@ -123,10 +313,8 @@ class ModernEntry(tk.Frame):
                 LOG.debug(f"Auto-resize calculation error: {e}")
                 new_height = self.MIN_LINES
 
-        # Clamp to min/max
         new_height = max(self.MIN_LINES, min(self.MAX_LINES, new_height))
 
-        # Update height if changed
         current_height = int(self.text.cget("height"))
         if current_height != new_height:
             self.text.configure(height=new_height)
@@ -146,6 +334,8 @@ class ModernEntry(tk.Frame):
     def _on_focus_out(self, event):
         """Magenta border when unfocused."""
         self.configure(bg=COLORS["neon_magenta"])
+        # Dismiss palette on focus out
+        self._dismiss_palette()
 
     def _show_paste_menu(self, event):
         """Show right-click context menu."""
@@ -164,7 +354,6 @@ class ModernEntry(tk.Frame):
         """Paste from clipboard at cursor."""
         try:
             clipboard_text = self.text.clipboard_get()
-            # Remove any newlines from pasted text
             clipboard_text = clipboard_text.replace("\n", " ").replace("\r", "")
             self.text.insert("insert", clipboard_text)
         except tk.TclError:
@@ -189,12 +378,20 @@ class ModernEntry(tk.Frame):
         self.text.focus_set()
 
     def bind(self, sequence, func):
-        """Bind event to text widget. Special handling for Return."""
+        """Bind event to text widget. Special handling for Return and Escape."""
         if sequence == "<Return>":
-            # Enter sends, don't insert newline
             def on_return(event):
+                # If palette is open, select from it instead of sending
+                if self._palette and hasattr(self._palette, 'winfo_exists'):
+                    try:
+                        if self._palette.winfo_exists():
+                            self._palette._on_enter(event)
+                            return "break"
+                    except Exception:
+                        pass
+                self._dismiss_palette()
                 func(event)
-                return "break"  # Prevent newline insertion
+                return "break"
             self.text.bind(sequence, on_return)
         else:
             self.text.bind(sequence, func)

@@ -15,6 +15,7 @@ from overlay.widgets.image_viewer import ImageViewer
 from overlay.widgets.search_result_card import SearchResultCard
 from overlay.widgets.file_action_bar import FileActionBar
 from overlay.services.search import _open_url
+from overlay.helpers.context_suggestions import get_context_suggestions
 
 
 class MessageMixin:
@@ -56,13 +57,33 @@ class MessageMixin:
                 except Exception as e:
                     LOG.warning(f"Chat memory store error: {e}")
 
+        # Build retry/speak callbacks for Frank messages
+        _on_retry = None
+        _on_speak = None
+        if not is_user and not is_system:
+            # Retry: re-send the last user message
+            _last_user = None
+            for h in reversed(self._chat_history):
+                if h.get("role") == "user":
+                    _last_user = h.get("text", "")
+                    break
+            if _last_user:
+                _retry_msg = _last_user
+                _on_retry = lambda m=_retry_msg: self._retry_last_message(m)
+            # Speak: TTS the message
+            if hasattr(self, '_voice_respond'):
+                _speak_msg = message
+                _on_speak = lambda m=_speak_msg: self._voice_respond(m)
+
         bubble = MessageBubble(
             self.messages_frame,
             sender=sender,
             message=message,
             is_user=is_user,
             is_system=is_system,
-            on_link_click=lambda url: self._io_q.put(("open", url))
+            on_link_click=lambda url: self._io_q.put(("open", url)),
+            on_retry=_on_retry,
+            on_speak=_on_speak,
         )
         bubble.pack(fill="x", anchor="w" if not is_user else "e")
 
@@ -119,6 +140,95 @@ class MessageMixin:
             # Fallback to text message
             path_str = str(image_source) if isinstance(image_source, str) else "[PIL Image]"
             self._add_message("Frank", f"[Image: {path_str}]", is_system=True)
+
+    def _retry_last_message(self, msg: str):
+        """Re-send a user message through the chat pipeline."""
+        try:
+            from overlay.constants import DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_S
+            self._add_message("Du", msg, is_user=True)
+            self._chat_q.put(("chat", {
+                "msg": msg, "max_tokens": DEFAULT_MAX_TOKENS,
+                "timeout_s": DEFAULT_TIMEOUT_S, "task": "chat.fast", "force": None
+            }))
+        except Exception as e:
+            LOG.error(f"Retry failed: {e}")
+
+    # ---------- Context Suggestions ----------
+
+    def _show_context_suggestions(self, frank_response: str):
+        """Show context-aware suggestion chips after Frank responds."""
+        try:
+            # Get last user message for context
+            user_query = ""
+            for h in reversed(self._chat_history):
+                if h.get("role") == "user":
+                    user_query = h.get("text", "")
+                    break
+
+            combined = f"{user_query} {frank_response}"
+            suggestions = get_context_suggestions(combined)
+            if not suggestions:
+                return
+
+            # Remove old suggestion chips
+            self._dismiss_suggestions()
+
+            # Create chip frame
+            self._suggestion_frame = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
+            self._suggestion_frame.pack(fill="x", padx=20, pady=(0, 4))
+
+            hint = tk.Label(
+                self._suggestion_frame, text="Quick:",
+                bg=COLORS["bg_chat"], fg=COLORS["text_muted"],
+                font=("Consolas", 8)
+            )
+            hint.pack(side="left", padx=(0, 4))
+
+            for label, cmd in suggestions:
+                chip = tk.Label(
+                    self._suggestion_frame,
+                    text=f" {label} ",
+                    bg=COLORS["bg_elevated"],
+                    fg=COLORS["accent_secondary"],
+                    font=("Consolas", 9),
+                    cursor="hand2",
+                    padx=8, pady=2,
+                )
+                chip.pack(side="left", padx=(0, 6))
+                chip.bind("<Button-1>", lambda e, c=cmd: self._execute_suggestion(c))
+                chip.bind("<Enter>", lambda e, w=chip: w.configure(
+                    bg=COLORS["bg_highlight"], fg=COLORS["neon_cyan"]))
+                chip.bind("<Leave>", lambda e, w=chip: w.configure(
+                    bg=COLORS["bg_elevated"], fg=COLORS["accent_secondary"]))
+
+            # Auto-dismiss after 15 seconds
+            self.after(15000, self._dismiss_suggestions)
+
+            # Scroll to show chips
+            self.messages_frame.update_idletasks()
+            self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+            self._smart_scroll()
+
+        except Exception as e:
+            LOG.debug(f"Context suggestions error: {e}")
+
+    def _execute_suggestion(self, command: str):
+        """Execute a suggestion chip command."""
+        self._dismiss_suggestions()
+        if command == "/file":
+            if hasattr(self, '_on_attach'):
+                self._on_attach()
+        else:
+            self._route_message(command)
+
+    def _dismiss_suggestions(self):
+        """Remove suggestion chips."""
+        if hasattr(self, '_suggestion_frame') and self._suggestion_frame:
+            try:
+                self._suggestion_frame.destroy()
+            except Exception:
+                pass
+            self._suggestion_frame = None
 
     # ---------- Typing Indicator ----------
 
@@ -360,12 +470,32 @@ class MessageMixin:
 
         # Create a proper MessageBubble with the full text (supports selection, links, etc.)
         if full_text.strip():
+            # Build retry/speak callbacks
+            _on_retry = None
+            _on_speak = None
+            _last_user = None
+            for h in reversed(self._chat_history):
+                if h.get("role") == "user":
+                    _last_user = h.get("text", "")
+                    break
+            if _last_user:
+                _retry_msg = _last_user
+                _on_retry = lambda m=_retry_msg: self._retry_last_message(m)
+            if hasattr(self, '_voice_respond'):
+                _speak_text = full_text
+                _on_speak = lambda m=_speak_text: self._voice_respond(m)
+
             bubble = MessageBubble(
                 self.messages_frame, sender="Frank", message=full_text,
                 is_user=False, is_system=False,
-                on_link_click=lambda url: self._io_q.put(("open", url))
+                on_link_click=lambda url: self._io_q.put(("open", url)),
+                on_retry=_on_retry,
+                on_speak=_on_speak,
             )
             bubble.pack(fill="x", anchor="w")
+
+            # Show context-aware suggestion chips
+            self._show_context_suggestions(full_text)
 
             self.messages_frame.update_idletasks()
             self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))

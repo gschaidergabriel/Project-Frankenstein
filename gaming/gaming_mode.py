@@ -283,14 +283,18 @@ GAMING_LOCK = Path("/tmp/frank_gaming_lock")
 
 
 def stop_main_frank():
-    """Stop Frank overlay and create lock file to prevent restart."""
+    """Stop Frank overlay and create lock file to prevent restart.
+
+    Uses SIGTERM (graceful) first, allowing the overlay to save state and
+    close databases. Only falls back to SIGKILL if SIGTERM doesn't work.
+    """
     LOG.info("Stopping main Frank overlay...")
     # Create lock file FIRST - Frank checks this on startup
     try:
         GAMING_LOCK.write_text(str(os.getpid()))
     except Exception:
         pass
-    # Stop via systemd
+    # Stop via systemd (sends SIGTERM which our handler catches)
     try:
         subprocess.run(
             ["systemctl", "--user", "stop", "frank-overlay.service"],
@@ -298,8 +302,22 @@ def stop_main_frank():
         )
     except Exception as e:
         LOG.warning(f"systemd stop error: {e}")
-    # Kill any lingering process
-    subprocess.run(["pkill", "-9", "-f", "chat_overlay.py"], capture_output=True)
+    # Check if any lingering process remains — give it 2s to exit gracefully
+    try:
+        result = subprocess.run(["pgrep", "-f", "chat_overlay.py"],
+                                capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            # Process still alive — send SIGTERM first
+            subprocess.run(["pkill", "-f", "chat_overlay.py"], capture_output=True, timeout=3)
+            time.sleep(2)
+            # Check again — if still alive, force kill
+            result2 = subprocess.run(["pgrep", "-f", "chat_overlay.py"],
+                                     capture_output=True, text=True, timeout=3)
+            if result2.returncode == 0:
+                LOG.warning("Overlay didn't exit after SIGTERM, sending SIGKILL")
+                subprocess.run(["pkill", "-9", "-f", "chat_overlay.py"], capture_output=True)
+    except Exception:
+        pass
     LOG.info("Frank overlay stopped (lock file active)")
 
 
@@ -326,37 +344,91 @@ def is_frank_running() -> bool:
         return False
 
 
+USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
+FRANK_STDERR_LOG = Path("/tmp/frank_overlay_stderr.log")
+
+
+def _clear_all_start_blockers():
+    """Remove ALL files that can prevent Frank overlay from starting."""
+    for f in (GAMING_LOCK, USER_CLOSED_SIGNAL):
+        try:
+            f.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _verify_frank_running(timeout: float = 10.0) -> bool:
+    """Wait up to timeout seconds for Frank overlay to be running."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if is_frank_running():
+            return True
+        time.sleep(1.0)
+    return False
+
+
 def start_main_frank():
-    """Remove lock file and start the Frank overlay."""
+    """Remove all blocker files and start the Frank overlay.
+
+    Tries systemd first (preferred), falls back to direct Popen.
+    Verifies the overlay is actually running afterwards.
+    """
     LOG.info("Starting main Frank overlay...")
-    # Remove lock file FIRST
+    _clear_all_start_blockers()
+
+    # Also reset-failed in case systemd marked the unit as failed
     try:
-        GAMING_LOCK.unlink(missing_ok=True)
+        subprocess.run(
+            ["systemctl", "--user", "reset-failed", "frank-overlay.service"],
+            capture_output=True, text=True, timeout=5
+        )
     except Exception:
         pass
+
+    # Attempt 1: systemd (preferred — proper lifecycle management)
+    _clear_all_start_blockers()  # ensure cleared right before start
     try:
-        # Start directly (bypasses systemd After= dependencies on LLM services)
+        result = subprocess.run(
+            ["systemctl", "--user", "start", "frank-overlay.service"],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            LOG.info("Frank overlay start command sent (systemd)")
+            if _verify_frank_running(8.0):
+                LOG.info("Frank overlay verified running (systemd)")
+                return
+            LOG.warning("Frank overlay started via systemd but not running after 8s")
+        else:
+            LOG.warning(f"systemd start failed ({result.returncode}): {result.stderr.strip()}")
+    except Exception as e:
+        LOG.warning(f"systemd start error: {e}")
+
+    # Attempt 2: direct Popen (bypasses systemd After= dependencies)
+    _clear_all_start_blockers()
+    try:
         env = os.environ.copy()
         env["DISPLAY"] = ":0"
         env["PYTHONUNBUFFERED"] = "1"
+        stderr_file = open(FRANK_STDERR_LOG, "a")
+        stderr_file.write(f"\n--- Frank Popen start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        stderr_file.flush()
         subprocess.Popen(
             [sys.executable, "/home/ai-core-node/aicore/opt/aicore/ui/chat_overlay.py"],
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=stderr_file,
             start_new_session=True,
         )
-        LOG.info("Frank overlay started (direct)")
+        LOG.info("Frank overlay start command sent (Popen)")
+        if _verify_frank_running(8.0):
+            LOG.info("Frank overlay verified running (Popen)")
+            return
+        LOG.error("Frank overlay NOT running after Popen start — check /tmp/frank_overlay_stderr.log")
     except Exception as e:
-        LOG.error(f"Error starting Frank: {e}")
-        # Fallback to systemd
-        try:
-            subprocess.run(
-                ["systemctl", "--user", "start", "frank-overlay.service"],
-                capture_output=True, text=True, timeout=10
-            )
-        except Exception:
-            pass
+        LOG.error(f"Error starting Frank (direct): {e}")
+
+    # Attempt 3: last resort — ask watchdog to handle it
+    LOG.error("All start attempts failed — relying on watchdog for recovery")
 
 
 def stop_wallpaper():
@@ -467,11 +539,8 @@ def exit_gaming_mode(state: GamingModeState):
     """Exit gaming mode - restart all services and Frank overlay."""
     LOG.info("🎮 EXITING GAMING MODE")
 
-    # 1. Remove lock file FIRST so Frank can start immediately
-    try:
-        GAMING_LOCK.unlink(missing_ok=True)
-    except Exception:
-        pass
+    # 1. Remove ALL start blockers FIRST so Frank can start immediately
+    _clear_all_start_blockers()
 
     # 2. Reset state immediately
     state.active = False
@@ -580,10 +649,14 @@ def daemon_loop():
     state = GamingModeState()
     LOG.info("Gaming Mode Daemon started")
     exit_grace_counter = 0   # Counts checks since game process disappeared
-    EXIT_GRACE_CHECKS = 1    # Wait 1 check (2 sec) before exiting if Steam also gone
-    EXIT_GRACE_STEAM = 1     # Wait 1 check (2 sec) if Steam still open
-    MIN_GAMING_SECS = 30     # Minimum 30 sec in gaming mode (game loading protection)
+    EXIT_GRACE_CHECKS = 1    # Wait 1 check before exiting if Steam also gone
+    EXIT_GRACE_STEAM = 1     # Wait 1 check if Steam still open
+    MIN_GAMING_SECS = 30     # Minimum time in gaming mode (game loading protection)
     gaming_entered_at = 0    # Timestamp when gaming mode was entered
+    # Entry grace: confirm game is still running before committing to gaming mode
+    ENTRY_GRACE_CHECKS = 3   # Game must be detected 3 consecutive times (3s)
+    entry_grace_counter = 0  # Counts consecutive game detections
+    entry_grace_game = None  # Game info from first detection
 
     # If we crashed while in gaming mode, clean up
     if state.active:
@@ -611,12 +684,6 @@ def daemon_loop():
                     LOG.info("Frank restarted during gaming mode - stopping again")
                     stop_main_frank()
 
-                # Don't even check for exit during minimum period
-                elapsed = time.time() - gaming_entered_at
-                if elapsed < MIN_GAMING_SECS:
-                    time.sleep(CONFIG["check_interval"])
-                    continue
-
                 # Check ALL signals
                 process_running = bool(games) or (state.game_pid and is_process_running(state.game_pid))
                 game_window = has_game_window()
@@ -625,6 +692,15 @@ def daemon_loop():
 
                 # Game is active if process OR window OR steam foreground
                 game_active = process_running or game_window or steam_fg
+
+                # MIN_GAMING_SECS protection: only applies if game process is still
+                # detectable (loading). If game is completely gone, exit immediately
+                # (user cancelled launch).
+                elapsed = time.time() - gaming_entered_at
+                if elapsed < MIN_GAMING_SECS and (process_running or game_window):
+                    # Game is loading — don't exit yet
+                    time.sleep(CONFIG["check_interval"])
+                    continue
 
                 if game_active:
                     exit_grace_counter = 0
@@ -646,15 +722,29 @@ def daemon_loop():
                         gaming_entered_at = 0
             else:
                 # Check if a new game started (process OR window)
-                if games:
-                    game = games[0]
-                    LOG.info(f"Detected Steam game: {game['name']}")
-                    enter_gaming_mode(state, game)
-                    gaming_entered_at = time.time()
-                elif has_game_window():
-                    LOG.info("Detected Steam game window (no process match)")
-                    enter_gaming_mode(state, {"pid": 0, "name": "Steam Game", "cmd": ""})
-                    gaming_entered_at = time.time()
+                game_detected = bool(games) or has_game_window()
+
+                if game_detected:
+                    game = games[0] if games else {"pid": 0, "name": "Steam Game", "cmd": ""}
+                    entry_grace_counter += 1
+                    if entry_grace_counter == 1:
+                        entry_grace_game = game
+                        LOG.info(f"Game detected: {game['name']} — confirming ({entry_grace_counter}/{ENTRY_GRACE_CHECKS})...")
+                    elif entry_grace_counter < ENTRY_GRACE_CHECKS:
+                        LOG.debug(f"Game still running — confirming ({entry_grace_counter}/{ENTRY_GRACE_CHECKS})...")
+                    else:
+                        # Confirmed! Game is stable — enter gaming mode
+                        LOG.info(f"Game confirmed after {ENTRY_GRACE_CHECKS}s: {entry_grace_game['name']}")
+                        enter_gaming_mode(state, entry_grace_game)
+                        gaming_entered_at = time.time()
+                        entry_grace_counter = 0
+                        entry_grace_game = None
+                else:
+                    # No game detected — reset entry grace
+                    if entry_grace_counter > 0:
+                        LOG.info(f"Game disappeared during entry grace ({entry_grace_counter}/{ENTRY_GRACE_CHECKS}) — cancelled launch, not entering gaming mode")
+                    entry_grace_counter = 0
+                    entry_grace_game = None
 
             time.sleep(CONFIG["check_interval"])
 

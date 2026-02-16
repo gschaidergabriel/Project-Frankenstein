@@ -670,6 +670,16 @@ class ChatIntegration:
         mgr = get_pkg_manager()
         msg_lower = message.lower()
 
+        # Guard: detect QUESTIONS about packages/installations, not install commands.
+        # "what snaps do i have installed?" or "welche pakete sind installiert?"
+        # should NOT trigger the install handler — return False to fall through to LLM.
+        if re.search(
+            r'(what|which|welche|liste|list|zeig|show|habe\s+ich|do\s+i\s+have|'
+            r'ist\s+installiert|are\s+installed|hab\s+ich|is\s+installed)',
+            msg_lower
+        ):
+            return False, None
+
         # Check for system update / upgrade request
         if re.search(r'(system.{0,5}(aktualisier|update|upgrade)|aktualisier.{0,5}system|'
                       r'update.{0,5}system|upgrade.{0,5}system|alle.{0,5}paket.{0,5}aktualisier)',

@@ -55,10 +55,87 @@ from overlay.constants import (
     CONVERT_RE, CONVERT_QUERY_RE,
     DARKNET_RE,
     USB_EJECT_RE, USB_MOUNT_RE, USB_UNMOUNT_RE, USB_STORAGE_RE,
+    PACKAGE_LIST_RE,
 )
 from overlay.file_utils import _maybe_path, _detect_ingest_base
 from overlay.services.system_control import SYSTEM_CONTROL_AVAILABLE, sc_process, sc_has_pending
 from overlay.services.toolbox import _core_reflect, _core_features, _core_summary
+
+
+# ── Inventory intent detection ──────────────────────────────────────────
+# Keyword-based, not regex-based. Handles fuzzy/colloquial input.
+# Returns: "games", "apps", "pkg:<backend>", or None.
+
+_QUERY_SIGNALS = {
+    # Words that signal "I'm asking what I have"
+    "what", "whats", "which", "show", "list", "any", "got", "have", "do",
+    "my", "all", "the", "installed", "available",
+    # German
+    "welche", "zeig", "liste", "meine", "habe", "hab",
+    "was", "gibt", "installiert", "verfügbar",
+}
+
+_GAME_WORDS = {"game", "games", "spiel", "spiele", "gaming", "steam"}
+_SNAP_WORDS = {"snap", "snaps"}
+_FLATPAK_WORDS = {"flatpak", "flatpaks"}
+_PIP_WORDS = {"pip", "pip3", "python"}
+_APT_WORDS = {"apt", "dpkg", "deb", "debian"}
+_PKG_WORDS = {"package", "packages", "paket", "pakete", "software", "installed", "programs", "programme"}
+_APP_WORDS = {"app", "apps", "application", "applications", "anwendung", "anwendungen", "programm", "programme"}
+
+
+def _detect_inventory_query(text: str):
+    """Detect if user is asking about installed games/apps/packages.
+
+    Uses keyword overlap scoring instead of rigid regex patterns.
+    Returns "games", "apps", "pkg:<backend>", or None.
+    """
+    words = set(re.sub(r"[?!.,;:'\"]", " ", text).lower().split())
+
+    # Must have at least one query signal word
+    if not words & _QUERY_SIGNALS:
+        # Exception: bare category words like "games?" or "snap list" or "python packages"
+        if not (words & _GAME_WORDS or words & _SNAP_WORDS or words & _FLATPAK_WORDS
+                or words & _PIP_WORDS or words & _APT_WORDS
+                or words & _PKG_WORDS or words & _APP_WORDS):
+            return None
+
+    # Category detection by keyword presence
+    has_game = bool(words & _GAME_WORDS)
+    has_snap = bool(words & _SNAP_WORDS)
+    has_flatpak = bool(words & _FLATPAK_WORDS)
+    has_pip = bool(words & _PIP_WORDS)
+    has_apt = bool(words & _APT_WORDS)
+    has_pkg = bool(words & _PKG_WORDS)
+    has_app = bool(words & _APP_WORDS)
+
+    # ── Games ──
+    if has_game:
+        return "games"
+
+    # ── Specific package backends ──
+    if has_snap:
+        return "pkg:snap"
+    if has_flatpak:
+        return "pkg:flatpak"
+    if has_pip:
+        return "pkg:pip"
+    if has_apt:
+        return "pkg:apt"
+
+    # ── Generic packages ("what packages do i have", "was ist installiert") ──
+    if has_pkg:
+        return "pkg:all"
+
+    # ── Apps ("what apps do i have") ──
+    if has_app:
+        return "apps"
+
+    # ── Bare "what's installed" / "was ist installiert" with no category ──
+    if "installed" in words or "installiert" in words:
+        return "pkg:all"
+
+    return None
 
 
 class CommandRouterMixin:
@@ -282,10 +359,17 @@ class CommandRouterMixin:
             self._io_q.put(("news", {"msg": msg}))
             return
 
-        # Steam: List games
-        if STEAM_LIST_RE.search(low):
+        # ── Inventory queries: "what games/snaps/apps do i have" ──────
+        # Single intent detector covers all fuzzy/colloquial English + German
+        _inv = _detect_inventory_query(low)
+        if _inv:
             self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("steam_list", {}))
+            if _inv == "games":
+                self._io_q.put(("steam_list", {}))
+            elif _inv == "apps":
+                self._io_q.put(("app_list", {"filter_type": "all"}))
+            elif _inv.startswith("pkg:"):
+                self._io_q.put(("package_list", {"backend": _inv[4:]}))
             return
 
         # Steam: Close game
@@ -311,11 +395,7 @@ class CommandRouterMixin:
                 self._io_q.put(("app_close", {"app": app_name}))
                 return
 
-        # App list request (e.g., "welche apps habe ich", "was für Programme kann ich starten")
-        if APP_LIST_RE.search(low):
-            self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("app_list", {"filter_type": "all"}))
-            return
+        # NOTE: App list queries are now handled by _detect_inventory_query() above
 
         # Open => check App Registry first, then Steam games, then web search
         if low.startswith("öffne ") or low.startswith("oeffne ") or low.startswith("open ") or low.startswith("starte ") or low.startswith("start ") or low.startswith("launch ") or low.startswith("spiele ") or low.startswith("play "):
@@ -530,6 +610,8 @@ class CommandRouterMixin:
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("print_file", {"path": file_path, "user_msg": msg}))
             return
+
+        # NOTE: Package list queries are now handled by _detect_inventory_query() above
 
         # System Control - File org, WiFi, Bluetooth, Audio, Display, Printers
         # Check BEFORE ADI since system control handles confirmations and actions

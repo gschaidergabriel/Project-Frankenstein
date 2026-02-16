@@ -75,6 +75,9 @@ class WorkerMixin:
                     self._do_app_allow_worker(**arg)
                 elif kind == "app_list":
                     self._do_app_list_worker(**arg)
+                # Package list
+                elif kind == "package_list":
+                    self._do_package_list_worker(**arg)
                 # USB device management
                 elif kind == "usb_storage":
                     self._do_usb_storage_worker()

@@ -32,141 +32,194 @@ class AppWorkersMixin:
             error = result.get("error", "Unknown error") if result else "No response"
             self._ui_call(lambda e=error: self._add_message("Frank", f"App search failed: {e}", is_system=True))
 
+    def _ensure_steam_imports(self):
+        """Lazy-import Steam integration module."""
+        import sys
+        try:
+            from config.paths import AICORE_ROOT as _AICORE_ROOT
+        except ImportError:
+            from pathlib import Path as _P
+            _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+        if str(_AICORE_ROOT) not in sys.path:
+            sys.path.insert(0, str(_AICORE_ROOT))
+        import tools.steam_integration as steam
+        return steam
+
     def _do_app_open_worker(self, app: str, from_user_query: str = "", voice: bool = False):
-        """Open an app via app registry - unified flow."""
+        """Open an app via app registry with robust Steam game support."""
         self._ui_call(lambda: self._show_typing())
 
-        # First search for the app
+        def _reply(msg, is_system=False):
+            if voice:
+                self._ui_call(lambda m=msg: self._voice_respond(m))
+            else:
+                self._ui_call(lambda m=msg: self._add_message("Frank", m, is_system=is_system))
+
+        def _launch_steam_game(steam, game):
+            """Launch a Steam game with wallpaper effect and verification."""
+            try:
+                wp_game_launch(game.name)
+            except Exception:
+                pass
+            success, msg = steam.launch_game(game)
+            self._ui_call(self._hide_typing)
+            _reply(msg)
+            if success:
+                # Minimize overlay — gaming mode daemon handles full stop
+                self._ui_call(lambda: self._minimize_overlay())
+                # Verify game actually started (background check)
+                self._verify_game_launch_bg(steam, game)
+
+        # ── Import Steam integration (used across all steps) ──────────
+        steam = None
+        try:
+            steam = self._ensure_steam_imports()
+        except Exception as e:
+            LOG.debug(f"Steam integration not available: {e}")
+
+        # ── Step 1: Check if this is a Steam game via alias ────────────
+        try:
+            if not steam:
+                raise ImportError("Steam not available")
+            alias = steam.resolve_alias(app)
+            if alias:
+                appid, canonical_name = alias
+                if appid == "0":
+                    # Game not on Steam
+                    self._ui_call(self._hide_typing)
+                    _reply(f"{canonical_name} ist nicht auf Steam verfuegbar.", is_system=True)
+                    return
+
+                # Check if game is installed
+                games = steam.get_installed_games()
+                for game in games:
+                    if game.appid == appid:
+                        _launch_steam_game(steam, game)
+                        return
+
+                # Known alias but not installed — offer to install
+                self._ui_call(self._hide_typing)
+                success, msg = steam.open_store_page(appid, canonical_name)
+                _reply(msg if success else f"{canonical_name} ist nicht installiert.")
+                return
+        except Exception as e:
+            LOG.debug(f"Steam alias check failed: {e}")
+
+        # ── Step 2: Search app registry (.desktop files) ──────────────
         search_result = _app_search(app, limit=5)
-        if not search_result or not search_result.get("ok"):
-            self._ui_call(self._hide_typing)
-            error = search_result.get("error", "Search failed") if search_result else "No response"
-            self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
-            return
+        apps = []
+        if search_result and search_result.get("ok"):
+            apps = search_result.get("apps", [])
 
-        apps = search_result.get("apps", [])
-        if not apps:
-            # App not found in registry - try Steam games as fallback
-            self._ui_call(self._hide_typing)
-            try:
-                import sys
+        # If app registry found a Steam game, use Steam integration
+        if apps:
+            best = apps[0]
+            exec_cmd = best.get("exec_cmd", "")
+            app_name = best.get("name", app)
+
+            if "steam://rungameid/" in exec_cmd and steam:
+                # Steam game found in .desktop files — launch via Steam
                 try:
-                    from config.paths import AICORE_ROOT as _AICORE_ROOT
-                except ImportError:
-                    from pathlib import Path as _P
-                    _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
-                sys.path.insert(0, str(_AICORE_ROOT))
-                from tools.steam_integration import get_installed_games, find_game_by_name, launch_game_by_name
+                    import re as _re
+                    appid_match = _re.search(r'rungameid/(\d+)', exec_cmd)
+                    if appid_match:
+                        appid = appid_match.group(1)
+                        # Find full game info from ACF for update status
+                        games = steam.get_installed_games()
+                        game = None
+                        for g in games:
+                            if g.appid == appid:
+                                game = g
+                                break
+                        if not game:
+                            game = steam.SteamGame(appid=appid, name=app_name, install_dir="")
+                        _launch_steam_game(steam, game)
+                        return
+                except Exception as e:
+                    LOG.error(f"Steam desktop launch failed: {e}")
 
-                games = get_installed_games()
-                game = find_game_by_name(app, games)
-                if game:
-                    # Wallpaper effect (non-critical)
-                    try:
-                        wp_game_launch(game.name)
-                    except Exception:
-                        pass
-                    success, msg = launch_game_by_name(app)
-                    if voice:
-                        self._ui_call(lambda m=msg: self._voice_respond(m))
-                    else:
-                        self._ui_call(lambda m=msg: self._add_message("Frank", m))
-                    # Hide Frank immediately - gaming mode daemon will handle full stop
-                    self._ui_call(lambda: self._minimize_overlay())
-                    return
-            except Exception as e:
-                LOG.error(f"Steam fallback failed: {e}")
+            # Non-Steam app from registry
+            app_id = best.get("id", "")
+            allowed = best.get("allowed", False)
 
-            # Not found anywhere - fallback to web search
-            self._ui_call(lambda a=app: self._add_message("Frank", f"No app '{a}' found. Searching the web...", is_system=True))
-            self._io_q.put(("search", {"query": app, "limit": 8}))
-            return
-
-        # Take best match
-        best = apps[0]
-        app_id = best.get("id", "")
-        app_name = best.get("name", app)
-        effective = best.get("effective", False)
-        allowed = best.get("allowed", False)
-        source = best.get("source", "desktop")
-        exec_cmd = best.get("exec_cmd", "")
-
-        # Steam game detected: use Steam integration directly (avoids OS dialogs)
-        if "steam://rungameid/" in exec_cmd:
-            self._ui_call(self._hide_typing)
-            try:
-                import sys
-                try:
-                    from config.paths import AICORE_ROOT as _AICORE_ROOT
-                except ImportError:
-                    from pathlib import Path as _P
-                    _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
-                sys.path.insert(0, str(_AICORE_ROOT))
-                from tools.steam_integration import launch_game, SteamGame
-
-                # Extract appid from exec_cmd
-                import re as _re
-                appid_match = _re.search(r'rungameid/(\d+)', exec_cmd)
-                if appid_match:
-                    game = SteamGame(appid=appid_match.group(1), name=app_name, install_dir="")
-                    try:
-                        wp_game_launch(app_name)
-                    except Exception:
-                        pass
-                    success, msg = launch_game(game)
-                    if voice:
-                        self._ui_call(lambda m=msg: self._voice_respond(m))
-                    else:
-                        self._ui_call(lambda m=msg: self._add_message("Frank", m))
-                    # Hide Frank immediately - gaming mode daemon will handle full stop
-                    self._ui_call(lambda: self._minimize_overlay())
-                    return
-            except Exception as e:
-                LOG.error(f"Steam direct launch failed: {e}")
-
-        # Auto-allow if not yet allowed (no manual approval needed)
-        if not allowed:
-            _app_allow(app_id)
-
-        # Capture windows BEFORE opening (to detect new windows)
-        windows_before = _get_window_ids()
-
-        # Try to open
-        open_result = _app_open(app_id)
-        self._ui_call(self._hide_typing)
-
-        if open_result and open_result.get("ok"):
-            wp_tool("app_open", app_name)  # Wallpaper event
-            msg = f"Starting {app_name}..."
-            if voice:
-                self._ui_call(lambda m=msg: self._voice_respond(m))
-            else:
-                self._ui_call(lambda m=msg: self._add_message("Frank", m))
-            # NOTE: Window positioning is now handled by BSN (WindowWatcher)
-            # The old _position_app_window system is disabled to avoid conflicts
-        else:
-            reason = open_result.get("reason", "start_failed") if open_result else "no_response"
-            error = open_result.get("error", "") if open_result else ""
-
-            if reason == "policy_blocked":
-                # Auto-allow and retry
+            if not allowed:
                 _app_allow(app_id)
-                retry = _app_open(app_id)
-                if retry and retry.get("ok"):
-                    wp_tool("app_open", app_name)
-                    msg = f"Starting {app_name}..."
-                    self._ui_call(lambda m=msg: self._add_message("Frank", m))
-                    return
-                msg = f"Could not start '{app_name}'."
-            elif reason == "no_gui":
-                msg = f"'{app_name}' cannot be started without a GUI session."
-            else:
-                msg = f"Could not start '{app_name}': {error}"
 
-            if voice:
-                self._ui_call(lambda m=msg: self._voice_respond(m))
+            windows_before = _get_window_ids()
+            open_result = _app_open(app_id)
+            self._ui_call(self._hide_typing)
+
+            if open_result and open_result.get("ok"):
+                wp_tool("app_open", app_name)
+                _reply(f"Starte {app_name}...")
+                return
             else:
-                self._ui_call(lambda m=msg: self._add_message("Frank", m, is_system=True))
+                reason = open_result.get("reason", "start_failed") if open_result else "no_response"
+                if reason == "policy_blocked":
+                    _app_allow(app_id)
+                    retry = _app_open(app_id)
+                    if retry and retry.get("ok"):
+                        wp_tool("app_open", app_name)
+                        _reply(f"Starte {app_name}...")
+                        return
+                # App registry launch failed — fall through to Steam fallback
+                LOG.debug(f"App registry launch failed for '{app}', trying Steam fallback")
+
+        # ── Step 3: Steam fallback — search installed games ───────────
+        try:
+            if not steam:
+                steam = self._ensure_steam_imports()
+            games = steam.get_installed_games()
+            game = steam.find_game_by_name(app, games) if games else None
+
+            if game:
+                _launch_steam_game(steam, game)
+                return
+
+            # ── Step 4: Not installed — check alias or offer store ────
+            alias = steam.resolve_alias(app)
+            if alias:
+                appid, canonical_name = alias
+                if appid != "0":
+                    self._ui_call(self._hide_typing)
+                    success, msg = steam.open_store_page(appid, canonical_name)
+                    _reply(msg if success else f"{canonical_name} ist nicht installiert.")
+                    return
+
+            # ── Step 5: Nothing found — inform user ───────────────────
+            self._ui_call(self._hide_typing)
+            if games:
+                names = [g.name for g in games[:5]]
+                _reply(
+                    f"'{app}' nicht gefunden.\n"
+                    f"Installierte Spiele: {', '.join(names)}",
+                    is_system=True,
+                )
+            else:
+                _reply(f"'{app}' nicht gefunden.", is_system=True)
+
+        except Exception as e:
+            LOG.error(f"Steam fallback failed: {e}")
+            self._ui_call(self._hide_typing)
+            _reply(f"Konnte '{app}' nicht starten: {e}", is_system=True)
+
+    def _verify_game_launch_bg(self, steam, game):
+        """Background verification that a game actually launched."""
+        import threading
+
+        def _check():
+            try:
+                launched, status = steam.verify_game_launched(game, timeout=20.0)
+                if not launched:
+                    # Game didn't appear — notify user
+                    self._ui_call(
+                        lambda s=status: self._add_message("Frank", s, is_system=True)
+                    )
+            except Exception as e:
+                LOG.debug(f"Game launch verification failed: {e}")
+
+        t = threading.Thread(target=_check, daemon=True, name=f"verify-{game.appid}")
+        t.start()
 
     def _do_app_close_worker(self, app: str):
         """Close an app via app registry with fallback to direct kill."""

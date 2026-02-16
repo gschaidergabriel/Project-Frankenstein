@@ -113,6 +113,7 @@ MONITORED_SERVICES = {
 CHECK_INTERVAL = 15  # Check every 15 seconds
 HEALTH_FILE = Path("/tmp/frank_watchdog_health.json")
 USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
+GAMING_LOCK = Path("/tmp/frank_gaming_lock")
 MPC_LLAMA_PARKED = Path("/tmp/frank_mpc_llama_parked")  # Router parks Llama for Qwen swap
 
 # ============================================================================
@@ -339,6 +340,12 @@ def main():
                     if name == "frank-overlay" and USER_CLOSED_SIGNAL.exists():
                         LOG.debug(f"[{name}] User closed overlay intentionally, skipping restart")
                         continue
+
+                    # Skip auto-restart of frank-overlay during gaming mode
+                    if name == "frank-overlay" and GAMING_LOCK.exists():
+                        LOG.debug(f"[{name}] Gaming mode active (lock file), skipping restart")
+                        continue
+
 
                     # Skip Llama restart when Router intentionally parked it for Qwen (MPC)
                     if name == "aicore-llama3-gpu" and MPC_LLAMA_PARKED.exists():

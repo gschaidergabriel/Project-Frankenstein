@@ -681,8 +681,11 @@ STEAM_LAUNCH_RE = re.compile(
 )
 STEAM_LIST_RE = re.compile(
     r"(welche |was für |liste der |zeig (?:mir )?(?:meine |die )?)(spiele|games)"
-    r"|(spiele|games)\s+(die ich hab|habe? ich|sind installiert|gibt es|liste|auflisten|anzeigen)"
-    r"|(?:meine|installierte|steam)\s+(spiele|games)",
+    r"|(spiele|games)\s+(die ich hab|habe? ich|sind installiert|gibt es|liste|auflisten|anzeigen|installed|do i have)"
+    r"|(?:meine|installierte|steam|my|installed)\s+(spiele|games)"
+    r"|(what|which)\s+(games?|spiele)\s+(do i have|are installed|have i got|i have|habe ich)"
+    r"|(list|show|zeig)\s+(my\s+|mir\s+|meine\s+)?(games?|spiele)"
+    r"|what\s+games",
     re.IGNORECASE,
 )
 STEAM_CLOSE_RE = re.compile(
@@ -738,17 +741,17 @@ SYSTEM_CONTROL_RE = re.compile(
     r"bluetooth|kopfhörer.{0,10}verbind|koppeln|pairing|"
     r"lautstärke|volume|ton.{0,10}einstell|audio.{0,10}gerät|audio.{0,10}device|"
     r"drucker|printer|drucken.{0,10}einricht|"
-    r"installier|install|deinstallier|uninstall|paket|package|aktualisier|update|upgrade|"
+    r"installier(?!t\b)|install(?!ed\b|s\b|ation|ier)|deinstallier(?!t\b)|uninstall(?!ed\b)|paket|package|aktualisier|update(?!d\b|s\b)|upgrade(?!d\b|s\b)|"
     r"rückgängig.{0,10}machen|undo|zurück.{0,10}nehmen|revert)",
     re.IGNORECASE,
 )
 
 # 11. Package management patterns (bilingual DE+EN)
 PACKAGE_INSTALL_RE = re.compile(
-    r"(installier|install|einricht|setup|hinzufüg|add\s+package|hol\s|"
+    r"(installier(?!t\b)|install(?!ed\b|s\b|ation|ier)|einricht|setup|hinzufüg|add\s+package|hol\s|"
     r"paket.{0,5}install|programm.{0,5}install|package.{0,5}install|"
     r"apt.{0,5}install|pip.{0,5}install|snap.{0,5}install|flatpak.{0,5}install|"
-    r"aktualisier|update|upgrade|system.{0,5}aktualisier|system.{0,5}update|"
+    r"aktualisier|update(?!d\b|s\b)|upgrade(?!d\b|s\b)|system.{0,5}aktualisier|system.{0,5}update|"
     r"add\s+package|get\s+package|install\s+package|setup\s+package)",
     re.IGNORECASE,
 )
@@ -1151,6 +1154,20 @@ PRINTER_STATUS_RE = re.compile(
     r"|welche.{0,10}druc?ker|which.{0,10}printer"
     r"|druck.?auftr(ae|ä)ge|print.?jobs?|druck.?warteschlange|print.?queue"
     r"|available\s+printers?|list\s+printers?|show\s+printers?",
+    re.IGNORECASE,
+)
+
+# Package list query — "what snaps do i have", "welche pakete sind installiert", etc.
+# Must be checked BEFORE SYSTEM_CONTROL_RE to prevent install-regex false positives.
+PACKAGE_LIST_RE = re.compile(
+    r"welche\s+(snaps?|pakete?|programme?|packages?|flatpaks?|pip.?pakete?)\s+(habe?\s+ich|sind|hab\s+ich|gibt\s+es|are)"
+    r"|what\s+(snaps?|packages?|programs?|flatpaks?|pip\s+packages?)\s+(do\s+i\s+have|are|is)"
+    r"|(snaps?|pakete?|programme?|packages?|flatpaks?)\s+(installiert|installed|auflisten|list|zeig|show|anzeig)"
+    r"|list\s+(my\s+)?(snaps?|packages?|programs?|flatpaks?|pip)"
+    r"|snap\s+list|apt\s+list|pip\s+list|flatpak\s+list"
+    r"|(zeig|show|liste?)\s+(mir\s+|my\s+)?(meine\s+|all\s+)?(snaps?|pakete?|programme?|packages?|flatpaks?)"
+    r"|was\s+(ist|habe?\s+ich)\s+(alles\s+)?installiert"
+    r"|what.?s\s+installed",
     re.IGNORECASE,
 )
 

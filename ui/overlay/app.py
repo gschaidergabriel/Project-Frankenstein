@@ -324,6 +324,10 @@ class ChatOverlay(
         # Periodic enforcement every 10 seconds (catches drift from focus hacks, etc.)
         self.after(10000, self._periodic_panel_enforcement)
 
+        # Register SIGTERM/SIGINT handlers for graceful shutdown
+        # MUST be after all init so cleanup can run properly
+        self.register_signal_handlers()
+
         # FINAL STEP: Reveal fully-built window in one frame — no flicker
         self._reveal_window()
 

@@ -378,6 +378,66 @@ class IOWorkersMixin:
         self._ui_call(self._hide_typing)
         self._ui_call(lambda r=text: self._add_message("Frank", r))
 
+    # ---------- Package List ----------
+
+    def _do_package_list_worker(self, backend: str = "all"):
+        """List installed packages — direct subprocess, no LLM."""
+        import subprocess
+        self._ui_call(self._show_typing)
+
+        sections = []
+
+        try:
+            if backend in ("snap", "all"):
+                r = subprocess.run(["snap", "list"], capture_output=True, text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    lines = r.stdout.strip().split("\n")
+                    # First line is header, rest are packages
+                    pkgs = [l.split()[0] for l in lines[1:] if l.strip()]
+                    sections.append(f"Snaps ({len(pkgs)}): {', '.join(pkgs)}")
+
+            if backend in ("flatpak", "all"):
+                r = subprocess.run(["flatpak", "list", "--app", "--columns=name"],
+                                   capture_output=True, text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    pkgs = [l.strip() for l in r.stdout.strip().split("\n") if l.strip()]
+                    if pkgs:
+                        sections.append(f"Flatpaks ({len(pkgs)}): {', '.join(pkgs)}")
+
+            if backend == "pip":
+                r = subprocess.run(["pip", "list", "--format=columns"],
+                                   capture_output=True, text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    lines = r.stdout.strip().split("\n")
+                    pkgs = [l.split()[0] for l in lines[2:] if l.strip() and not l.startswith("---")]
+                    sections.append(f"Pip packages ({len(pkgs)}): {', '.join(pkgs[:50])}")
+                    if len(pkgs) > 50:
+                        sections[-1] += f" ... +{len(pkgs) - 50} more"
+
+            if backend == "apt":
+                r = subprocess.run(["dpkg-query", "-f", "${Package}\n", "-W"],
+                                   capture_output=True, text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    pkgs = [l.strip() for l in r.stdout.strip().split("\n") if l.strip()]
+                    sections.append(f"APT packages ({len(pkgs)}): too many to list. Use 'apt list --installed | grep NAME' to search.")
+
+        except FileNotFoundError:
+            pass  # Backend not installed
+        except subprocess.TimeoutExpired:
+            sections.append("Package query timed out.")
+        except Exception as e:
+            LOG.error(f"Package list error: {e}")
+            sections.append(f"Error: {e}")
+
+        self._ui_call(self._hide_typing)
+
+        if sections:
+            text = "\n".join(sections)
+        else:
+            text = "No packages found or backend not available."
+
+        self._ui_call(lambda r=text: self._add_message("Frank", r))
+
     # ---------- USB Device Management ----------
 
     def _do_usb_storage_worker(self):

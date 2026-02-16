@@ -6,6 +6,7 @@ at runtime via MRO.
 
 import json
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -22,22 +23,80 @@ except ImportError:
     _LAST_MONITOR_FILE = Path("/home/ai-core-node/.local/share/frank/state/last_monitor.json")
     _SESSION_FILE = Path("/home/ai-core-node/.local/share/frank/state/frank_session.json")
 USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
+GAMING_LOCK = Path("/tmp/frank_gaming_lock")
+
+# Shutdown reasons — only USER_INITIATED writes the user_closed signal
+SHUTDOWN_USER = "user_closed"        # User clicked X or tray quit
+SHUTDOWN_SIGNAL = "signal"           # SIGTERM from systemd/gaming mode
+SHUTDOWN_WRITER = "writer"           # Writer mode taking over
+SHUTDOWN_GAMING = "gaming"           # Gaming mode stopping overlay
+SHUTDOWN_CRASH = "crash"             # Unhandled exception
 
 
 class LifecycleMixin:
 
-    def destroy(self):
-        """Override destroy to cleanup BSN LayoutController, Genesis Watcher, and tray icon."""
-        # Signal that the USER closed the overlay (not a crash).
-        # The watchdog reads this and will NOT auto-restart frank-overlay.
+    # Set by external code before destroy() to control behavior
+    _shutdown_reason: str = SHUTDOWN_USER  # default: assume user-initiated
+
+    def register_signal_handlers(self):
+        """Register SIGTERM/SIGINT handlers for graceful shutdown.
+
+        Call this from ChatOverlay.__init__() AFTER mainloop is set up.
+        SIGTERM from systemd/gaming mode should NOT write user_closed signal,
+        so the watchdog will auto-restart the overlay.
+        """
+        def _on_sigterm(signum, frame):
+            sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+            LOG.info(f"Received {sig_name} — graceful shutdown (no user_closed signal)")
+            self._shutdown_reason = SHUTDOWN_SIGNAL
+            # Schedule destroy on the Tk main thread (signal handlers run on main thread)
+            try:
+                self.after(0, self.destroy)
+            except Exception:
+                # If Tk is already dead, just exit
+                self._cleanup_without_tk()
+                os._exit(0)
+
+        signal.signal(signal.SIGTERM, _on_sigterm)
+        # Keep SIGINT for Ctrl+C during development
+        signal.signal(signal.SIGINT, _on_sigterm)
+
+    def _cleanup_without_tk(self):
+        """Minimal cleanup when Tk is unavailable (crash/signal during shutdown)."""
         try:
-            USER_CLOSED_SIGNAL.write_text(json.dumps({
-                "timestamp": time.time(),
-                "reason": "user_closed",
-            }))
-            LOG.info("User close signal written — watchdog will not auto-restart")
-        except Exception as e:
-            LOG.debug(f"Failed to write user-close signal: {e}")
+            if hasattr(self, '_chat_memory_db'):
+                self._chat_memory_db.end_session(getattr(self, '_memory_session_id', ''))
+                self._chat_memory_db.close()
+        except Exception:
+            pass
+        # Remove singleton lock
+        try:
+            from overlay.constants import LOCK_FILE
+            LOCK_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    def destroy(self):
+        """Override destroy to cleanup BSN LayoutController, Genesis Watcher, and tray icon.
+
+        Only writes the user_closed signal if shutdown was USER-initiated.
+        Signal-based shutdowns (SIGTERM from systemd/gaming) do NOT write it,
+        allowing the watchdog to auto-restart.
+        """
+        reason = getattr(self, '_shutdown_reason', SHUTDOWN_USER)
+
+        if reason == SHUTDOWN_USER:
+            # User explicitly closed — tell watchdog NOT to auto-restart
+            try:
+                USER_CLOSED_SIGNAL.write_text(json.dumps({
+                    "timestamp": time.time(),
+                    "reason": reason,
+                }))
+                LOG.info(f"User close signal written (reason={reason}) — watchdog will not auto-restart")
+            except Exception as e:
+                LOG.debug(f"Failed to write user-close signal: {e}")
+        else:
+            LOG.info(f"Shutdown reason={reason} — NOT writing user_closed signal (watchdog may restart)")
 
         # End chat memory session and trigger summary generation
         if hasattr(self, '_chat_memory_db'):

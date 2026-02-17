@@ -229,25 +229,35 @@ class AgenticMixin:
                 "systemordner", "dateien", "titan", "your files",
             ]
             if any(h in query_lower for h in _self_analysis_hints):
+                # Dynamically list actual source files so Qwen uses real paths
+                import subprocess as _sp
+                _src_root = "/home/ai-core-node/aicore/opt/aicore"
+                try:
+                    _find = _sp.run(
+                        ["find", _src_root, "-name", "*.py",
+                         "-not", "-path", "*/__pycache__/*",
+                         "-not", "-name", "__init__.py",
+                         "-printf", "%P\\n"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    _files = sorted(_find.stdout.strip().split("\n"))[:40]  # Top 40 files
+                    _file_list = "\n".join(f"  {_src_root}/{f}" for f in _files if f)
+                except Exception:
+                    _file_list = "  (could not list files — use fs_list)"
+
                 context += (
-                    "\n\nIMPORTANT CONTEXT FOR SELF-ANALYSIS:"
-                    "\n- Frank's source code is at: /home/ai-core-node/aicore/opt/aicore/"
-                    "\n- Key directories: ui/overlay/mixins/, agentic/, services/, tools/, personality/"
-                    "\n- Titan memory DB: /home/ai-core-node/.local/share/frank/db/titan.db"
-                    "\n- Chat memory DB: /home/ai-core-node/.local/share/frank/db/chat_memory.db"
-                    "\n- Config: /home/ai-core-node/.local/share/frank/db/"
+                    "\n\nSELF-ANALYSIS CONTEXT:"
+                    f"\nSource root: {_src_root}/"
+                    "\nDatabases: /home/ai-core-node/.local/share/frank/db/ (titan.db, chat_memory.db)"
                     "\n"
-                    "\nHOW TO ANALYZE:"
-                    "\n1. For Python source files (.py): Use fs_read to read them."
-                    "\n2. For SQLite databases (.db): Use bash_execute with sqlite3:"
-                    "\n   {\"action\":\"bash_execute\",\"action_input\":{\"command\":\"sqlite3 /path/to/file.db '.schema'\"}}"
-                    "\n   {\"action\":\"bash_execute\",\"action_input\":{\"command\":\"sqlite3 /path/to/file.db 'SELECT * FROM table LIMIT 5'\"}}"
-                    "\n3. For directories: Use fs_list to see contents, then fs_read individual files."
-                    "\n4. Do NOT use fs_list on a file — use fs_read instead."
-                    "\n5. After reading code, call final_answer with your bug findings."
+                    "\nACTUAL SOURCE FILES (use these exact paths with fs_read):"
+                    f"\n{_file_list}"
                     "\n"
-                    "\nSTART: List the target directory first, then read specific files."
-                    "\nLook for: exception handling, logic errors, race conditions, missing imports, type errors."
+                    "\nINSTRUCTIONS:"
+                    "\n- Use fs_read with the EXACT paths listed above. Do NOT invent file names."
+                    "\n- For .db files: use bash_execute with sqlite3 (e.g. sqlite3 /path/db '.schema')"
+                    "\n- Read at least 5 files, then call final_answer with your findings."
+                    "\n- Look for: exception handling, logic errors, race conditions, type errors."
                 )
 
             # Create and run agent — store reference for cancel

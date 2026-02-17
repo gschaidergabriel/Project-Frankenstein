@@ -200,12 +200,32 @@ class AgenticMixin:
             from overlay.constants import SESSION_ID
             session_id = SESSION_ID
 
+            # Build context — for self-analysis queries, inject code location
+            context = self._get_conversation_context()
+            query_lower = query.lower()
+            _self_analysis_hints = [
+                "bug", "your code", "your system", "deinen code", "dein system",
+                "systemordner", "dateien", "titan", "your files",
+            ]
+            if any(h in query_lower for h in _self_analysis_hints):
+                context += (
+                    "\n\nIMPORTANT CONTEXT FOR SELF-ANALYSIS:"
+                    "\n- Frank's source code is at: /home/ai-core-node/aicore/opt/aicore/"
+                    "\n- Key directories: ui/overlay/mixins/, agentic/, services/, tools/, personality/"
+                    "\n- Titan memory DB: /home/ai-core-node/.local/share/frank/db/titan.db"
+                    "\n- Chat memory DB: /home/ai-core-node/.local/share/frank/db/chat_memory.db"
+                    "\n- Config: /home/ai-core-node/.local/share/frank/db/"
+                    "\n- Use fs_read to read Python files, NOT bash_execute with cat."
+                    "\n- Start by listing the target directory with fs_list, then read specific files with fs_read."
+                    "\n- Look for actual code bugs: exception handling, logic errors, race conditions, missing imports."
+                )
+
             # Create and run agent
             loop = AgentLoop(event_callback=event_callback)
             response, state = loop.run(
                 goal=query,
                 session_id=session_id,
-                initial_context=self._get_conversation_context(),
+                initial_context=context,
             )
 
             # Store state ID for potential continuation

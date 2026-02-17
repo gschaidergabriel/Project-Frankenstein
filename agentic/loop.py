@@ -49,7 +49,7 @@ class AgentConfig:
     """Configuration for the agent loop."""
     max_iterations: int = 20  # Maximum think-act-observe cycles
     max_consecutive_failures: int = 8  # Qwen 7B has ~30% JSON parse rate, needs headroom
-    thinking_timeout_s: float = 300.0
+    thinking_timeout_s: float = 60.0
     execution_timeout_s: float = 120.0
     auto_approve_risk_threshold: float = 0.3
     require_approval_risk_threshold: float = 0.6
@@ -129,6 +129,7 @@ class AgentLoop:
         self.store = state_store or get_store()
         self.event_callback = event_callback
         self.llm_endpoint = llm_endpoint
+        self._cancelled = False
 
         self.executor = ToolExecutor(
             registry=self.registry,
@@ -221,6 +222,13 @@ class AgentLoop:
         while iteration < self.config.max_iterations:
             iteration += 1
             LOG.debug(f"Iteration {iteration}/{self.config.max_iterations}")
+
+            # Check cancel
+            if self._cancelled:
+                state.mark_cancelled()
+                self.store.save(state)
+                self._emit_event("failed", {"error": "Cancelled by user"})
+                return "Task cancelled.", state
 
             # Check abort conditions
             if state.should_abort(self.config.max_consecutive_failures):
@@ -449,7 +457,7 @@ class AgentLoop:
         user_prompt: str,
         messages: List[Dict[str, str]] = None,
     ) -> str:
-        """Call LLM for reasoning."""
+        """Call LLM for reasoning with short timeout and retry."""
         import urllib.request
 
         # Build conversation
@@ -473,21 +481,32 @@ class AgentLoop:
         }
 
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            self.llm_endpoint,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
 
-        try:
-            with urllib.request.urlopen(req, timeout=self.config.thinking_timeout_s + 5) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                return result.get("text", result.get("response", ""))
-        except urllib.request.URLError as e:
-            raise RuntimeError(f"LLM network error: {e}")
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"LLM response parse error: {e}")
+        # Retry with short timeouts (30s each) instead of one 300s block
+        last_error = None
+        for attempt in range(3):
+            if self._cancelled:
+                raise RuntimeError("Cancelled by user")
+
+            req = urllib.request.Request(
+                self.llm_endpoint,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    return result.get("text", result.get("response", ""))
+            except urllib.request.URLError as e:
+                last_error = e
+                LOG.warning(f"LLM call attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    time.sleep(2)
+            except json.JSONDecodeError as e:
+                raise RuntimeError(f"LLM response parse error: {e}")
+
+        raise RuntimeError(f"LLM network error after 3 attempts: {last_error}")
 
     def _emit_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Emit an event to the callback."""
@@ -532,14 +551,15 @@ class AgentLoop:
         self._current_state = state
         return self._run_loop(state)
 
-    def cancel(self, state_id: str) -> bool:
+    def cancel(self, state_id: str = None) -> bool:
         """Cancel a running agent."""
-        state = self.store.load(state_id)
-        if state:
-            state.mark_cancelled()
-            self.store.save(state)
-            return True
-        return False
+        self._cancelled = True
+        if state_id:
+            state = self.store.load(state_id)
+            if state:
+                state.mark_cancelled()
+                self.store.save(state)
+        return True
 
     def get_status(self, state_id: str) -> Optional[Dict[str, Any]]:
         """Get current status of an agent."""

@@ -247,8 +247,9 @@ class AgenticMixin:
                     "\nLook for: exception handling, logic errors, race conditions, missing imports, type errors."
                 )
 
-            # Create and run agent
+            # Create and run agent — store reference for cancel
             loop = AgentLoop(event_callback=event_callback)
+            self._agentic_loop_ref = loop
             response, state = loop.run(
                 goal=query,
                 session_id=session_id,
@@ -433,11 +434,11 @@ class AgenticMixin:
 
         self._agentic_cancel_requested = True
 
-        if self._agentic_state_id:
+        # Cancel the actual running loop instance (sets _cancelled flag)
+        loop_ref = getattr(self, '_agentic_loop_ref', None)
+        if loop_ref:
             try:
-                from agentic import AgentLoop
-                loop = AgentLoop()
-                loop.cancel(self._agentic_state_id)
+                loop_ref.cancel(self._agentic_state_id)
             except Exception as e:
                 LOG.error(f"Failed to cancel agent: {e}")
 

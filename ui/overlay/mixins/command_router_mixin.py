@@ -24,6 +24,7 @@ Routes user input through a priority chain:
 """
 
 import re
+import time
 from overlay.constants import (
     LOG, COLORS, SESSION_ID, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_S,
     FRANK_IDENTITY,
@@ -174,6 +175,75 @@ class CommandRouterMixin:
             except Exception as e2:
                 LOG.error(f"FATAL: Even chat fallback failed: {e2}", exc_info=True)
 
+    # ---------- Auto-Escalation (Chat → Agentic) ----------
+
+    def _set_pending_action_escalation(self, intent: dict, user_msg: str, frank_reply: str):
+        """Store pending action escalation from Output-Feedback-Loop.
+
+        Called from chat worker thread; uses _ui_call for thread-safe state update.
+        """
+        escalation = {
+            "intent": intent,
+            "user_msg": user_msg,
+            "frank_reply": frank_reply[:500],
+            "ts": time.time(),
+            "msg_counter": 0,
+        }
+        self._ui_call(lambda esc=escalation: setattr(self, '_pending_action_escalation', esc))
+        LOG.info(f"Action escalation armed: {intent.get('goal', '')[:80]}")
+
+    def _check_action_escalation(self, msg: str) -> bool:
+        """Check if user input confirms a pending action escalation.
+
+        Returns True if handled (confirmed or rejected).
+        Returns False if no pending escalation, expired, or unrelated input.
+        """
+        esc = getattr(self, '_pending_action_escalation', None)
+        if not esc:
+            return False
+
+        low = msg.strip().lower()
+
+        # Timeout: 60 seconds
+        if time.time() - esc["ts"] > 60.0:
+            self._pending_action_escalation = None
+            return False
+
+        # Message counter: max 2 non-confirmation messages
+        if esc["msg_counter"] >= 2:
+            self._pending_action_escalation = None
+            return False
+
+        _YES = {
+            "ja", "yes", "ok", "okay", "jep", "jup", "mach", "mach das",
+            "do it", "klar", "passt", "bitte", "gerne", "mach mal",
+            "go ahead", "sure", "yep", "alright", "please", "go",
+            "ja bitte", "ja gerne", "ja mach", "ja klar",
+        }
+        _NO = {
+            "nein", "no", "nope", "lieber nicht", "lass mal",
+            "nicht nötig", "nicht noetig", "brauchst nicht",
+            "skip", "cancel", "abbrechen", "nee", "ne",
+        }
+
+        if low in _YES:
+            goal = esc["intent"].get("goal", esc["user_msg"])
+            self._pending_action_escalation = None
+            self._add_message("Du", msg, is_user=True)
+            LOG.info(f"Action escalation confirmed -> agentic: {goal[:100]}")
+            self._start_agentic_execution(goal)
+            return True
+
+        if low in _NO:
+            self._pending_action_escalation = None
+            self._add_message("Du", msg, is_user=True)
+            self._add_message("Frank", "Alright, no worries.", is_system=True)
+            return True
+
+        # Unrelated input: increment counter, fall through to normal routing
+        esc["msg_counter"] += 1
+        return False
+
     def _route_message(self, msg: str):
         """Route message to appropriate handler. Extracted for safety wrapper."""
         low = msg.lower().strip()
@@ -199,6 +269,11 @@ class CommandRouterMixin:
                 return
             # Anything else clears the pending state and processes normally
             self._pending_email_delete = None
+
+        # Auto-escalation: user confirms Frank's agentic action proposal (typed or voice)
+        if hasattr(self, '_pending_action_escalation') and self._pending_action_escalation:
+            if self._check_action_escalation(msg):
+                return
 
         # Agentic response handling: check if agent is active and needs response
         if hasattr(self, '_agentic_active') and self._agentic_active:

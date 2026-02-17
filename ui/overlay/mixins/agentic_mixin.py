@@ -448,7 +448,7 @@ class AgenticMixin:
         lines = []
         for msg in recent:
             role = msg.get("role", "user")
-            content = msg.get("content", "")[:200]
+            content = msg.get("text", msg.get("content", ""))[:200]
             lines.append(f"{role}: {content}")
 
         return "\n".join(lines)

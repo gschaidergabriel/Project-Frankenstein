@@ -747,6 +747,14 @@ class ChatMixin:
                                     msg, reply, _analysis)
                             except Exception:
                                 pass
+                        # Auto-escalation: detect agentic action in parenthetical
+                        try:
+                            from services.action_intent_detector import detect_parenthetical_action
+                            _action = detect_parenthetical_action(reply)
+                            if _action and hasattr(self, '_set_pending_action_escalation'):
+                                self._set_pending_action_escalation(_action, msg, reply)
+                        except Exception:
+                            pass
                 except Exception as _fb_err:
                     LOG.debug("Output-feedback-loop error: %s", _fb_err)
                 return
@@ -861,6 +869,14 @@ class ChatMixin:
                             msg, reply, _analysis)
                     except Exception:
                         pass
+                # Auto-escalation: detect agentic action in parenthetical
+                try:
+                    from services.action_intent_detector import detect_parenthetical_action
+                    _action = detect_parenthetical_action(reply)
+                    if _action and hasattr(self, '_set_pending_action_escalation'):
+                        self._set_pending_action_escalation(_action, msg, reply)
+                except Exception:
+                    pass
         except Exception as _fb_err:
             LOG.debug("Output-feedback-loop error (blocking): %s", _fb_err)
 

@@ -257,6 +257,7 @@ class ChatOverlay(
 
         # Agentic Execution Support (autonomous multi-step tasks)
         self._init_agentic()
+        self._pending_action_escalation = None  # Auto-escalation state (chat → agentic)
 
         # Skill System (plugin loader)
         try:

@@ -60,6 +60,7 @@ class MessageMixin:
         # Build retry/speak callbacks for Frank messages
         _on_retry = None
         _on_speak = None
+        _on_do_this = None
         if not is_user and not is_system:
             # Retry: re-send the last user message
             _last_user = None
@@ -74,6 +75,16 @@ class MessageMixin:
             if hasattr(self, '_tts_speak'):
                 _speak_msg = message
                 _on_speak = lambda m=_speak_msg: self._tts_speak(m)
+            # Do This: detect agentic action proposal in parenthetical
+            try:
+                from services.action_intent_detector import detect_parenthetical_action
+                _intent = detect_parenthetical_action(message)
+                if _intent and hasattr(self, '_start_agentic_execution'):
+                    _goal = _intent["goal"]
+                    _on_do_this = lambda g=_goal: self._start_agentic_execution(g)
+                    LOG.debug(f"Action intent detected: {_goal[:80]}")
+            except Exception:
+                pass
 
         bubble = MessageBubble(
             self.messages_frame,
@@ -84,6 +95,7 @@ class MessageMixin:
             on_link_click=lambda url: self._io_q.put(("open", url)),
             on_retry=_on_retry,
             on_speak=_on_speak,
+            on_do_this=_on_do_this,
         )
         bubble.pack(fill="x", anchor="w" if not is_user else "e")
 
@@ -489,9 +501,10 @@ class MessageMixin:
 
         # Create a proper MessageBubble with the full text (supports selection, links, etc.)
         if full_text.strip():
-            # Build retry/speak callbacks
+            # Build retry/speak/do-this callbacks
             _on_retry = None
             _on_speak = None
+            _on_do_this = None
             _last_user = None
             for h in reversed(self._chat_history):
                 if h.get("role") == "user":
@@ -503,6 +516,15 @@ class MessageMixin:
             if hasattr(self, '_tts_speak'):
                 _speak_text = full_text
                 _on_speak = lambda m=_speak_text: self._tts_speak(m)
+            # Detect agentic action proposal in parenthetical
+            try:
+                from services.action_intent_detector import detect_parenthetical_action
+                _intent = detect_parenthetical_action(full_text)
+                if _intent and hasattr(self, '_start_agentic_execution'):
+                    _goal = _intent["goal"]
+                    _on_do_this = lambda g=_goal: self._start_agentic_execution(g)
+            except Exception:
+                pass
 
             bubble = MessageBubble(
                 self.messages_frame, sender="Frank", message=full_text,
@@ -510,6 +532,7 @@ class MessageMixin:
                 on_link_click=lambda url: self._io_q.put(("open", url)),
                 on_retry=_on_retry,
                 on_speak=_on_speak,
+                on_do_this=_on_do_this,
             )
             bubble.pack(fill="x", anchor="w")
 

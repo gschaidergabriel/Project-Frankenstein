@@ -142,12 +142,13 @@ class MessageBubble(tk.Frame):
 
     def __init__(self, parent, sender: str, message: str, is_user: bool = False,
                  is_system: bool = False, on_link_click=None,
-                 on_retry=None, on_speak=None):
+                 on_retry=None, on_speak=None, on_do_this=None):
         super().__init__(parent, bg=COLORS["bg_chat"])
 
         self.on_link_click = on_link_click
         self.on_retry = on_retry
         self.on_speak = on_speak
+        self.on_do_this = on_do_this
         self.message = message
         self._is_user = is_user
 
@@ -212,7 +213,7 @@ class MessageBubble(tk.Frame):
             self._build_action_bar(content, bubble_bg)
 
     def _build_action_bar(self, parent, bg_color):
-        """Add Copy / Retry / Speak action buttons below Frank's message."""
+        """Add Copy / Retry / Speak / Do This action buttons below Frank's message."""
         bar = tk.Frame(parent, bg=bg_color)
         bar.pack(anchor="w", fill="x", pady=(4, 0))
 
@@ -223,6 +224,9 @@ class MessageBubble(tk.Frame):
 
         if self.on_speak:
             ActionButton(bar, "SPEAK", self.on_speak, icon="\u266a").pack(side="left", padx=(0, 2))
+
+        if self.on_do_this:
+            ActionButton(bar, "DO THIS", self.on_do_this, icon="\u25b6").pack(side="left", padx=(0, 2))
 
     def _copy_all_message(self):
         """Copy entire message to clipboard."""

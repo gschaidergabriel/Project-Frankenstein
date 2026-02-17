@@ -163,7 +163,7 @@ class FixHistory:
                 from config.paths import AICORE_ROOT
                 db_path = AICORE_ROOT / "writer" / "data" / "writer.db"
             except ImportError:
-                db_path = Path("/home/ai-core-node/aicore/opt/aicore/writer/data/writer.db")
+                db_path = Path(__file__).resolve().parents[2] / "writer" / "data" / "writer.db"
 
         self.db_path = db_path
         self._local = threading.local()

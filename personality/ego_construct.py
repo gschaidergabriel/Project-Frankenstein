@@ -1054,7 +1054,7 @@ class EgoConstruct:
                 from config.paths import get_db
                 db_path = get_db("titan")
             except ImportError:
-                db_path = Path("/home/ai-core-node/aicore/database/titan.db")
+                db_path = Path.home() / ".local" / "share" / "frank" / "db" / "titan.db"
         self.db_path = db_path
 
         self.sensation_mapper = SensationMapper(self.db_path)

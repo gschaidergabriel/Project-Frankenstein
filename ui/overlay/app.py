@@ -160,7 +160,7 @@ class ChatOverlay(
             from config.paths import get_state
             self._chat_history_file = get_state("chat_history")
         except ImportError:
-            self._chat_history_file = Path("/home/ai-core-node/.local/share/frank/state/chat_history.json")
+            self._chat_history_file = Path.home() / ".local" / "share" / "frank" / "state" / "chat_history.json"
 
         # Persistent conversation memory (SQLite + FTS5)
         try:
@@ -217,8 +217,13 @@ class ChatOverlay(
         threading.Thread(target=self._startup_location_refresh, daemon=True).start()
 
         # Voice integration
-        self._voice_event_file = Path("/tmp/frank_voice_event.json")
-        self._voice_outbox_file = Path("/tmp/frank_voice_outbox.json")
+        try:
+            from config.paths import TEMP_FILES as _TF
+            self._voice_event_file = _TF["voice_event"]
+            self._voice_outbox_file = _TF["voice_outbox"]
+        except ImportError:
+            self._voice_event_file = Path("/tmp/frank/voice_event.json")
+            self._voice_outbox_file = Path("/tmp/frank/voice_outbox.json")
         import time as _time
         self._last_voice_event_ts = _time.time()  # Skip stale events from before restart
         self._voice_listening = False
@@ -226,13 +231,21 @@ class ChatOverlay(
         self._poll_voice_events()
 
         # FAS Popup dimming signal
-        self._fas_dim_signal_file = Path("/tmp/frank_fas_dim_signal")
+        try:
+            from config.paths import get_temp as _get_temp_fas
+            self._fas_dim_signal_file = _get_temp_fas("fas_dim_signal")
+        except ImportError:
+            self._fas_dim_signal_file = Path("/tmp/frank/fas_dim_signal")
         self._fas_dimmed = False
         self._fas_original_alpha = 0.95
         self._poll_fas_dim_signal()
 
         # Restore signal
-        self._restore_signal_file = Path("/tmp/frank_overlay_show")
+        try:
+            from config.paths import TEMP_FILES as _TF3
+            self._restore_signal_file = _TF3["overlay_show"]
+        except ImportError:
+            self._restore_signal_file = Path("/tmp/frank/overlay_show")
         self._poll_restore_signal()
 
         # BSN v4.0 - Bidirectional Space Negotiator
@@ -251,7 +264,7 @@ class ChatOverlay(
             try:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT
             except ImportError:
-                _AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT = Path(__file__).resolve().parents[2]
             sys.path.insert(0, str(_AICORE_ROOT))
             from skills import get_skill_registry
             _sr = get_skill_registry()
@@ -353,7 +366,11 @@ class ChatOverlay(
         """Set window icon for taskbar/Alt+Tab display."""
         try:
             import tkinter as tk
-            icon_path = Path("/tmp/frank_icons/frank-tray.png")
+            try:
+                from config.paths import TEMP_FILES as _TF_icon
+                icon_path = _TF_icon["icons_dir"] / "frank-tray.png"
+            except ImportError:
+                icon_path = Path("/tmp/frank/icons/frank-tray.png")
             if icon_path.exists():
                 img = tk.PhotoImage(file=str(icon_path))
                 self.iconphoto(True, img)
@@ -388,7 +405,7 @@ class ChatOverlay(
             try:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT2
             except ImportError:
-                _AICORE_ROOT2 = Path("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT2 = Path(__file__).resolve().parents[2]
             sys.path.insert(0, str(_AICORE_ROOT2))
             from personality.self_knowledge import get_location_service
             loc_service = get_location_service()

@@ -15,10 +15,10 @@ try:
     _ASRS_REPORTS_DIR = _ASRS_LOG / "asrs_reports"
     _ASRS_CONFIG_FILE = _ASRS_ROOT / "config" / "asrs_config.json"
 except ImportError:
-    _ASRS_DB_PATH = Path("/home/ai-core-node/aicore/database/fas_scavenger.db")
-    _ASRS_BACKUP_DIR = Path("/home/ai-core-node/aicore/database/asrs_backups")
-    _ASRS_REPORTS_DIR = Path("/home/ai-core-node/aicore/logs/asrs_reports")
-    _ASRS_CONFIG_FILE = Path("/home/ai-core-node/aicore/opt/aicore/config/asrs_config.json")
+    _ASRS_DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db"
+    _ASRS_BACKUP_DIR = Path.home() / ".local" / "share" / "frank" / "asrs_backups"
+    _ASRS_REPORTS_DIR = Path.home() / ".local" / "share" / "frank" / "logs" / "asrs_reports"
+    _ASRS_CONFIG_FILE = Path(__file__).resolve().parents[2] / "config" / "asrs_config.json"
 
 
 @dataclass

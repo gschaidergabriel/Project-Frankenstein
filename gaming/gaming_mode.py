@@ -279,7 +279,11 @@ def ensure_lightweight_llm():
         LOG.warning(f"Could not preload tinyllama: {e}")
 
 
-GAMING_LOCK = Path("/tmp/frank_gaming_lock")
+try:
+    from config.paths import TEMP_FILES
+    GAMING_LOCK = TEMP_FILES["gaming_lock"]
+except ImportError:
+    GAMING_LOCK = Path("/tmp/frank/gaming_lock")
 
 
 def stop_main_frank():
@@ -344,8 +348,13 @@ def is_frank_running() -> bool:
         return False
 
 
-USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
-FRANK_STDERR_LOG = Path("/tmp/frank_overlay_stderr.log")
+try:
+    from config.paths import TEMP_FILES as _TF, get_temp as _get_temp
+    USER_CLOSED_SIGNAL = _TF["user_closed"]
+    FRANK_STDERR_LOG = _get_temp("overlay_stderr.log")
+except ImportError:
+    USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
+    FRANK_STDERR_LOG = Path("/tmp/frank/overlay_stderr.log")
 
 
 def _clear_all_start_blockers():
@@ -412,8 +421,12 @@ def start_main_frank():
         stderr_file = open(FRANK_STDERR_LOG, "a")
         stderr_file.write(f"\n--- Frank Popen start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
         stderr_file.flush()
+        try:
+            from config.paths import UI_DIR as _UI_DIR_gm
+        except ImportError:
+            _UI_DIR_gm = Path(__file__).resolve().parents[1] / "ui"
         subprocess.Popen(
-            [sys.executable, "/home/ai-core-node/aicore/opt/aicore/ui/chat_overlay.py"],
+            [sys.executable, str(_UI_DIR_gm / "chat_overlay.py")],
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
@@ -423,7 +436,7 @@ def start_main_frank():
         if _verify_frank_running(8.0):
             LOG.info("Frank overlay verified running (Popen)")
             return
-        LOG.error("Frank overlay NOT running after Popen start — check /tmp/frank_overlay_stderr.log")
+        LOG.error(f"Frank overlay NOT running after Popen start — check {FRANK_STDERR_LOG}")
     except Exception as e:
         LOG.error(f"Error starting Frank (direct): {e}")
 

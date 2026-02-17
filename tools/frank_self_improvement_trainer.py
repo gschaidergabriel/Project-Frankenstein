@@ -37,9 +37,18 @@ from collections import deque
 # =============================================================================
 
 CORE_API = "http://127.0.0.1:8088/chat"
-LOG_FILE = Path("/tmp/frank_self_improvement.log")
-STATS_FILE = Path("/tmp/frank_self_improvement_stats.json")
-STATE_FILE = Path("/tmp/frank_self_improvement_state.json")
+try:
+    from config.paths import get_temp as _fsi_get_temp
+    LOG_FILE = _fsi_get_temp("self_improvement.log")
+    STATS_FILE = _fsi_get_temp("self_improvement_stats.json")
+    STATE_FILE = _fsi_get_temp("self_improvement_state.json")
+except ImportError:
+    import tempfile as _fsi_tempfile
+    _fsi_temp_dir = Path(_fsi_tempfile.gettempdir()) / "frank"
+    _fsi_temp_dir.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = _fsi_temp_dir / "self_improvement.log"
+    STATS_FILE = _fsi_temp_dir / "self_improvement_stats.json"
+    STATE_FILE = _fsi_temp_dir / "self_improvement_state.json"
 
 # Training intervals (seconds) - längere Intervalle für Selbst-Verbesserung
 MIN_INTERVAL = 45   # Minimum 45s zwischen Nachrichten

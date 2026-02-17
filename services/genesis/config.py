@@ -19,10 +19,10 @@ try:
     _DEFAULT_LOG_DIR = _AICORE_LOG / "genesis"
     _DEFAULT_CONFIG_FILE = _AICORE_ROOT / "config" / "genesis_config.json"
 except ImportError:
-    _DEFAULT_DB_PATH = Path("/home/ai-core-node/aicore/database/frank.db")
-    _DEFAULT_STATE_PATH = Path("/home/ai-core-node/aicore/var/genesis_state.json")
-    _DEFAULT_LOG_DIR = Path("/home/ai-core-node/aicore/logs/genesis")
-    _DEFAULT_CONFIG_FILE = Path("/home/ai-core-node/aicore/opt/aicore/config/genesis_config.json")
+    _DEFAULT_DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "frank.db"
+    _DEFAULT_STATE_PATH = Path.home() / ".local" / "share" / "frank" / "state" / "genesis_state.json"
+    _DEFAULT_LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs" / "genesis"
+    _DEFAULT_CONFIG_FILE = Path(__file__).resolve().parents[2] / "config" / "genesis_config.json"
 
 
 @dataclass

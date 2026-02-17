@@ -12,7 +12,7 @@ A local, deterministic context, memory, and retrieval system that makes:
 Leitmotiv: Context is not text. Context is a time-weighted, uncertain
 graph structure that is observed through text.
 
-Database location: /home/ai-core-node/aicore/database/
+Database location: $XDG_DATA_HOME/frank/db/ (portable)
 """
 
 __version__ = "5.1.0"
@@ -25,7 +25,8 @@ try:
     from config.paths import DB_DIR, get_db
     TITAN_DB = get_db("titan")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     TITAN_DB = DB_DIR / "titan.db"
 VECTOR_INDEX = DB_DIR / "titan_vectors.idx"
 

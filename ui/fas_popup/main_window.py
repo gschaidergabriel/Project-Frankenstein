@@ -750,7 +750,7 @@ class FASPopupWindow(Gtk.ApplicationWindow):
         try:
             from config.paths import ASRS_BACKUP_DIR as _ASRS_BACKUP_DIR
         except ImportError:
-            _ASRS_BACKUP_DIR = Path("/home/ai-core-node/.local/share/frank/asrs_backups")
+            _ASRS_BACKUP_DIR = Path.home() / ".local" / "share" / "frank" / "asrs_backups"
         backup_dir = _ASRS_BACKUP_DIR / f"baseline_{feature_id}_{int(time.time())}"
 
         try:
@@ -760,7 +760,7 @@ class FASPopupWindow(Gtk.ApplicationWindow):
             try:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT
             except ImportError:
-                _AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT = Path(__file__).resolve().parents[2]
             core_files = [
                 _AICORE_ROOT / "core" / "app.py",
                 _AICORE_ROOT / "tools" / "toolboxd.py",

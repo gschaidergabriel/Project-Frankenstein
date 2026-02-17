@@ -30,8 +30,16 @@ from pathlib import Path
 
 LOG = logging.getLogger("tools.self_restart")
 
-RESTART_REQUEST_FILE = Path("/tmp/frank_restart_request.json")
-USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
+try:
+    from config.paths import get_temp as _sr_get_temp
+    RESTART_REQUEST_FILE = _sr_get_temp("restart_request.json")
+    USER_CLOSED_SIGNAL = _sr_get_temp("user_closed")
+except ImportError:
+    import tempfile as _sr_tempfile
+    _sr_temp_dir = Path(_sr_tempfile.gettempdir()) / "frank"
+    _sr_temp_dir.mkdir(parents=True, exist_ok=True)
+    RESTART_REQUEST_FILE = _sr_temp_dir / "restart_request.json"
+    USER_CLOSED_SIGNAL = _sr_temp_dir / "user_closed"
 
 # Services Frank is allowed to restart
 ALLOWED_SERVICES = {
@@ -108,7 +116,12 @@ def request_full_restart(reason: str = "full self-restart") -> bool:
 
 def get_watchdog_health() -> dict:
     """Read the watchdog health status."""
-    health_file = Path("/tmp/frank_watchdog_health.json")
+    try:
+        from config.paths import get_temp as _sr_gt
+        health_file = _sr_gt("watchdog_health.json")
+    except ImportError:
+        import tempfile as _sr_tmp
+        health_file = Path(_sr_tmp.gettempdir()) / "frank" / "watchdog_health.json"
     try:
         if health_file.exists():
             return json.loads(health_file.read_text())

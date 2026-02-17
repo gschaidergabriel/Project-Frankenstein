@@ -15,7 +15,7 @@ try:
     from config.paths import TOOLS_DIR as _TOOLS_DIR
 except ImportError:
     from pathlib import Path as _Path
-    _TOOLS_DIR = _Path("/home/ai-core-node/aicore/opt/aicore/tools")
+    _TOOLS_DIR = _Path(__file__).resolve().parents[3] / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 

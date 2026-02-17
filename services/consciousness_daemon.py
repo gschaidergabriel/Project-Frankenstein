@@ -49,10 +49,10 @@ try:
     if str(_AICORE_ROOT) not in sys.path:
         sys.path.insert(0, str(_AICORE_ROOT))
 except ImportError:
-    _AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    _AICORE_ROOT = Path(__file__).resolve().parents[1]
     DB_PATH = Path(os.environ.get(
         "CONSCIOUSNESS_DB",
-        "/home/ai-core-node/aicore/database/consciousness.db",
+        str(Path.home() / ".local" / "share" / "frank" / "db" / "consciousness.db"),
     ))
     if str(_AICORE_ROOT) not in sys.path:
         sys.path.insert(0, str(_AICORE_ROOT))
@@ -883,7 +883,11 @@ class ConsciousnessDaemon:
         """Check if gaming mode is active or Steam game is running."""
         # Check gaming_mode_state.json
         try:
-            state_file = Path("/tmp/gaming_mode_state.json")
+            try:
+                from config.paths import get_temp as _cs_get_temp
+                state_file = _cs_get_temp("gaming_mode_state.json")
+            except ImportError:
+                state_file = Path("/tmp/frank/gaming_mode_state.json")
             if state_file.exists():
                 data = json.loads(state_file.read_text())
                 if data.get("active", False):

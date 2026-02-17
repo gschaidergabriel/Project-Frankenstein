@@ -22,7 +22,12 @@ from overlay.services.core_api import _core_chat
 def _debug_log(msg: str):
     """Write debug message to file."""
     try:
-        with open("/tmp/frank_vision_debug.log", "a") as f:
+        try:
+            from config.paths import get_temp as _get_temp_fu
+            _vision_log = str(_get_temp_fu("vision_debug.log"))
+        except ImportError:
+            _vision_log = "/tmp/frank/vision_debug.log"
+        with open(_vision_log, "a") as f:
             import time
             f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
             f.flush()

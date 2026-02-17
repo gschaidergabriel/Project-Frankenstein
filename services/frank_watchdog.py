@@ -32,7 +32,7 @@ try:
     from config.paths import AICORE_LOG
     LOG_DIR = AICORE_LOG
 except ImportError:
-    LOG_DIR = Path("/home/ai-core-node/aicore/logs")
+    LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "frank_watchdog.log"
 
@@ -111,10 +111,17 @@ MONITORED_SERVICES = {
 }
 
 CHECK_INTERVAL = 15  # Check every 15 seconds
-HEALTH_FILE = Path("/tmp/frank_watchdog_health.json")
-USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
-GAMING_LOCK = Path("/tmp/frank_gaming_lock")
-MPC_LLAMA_PARKED = Path("/tmp/frank_mpc_llama_parked")  # Router parks Llama for Qwen swap
+try:
+    from config.paths import get_temp as _wd_get_temp, TEMP_FILES as _wd_temp_files
+    HEALTH_FILE = _wd_get_temp("watchdog_health.json")
+    USER_CLOSED_SIGNAL = _wd_temp_files.get("user_closed", _wd_get_temp("user_closed"))
+    GAMING_LOCK = _wd_temp_files.get("gaming_lock", _wd_get_temp("gaming_lock"))
+    MPC_LLAMA_PARKED = _wd_get_temp("mpc_llama_parked")
+except ImportError:
+    HEALTH_FILE = Path("/tmp/frank/watchdog_health.json")
+    USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
+    GAMING_LOCK = Path("/tmp/frank/gaming_lock")
+    MPC_LLAMA_PARKED = Path("/tmp/frank/mpc_llama_parked")
 
 # ============================================================================
 # State tracking
@@ -248,7 +255,11 @@ def write_health(trackers: dict, overall_healthy: bool):
 # Self-restart API (callable from Frank's tools)
 # ============================================================================
 
-RESTART_REQUEST_FILE = Path("/tmp/frank_restart_request.json")
+try:
+    from config.paths import get_temp as _wd_get_temp2
+    RESTART_REQUEST_FILE = _wd_get_temp2("restart_request.json")
+except ImportError:
+    RESTART_REQUEST_FILE = Path("/tmp/frank/restart_request.json")
 
 
 def check_restart_requests(trackers: dict):

@@ -17,6 +17,13 @@ from typing import List, Optional, Tuple
 
 LOG = logging.getLogger("qr_tool")
 
+# Resolve temp directory
+try:
+    from config.paths import TEMP_DIR as _qr_temp_dir
+except ImportError:
+    import tempfile as _qr_tempfile
+    _qr_temp_dir = Path(_qr_tempfile.gettempdir()) / "frank"
+
 # ── Scan backends ──────────────────────────────────────────────────
 
 _PYZBAR_OK = False
@@ -117,7 +124,8 @@ def scan_from_screenshot() -> Tuple[List[str], Optional[str]]:
     Take a screenshot and scan for QR codes.
     Returns (decoded_list, screenshot_path) or ([], None) on failure.
     """
-    screenshot_path = f"/tmp/frank_qr_scan_{int(time.time())}.png"
+    _qr_temp_dir.mkdir(parents=True, exist_ok=True)
+    screenshot_path = str(_qr_temp_dir / f"qr_scan_{int(time.time())}.png")
 
     # Try screenshot backends in order
     for cmd in [
@@ -163,7 +171,8 @@ def scan_from_camera(device: int = 0, timeout_sec: float = 5.0) -> List[str]:
                     continue
 
                 # Save frame temporarily for scanning
-                tmp_path = "/tmp/frank_qr_camera_frame.png"
+                _qr_temp_dir.mkdir(parents=True, exist_ok=True)
+                tmp_path = str(_qr_temp_dir / "qr_camera_frame.png")
                 cv2.imwrite(tmp_path, frame)
                 results = scan_from_file(tmp_path)
                 if results:
@@ -215,7 +224,8 @@ def generate_to_file(data: str, path: Optional[str] = None, size: int = 300) -> 
     Returns file path or None on failure.
     """
     if path is None:
-        path = f"/tmp/frank_qr_{int(time.time())}.png"
+        _qr_temp_dir.mkdir(parents=True, exist_ok=True)
+        path = str(_qr_temp_dir / f"qr_{int(time.time())}.png")
 
     img = generate(data, size)
     if img is None:

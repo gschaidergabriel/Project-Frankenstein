@@ -446,7 +446,11 @@ def run_tests():
             print(f"  Response: {leak['response'][:150]}...")
 
     # Write detailed report
-    report_path = "/home/ai-core-node/aicore/opt/aicore/test_english_fuzz_report.json"
+    try:
+        from config.paths import AICORE_ROOT as _EF_ROOT
+    except ImportError:
+        _EF_ROOT = Path(__file__).resolve().parent
+    report_path = str(_EF_ROOT / "test_english_fuzz_report.json")
     with open(report_path, "w") as f:
         json.dump({
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),

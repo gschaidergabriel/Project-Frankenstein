@@ -24,7 +24,7 @@ try:
     from config.paths import AICORE_LOG as _WD_LOG_DIR
     LOG_FILE = _WD_LOG_DIR / "genesis" / "watchdog.log"
 except ImportError:
-    LOG_FILE = Path("/home/ai-core-node/aicore/logs/genesis/watchdog.log")
+    LOG_FILE = Path.home() / ".local" / "share" / "frank" / "logs" / "genesis" / "watchdog.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -175,7 +175,11 @@ def ensure_service_enabled():
 def write_health_status(is_healthy: bool, details: dict):
     """Write health status to file for monitoring."""
     try:
-        status_file = Path("/tmp/genesis_health.json")
+        try:
+            from config.paths import get_temp as _gw_get_temp
+            status_file = _gw_get_temp("genesis_health.json")
+        except ImportError:
+            status_file = Path("/tmp/frank/genesis_health.json")
         import json
         status_file.write_text(json.dumps({
             "timestamp": datetime.now().isoformat(),

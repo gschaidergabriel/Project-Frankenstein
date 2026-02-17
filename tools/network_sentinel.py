@@ -53,11 +53,17 @@ try:
     NETWORK_HEALTH_FILE = get_state("network_health")
     SECURITY_LOG_FILE = get_state("security_log")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "state"
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     NETWORK_MAP_FILE = DB_DIR / "network_map.json"
     NETWORK_HEALTH_FILE = DB_DIR / "network_health.json"
     SECURITY_LOG_FILE = DB_DIR / "security_log.json"
-GAMING_STATE_FILE = Path("/tmp/gaming_mode_state.json")
+try:
+    from config.paths import get_temp as _ns_get_temp
+    GAMING_STATE_FILE = _ns_get_temp("gaming_mode_state.json")
+except ImportError:
+    import tempfile as _ns_tempfile
+    GAMING_STATE_FILE = Path(_ns_tempfile.gettempdir()) / "frank" / "gaming_mode_state.json"
 
 # Resource limits (realistic, as per spec)
 CONFIG = {

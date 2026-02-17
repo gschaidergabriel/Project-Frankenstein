@@ -33,7 +33,11 @@ from dataclasses import dataclass
 import numpy as np
 
 # Logging
-LOG_FILE = Path('/tmp/frank_voice.log')
+try:
+    from config.paths import AICORE_LOG as _VOICE_LOG_DIR
+    LOG_FILE = _VOICE_LOG_DIR / "voice.log"
+except ImportError:
+    LOG_FILE = Path('/tmp/frank/voice.log')
 logging.basicConfig(
     level=logging.DEBUG,
     format='[%(asctime)s] %(levelname)s: %(message)s',
@@ -95,7 +99,7 @@ CONFIG = {
     "frank_api_url": "http://127.0.0.1:8088/chat",
 
     # IPC with chat overlay
-    "voice_event_file": "/tmp/frank_voice_event.json",
+    "voice_event_file": None,  # resolved at init from config.paths
 
     # Device preferences (keywords to look for)
     "preferred_mic_keywords": ["rode", "nt-usb", "usb"],
@@ -621,8 +625,13 @@ class VoiceEventBroadcaster:
     """Broadcasts voice events to the chat overlay."""
 
     def __init__(self):
-        self.event_file = Path(CONFIG["voice_event_file"])
-        self.outbox_file = Path("/tmp/frank_voice_outbox.json")
+        try:
+            from config.paths import TEMP_FILES as _vb_tf
+            self.event_file = _vb_tf["voice_event"]
+            self.outbox_file = _vb_tf["voice_outbox"]
+        except ImportError:
+            self.event_file = Path("/tmp/frank/voice_event.json")
+            self.outbox_file = Path("/tmp/frank/voice_outbox.json")
         self._session_counter = 0
 
     def broadcast(self, event_type: str, data: dict):
@@ -747,7 +756,11 @@ class VoiceDaemon:
             speech_started = False
 
             for i in range(10):  # Max 10 chunks of 3 seconds = 30 seconds
-                chunk_file = f"/tmp/frank_chunk_{i}.wav"
+                try:
+                    from config.paths import get_temp as _vd_get_temp
+                    chunk_file = str(_vd_get_temp(f"chunk_{i}.wav"))
+                except ImportError:
+                    chunk_file = f"/tmp/frank/chunk_{i}.wav"
 
                 if self.audio_manager.record_audio(3.0, chunk_file):
                     chunk_text = self.stt.transcribe_file(chunk_file)
@@ -940,7 +953,11 @@ def test_stt():
     audio_mgr = PulseAudioManager()
     stt = SpeechToText()
 
-    wav_file = "/tmp/frank_stt_test.wav"
+    try:
+        from config.paths import get_temp as _stt_get_temp
+        wav_file = str(_stt_get_temp("stt_test.wav"))
+    except ImportError:
+        wav_file = "/tmp/frank/stt_test.wav"
     if audio_mgr.record_audio(5.0, wav_file):
         text = stt.transcribe_file(wav_file)
         print(f"Transcribed: '{text}'")
@@ -962,7 +979,11 @@ def test_full():
     # Record
     tts.speak("Ich höre.")
 
-    wav_file = "/tmp/frank_full_test.wav"
+    try:
+        from config.paths import get_temp as _ft_get_temp
+        wav_file = str(_ft_get_temp("full_test.wav"))
+    except ImportError:
+        wav_file = "/tmp/frank/full_test.wav"
     if audio_mgr.record_audio(5.0, wav_file):
         # Transcribe
         text = stt.transcribe_file(wav_file)

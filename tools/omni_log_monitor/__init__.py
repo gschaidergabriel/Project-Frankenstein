@@ -24,4 +24,4 @@ BASE_DIR = Path(__file__).parent
 try:
     from config.paths import DB_DIR
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"

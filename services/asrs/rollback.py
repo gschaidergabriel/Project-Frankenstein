@@ -289,7 +289,7 @@ class RollbackExecutor:
             try:
                 from config.paths import AICORE_ROOT as _rb_root
             except ImportError:
-                _rb_root = Path("/home/ai-core-node/aicore/opt/aicore")
+                _rb_root = Path(__file__).resolve().parents[2]
             pycache_dirs = list(_rb_root.rglob("__pycache__"))
             for pycache in pycache_dirs[:10]:  # Limit to prevent long operation
                 try:
@@ -307,7 +307,11 @@ class RollbackExecutor:
         LOG.warning("Entering safe mode")
 
         # Create safe mode flag
-        safe_mode_file = Path("/tmp/aicore_safe_mode")
+        try:
+            from config.paths import get_temp as _rb_get_temp
+            safe_mode_file = _rb_get_temp("aicore_safe_mode")
+        except ImportError:
+            safe_mode_file = Path("/tmp/frank/aicore_safe_mode")
         try:
             safe_mode_file.write_text(datetime.now().isoformat())
         except Exception as e:

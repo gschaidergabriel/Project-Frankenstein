@@ -1,9 +1,9 @@
 """
 ApprovalMixin -- Autonomous Action Approval system for the Frank overlay.
 
-Polls /tmp/frank_approval_queue.json for daemon requests,
+Polls approval_queue.json for daemon requests,
 shows them in-chat with anti-annoyance guardrails,
-writes responses to /tmp/frank_approval_responses.json.
+writes responses to approval_responses.json.
 
 Integrates with CommandRouterMixin for pending-approval interception
 of user input (ja/nein/zeig).
@@ -42,8 +42,13 @@ class ApprovalMixin:
 
     def _init_approval_system(self):
         """Initialize approval system state. Call from __init__."""
-        self._approval_queue_file = Path("/tmp/frank_approval_queue.json")
-        self._approval_response_file = Path("/tmp/frank_approval_responses.json")
+        try:
+            from config.paths import TEMP_FILES as _TF_appr
+            self._approval_queue_file = _TF_appr["approval_queue"]
+            self._approval_response_file = _TF_appr["approval_responses"]
+        except ImportError:
+            self._approval_queue_file = Path("/tmp/frank/approval_queue.json")
+            self._approval_response_file = Path("/tmp/frank/approval_responses.json")
         self._approval_pending: Optional[Dict] = None
         self._approval_last_shown_ts: float = 0.0
         self._approval_daily_count: int = 0

@@ -217,7 +217,7 @@ class SystemWatchdog:
                 from config.paths import AICORE_ROOT as _wd_root
                 _wd_mount = str(_wd_root.parent.parent)
             except ImportError:
-                _wd_mount = "/home/ai-core-node/aicore"
+                _wd_mount = str(Path(__file__).resolve().parents[3])
             for mount_path in ["/", str(Path.home()), _wd_mount]:
                 mp = Path(mount_path)
                 if mp.exists():

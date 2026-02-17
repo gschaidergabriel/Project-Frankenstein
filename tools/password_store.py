@@ -31,7 +31,7 @@ try:
     from config.paths import get_db
     _DB_PATH = get_db("passwords")
 except ImportError:
-    _DB_PATH = Path("/home/ai-core-node/aicore/database/passwords.db")
+    _DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "passwords.db"
 _PBKDF2_ITERATIONS = 600_000
 
 # Session state — NEVER persisted to disk

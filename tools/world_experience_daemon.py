@@ -62,10 +62,13 @@ try:
     DB_PATH = get_db("world_experience")
     ANATOMY_PATH = get_state("system_core")
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore")
-    DATABASE_DIR = AICORE_ROOT / "database"
+    _DATA_DIR = Path.home() / ".local" / "share" / "frank"
+    DATABASE_DIR = _DATA_DIR / "db"
+    DATABASE_DIR.mkdir(parents=True, exist_ok=True)
     DB_PATH = DATABASE_DIR / "world_experience.db"
-    ANATOMY_PATH = DATABASE_DIR / "system_core.json"
+    _STATE_DIR = _DATA_DIR / "state"
+    _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    ANATOMY_PATH = _STATE_DIR / "system_core.json"
 
 # Capacity
 MAX_DB_SIZE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GB hard cap

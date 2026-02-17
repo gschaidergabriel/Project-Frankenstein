@@ -43,10 +43,17 @@ logging.basicConfig(
 LOG = logging.getLogger("frank_overlay")
 
 # ---------- AICORE Root Path ----------
-AICORE_ROOT = Path(__file__).parent.parent.parent  # /home/ai-core-node/aicore/opt/aicore
+try:
+    from config.paths import AICORE_ROOT
+except ImportError:
+    AICORE_ROOT = Path(__file__).parent.parent.parent  # fallback: ui/overlay/constants.py -> opt/aicore
 
 # ---------- Singleton Lock (prevent multiple instances) ----------
-LOCK_FILE = Path("/tmp/frank_overlay.lock")
+try:
+    from config.paths import TEMP_FILES as _TF
+    LOCK_FILE = _TF["overlay_lock"]
+except ImportError:
+    LOCK_FILE = Path("/tmp/frank/overlay.lock")
 
 def _check_singleton() -> bool:
     """
@@ -115,7 +122,7 @@ try:
     try:
         from config.paths import AICORE_ROOT as _AICORE_ROOT
     except ImportError:
-        _AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+        _AICORE_ROOT = AICORE_ROOT
     _sys.path.insert(0, str(_AICORE_ROOT))
     from live_wallpaper.wallpaper_events import (
         publish_event as _wp_event,
@@ -197,7 +204,7 @@ try:
     try:
         from config.paths import TOOLS_DIR as _TOOLS_DIR
     except ImportError:
-        _TOOLS_DIR = Path("/home/ai-core-node/aicore/opt/aicore/tools")
+        _TOOLS_DIR = AICORE_ROOT / "tools"
     sys.path.insert(0, str(_TOOLS_DIR))
     from world_experience_daemon import context_inject as _world_context_inject
     _WORLD_EXPERIENCE_AVAILABLE = True
@@ -211,7 +218,7 @@ try:
     try:
         from config.paths import SERVICES_DIR as _SERVICES_DIR
     except ImportError:
-        _SERVICES_DIR = Path("/home/ai-core-node/aicore/opt/aicore/services")
+        _SERVICES_DIR = AICORE_ROOT / "services"
     sys.path.insert(0, str(_SERVICES_DIR))
     from news_scanner_daemon import context_inject as _news_context_inject
     _NEWS_SCANNER_AVAILABLE = True
@@ -312,7 +319,7 @@ def _get_or_create_session_id() -> str:
         from config.paths import get_state as _get_state
         session_file = _get_state("frank_session")
     except ImportError:
-        session_file = Path("/home/ai-core-node/.local/share/frank/state/frank_session.json")
+        session_file = Path.home() / ".local" / "share" / "frank" / "state" / "frank_session.json"
 
     def _read_boot_id() -> str:
         try:

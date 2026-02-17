@@ -219,7 +219,7 @@ class SystemDiagnoser:
     def _diagnose_disk_full(self, anomaly) -> Diagnosis:
         """Find largest directories under common paths."""
         details = anomaly.details if hasattr(anomaly, "details") else anomaly.get("details", {})
-        search_path = details.get("path", "/home/ai-core-node")
+        search_path = details.get("path", str(Path.home()))
         largest = self._largest_dirs(search_path)
         return Diagnosis(
             anomaly_type=self._atype(anomaly),

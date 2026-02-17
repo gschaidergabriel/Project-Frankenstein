@@ -33,8 +33,12 @@ CORE_BASE = "http://127.0.0.1:8088"
 SESSION_ID = f"consciousness-test-{int(time.time())}"
 MAX_TOKENS = 800
 TIMEOUT_S = 200
-LOG_FILE = Path("/home/ai-core-node/aicore/opt/aicore/tests/consciousness_results.jsonl")
-REPORT_FILE = Path("/home/ai-core-node/aicore/opt/aicore/tests/consciousness_report.md")
+try:
+    from config.paths import AICORE_ROOT as _CTB_ROOT
+except ImportError:
+    _CTB_ROOT = Path(__file__).resolve().parents[1]
+LOG_FILE = _CTB_ROOT / "tests" / "consciousness_results.jsonl"
+REPORT_FILE = _CTB_ROOT / "tests" / "consciousness_report.md"
 
 # ── Frank Chat Function ──
 def chat(message: str, iteration: int) -> dict:

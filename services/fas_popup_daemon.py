@@ -41,7 +41,11 @@ class FASPopupDaemon:
     """
 
     CHECK_INTERVAL = 300  # Check every 5 minutes
-    HOTKEY_SOCKET_PATH = "/run/user/{uid}/frank/fas_hotkey.sock"
+    try:
+        from config.paths import get_runtime as _fp_get_runtime
+        HOTKEY_SOCKET_PATH = str(_fp_get_runtime("fas_hotkey.sock"))
+    except ImportError:
+        HOTKEY_SOCKET_PATH = "/run/user/{uid}/frank/fas_hotkey.sock"
 
     def __init__(self):
         self.config = get_config()
@@ -256,8 +260,12 @@ class HotkeyTrigger:
     """Helper class to trigger popup via socket (used by keybinding)."""
 
     def __init__(self):
-        uid = os.getuid()
-        self.socket_path = f"/run/user/{uid}/frank/fas_hotkey.sock"
+        try:
+            from config.paths import get_runtime as _ht_get_runtime
+            self.socket_path = str(_ht_get_runtime("fas_hotkey.sock"))
+        except ImportError:
+            uid = os.getuid()
+            self.socket_path = f"/run/user/{uid}/frank/fas_hotkey.sock"
 
     def send(self, command: str = "toggle"):
         """Send command to daemon."""
@@ -283,6 +291,13 @@ def setup_xbindkeys():
     xbindkeys_config = Path.home() / ".xbindkeysrc"
     trigger_script = Path(__file__).parent / "fas_hotkey_trigger.sh"
 
+    # Determine socket path for trigger script
+    try:
+        from config.paths import get_runtime as _xb_get_runtime
+        _xb_sock_path = str(_xb_get_runtime("fas_hotkey.sock"))
+    except ImportError:
+        _xb_sock_path = f"/run/user/{os.getuid()}/frank/fas_hotkey.sock"
+
     # Create trigger script
     trigger_script.write_text(f'''#!/bin/bash
 # F.A.S. Popup Hotkey Trigger
@@ -290,7 +305,7 @@ python3 -c "
 import socket
 import os
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-sock.sendto(b'toggle', '/run/user/{os.getuid()}/frank/fas_hotkey.sock')
+sock.sendto(b'toggle', '{_xb_sock_path}')
 sock.close()
 " 2>/dev/null
 ''')

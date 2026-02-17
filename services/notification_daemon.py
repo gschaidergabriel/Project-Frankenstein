@@ -34,12 +34,20 @@ from typing import Dict, List, Optional
 try:
     from config.paths import AICORE_ROOT
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
-STATE_FILE = Path("/tmp/frank_notification_state.json")
-PID_FILE = Path(f"/run/user/{os.getuid()}/frank/notification_daemon.pid")
-LOG_FILE = Path("/tmp/frank_notification_daemon.log")
-NOTIFICATION_DIR = Path("/tmp/frank_notifications")
-GAMING_MODE_FILE = Path("/tmp/gaming_mode_state.json")
+    AICORE_ROOT = Path(__file__).resolve().parents[1]
+try:
+    from config.paths import get_temp as _nd_get_temp, get_runtime as _nd_get_runtime, TEMP_DIR as _nd_temp_dir
+    STATE_FILE = _nd_get_temp("notification_state.json")
+    PID_FILE = _nd_get_runtime("notification_daemon.pid")
+    LOG_FILE = _nd_get_temp("notification_daemon.log")
+    NOTIFICATION_DIR = _nd_temp_dir / "notifications"
+    GAMING_MODE_FILE = _nd_get_temp("gaming_mode_state.json")
+except ImportError:
+    STATE_FILE = Path("/tmp/frank/notification_state.json")
+    PID_FILE = Path(f"/run/user/{os.getuid()}/frank/notification_daemon.pid")
+    LOG_FILE = Path("/tmp/frank/notification_daemon.log")
+    NOTIFICATION_DIR = Path("/tmp/frank/notifications")
+    GAMING_MODE_FILE = Path("/tmp/frank/gaming_mode_state.json")
 
 CHECK_INTERVAL_SECONDS = 150   # 2.5 minutes
 QUIET_HOURS_START = 23

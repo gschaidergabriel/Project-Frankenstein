@@ -29,7 +29,7 @@ class HubDatabase:
         from config.paths import get_db
         DB_PATH = get_db("intelligence_hub")
     except ImportError:
-        DB_PATH = Path("/home/ai-core-node/.local/share/frank/db/intelligence_hub.db")
+        DB_PATH = Path.home() / ".local/share/frank/db/intelligence_hub.db"
 
     def __init__(self, db_path: Path = None):
         self.db_path = db_path or self.DB_PATH

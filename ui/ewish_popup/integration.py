@@ -19,9 +19,13 @@ LOG = logging.getLogger("ewish_integration")
 try:
     from config.paths import AICORE_ROOT
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    AICORE_ROOT = Path(__file__).resolve().parents[2]
 POPUP_SCRIPT = AICORE_ROOT / "ui" / "ewish_popup" / "main_window.py"
-STATE_FILE = Path("/tmp/ewish_popup_state.json")
+try:
+    from config.paths import get_temp as _get_temp_ew
+    STATE_FILE = _get_temp_ew("ewish_popup_state.json")
+except ImportError:
+    STATE_FILE = Path("/tmp/frank/ewish_popup_state.json")
 
 
 class EWishIntegration:

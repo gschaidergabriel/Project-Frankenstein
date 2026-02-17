@@ -6,7 +6,11 @@ from datetime import datetime
 
 CORE_BASE = "http://127.0.0.1:8088"
 SESSION_ID = f"consciousness-test-remaining-{int(time.time())}"
-LOG_FILE = Path("/home/ai-core-node/aicore/opt/aicore/tests/consciousness_results.jsonl")
+try:
+    from config.paths import AICORE_ROOT as _CR_ROOT
+except ImportError:
+    _CR_ROOT = Path(__file__).resolve().parents[1]
+LOG_FILE = _CR_ROOT / "tests" / "consciousness_results.jsonl"
 TIMEOUT_S = 120
 
 REMAINING = [

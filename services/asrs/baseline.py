@@ -227,7 +227,7 @@ class BaselineManager:
         try:
             from config.paths import AICORE_ROOT as _bl_root
         except ImportError:
-            _bl_root = Path("/home/ai-core-node/aicore/opt/aicore")
+            _bl_root = Path(__file__).resolve().parents[2]
         config_files = [
             _bl_root / "config" / "fas_popup_config.py",
             _bl_root / "config" / "asrs_config.json",

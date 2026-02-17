@@ -85,7 +85,7 @@ def get_config() -> Dict[str, Any]:
             from config.paths import UI_DIR
             config["sounds_dir"] = str(UI_DIR / "adi_popup" / "sounds")
         except ImportError:
-            config["sounds_dir"] = "/home/ai-core-node/aicore/opt/aicore/ui/adi_popup/sounds"
+            config["sounds_dir"] = str(Path(__file__).resolve().parents[1] / "ui" / "adi_popup" / "sounds")
 
     # Try to load user overrides
     if USER_CONFIG_PATH.exists():

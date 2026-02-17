@@ -48,9 +48,10 @@ try:
     from config.paths import AICORE_ROOT as _TOOLBOX_SRC_ROOT, DB_DIR, TOOLS_DIR as _TOOLBOX_TOOLS_DIR
     _TOOLBOX_PROJECT_ROOT = str(_TOOLBOX_SRC_ROOT.parent.parent)
 except ImportError:
-    _TOOLBOX_SRC_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
-    _TOOLBOX_PROJECT_ROOT = "/home/ai-core-node/aicore"
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    _TOOLBOX_SRC_ROOT = Path(__file__).resolve().parents[1]  # tools/ -> opt/aicore
+    _TOOLBOX_PROJECT_ROOT = str(_TOOLBOX_SRC_ROOT.parent.parent)  # opt/aicore -> opt -> aicore
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     _TOOLBOX_TOOLS_DIR = _TOOLBOX_SRC_ROOT / "tools"
 
 HOST = os.environ.get("AICORE_TOOLBOX_HOST", "127.0.0.1")

@@ -14,7 +14,7 @@ from overlay.constants import LOG
 try:
     from config.paths import TOOLS_DIR as _TOOLS_DIR
 except ImportError:
-    _TOOLS_DIR = Path("/home/ai-core-node/aicore/opt/aicore/tools")
+    _TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 

@@ -35,13 +35,20 @@ try:
     from config.paths import AICORE_ROOT, get_db
     DB_PATH = get_db("news_scanner")
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
-    DB_PATH = Path("/home/ai-core-node/aicore/database/news_scanner.db")
+    AICORE_ROOT = Path(__file__).resolve().parents[1]
+    DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "news_scanner.db"
 SOURCES_FILE = AICORE_ROOT / "services" / "news_scanner_sources.json"
-GAMING_STATE_FILE = Path("/tmp/gaming_mode_state.json")
-STATE_FILE = Path("/tmp/news_scanner_state.json")
-PID_FILE = Path(f"/run/user/{os.getuid()}/frank/news_scanner.pid")
-LOG_FILE = Path("/tmp/frank_news_scanner.log")
+try:
+    from config.paths import get_temp as _ns_get_temp, get_runtime as _ns_get_runtime
+    GAMING_STATE_FILE = _ns_get_temp("gaming_mode_state.json")
+    STATE_FILE = _ns_get_temp("news_scanner_state.json")
+    PID_FILE = _ns_get_runtime("news_scanner.pid")
+    LOG_FILE = _ns_get_temp("news_scanner.log")
+except ImportError:
+    GAMING_STATE_FILE = Path("/tmp/frank/gaming_mode_state.json")
+    STATE_FILE = Path("/tmp/frank/news_scanner_state.json")
+    PID_FILE = Path(f"/run/user/{os.getuid()}/frank/news_scanner.pid")
+    LOG_FILE = Path("/tmp/frank/news_scanner.log")
 
 # ---------- Configuration ----------
 CHECK_INTERVAL_SECONDS = 300   # Check every 5 minutes if scan is due
@@ -78,8 +85,8 @@ try:
     FAS_DB_PATH = _get_db("fas_scavenger")
     WORLD_EXP_DB = _get_db("world_experience")
 except ImportError:
-    FAS_DB_PATH = Path("/home/ai-core-node/aicore/database/fas_scavenger.db")
-    WORLD_EXP_DB = Path("/home/ai-core-node/aicore/database/world_experience.db")
+    FAS_DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db"
+    WORLD_EXP_DB = Path.home() / ".local" / "share" / "frank" / "db" / "world_experience.db"
 
 # ---------- Logging ----------
 LOG = logging.getLogger("news_scanner")

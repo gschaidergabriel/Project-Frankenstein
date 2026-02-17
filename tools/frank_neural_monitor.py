@@ -43,7 +43,12 @@ from typing import Optional, List, Dict, Tuple
 # Singleton Lock (prevent multiple instances)
 # =============================================================================
 
-LOCK_FILE = "/tmp/frank_neural_monitor.lock"
+try:
+    from config.paths import get_temp as _fnm_get_temp
+    LOCK_FILE = str(_fnm_get_temp("neural_monitor.lock"))
+except ImportError:
+    import tempfile as _fnm_tempfile
+    LOCK_FILE = str(Path(_fnm_tempfile.gettempdir()) / "frank" / "neural_monitor.lock")
 _lock_fd = None
 
 def _is_pid_running(pid: int) -> bool:
@@ -172,6 +177,13 @@ FG_COLOR_WARN = "#FFFF00"
 FG_COLOR_ERROR = "#FF3333"
 FG_COLOR_INFO = "#00FFFF"
 
+# Resolve temp directory for log files
+try:
+    from config.paths import TEMP_DIR as _fnm_temp_dir
+except ImportError:
+    import tempfile as _fnm_tmpmod
+    _fnm_temp_dir = Path(_fnm_tmpmod.gettempdir()) / "frank"
+
 # Log sources
 LOG_SOURCES = {
     # Main journal: ALL Frank/AI Core Services
@@ -187,25 +199,25 @@ LOG_SOURCES = {
     },
     # UOLG log gateway
     "uolg": {
-        "file": "/tmp/uolg/uolg.log",
+        "file": str(_fnm_temp_dir / "uolg" / "uolg.log"),
         "prefix": "[UOLG]",
         "color": FG_COLOR_INFO,
     },
     # Network Sentinel
     "sentinel": {
-        "file": "/tmp/frank_sentinel.log",
+        "file": str(_fnm_temp_dir / "sentinel.log"),
         "prefix": "[NET]",
         "color": FG_COLOR_WARN,
     },
     # Voice Daemon File Log (in addition to journal)
     "voice": {
-        "file": "/tmp/frank_voice.log",
+        "file": str(_fnm_temp_dir / "voice.log"),
         "prefix": "[VOICE]",
         "color": "#FF00FF",  # Magenta for voice
     },
     # UI Overlay Chat
     "overlay": {
-        "file": "/tmp/overlay.log",
+        "file": str(_fnm_temp_dir / "overlay.log"),
         "prefix": "[CHAT]",
         "color": "#00FFFF",  # Cyan for chat
     },

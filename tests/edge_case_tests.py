@@ -32,7 +32,10 @@ from concurrent.futures import ThreadPoolExecutor
 import fcntl
 
 # Add aicore to path
-AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+try:
+    from config.paths import AICORE_ROOT
+except ImportError:
+    AICORE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AICORE_ROOT))
 
 

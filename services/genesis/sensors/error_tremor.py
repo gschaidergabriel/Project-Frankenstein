@@ -24,7 +24,7 @@ try:
     from config.paths import AICORE_LOG as _ERROR_LOG_DIR
     LOG_DIR = _ERROR_LOG_DIR
 except ImportError:
-    LOG_DIR = Path("/home/ai-core-node/aicore/logs/")
+    LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs"
 
 # Regex for Python traceback frame lines
 _TB_FILE_RE = re.compile(r'^\s+File "([^"]+)", line (\d+), in (\S+)')

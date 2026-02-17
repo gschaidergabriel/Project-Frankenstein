@@ -612,7 +612,7 @@ def main():
         from config.paths import AICORE_LOG as _daemon_log_root
         log_dir = _daemon_log_root / "genesis"
     except ImportError:
-        log_dir = Path("/home/ai-core-node/aicore/logs/genesis")
+        log_dir = Path.home() / ".local" / "share" / "frank" / "logs" / "genesis"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(

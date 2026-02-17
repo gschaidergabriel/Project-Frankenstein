@@ -69,7 +69,7 @@ FAS_POPUP_CONFIG = {
     "db_path": None,      # resolved at runtime by get_config()
     "sounds_dir": None,   # resolved at runtime by get_config()
     "popup_state_file": "/tmp/fas_popup_state.json",
-    "hotkey_socket": "/run/user/1000/frank/fas_hotkey.sock",
+    "hotkey_socket": None,   # resolved at runtime by get_config()
 }
 
 
@@ -92,7 +92,14 @@ def get_config():
             from config.paths import SOUNDS_DIR
             config["sounds_dir"] = str(SOUNDS_DIR)
         except ImportError:
-            config["sounds_dir"] = "/home/ai-core-node/aicore/opt/aicore/ui/sounds"
+            config["sounds_dir"] = str(Path(__file__).resolve().parents[1] / "ui" / "sounds")
+    if config.get("hotkey_socket") is None:
+        try:
+            from config.paths import RUNTIME_DIR
+            config["hotkey_socket"] = str(RUNTIME_DIR / "fas_hotkey.sock")
+        except ImportError:
+            import os
+            config["hotkey_socket"] = f"/run/user/{os.getuid()}/frank/fas_hotkey.sock"
 
     # Load user overrides if exists
     user_config = Path.home() / ".config/frank/fas_popup.json"

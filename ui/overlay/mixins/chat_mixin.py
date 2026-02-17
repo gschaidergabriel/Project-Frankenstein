@@ -443,7 +443,7 @@ class ChatMixin:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT
             except ImportError:
                 from pathlib import Path as _P
-                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT = _P(__file__).resolve().parents[3]
             _sys.path.insert(0, str(_AICORE_ROOT))
             from tools.user_profile import get_user_name
             ws_user = get_user_name() or ""
@@ -481,7 +481,7 @@ class ChatMixin:
                     from config.paths import AICORE_ROOT as _AICORE_ROOT
                 except ImportError:
                     from pathlib import Path as _P
-                    _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                    _AICORE_ROOT = _P(__file__).resolve().parents[3]
                 _sys.path.insert(0, str(_AICORE_ROOT))
                 from skills import get_skill_registry
                 ws_skill = get_skill_registry().get_skills_summary(for_prompt=True) or ""

@@ -91,7 +91,12 @@ def _timer_thread(seconds: int, label: str):
     try:
         from pathlib import Path
         import json
-        signal = Path("/tmp/frank_timer_done.json")
+        try:
+            from config.paths import get_temp as _t_get_temp
+            signal = _t_get_temp("timer_done.json")
+        except ImportError:
+            import tempfile as _t_tempfile
+            signal = Path(_t_tempfile.gettempdir()) / "frank" / "timer_done.json"
         signal.write_text(json.dumps({
             "label": label,
             "seconds": seconds,

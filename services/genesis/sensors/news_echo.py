@@ -23,7 +23,7 @@ try:
     from config.paths import get_db as _get_db_news
     NEWS_DB_PATH = _get_db_news("news_scanner")
 except ImportError:
-    NEWS_DB_PATH = Path("/home/ai-core-node/aicore/database/news_scanner.db")
+    NEWS_DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "news_scanner.db"
 
 
 class NewsEcho(BaseSensor):

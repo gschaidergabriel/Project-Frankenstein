@@ -35,8 +35,16 @@ from typing import Any, Dict, Optional
 
 LOG = logging.getLogger("approval_queue")
 
-QUEUE_FILE = Path("/tmp/frank_approval_queue.json")
-RESPONSE_FILE = Path("/tmp/frank_approval_responses.json")
+try:
+    from config.paths import get_temp as _aq_get_temp
+    QUEUE_FILE = _aq_get_temp("approval_queue.json")
+    RESPONSE_FILE = _aq_get_temp("approval_responses.json")
+except ImportError:
+    import tempfile as _aq_tempfile
+    _aq_temp_dir = Path(_aq_tempfile.gettempdir()) / "frank"
+    _aq_temp_dir.mkdir(parents=True, exist_ok=True)
+    QUEUE_FILE = _aq_temp_dir / "approval_queue.json"
+    RESPONSE_FILE = _aq_temp_dir / "approval_responses.json"
 _lock = threading.Lock()
 
 

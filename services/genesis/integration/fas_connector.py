@@ -18,16 +18,21 @@ LOG = logging.getLogger("genesis.fas_connector")
 
 # System Python (not venv) — GTK4/gi only available there
 SYSTEM_PYTHON = "/usr/bin/python3"
-RESULT_FILE = Path("/tmp/genesis_popup_result.json")
-PENDING_FILE = Path("/tmp/genesis_pending_proposals.json")
+try:
+    from config.paths import get_temp as _fas_get_temp
+    RESULT_FILE = _fas_get_temp("genesis_popup_result.json")
+    PENDING_FILE = _fas_get_temp("genesis_pending_proposals.json")
+except ImportError:
+    RESULT_FILE = Path("/tmp/frank/genesis_popup_result.json")
+    PENDING_FILE = Path("/tmp/frank/genesis_pending_proposals.json")
 
 try:
     from config.paths import UI_DIR as _FAS_UI_DIR, AICORE_LOG as _FAS_LOG_DIR
     _FAS_POPUP_SCRIPT = _FAS_UI_DIR / "fas_popup" / "main_window.py"
     _FAS_POPUP_LOG = _FAS_LOG_DIR / "genesis" / "fas_popup.log"
 except ImportError:
-    _FAS_POPUP_SCRIPT = Path("/home/ai-core-node/aicore/opt/aicore/ui/fas_popup/main_window.py")
-    _FAS_POPUP_LOG = Path("/home/ai-core-node/aicore/logs/genesis/fas_popup.log")
+    _FAS_POPUP_SCRIPT = Path(__file__).resolve().parents[3] / "ui" / "fas_popup" / "main_window.py"
+    _FAS_POPUP_LOG = Path.home() / ".local" / "share" / "frank" / "logs" / "genesis" / "fas_popup.log"
 
 # Minimum proposals before showing popup
 MIN_PROPOSALS_FOR_POPUP = 7
@@ -41,7 +46,11 @@ class FASConnector:
 
     def __init__(self):
         self.popup_script = _FAS_POPUP_SCRIPT
-        self.notification_file = Path("/tmp/genesis_notification.json")
+        try:
+            from config.paths import get_temp as _fas_get_temp2
+            self.notification_file = _fas_get_temp2("genesis_notification.json")
+        except ImportError:
+            self.notification_file = Path("/tmp/frank/genesis_notification.json")
         self.popup_process = None
         self._pending_proposals: List[Dict] = []
         self._load_pending()

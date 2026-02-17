@@ -25,7 +25,7 @@ try:
     from config.paths import get_db
     DB_PATH = get_db("chat_memory")
 except ImportError:
-    DB_PATH = Path("/home/ai-core-node/aicore/database/chat_memory.db")
+    DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "chat_memory.db"
 
 _SCHEMA = """
 PRAGMA journal_mode=WAL;

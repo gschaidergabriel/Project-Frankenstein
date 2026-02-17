@@ -498,7 +498,11 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
 
     def _signal_frank_dim(self, dim: bool):
         """Signal Frank to dim or restore."""
-        signal_file = Path("/tmp/frank_adi_dim_signal")
+        try:
+            from config.paths import get_temp as _get_temp_adim
+            signal_file = _get_temp_adim("adi_dim_signal")
+        except ImportError:
+            signal_file = Path("/tmp/frank/adi_dim_signal")
         try:
             if dim:
                 signal_file.touch()
@@ -536,7 +540,11 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
         """Restore Frank overlay to visible state after popup closes."""
         try:
             # Touch the restore signal file so Frank shows itself
-            restore_signal = Path("/tmp/frank_overlay_show")
+            try:
+                from config.paths import TEMP_FILES as _TF_adi
+                restore_signal = _TF_adi["overlay_show"]
+            except ImportError:
+                restore_signal = Path("/tmp/frank/overlay_show")
             restore_signal.touch()
             LOG.debug("Signaled Frank overlay to restore")
 
@@ -699,7 +707,11 @@ class ADIPopupWindow(Gtk.ApplicationWindow):
 
     def _write_apply_signal(self):
         """Write signal file for Frank to apply settings."""
-        signal_file = Path("/tmp/frank_adi_apply_signal")
+        try:
+            from config.paths import get_temp as _get_temp_adia
+            signal_file = _get_temp_adia("adi_apply_signal")
+        except ImportError:
+            signal_file = Path("/tmp/frank/adi_apply_signal")
         try:
             with open(signal_file, 'w') as f:
                 f.write(self.monitor.edid_hash)
@@ -740,7 +752,7 @@ def main():
         logging.basicConfig(level=logging.INFO)
 
     # Check singleton
-    lock_file = Path("/run/user/1000/frank/adi_popup.lock")
+    lock_file = Path(f"/run/user/{os.getuid()}/frank/adi_popup.lock")
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:

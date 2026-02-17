@@ -54,9 +54,10 @@ try:
     from config.paths import AICORE_ROOT, TRAINING_LOG_DIR, DB_DIR as _DB_DIR
     AICORE_BASE = str(AICORE_ROOT)
 except ImportError:
-    AICORE_BASE = "/home/ai-core-node/aicore/opt/aicore"
-    TRAINING_LOG_DIR = Path("/home/ai-core-node/.local/share/frank/logs/training")
-    _DB_DIR = Path("/home/ai-core-node/.local/share/frank/db")
+    AICORE_BASE = str(Path(__file__).resolve().parents[2])
+    _data = Path.home() / ".local" / "share" / "frank"
+    TRAINING_LOG_DIR = _data / "logs" / "training"
+    _DB_DIR = _data / "db"
 sys.path.insert(0, AICORE_BASE)
 
 CORE_URL = "http://127.0.0.1:8088/chat"

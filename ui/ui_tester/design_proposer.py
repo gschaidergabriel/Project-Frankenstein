@@ -23,7 +23,7 @@ LOG = logging.getLogger("ui_tester.proposer")
 try:
     from config.paths import UI_DIR as _UI_DIR
 except ImportError:
-    _UI_DIR = Path("/home/ai-core-node/aicore/opt/aicore/ui")
+    _UI_DIR = Path(__file__).resolve().parent.parent
 CHAT_OVERLAY_PY = _UI_DIR / "chat_overlay.py"
 BACKUP_DIR = _UI_DIR / "ui_tester" / "style_backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)

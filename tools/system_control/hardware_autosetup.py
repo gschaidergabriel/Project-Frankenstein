@@ -39,12 +39,17 @@ LOG = logging.getLogger("system_control.hardware")
 try:
     from config.paths import SYSTEM_CONTROL_DIR as DB_DIR
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database/system_control")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "system_control"
 DB_DIR.mkdir(parents=True, exist_ok=True)
 PRINTER_CACHE_FILE = DB_DIR / "printer_cache.json"
 
 # Driver download directory
-DRIVER_DOWNLOAD_DIR = Path("/tmp/frank_drivers")
+try:
+    from config.paths import TEMP_DIR as _hw_temp_dir
+    DRIVER_DOWNLOAD_DIR = _hw_temp_dir / "drivers"
+except ImportError:
+    import tempfile as _hw_tempfile
+    DRIVER_DOWNLOAD_DIR = Path(_hw_tempfile.gettempdir()) / "frank" / "drivers"
 DRIVER_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 

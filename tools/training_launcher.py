@@ -23,9 +23,11 @@ try:
     from config.paths import TRAINING_LOG_DIR as LOG_DIR, SANDBOX_DIR as SANDBOX_BASE_DIR, AICORE_ROOT
     DAEMON_SCRIPT = AICORE_ROOT / "ext" / "autonomous_training_daemon.py"
 except ImportError:
-    LOG_DIR = Path("/home/ai-core-node/aicore/logs/training")
-    SANDBOX_BASE_DIR = Path("/home/ai-core-node/aicore/sandbox")
-    DAEMON_SCRIPT = Path("/home/ai-core-node/aicore/opt/aicore/ext/autonomous_training_daemon.py")
+    _tl_project_root = Path(__file__).resolve().parents[3]  # tools/ -> opt/aicore -> opt -> aicore
+    LOG_DIR = _tl_project_root / "logs" / "training"
+    SANDBOX_BASE_DIR = _tl_project_root / "sandbox"
+    AICORE_ROOT = Path(__file__).resolve().parents[1]  # tools/ -> opt/aicore
+    DAEMON_SCRIPT = AICORE_ROOT / "ext" / "autonomous_training_daemon.py"
 
 
 class ToolAnalyzer:
@@ -384,7 +386,10 @@ class TrainingLauncher:
             print(f"[Launcher] ERROR: Could not write report: {e}")
             # Try fallback location in /tmp
             try:
-                fallback_file = Path(f"/tmp/training_report_{end_time.strftime('%Y%m%d_%H%M%S')}.txt")
+                import tempfile as _tl_tmpmod
+                _tl_fallback_dir = Path(_tl_tmpmod.gettempdir()) / "frank"
+                _tl_fallback_dir.mkdir(parents=True, exist_ok=True)
+                fallback_file = _tl_fallback_dir / f"training_report_{end_time.strftime('%Y%m%d_%H%M%S')}.txt"
                 with open(fallback_file, 'w') as f:
                     self._write_report(f, state, proposals, all_proposals, tools,
                                      duration, end_time, sandbox_dir)

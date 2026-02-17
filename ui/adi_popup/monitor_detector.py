@@ -48,7 +48,7 @@ try:
     from config.paths import ADI_PROFILES_DIR
     PROFILES_DIR = ADI_PROFILES_DIR
 except ImportError:
-    PROFILES_DIR = Path("/home/ai-core-node/.local/share/frank/adi_profiles")
+    PROFILES_DIR = Path.home() / ".local" / "share" / "frank" / "adi_profiles"
 
 
 @dataclass

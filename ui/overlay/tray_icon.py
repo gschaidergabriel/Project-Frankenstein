@@ -1,7 +1,7 @@
 """System tray icon for Frank overlay.
 
 Launches tray_indicator.py as a separate process.
-Communicates via /tmp/frank_tray_toggle signal file.
+Communicates via TEMP_DIR/tray_toggle signal file.
 """
 
 import os
@@ -11,7 +11,11 @@ from pathlib import Path
 
 from overlay.constants import LOG
 
-TRAY_TOGGLE_SIGNAL = Path("/tmp/frank_tray_toggle")
+try:
+    from config.paths import TEMP_FILES as _TEMP_FILES
+    TRAY_TOGGLE_SIGNAL = _TEMP_FILES["tray_toggle"]
+except ImportError:
+    TRAY_TOGGLE_SIGNAL = Path("/tmp/frank/tray_toggle")
 _INDICATOR_SCRIPT = Path(__file__).parent / "tray_indicator.py"
 
 _proc = None

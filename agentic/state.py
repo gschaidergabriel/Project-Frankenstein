@@ -28,7 +28,7 @@ try:
     from config.paths import get_db
     STATE_DB_PATH = get_db("agent_state")
 except ImportError:
-    STATE_DB_PATH = Path("/home/ai-core-node/.local/share/frank/db/agent_state.db")
+    STATE_DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "agent_state.db"
 
 
 class StepStatus(str, Enum):

@@ -20,7 +20,7 @@ try:
     from config.paths import AICORE_ROOT as _CODE_SCAN_ROOT
     SCAN_ROOT = _CODE_SCAN_ROOT
 except ImportError:
-    SCAN_ROOT = Path("/home/ai-core-node/aicore/opt/aicore/")
+    SCAN_ROOT = Path(__file__).resolve().parents[3]
 FILES_PER_TICK = 5
 MAX_FUNC_LINES = 80
 MAX_FILE_LINES = 500

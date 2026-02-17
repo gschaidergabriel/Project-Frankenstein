@@ -64,7 +64,11 @@ LLAMA_STARTUP_WAIT_SEC = float(os.environ.get("AICORE_LLAMA_STARTUP_WAIT_SEC", "
 
 # Memory pressure control: mutual exclusion for heavy models (only one loaded at a time)
 MEMORY_PRESSURE_CONTROL = os.environ.get("AICORE_MEMORY_PRESSURE_CONTROL", "1").strip() in ("1", "true", "yes")
-MPC_LLAMA_PARKED_FLAG = Path("/tmp/frank_mpc_llama_parked")
+try:
+    from config.paths import get_temp as _router_get_temp
+    MPC_LLAMA_PARKED_FLAG = _router_get_temp("mpc_llama_parked")
+except ImportError:
+    MPC_LLAMA_PARKED_FLAG = Path("/tmp/frank/mpc_llama_parked")
 
 # CRITICAL: Default token limit for response generation
 # Must be high enough for complete answers (German text ~1.3 chars/token)

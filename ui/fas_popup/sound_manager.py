@@ -26,7 +26,7 @@ class SoundManager:
     try:
         from config.paths import SOUNDS_DIR as _SOUNDS_DIR
     except ImportError:
-        _SOUNDS_DIR = Path("/home/ai-core-node/aicore/opt/aicore/ui/sounds")
+        _SOUNDS_DIR = Path(__file__).resolve().parents[1] / "sounds"
     SOUNDS_DIR = _SOUNDS_DIR
 
     # Sound definitions

@@ -55,7 +55,11 @@ MAX_INTERVAL = 30
 LOCAL_ONLY_MODE = True  # Trains locally only, API optional
 
 # Log directory
-LOG_DIR = Path("/home/ai-core-node/aicore/logs/ego_training")
+try:
+    from config.paths import AICORE_LOG
+    LOG_DIR = AICORE_LOG / "ego_training"
+except ImportError:
+    LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs" / "ego_training"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Setup Logging

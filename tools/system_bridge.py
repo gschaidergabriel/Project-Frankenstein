@@ -37,7 +37,8 @@ try:
     from config.paths import DB_DIR, get_db
     BRIDGE_DB = get_db("system_bridge")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     BRIDGE_DB = DB_DIR / "system_bridge.db"
 
 

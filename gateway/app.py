@@ -32,7 +32,11 @@ from gateway.auth import init_auth, verify_api_key
 # ── Config ──────────────────────────────────────────────────────────
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
-LOG_FILE = Path("/tmp/frank_gateway.log")
+try:
+    from config.paths import AICORE_LOG as _GW_LOG_DIR
+    LOG_FILE = _GW_LOG_DIR / "gateway.log"
+except ImportError:
+    LOG_FILE = Path("/tmp/frank/gateway.log")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,7 +71,11 @@ init_auth(
     chat_rpm=_config.get("chat_rate_limit_per_minute", 10),
 )
 
-NOTIFICATION_DIR = Path("/tmp/frank_notifications")
+try:
+    from config.paths import TEMP_FILES as _GW_TF
+    NOTIFICATION_DIR = _GW_TF["notifications_dir"]
+except ImportError:
+    NOTIFICATION_DIR = Path("/tmp/frank/notifications")
 
 # ── HTTP Client ─────────────────────────────────────────────────────
 

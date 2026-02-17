@@ -275,7 +275,11 @@ class EWishPopupWindow(Gtk.ApplicationWindow):
 
     def _signal_frank_dim(self, dim: bool):
         """Signal Frank overlay to dim/restore."""
-        signal_file = Path("/tmp/frank_ewish_dim_signal")
+        try:
+            from config.paths import get_temp as _get_temp_ew2
+            signal_file = _get_temp_ew2("ewish_dim_signal")
+        except ImportError:
+            signal_file = Path("/tmp/frank/ewish_dim_signal")
         try:
             if dim:
                 signal_file.touch()

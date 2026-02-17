@@ -39,7 +39,7 @@ class AppWorkersMixin:
             from config.paths import AICORE_ROOT as _AICORE_ROOT
         except ImportError:
             from pathlib import Path as _P
-            _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+            _AICORE_ROOT = _P(__file__).resolve().parents[3]
         if str(_AICORE_ROOT) not in sys.path:
             sys.path.insert(0, str(_AICORE_ROOT))
         import tools.steam_integration as steam
@@ -409,7 +409,7 @@ class AppWorkersMixin:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT
             except ImportError:
                 from pathlib import Path as _P
-                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT = _P(__file__).resolve().parents[3]
             sys.path.insert(0, str(_AICORE_ROOT))
             from live_wallpaper.wallpaper_control import start, stop, status
 

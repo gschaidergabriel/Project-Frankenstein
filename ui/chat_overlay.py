@@ -11,7 +11,11 @@ from pathlib import Path
 # ── Startup gate: gaming mode ──────────────────────────────────────────
 # Verify gaming daemon is ACTUALLY running + game detected.
 # Stale lock files are auto-removed instead of blocking forever.
-_gaming_lock = Path("/tmp/frank_gaming_lock")
+try:
+    from config.paths import TEMP_FILES as _TEMP_FILES
+    _gaming_lock = _TEMP_FILES["gaming_lock"]
+except ImportError:
+    _gaming_lock = Path("/tmp/frank/gaming_lock")
 if _gaming_lock.exists():
     import subprocess as _sp
     try:
@@ -44,7 +48,11 @@ if _gaming_lock.exists():
 # ── Clear stale user_closed signal ──────────────────────────────────────
 # If we got here, we ARE supposed to start. Remove any leftover signal
 # from previous crashes, gaming mode exits, or writer sessions.
-_user_closed = Path("/tmp/frank_user_closed")
+try:
+    from config.paths import TEMP_FILES as _TEMP_FILES2
+    _user_closed = _TEMP_FILES2["user_closed"]
+except ImportError:
+    _user_closed = Path("/tmp/frank/user_closed")
 if _user_closed.exists():
     print("[Frank] Clearing stale user_closed signal — overlay is starting", file=sys.stderr)
     try:

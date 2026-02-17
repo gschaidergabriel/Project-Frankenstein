@@ -61,8 +61,9 @@ MAX_SCREENSHOTS_PER_HOUR = 20
 try:
     from config.paths import get_db, DB_DIR as _DB_DIR
 except ImportError:
-    _DB_DIR = Path("/home/ai-core-node/.local/share/frank/db")
+    _DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
     def get_db(name):
+        _DB_DIR.mkdir(parents=True, exist_ok=True)
         return _DB_DIR / f"{name}.db"
 
 AICORE_DB = _DB_DIR
@@ -74,7 +75,12 @@ VLM_LOCAL_ENDPOINT = "http://127.0.0.1:11434/api/generate"  # Ollama
 VLM_MODEL = "llava"  # oder "qwen-vl" wenn verfügbar
 
 # Gaming-Mode Lock File
-GAMING_LOCK_FILE = Path("/tmp/frank_gaming_mode.lock")
+try:
+    from config.paths import get_temp as _vcb_get_temp
+    GAMING_LOCK_FILE = _vcb_get_temp("gaming_mode.lock")
+except ImportError:
+    import tempfile as _vcb_tempfile
+    GAMING_LOCK_FILE = Path(_vcb_tempfile.gettempdir()) / "frank" / "gaming_mode.lock"
 
 
 # =============================================================================

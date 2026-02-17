@@ -38,11 +38,14 @@ try:
     WORLD_EXPERIENCE_DB = get_db("world_experience")
     INSIGHT_CACHE = get_state("insight_cache")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    _DATA_DIR = Path.home() / ".local" / "share" / "frank"
+    DB_DIR = _DATA_DIR / "db"
     DB_DIR.mkdir(parents=True, exist_ok=True)
-    SECURITY_LOG = DB_DIR / "security_log.json"
+    _STATE_DIR = _DATA_DIR / "state"
+    _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    SECURITY_LOG = _STATE_DIR / "security_log.json"
     WORLD_EXPERIENCE_DB = DB_DIR / "world_experience.db"
-    INSIGHT_CACHE = DB_DIR / "insight_cache.json"
+    INSIGHT_CACHE = _STATE_DIR / "insight_cache.json"
 
 # API Port
 UIF_API_PORT = 8197

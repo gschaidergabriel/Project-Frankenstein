@@ -109,7 +109,7 @@ def get_capabilities_summary():
             from config.paths import AICORE_ROOT as _AICORE_ROOT
         except ImportError:
             from pathlib import Path as _Path
-            _AICORE_ROOT = _Path("/home/ai-core-node/aicore/opt/aicore")
+            _AICORE_ROOT = _Path(__file__).resolve().parents[2]
         sys.path.insert(0, str(_AICORE_ROOT))
         from skills import get_skill_registry
         skills = get_skill_registry().list_all()

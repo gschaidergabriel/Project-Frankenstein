@@ -35,7 +35,7 @@ LOG = logging.getLogger("system_control.file_organizer")
 try:
     from config.paths import SYSTEM_CONTROL_DIR as DB_DIR
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database/system_control")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "system_control"
 DB_DIR.mkdir(parents=True, exist_ok=True)
 UNDO_HISTORY_FILE = DB_DIR / "file_undo_history.json"
 

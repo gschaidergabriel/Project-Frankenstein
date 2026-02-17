@@ -48,8 +48,16 @@ def _get_user_name() -> str:
 # =============================================================================
 
 CORE_API = "http://127.0.0.1:8088/chat"
-LOG_FILE = Path("/tmp/frank_training.log")
-STATS_FILE = Path("/tmp/frank_training_stats.json")
+try:
+    from config.paths import get_temp as _ft_get_temp
+    LOG_FILE = _ft_get_temp("training.log")
+    STATS_FILE = _ft_get_temp("training_stats.json")
+except ImportError:
+    import tempfile as _ft_tempfile
+    _ft_temp_dir = Path(_ft_tempfile.gettempdir()) / "frank"
+    _ft_temp_dir.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = _ft_temp_dir / "training.log"
+    STATS_FILE = _ft_temp_dir / "training_stats.json"
 
 # Training intervals (seconds)
 MIN_INTERVAL = 30  # Minimum time between messages
@@ -207,7 +215,12 @@ def get_recent_logs() -> List[str]:
     logs = []
     try:
         # Check overlay log
-        overlay_log = Path("/tmp/overlay.log")
+        try:
+            from config.paths import TEMP_DIR as _trainer_tmp
+        except ImportError:
+            import tempfile as _trainer_tmpmod
+            _trainer_tmp = Path(_trainer_tmpmod.gettempdir()) / "frank"
+        overlay_log = _trainer_tmp / "overlay.log"
         if overlay_log.exists():
             lines = overlay_log.read_text().split('\n')[-20:]
             for line in lines:
@@ -225,7 +238,7 @@ def get_world_experience_stats() -> Dict[str, int]:
             from config.paths import get_db
             db_path = get_db("world_experience")
         except ImportError:
-            db_path = Path("/home/ai-core-node/aicore/database/world_experience.db")
+            db_path = Path.home() / ".local" / "share" / "frank" / "db" / "world_experience.db"
         if db_path.exists():
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.execute("SELECT COUNT(*) FROM observations")

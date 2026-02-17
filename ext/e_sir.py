@@ -50,10 +50,12 @@ except ImportError:
 try:
     from config.paths import AICORE_ROOT, get_db, SANDBOX_DIR as _CFG_SANDBOX_DIR
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    AICORE_ROOT = Path(__file__).resolve().parents[2]
     _CFG_SANDBOX_DIR = None
     def get_db(name):
-        return Path("/home/ai-core-node/.local/share/frank/db") / f"{name}.db"
+        _db_dir = Path.home() / ".local" / "share" / "frank" / "db"
+        _db_dir.mkdir(parents=True, exist_ok=True)
+        return _db_dir / f"{name}.db"
 
 # =============================================================================
 # CONFIGURATION

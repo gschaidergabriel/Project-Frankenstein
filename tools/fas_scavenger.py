@@ -73,11 +73,20 @@ try:
     DB_PATH = get_db("fas_scavenger")
     SANDBOX_PATH = SANDBOX_DIR
 except ImportError:
-    DB_PATH = Path("/home/ai-core-node/aicore/database/fas_scavenger.db")
-    SANDBOX_PATH = Path("/home/ai-core-node/aicore/github")
+    DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db"
+    _fas_project_root = Path(__file__).resolve().parents[3]  # tools/ -> opt/aicore -> opt -> aicore
+    SANDBOX_PATH = _fas_project_root / "github"
     _TOOLS_DIR = None
-GAMING_STATE_FILE = Path("/tmp/gaming_mode_state.json")
-STASIS_FILE = Path("/tmp/fas_stasis.json")
+try:
+    from config.paths import get_temp as _fas_get_temp
+    GAMING_STATE_FILE = _fas_get_temp("gaming_mode_state.json")
+    STASIS_FILE = _fas_get_temp("fas_stasis.json")
+except ImportError:
+    import tempfile as _fas_tempfile
+    _fas_temp_dir = Path(_fas_tempfile.gettempdir()) / "frank"
+    _fas_temp_dir.mkdir(parents=True, exist_ok=True)
+    GAMING_STATE_FILE = _fas_temp_dir / "gaming_mode_state.json"
+    STASIS_FILE = _fas_temp_dir / "fas_stasis.json"
 
 # Guardrail Limits
 MAX_SANDBOX_GB = 20
@@ -885,7 +894,8 @@ try:
     from config.paths import SANDBOX_DIR as _FAS_SANDBOX
     FEATURE_SANDBOX_PATH = _FAS_SANDBOX / "feature_tests"
 except ImportError:
-    FEATURE_SANDBOX_PATH = Path("/home/ai-core-node/aicore/sandbox/feature_tests")
+    _fas_proj_root = Path(__file__).resolve().parents[3]
+    FEATURE_SANDBOX_PATH = _fas_proj_root / "sandbox" / "feature_tests"
 MIN_CONFIDENCE_FOR_PROPOSAL = 0.75
 MIN_TEST_ITERATIONS = 3
 
@@ -1247,7 +1257,7 @@ To see more details, respond with: /feature-details {feature['id']}
                 from config.paths import AICORE_DATA as _fas_data
                 notif_dir = _fas_data / "fas_notifications"
             except ImportError:
-                notif_dir = Path("/home/ai-core-node/aicore/data/fas_notifications")
+                notif_dir = Path.home() / ".local" / "share" / "frank" / "fas_notifications"
             notif_dir.mkdir(parents=True, exist_ok=True)
 
             notif_file = notif_dir / f"feature_{feature['id']}_{int(time.time())}.json"
@@ -1340,7 +1350,7 @@ class FeatureIntegrator:
     Only runs after explicit user approval.
     """
 
-    TOOLS_DIR = (_TOOLS_DIR / "discovered") if _TOOLS_DIR else Path("/home/ai-core-node/aicore/opt/aicore/tools/discovered")
+    TOOLS_DIR = (_TOOLS_DIR / "discovered") if _TOOLS_DIR else (Path(__file__).resolve().parent / "discovered")
 
     def __init__(self, db: FASDatabase):
         self.db = db

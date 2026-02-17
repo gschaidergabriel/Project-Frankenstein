@@ -22,7 +22,7 @@ try:
     from config.paths import get_state
     PROFILE_FILE = get_state("user_profile")
 except ImportError:
-    PROFILE_FILE = Path("/home/ai-core-node/aicore/database/user_profile.json")
+    PROFILE_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "user_profile.json"
 _lock = threading.Lock()
 _cache: Optional[Dict[str, Any]] = None
 

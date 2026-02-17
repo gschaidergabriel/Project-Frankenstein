@@ -33,8 +33,16 @@ logging.basicConfig(
 LOG = logging.getLogger("policy_guard")
 
 # Paths
-GAMING_STATE_FILE = Path("/tmp/gaming_mode_state.json")
-POLICY_STATE_FILE = Path("/tmp/uolg_policy_state.json")
+try:
+    from config.paths import get_temp as _pg_get_temp
+    GAMING_STATE_FILE = _pg_get_temp("gaming_mode_state.json")
+    POLICY_STATE_FILE = _pg_get_temp("uolg_policy_state.json")
+except ImportError:
+    import tempfile as _pg_tempfile
+    _pg_temp_dir = Path(_pg_tempfile.gettempdir()) / "frank"
+    _pg_temp_dir.mkdir(parents=True, exist_ok=True)
+    GAMING_STATE_FILE = _pg_temp_dir / "gaming_mode_state.json"
+    POLICY_STATE_FILE = _pg_temp_dir / "uolg_policy_state.json"
 
 
 class OperationMode(Enum):

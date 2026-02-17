@@ -203,9 +203,13 @@ class FeatureIntegrator:
 
         # Default: assume core files might be affected
         if not files:
+            try:
+                from config.paths import AICORE_ROOT as _intg_root
+            except ImportError:
+                _intg_root = Path(__file__).resolve().parents[2]
             files = [
-                "/home/ai-core-node/aicore/opt/aicore/core/app.py",
-                "/home/ai-core-node/aicore/opt/aicore/tools/toolboxd.py",
+                str(_intg_root / "core" / "app.py"),
+                str(_intg_root / "tools" / "toolboxd.py"),
             ]
 
         return files

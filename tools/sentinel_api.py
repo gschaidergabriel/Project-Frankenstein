@@ -171,7 +171,7 @@ def get_security_alerts(hours: int = 24) -> List[Dict]:
             from config.paths import get_state
             security_file = get_state("security_log")
         except ImportError:
-            security_file = Path("/home/ai-core-node/aicore/database/security_log.json")
+            security_file = Path.home() / ".local" / "share" / "frank" / "state" / "security_log.json"
         if not security_file.exists():
             return []
 

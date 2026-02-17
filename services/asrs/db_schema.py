@@ -261,7 +261,7 @@ if __name__ == "__main__":
             from config.paths import get_db
             db_path = get_db("fas_scavenger")
         except ImportError:
-            db_path = Path("/home/ai-core-node/aicore/database/fas_scavenger.db")
+            db_path = Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db"
 
     print(f"Ensuring schema for {db_path}")
     ensure_schema(db_path)

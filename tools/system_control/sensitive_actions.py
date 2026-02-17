@@ -32,7 +32,7 @@ LOG = logging.getLogger("system_control.sensitive")
 try:
     from config.paths import SYSTEM_CONTROL_DIR as STATE_DIR
 except ImportError:
-    STATE_DIR = Path("/home/ai-core-node/aicore/database/system_control")
+    STATE_DIR = Path.home() / ".local" / "share" / "frank" / "system_control"
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 PENDING_ACTIONS_FILE = STATE_DIR / "pending_actions.json"
 

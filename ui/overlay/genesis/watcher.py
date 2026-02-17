@@ -15,10 +15,14 @@ from overlay.genesis.popup import GenesisNotificationPopup
 try:
     from config.paths import TRAINING_LOG_DIR
 except ImportError:
-    TRAINING_LOG_DIR = Path("/home/ai-core-node/.local/share/frank/logs/training")
+    TRAINING_LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs" / "training"
 
 PROPOSALS_FILE = TRAINING_LOG_DIR / "proposals.jsonl"
-GENESIS_SHOWN_FILE = Path("/tmp/frank_genesis_shown.json")
+try:
+    from config.paths import get_temp as _get_temp_gen
+    GENESIS_SHOWN_FILE = _get_temp_gen("genesis_shown.json")
+except ImportError:
+    GENESIS_SHOWN_FILE = Path("/tmp/frank/genesis_shown.json")
 
 
 class GenesisWatcher:

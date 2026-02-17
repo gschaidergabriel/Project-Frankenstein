@@ -1,6 +1,6 @@
 """Notification mixin -- polls daemon notification directory and shows reminders in chat.
 
-The notification_daemon.py writes JSON files to /tmp/frank_notifications/.
+The notification_daemon.py writes JSON files to TEMP_DIR/notifications/.
 This mixin picks them up and displays them as chat messages.
 """
 from __future__ import annotations
@@ -10,7 +10,11 @@ from pathlib import Path
 
 from overlay.constants import LOG
 
-NOTIFICATION_DIR = Path("/tmp/frank_notifications")
+try:
+    from config.paths import TEMP_FILES as _TF_notif
+    NOTIFICATION_DIR = _TF_notif["notifications_dir"]
+except ImportError:
+    NOTIFICATION_DIR = Path("/tmp/frank/notifications")
 _NOTIFICATION_POLL_MS = 15_000  # 15 seconds
 
 

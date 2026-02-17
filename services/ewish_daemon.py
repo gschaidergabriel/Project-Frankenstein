@@ -29,17 +29,21 @@ from typing import Any, Dict, Optional
 try:
     from config.paths import AICORE_ROOT, get_state
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    AICORE_ROOT = Path(__file__).resolve().parents[1]
     get_state = None
 sys.path.insert(0, str(AICORE_ROOT))
 
 # Logging
 LOG = logging.getLogger("ewish_daemon")
-LOG_FILE = Path("/tmp/frank_ewish_daemon.log")
-
-# State file
-STATE_FILE = Path("/tmp/ewish_daemon_state.json")
-PID_FILE = Path(f"/run/user/{os.getuid()}/frank/ewish_daemon.pid")
+try:
+    from config.paths import get_temp as _ew_get_temp, get_runtime as _ew_get_runtime
+    LOG_FILE = _ew_get_temp("ewish_daemon.log")
+    STATE_FILE = _ew_get_temp("ewish_daemon_state.json")
+    PID_FILE = _ew_get_runtime("ewish_daemon.pid")
+except ImportError:
+    LOG_FILE = Path("/tmp/frank/ewish_daemon.log")
+    STATE_FILE = Path("/tmp/frank/ewish_daemon_state.json")
+    PID_FILE = Path(f"/run/user/{os.getuid()}/frank/ewish_daemon.pid")
 
 # Configuration
 CHECK_INTERVAL_SECONDS = 300  # Check every 5 minutes
@@ -106,8 +110,11 @@ class EWishDaemon:
     def _is_gaming_mode(self) -> bool:
         """Check if gaming mode is active."""
         try:
-            # FIX: Correct path (consistent with gaming_mode.py)
-            gaming_state = Path("/tmp/gaming_mode_state.json")
+            try:
+                from config.paths import get_temp as _ew_get_temp3
+                gaming_state = _ew_get_temp3("gaming_mode_state.json")
+            except ImportError:
+                gaming_state = Path("/tmp/frank/gaming_mode_state.json")
             if gaming_state.exists():
                 data = json.loads(gaming_state.read_text())
                 return data.get("active", False)
@@ -190,7 +197,7 @@ class EWishDaemon:
         try:
             from services.genesis.reflection.self_model import SelfModel
             # Load from file if exists
-            model_file = get_state("genesis_self_model") if get_state else Path("/home/ai-core-node/aicore/database/genesis_self_model.json")
+            model_file = get_state("genesis_self_model") if get_state else Path(Path.home() / ".local" / "share" / "frank" / "state" / "genesis_self_model.json")
             if model_file.exists():
                 data = json.loads(model_file.read_text())
                 context["self_model"] = SelfModel.from_dict(data)
@@ -208,7 +215,7 @@ class EWishDaemon:
 
         # Get last interaction time
         try:
-            chat_history = get_state("chat_history") if get_state else Path("/home/ai-core-node/aicore/database/chat_history.json")
+            chat_history = get_state("chat_history") if get_state else Path(Path.home() / ".local" / "share" / "frank" / "state" / "chat_history.json")
             if chat_history.exists():
                 data = json.loads(chat_history.read_text())
                 if data.get("messages"):
@@ -224,7 +231,11 @@ class EWishDaemon:
             hour = datetime.now().hour
             if hour >= 23 or hour < 6:
                 # User is working late - track this
-                pattern_file = Path("/tmp/frank_user_patterns.json")
+                try:
+                    from config.paths import get_temp as _ew_get_temp2
+                    pattern_file = _ew_get_temp2("user_patterns.json")
+                except ImportError:
+                    pattern_file = Path("/tmp/frank/user_patterns.json")
                 patterns = {}
                 if pattern_file.exists():
                     patterns = json.loads(pattern_file.read_text())

@@ -36,8 +36,8 @@ from typing import Dict, List, Optional, Set, Tuple
 try:
     from config.paths import AICORE_ROOT, AICORE_LOG, TRAINING_LOG_DIR
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
-    AICORE_LOG = Path("/home/ai-core-node/.local/share/frank/logs")
+    AICORE_ROOT = Path(__file__).resolve().parents[2]
+    AICORE_LOG = Path.home() / ".local" / "share" / "frank" / "logs"
     TRAINING_LOG_DIR = AICORE_LOG / "training"
 sys.path.insert(0, str(AICORE_ROOT))
 

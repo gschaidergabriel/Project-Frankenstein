@@ -20,8 +20,8 @@ try:
     from config.paths import INVARIANTS_DIR, get_db as _inv_get_db
     TITAN_PRIMARY_DB = _inv_get_db("titan")
 except ImportError:
-    INVARIANTS_DIR = Path("/home/ai-core-node/aicore/database/invariants")
-    TITAN_PRIMARY_DB = Path("/home/ai-core-node/aicore/database/titan.db")
+    INVARIANTS_DIR = Path.home() / ".local" / "share" / "frank" / "invariants"
+    TITAN_PRIMARY_DB = Path.home() / ".local" / "share" / "frank" / "db" / "titan.db"
 INVARIANTS_DB = INVARIANTS_DIR / "invariants.db"
 TITAN_SHADOW_DB = INVARIANTS_DIR / "titan_shadow.db"
 TITAN_VALIDATOR_DB = INVARIANTS_DIR / "titan_validator.db"

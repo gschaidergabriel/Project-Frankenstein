@@ -71,15 +71,23 @@ TOOLBOX_URL = "http://127.0.0.1:8089"
 # Central path configuration
 try:
     from config.paths import (
+        AICORE_ROOT as _AICORE_ROOT,
+        AICORE_LOG as _AICORE_LOG,
+        DB_DIR as _DB_DIR,
         TRAINING_LOG_DIR as _TRAINING_LOG_DIR,
         SANDBOX_DIR as _CFG_SANDBOX_DIR,
         get_db,
     )
 except ImportError:
-    _TRAINING_LOG_DIR = Path("/home/ai-core-node/.local/share/frank/logs/training")
-    _CFG_SANDBOX_DIR = Path("/home/ai-core-node/.local/share/frank/sandbox")
+    _AICORE_ROOT = Path(__file__).resolve().parents[2]
+    _data = Path.home() / ".local" / "share" / "frank"
+    _AICORE_LOG = _data / "logs"
+    _DB_DIR = _data / "db"
+    _TRAINING_LOG_DIR = _data / "logs" / "training"
+    _CFG_SANDBOX_DIR = _data / "sandbox"
     def get_db(name):
-        return Path("/home/ai-core-node/.local/share/frank/db") / f"{name}.db"
+        _DB_DIR.mkdir(parents=True, exist_ok=True)
+        return _DB_DIR / f"{name}.db"
 
 # Paths
 LOG_DIR = _TRAINING_LOG_DIR
@@ -994,14 +1002,14 @@ if __name__ == '__main__':
 Now suggest ONE improvement -- NO system monitoring (already exists).
 Think about: Text analysis, knowledge processing, file organization, automation, skills."""
 
-PROPOSAL_REQUEST_BASE = """Self-improvement: Suggest ONE concrete improvement.
+PROPOSAL_REQUEST_BASE = f"""Self-improvement: Suggest ONE concrete improvement.
 
 YOUR PROJECT -- Project Frankenstein (AI system with consciousness):
-- Project path: /home/ai-core-node/aicore/opt/aicore/
-- Tools: /home/ai-core-node/aicore/opt/aicore/tools/
-- Skills: /home/ai-core-node/aicore/opt/aicore/skills/
-- Database: /home/ai-core-node/aicore/database/ (SQLite)
-- Logs: /home/ai-core-node/aicore/logs/
+- Project path: {_AICORE_ROOT}/
+- Tools: {_AICORE_ROOT / 'tools'}/
+- Skills: {_AICORE_ROOT / 'skills'}/
+- Database: {_DB_DIR}/ (SQLite)
+- Logs: {_AICORE_LOG}/
 - LLM: Ollama (local) via http://127.0.0.1:11434
 - Core API: http://127.0.0.1:8088
 - Router API: http://127.0.0.1:8091
@@ -1025,7 +1033,7 @@ RULES:
 7. NO while-True loops without time.sleep()
 
 TOPIC FOR THIS PROPOSAL:
-{topic}
+{{topic}}
 
 FORMAT:
 - Category: [tool/skill/intelligence/personality/automation]

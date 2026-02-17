@@ -187,7 +187,13 @@ def gaming_mode_start():
     import os
     from pathlib import Path
     # Flag-Datei erstellen
-    Path("/tmp/frank_gaming_mode").touch()
+    try:
+        from config.paths import get_temp as _lw_get_temp
+        _lw_gaming_flag = _lw_get_temp("gaming_mode")
+    except ImportError:
+        _lw_gaming_flag = Path("/tmp/frank/gaming_mode")
+    _lw_gaming_flag.parent.mkdir(parents=True, exist_ok=True)
+    _lw_gaming_flag.touch()
     # Event senden
     publish_event("gaming", "gaming.start", "info")
 
@@ -203,7 +209,12 @@ def gaming_mode_end():
     from pathlib import Path
     # Flag-Datei entfernen
     try:
-        Path("/tmp/frank_gaming_mode").unlink()
+        try:
+            from config.paths import get_temp as _lw_get_temp2
+            _lw_gaming_flag2 = _lw_get_temp2("gaming_mode")
+        except ImportError:
+            _lw_gaming_flag2 = Path("/tmp/frank/gaming_mode")
+        _lw_gaming_flag2.unlink()
     except FileNotFoundError:
         pass
     # Event senden
@@ -213,7 +224,12 @@ def gaming_mode_end():
 def is_gaming_mode() -> bool:
     """Prüft ob Gaming Mode aktiv ist."""
     from pathlib import Path
-    return Path("/tmp/frank_gaming_mode").exists()
+    try:
+        from config.paths import get_temp as _lw_get_temp3
+        _lw_gaming_flag3 = _lw_get_temp3("gaming_mode")
+    except ImportError:
+        _lw_gaming_flag3 = Path("/tmp/frank/gaming_mode")
+    return _lw_gaming_flag3.exists()
 
 
 __all__ = [

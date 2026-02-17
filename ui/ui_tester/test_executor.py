@@ -23,7 +23,7 @@ LOG = logging.getLogger("ui_tester.executor")
 try:
     from config.paths import UI_DIR as _UI_DIR
 except ImportError:
-    _UI_DIR = Path("/home/ai-core-node/aicore/opt/aicore/ui")
+    _UI_DIR = Path(__file__).resolve().parent.parent
 RESULTS_DIR = _UI_DIR / "ui_tester" / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -42,8 +42,9 @@ try:
     DB_PATH = get_db("world_experience")
     SNAPSHOT_DIR = AICORE_DATA / "identity_snapshots"
 except ImportError:
-    DB_PATH = Path("/home/ai-core-node/aicore/database/world_experience.db")
-    SNAPSHOT_DIR = Path("/home/ai-core-node/aicore/database/identity_snapshots")
+    _data = Path.home() / ".local" / "share" / "frank"
+    DB_PATH = _data / "db" / "world_experience.db"
+    SNAPSHOT_DIR = _data / "identity_snapshots"
 LOG = logging.getLogger("e_pq")
 
 # Event weights (severity of experience)

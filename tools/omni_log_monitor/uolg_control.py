@@ -26,8 +26,14 @@ from pathlib import Path
 # Paths
 BASE_DIR = Path(__file__).parent
 UIF_API_URL = "http://localhost:8197"
-UOLG_PID_FILE = Path("/tmp/uolg/uolg.pid")
-UOLG_LOG = Path("/tmp/uolg/uolg.log")
+try:
+    from config.paths import TEMP_DIR as _uolg_temp
+    _uolg_dir = _uolg_temp / "uolg"
+except ImportError:
+    import tempfile as _uolg_tempfile
+    _uolg_dir = Path(_uolg_tempfile.gettempdir()) / "frank" / "uolg"
+UOLG_PID_FILE = _uolg_dir / "uolg.pid"
+UOLG_LOG = _uolg_dir / "uolg.log"
 
 
 def http_get(endpoint: str, timeout: float = 5.0) -> dict:

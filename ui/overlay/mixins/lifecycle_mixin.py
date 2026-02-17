@@ -20,10 +20,15 @@ try:
     _LAST_MONITOR_FILE = get_state("last_monitor")  # creates parent if needed
     _SESSION_FILE = get_state("frank_session")
 except ImportError:
-    _LAST_MONITOR_FILE = Path("/home/ai-core-node/.local/share/frank/state/last_monitor.json")
-    _SESSION_FILE = Path("/home/ai-core-node/.local/share/frank/state/frank_session.json")
-USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
-GAMING_LOCK = Path("/tmp/frank_gaming_lock")
+    _LAST_MONITOR_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "last_monitor.json"
+    _SESSION_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "frank_session.json"
+try:
+    from config.paths import TEMP_FILES as _LM_TF
+    USER_CLOSED_SIGNAL = _LM_TF["user_closed"]
+    GAMING_LOCK = _LM_TF["gaming_lock"]
+except ImportError:
+    USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
+    GAMING_LOCK = Path("/tmp/frank/gaming_lock")
 
 # Shutdown reasons — only USER_INITIATED writes the user_closed signal
 SHUTDOWN_USER = "user_closed"        # User clicked X or tray quit
@@ -181,7 +186,11 @@ class LifecycleMixin:
     def _poll_tray_quit_signal(self):
         """Poll for tray quit signal and destroy overlay if found."""
         try:
-            quit_signal = Path("/tmp/frank_tray_quit")
+            try:
+                from config.paths import get_temp as _get_temp_tq
+                quit_signal = _get_temp_tq("tray_quit")
+            except ImportError:
+                quit_signal = Path("/tmp/frank/tray_quit")
             if quit_signal.exists():
                 quit_signal.unlink(missing_ok=True)
                 LOG.info("Tray quit signal received — destroying overlay")
@@ -384,7 +393,11 @@ class LifecycleMixin:
 
     def _poll_adi_apply_signal(self):
         """Poll for ADI apply signal file and apply profile if found."""
-        signal_file = Path("/tmp/frank_adi_apply_signal")
+        try:
+            from config.paths import get_temp as _get_temp_adi
+            signal_file = _get_temp_adi("adi_apply_signal")
+        except ImportError:
+            signal_file = Path("/tmp/frank/adi_apply_signal")
         try:
             if signal_file.exists():
                 edid_hash = signal_file.read_text().strip()

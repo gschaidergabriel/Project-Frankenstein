@@ -33,14 +33,14 @@ class ProposalQueueManager:
             from config.paths import get_db as _get_db
             _default_db = str(_get_db("fas_scavenger"))
         except ImportError:
-            _default_db = "/home/ai-core-node/.local/share/frank/db/fas_scavenger.db"
+            _default_db = str(Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db")
         self.db_path = Path(self.config.get(
             "db_path",
             _default_db
         ))
         self.state_file = Path(self.config.get(
             "popup_state_file",
-            "/tmp/fas_popup_state.json"
+            str(Path.home() / ".local" / "share" / "frank" / "state" / "fas_popup_state.json")
         ))
 
         # Trigger thresholds

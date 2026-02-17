@@ -24,7 +24,7 @@ try:
     from config.paths import get_db
     _DB_PATH = get_db("clipboard_history")
 except ImportError:
-    _DB_PATH = Path("/home/ai-core-node/aicore/database/clipboard_history.db")
+    _DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "clipboard_history.db"
 _MAX_ENTRIES = 50
 _MAX_CONTENT_LENGTH = 10_000
 _PREVIEW_LENGTH = 100

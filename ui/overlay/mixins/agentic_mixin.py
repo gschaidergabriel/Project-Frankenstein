@@ -497,7 +497,11 @@ class AgenticMixin:
     def _respond_to_approval(self, approved: bool) -> None:
         """Respond to an approval request."""
         # Write to approval response file
-        response_file = Path("/tmp/frank_approval_responses.json")
+        try:
+            from config.paths import TEMP_FILES as _TF_ag
+            response_file = _TF_ag["approval_responses"]
+        except ImportError:
+            response_file = Path("/tmp/frank/approval_responses.json")
         try:
             responses = []
             if response_file.exists():

@@ -2,7 +2,7 @@
 """Standalone Frank tray icon process.
 
 Creates a system tray icon (AppIndicator3) for the Frank overlay.
-Communicates with the overlay via signal file /tmp/frank_tray_toggle.
+Communicates with the overlay via TEMP_DIR/tray_toggle signal file.
 
 When the user clicks the menu toggle item, this creates the signal file.
 The overlay polls for this file every 300ms.
@@ -27,9 +27,15 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("AyatanaAppIndicator3", "0.1")
 from gi.repository import Gtk, GLib, AyatanaAppIndicator3
 
-SIGNAL = Path("/tmp/frank_tray_toggle")
-QUIT_SIGNAL = Path("/tmp/frank_tray_quit")
-LOG_FILE = Path("/tmp/frank_tray.log")
+try:
+    from config.paths import TEMP_FILES as _TEMP_FILES, get_temp as _get_temp
+    SIGNAL = _TEMP_FILES["tray_toggle"]
+    QUIT_SIGNAL = _get_temp("tray_quit")
+    LOG_FILE = _get_temp("tray.log")
+except ImportError:
+    SIGNAL = Path("/tmp/frank/tray_toggle")
+    QUIT_SIGNAL = Path("/tmp/frank/tray_quit")
+    LOG_FILE = Path("/tmp/frank/tray.log")
 
 # Debounce: prevent multiple signal creations within cooldown period
 _last_signal_time = 0.0
@@ -71,7 +77,11 @@ def _create_signal():
 signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
 
 # --- Create icon ---
-icon_dir = Path("/tmp/frank_icons")
+try:
+    from config.paths import TEMP_FILES as _TF2
+    icon_dir = _TF2["icons_dir"]
+except ImportError:
+    icon_dir = Path("/tmp/frank/icons")
 icon_dir.mkdir(exist_ok=True)
 icon_path = icon_dir / "frank-tray.png"
 if not icon_path.exists():
@@ -104,7 +114,7 @@ indicator = AyatanaAppIndicator3.Indicator.new(
     "frank-overlay", "frank-tray",
     AyatanaAppIndicator3.IndicatorCategory.APPLICATION_STATUS,
 )
-indicator.set_icon_theme_path("/tmp/frank_icons")
+indicator.set_icon_theme_path(str(icon_dir))
 indicator.set_status(AyatanaAppIndicator3.IndicatorStatus.ACTIVE)
 indicator.set_title("F.R.A.N.K.")
 

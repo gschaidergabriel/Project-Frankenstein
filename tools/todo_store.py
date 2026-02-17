@@ -28,7 +28,7 @@ try:
     from config.paths import get_db
     _DB_PATH = get_db("todos")
 except ImportError:
-    _DB_PATH = Path("/home/ai-core-node/aicore/database/todos.db")
+    _DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "todos.db"
 _MAX_TODO_LENGTH = 2000
 _MAX_TODOS = 500
 

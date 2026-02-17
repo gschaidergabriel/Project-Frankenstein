@@ -60,8 +60,9 @@ LOG = logging.getLogger("akam")
 try:
     from config.paths import get_db, DB_DIR as _DB_DIR
 except ImportError:
-    _DB_DIR = Path("/home/ai-core-node/.local/share/frank/db")
+    _DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
     def get_db(name):
+        _DB_DIR.mkdir(parents=True, exist_ok=True)
         return _DB_DIR / f"{name}.db"
 
 AICORE_DB = _DB_DIR

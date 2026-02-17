@@ -19,7 +19,11 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Same signal file used by overlay lifecycle and watchdog
-USER_CLOSED_SIGNAL = Path("/tmp/frank_user_closed")
+try:
+    from config.paths import TEMP_FILES as _WMC_TF
+    USER_CLOSED_SIGNAL = _WMC_TF["user_closed"]
+except ImportError:
+    USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
 
 
 @dataclass
@@ -189,7 +193,7 @@ class ModeController:
                 try:
                     from config.paths import UI_DIR as _UI_DIR
                 except ImportError:
-                    _UI_DIR = Path("/home/ai-core-node/aicore/opt/aicore/ui")
+                    _UI_DIR = Path(__file__).resolve().parents[2] / "ui"
                 overlay_path = _UI_DIR / "chat_overlay.py"
                 if overlay_path.exists():
                     subprocess.Popen(

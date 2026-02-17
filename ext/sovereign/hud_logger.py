@@ -32,8 +32,16 @@ from typing import Optional, Dict, Any
 # CONFIGURATION
 # =============================================================================
 
-HUD_LOG_FILE = Path("/tmp/frank_sovereign_hud.log")
-HUD_JSON_FILE = Path("/tmp/frank_sovereign_hud.json")
+try:
+    from config.paths import get_temp as _hud_get_temp
+    HUD_LOG_FILE = _hud_get_temp("sovereign_hud.log")
+    HUD_JSON_FILE = _hud_get_temp("sovereign_hud.json")
+except ImportError:
+    import tempfile as _hud_tempfile
+    _hud_tmp = Path(_hud_tempfile.gettempdir()) / "frank"
+    _hud_tmp.mkdir(parents=True, exist_ok=True)
+    HUD_LOG_FILE = _hud_tmp / "sovereign_hud.log"
+    HUD_JSON_FILE = _hud_tmp / "sovereign_hud.json"
 MAX_LOG_ENTRIES = 100  # Letzte 100 Einträge behalten
 
 

@@ -141,8 +141,8 @@ Do NOT proactively mention:
 try:
     from config.paths import AICORE_ROOT as BASE_DIR, DB_DIR
 except ImportError:
-    BASE_DIR = Path("/home/ai-core-node/aicore/opt/aicore")
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    BASE_DIR = Path(__file__).resolve().parents[2]
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
 
 # Database paths
 DATABASES = {
@@ -1725,7 +1725,7 @@ System-Aktionen - echte Veränderungen, die ich am System vornehmen kann:
 
 3. **Dateien verwalten** (toolboxd.py /fs/*):
    - Verschieben, Kopieren, Löschen
-   - Innerhalb erlaubter Pfade (Home + /home/ai-core-node/aicore)
+   - Innerhalb erlaubter Pfade (Home + AICORE_ROOT)
    - Non-Destructive: Gelöschte Dateien → /aicore/delete/ (Graveyard)
 
 4. **Services neustarten** (auto_repair.py):

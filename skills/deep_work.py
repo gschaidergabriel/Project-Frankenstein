@@ -47,9 +47,18 @@ SKILL = {
 
 # ── State ────────────────────────────────────────────────────────
 
-_STATE_FILE = Path("/tmp/frank_deep_work.json")
-_HISTORY_FILE = Path("/tmp/frank_deep_work_history.json")
-_NOTIFICATION_DIR = Path("/tmp/frank_notifications")
+try:
+    from config.paths import get_temp as _dw_get_temp
+    _STATE_FILE = _dw_get_temp("deep_work.json")
+    _HISTORY_FILE = _dw_get_temp("deep_work_history.json")
+    _NOTIFICATION_DIR = _dw_get_temp("notifications")
+except ImportError:
+    import tempfile as _dw_tempfile
+    _dw_tmp = Path(_dw_tempfile.gettempdir()) / "frank"
+    _dw_tmp.mkdir(parents=True, exist_ok=True)
+    _STATE_FILE = _dw_tmp / "deep_work.json"
+    _HISTORY_FILE = _dw_tmp / "deep_work_history.json"
+    _NOTIFICATION_DIR = _dw_tmp / "notifications"
 
 _active_session: dict = {}
 _session_lock = threading.Lock()

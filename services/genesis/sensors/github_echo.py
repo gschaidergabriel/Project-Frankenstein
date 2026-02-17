@@ -134,7 +134,7 @@ class GitHubEcho(BaseSensor):
                 from config.paths import get_db as _get_db_gh
                 db_path = _get_db_gh("fas_scavenger")
             except ImportError:
-                db_path = Path("/home/ai-core-node/aicore/database/fas_scavenger.db")
+                db_path = Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db"
             if not db_path.exists():
                 return features
 

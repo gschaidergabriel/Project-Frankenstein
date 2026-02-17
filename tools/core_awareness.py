@@ -36,8 +36,10 @@ try:
     DATABASE_DIR = STATE_DIR
     DATABASE_FILE = get_state("system_core")
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore")
-    DATABASE_DIR = AICORE_ROOT / "database"
+    _SRC_ROOT = Path(__file__).resolve().parents[1]
+    AICORE_ROOT = _SRC_ROOT.parent.parent
+    DATABASE_DIR = Path.home() / ".local" / "share" / "frank" / "state"
+    DATABASE_DIR.mkdir(parents=True, exist_ok=True)
     DATABASE_FILE = DATABASE_DIR / "system_core.json"
 LOCK_FILE = AICORE_ROOT / ".aicore_lock"
 PAUSE_FILE = AICORE_ROOT / ".aicore_watch_paused"

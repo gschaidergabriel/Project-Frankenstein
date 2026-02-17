@@ -313,7 +313,11 @@ if ERRORS > 0:
         if r["status"] == "ERROR":
             print(f"  - {r['name']}: {r.get('msg', '?')}")
 
-report = "/home/ai-core-node/aicore/opt/aicore/test_functional_report.json"
+try:
+    from config.paths import AICORE_ROOT as _TF_ROOT
+except ImportError:
+    _TF_ROOT = Path(__file__).resolve().parent
+report = str(_TF_ROOT / "test_functional_report.json")
 with open(report, "w") as f:
     json.dump({"total": total, "passed": PASS, "failed": FAIL, "errors": ERRORS, "details": RESULTS}, f, indent=2)
 print(f"\n Report: {report}")

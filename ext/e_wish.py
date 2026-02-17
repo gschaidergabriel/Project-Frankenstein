@@ -44,7 +44,9 @@ try:
     from config.paths import get_db
 except ImportError:
     def get_db(name):
-        return Path("/home/ai-core-node/.local/share/frank/db") / f"{name}.db"
+        _db_dir = Path.home() / ".local" / "share" / "frank" / "db"
+        _db_dir.mkdir(parents=True, exist_ok=True)
+        return _db_dir / f"{name}.db"
 
 DB_PATH = get_db("e_wish")
 

@@ -108,7 +108,8 @@ try:
     from config.paths import DB_DIR, get_db
     TITAN_DB = get_db("titan")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     TITAN_DB = DB_DIR / "titan.db"
 
 

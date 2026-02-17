@@ -23,7 +23,9 @@ try:
     from config.paths import SYSTEM_CONTROL_DIR
     INSTALL_LOG = SYSTEM_CONTROL_DIR / "install_log.json"
 except ImportError:
-    INSTALL_LOG = Path("/home/ai-core-node/aicore/database/system_control/install_log.json")
+    SYSTEM_CONTROL_DIR = Path.home() / ".local" / "share" / "frank" / "system_control"
+    SYSTEM_CONTROL_DIR.mkdir(parents=True, exist_ok=True)
+    INSTALL_LOG = SYSTEM_CONTROL_DIR / "install_log.json"
 
 
 class PackageBackend(Enum):

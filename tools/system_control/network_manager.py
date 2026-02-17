@@ -36,7 +36,7 @@ LOG = logging.getLogger("system_control.network")
 try:
     from config.paths import SYSTEM_CONTROL_DIR as DB_DIR
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database/system_control")
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "system_control"
 DB_DIR.mkdir(parents=True, exist_ok=True)
 KNOWN_NETWORKS_FILE = DB_DIR / "known_networks.json"
 DEVICE_CACHE_FILE = DB_DIR / "device_cache.json"

@@ -61,10 +61,12 @@ from typing import Any, Dict, List, Optional, Tuple, Set
 try:
     from config.paths import AICORE_ROOT, get_db, ASRS_BACKUP_DIR
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
-    ASRS_BACKUP_DIR = Path("/home/ai-core-node/Documents/Projekt FRANKENSTEIN/Backup")
+    AICORE_ROOT = Path(__file__).resolve().parents[3]
+    ASRS_BACKUP_DIR = Path.home() / "Documents" / "Projekt FRANKENSTEIN" / "Backup"
     def get_db(name):
-        return Path("/home/ai-core-node/.local/share/frank/db") / f"{name}.db"
+        _db_dir = Path.home() / ".local" / "share" / "frank" / "db"
+        _db_dir.mkdir(parents=True, exist_ok=True)
+        return _db_dir / f"{name}.db"
 
 AICORE_BASE = AICORE_ROOT.parent if AICORE_ROOT.name == "aicore" else AICORE_ROOT
 SOVEREIGN_DB = get_db("sovereign")
@@ -81,7 +83,12 @@ SIMULATION_REQUIRED = True
 BACKUP_REQUIRED = True
 
 # Gaming-Mode Lock-File
-GAMING_LOCK_FILE = Path("/tmp/frank_gaming_mode.lock")
+try:
+    from config.paths import get_temp as _smc_get_temp
+    GAMING_LOCK_FILE = _smc_get_temp("gaming_mode.lock")
+except ImportError:
+    import tempfile as _smc_tempfile
+    GAMING_LOCK_FILE = Path(_smc_tempfile.gettempdir()) / "frank" / "gaming_mode.lock"
 
 # =============================================================================
 # PROTECTED PACKAGES - Der Dependencies-Sentinel

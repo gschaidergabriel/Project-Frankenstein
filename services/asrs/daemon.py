@@ -34,7 +34,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 # Setup logging
-LOG_FILE = Path("/tmp/asrs_daemon.log")
+try:
+    from config.paths import get_temp as _asrs_get_temp2
+    LOG_FILE = _asrs_get_temp2("asrs_daemon.log")
+except ImportError:
+    LOG_FILE = Path("/tmp/frank/asrs_daemon.log")
 LOG = logging.getLogger("asrs.daemon")
 LOG.setLevel(logging.DEBUG)
 LOG.handlers.clear()
@@ -44,18 +48,27 @@ LOG.addHandler(file_handler)
 LOG.propagate = False
 
 # Paths
-SIGNAL_FILE = Path("/tmp/asrs_monitor_queue.json")
-SOCKET_PATH = Path(f"/run/user/{os.getuid()}/frank/asrs_daemon.sock")
+try:
+    from config.paths import get_temp as _asrs_get_temp, get_runtime as _asrs_get_runtime
+    SIGNAL_FILE = _asrs_get_temp("asrs_monitor_queue.json")
+    SOCKET_PATH = _asrs_get_runtime("asrs_daemon.sock")
+except ImportError:
+    SIGNAL_FILE = Path("/tmp/frank/asrs_monitor_queue.json")
+    SOCKET_PATH = Path(f"/run/user/{os.getuid()}/frank/asrs_daemon.sock")
 try:
     from config.paths import ASRS_BACKUP_DIR as _ASRS_BKP_DIR, AICORE_ROOT as _ASRS_DAEMON_ROOT
     BACKUP_DIR = _ASRS_BKP_DIR
 except ImportError:
-    BACKUP_DIR = Path("/home/ai-core-node/aicore/database/asrs_backups")
-    _ASRS_DAEMON_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    BACKUP_DIR = Path.home() / ".local" / "share" / "frank" / "asrs_backups"
+    _ASRS_DAEMON_ROOT = Path(__file__).resolve().parents[2]
 QUARANTINE_DIR = BACKUP_DIR / "quarantine"
 FEATURE_DB = BACKUP_DIR / "feature_registry.json"
 METRICS_DIR = BACKUP_DIR / "metrics"
-NOTIFY_SOCKET = Path(f"/run/user/{os.getuid()}/frank/frank_events.sock")
+try:
+    from config.paths import get_runtime as _asrs_get_runtime2
+    NOTIFY_SOCKET = _asrs_get_runtime2("frank_events.sock")
+except ImportError:
+    NOTIFY_SOCKET = Path(f"/run/user/{os.getuid()}/frank/frank_events.sock")
 
 # Monitoring stages
 STAGE_1_DURATION = 300      # 5 minutes - critical monitoring

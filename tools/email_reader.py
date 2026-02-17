@@ -79,7 +79,7 @@ try:
     from config.paths import get_state
     STATE_FILE = get_state("email_state")
 except ImportError:
-    STATE_FILE = Path("/home/ai-core-node/aicore/database/email_state.json")
+    STATE_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "email_state.json"
 
 
 def find_thunderbird_profile() -> Optional[Path]:

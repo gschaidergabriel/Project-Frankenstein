@@ -57,11 +57,21 @@ try:
     from config.paths import STATE_DIR as DB_DIR, get_state, ERROR_SCREENSHOTS_DIR as ERROR_SCREENSHOT_DIR
     VCB_STATE_FILE = get_state("vcb_state")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    _vcb_data_dir = Path.home() / ".local" / "share" / "frank"
+    DB_DIR = _vcb_data_dir / "state"
+    DB_DIR.mkdir(parents=True, exist_ok=True)
     VCB_STATE_FILE = DB_DIR / "vcb_state.json"
-    ERROR_SCREENSHOT_DIR = Path("/home/ai-core-node/aicore/database/error_screenshots")
-GAMING_STATE_FILE = Path("/tmp/gaming_mode_state.json")
-TEMP_SCREENSHOT = Path("/tmp/vcb_screenshot.png")
+    ERROR_SCREENSHOT_DIR = _vcb_data_dir / "error_screenshots"
+try:
+    from config.paths import get_temp as _vcb_get_temp, TEMP_DIR as _vcb_temp_dir
+    GAMING_STATE_FILE = _vcb_get_temp("gaming_mode_state.json")
+    TEMP_SCREENSHOT = _vcb_get_temp("vcb_screenshot.png")
+except ImportError:
+    import tempfile as _vcb_tempfile
+    _vcb_temp_dir = Path(_vcb_tempfile.gettempdir()) / "frank"
+    _vcb_temp_dir.mkdir(parents=True, exist_ok=True)
+    GAMING_STATE_FILE = _vcb_temp_dir / "gaming_mode_state.json"
+    TEMP_SCREENSHOT = _vcb_temp_dir / "vcb_screenshot.png"
 
 # Local Vision Model via Ollama (ONLY BACKEND)
 # LLaVA 7B is more reliable than Moondream for detailed analysis

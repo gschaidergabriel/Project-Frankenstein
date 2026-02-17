@@ -15,6 +15,7 @@ Directory structure:
 """
 
 import os
+import tempfile
 from pathlib import Path
 
 # === Root paths ===
@@ -41,6 +42,18 @@ AICORE_CONFIG = Path(os.environ.get(
 AICORE_LOG = Path(os.environ.get(
     "AICORE_LOG",
     str(AICORE_DATA / "logs")
+))
+
+# Runtime directory (XDG_RUNTIME_DIR / frank — for sockets, locks, PID files)
+RUNTIME_DIR = Path(os.environ.get(
+    "FRANK_RUNTIME_DIR",
+    str(Path(f"/run/user/{os.getuid()}/frank"))
+))
+
+# Temp directory (for IPC signal files, transient data)
+TEMP_DIR = Path(os.environ.get(
+    "FRANK_TEMP_DIR",
+    str(Path(tempfile.gettempdir()) / "frank")
 ))
 
 # === Derived paths ===
@@ -144,3 +157,50 @@ def get_state(name: str) -> Path:
         p = STATE_DIR / f"{name}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def get_temp(name: str) -> Path:
+    """Get a temp file path (e.g. get_temp('voice_event.json'))."""
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    return TEMP_DIR / name
+
+
+def get_runtime(name: str) -> Path:
+    """Get a runtime file path (e.g. get_runtime('asrs_daemon.sock'))."""
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    return RUNTIME_DIR / name
+
+
+def get_lock(name: str) -> Path:
+    """Get a lock file path (e.g. get_lock('overlay.lock'))."""
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    return TEMP_DIR / f"{name}.lock"
+
+
+# === Well-known temp/IPC file names ===
+# Modules SHOULD use these instead of hardcoding /tmp/frank_*
+
+TEMP_FILES = {
+    # Voice IPC
+    "voice_event": TEMP_DIR / "voice_event.json",
+    "voice_outbox": TEMP_DIR / "voice_outbox.json",
+
+    # Overlay signals
+    "overlay_lock": TEMP_DIR / "overlay.lock",
+    "overlay_show": TEMP_DIR / "overlay_show",
+    "tray_toggle": TEMP_DIR / "tray_toggle",
+
+    # Gaming mode
+    "gaming_lock": TEMP_DIR / "gaming_lock",
+    "user_closed": TEMP_DIR / "user_closed",
+
+    # Agentic approval
+    "approval_queue": TEMP_DIR / "approval_queue.json",
+    "approval_responses": TEMP_DIR / "approval_responses.json",
+
+    # Notifications
+    "notifications_dir": TEMP_DIR / "notifications",
+
+    # Icons cache
+    "icons_dir": TEMP_DIR / "icons",
+}

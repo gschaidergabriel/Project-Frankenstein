@@ -44,7 +44,12 @@ except Exception:
     pass  # May not work on all systems
 
 # Logging setup
-LOG_DIR = Path("/tmp/uolg")
+try:
+    from config.paths import TEMP_DIR as _li_tmp_root
+    LOG_DIR = _li_tmp_root / "uolg"
+except ImportError:
+    import tempfile as _li_tmpmod
+    LOG_DIR = Path(_li_tmpmod.gettempdir()) / "frank" / "uolg"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -64,11 +69,19 @@ try:
     SECURITY_LOG = get_state("security_log")
     WORLD_EXPERIENCE_DB = get_db("world_experience")
 except ImportError:
-    DB_DIR = Path("/home/ai-core-node/aicore/database")
+    _DATA_DIR = Path.home() / ".local" / "share" / "frank"
+    DB_DIR = _DATA_DIR / "db"
     DB_DIR.mkdir(parents=True, exist_ok=True)
-    SECURITY_LOG = DB_DIR / "security_log.json"
+    _STATE_DIR = _DATA_DIR / "state"
+    _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    SECURITY_LOG = _STATE_DIR / "security_log.json"
     WORLD_EXPERIENCE_DB = DB_DIR / "world_experience.db"
-GAMING_STATE_FILE = Path("/tmp/gaming_mode_state.json")
+try:
+    from config.paths import get_temp
+    GAMING_STATE_FILE = get_temp("gaming_mode_state.json")
+except ImportError:
+    import tempfile as _li_tempfile
+    GAMING_STATE_FILE = Path(_li_tempfile.gettempdir()) / "frank" / "gaming_mode_state.json"
 
 # Configuration
 CONFIG = {
@@ -97,8 +110,8 @@ LOG_SOURCES = {
     "layer3": {
         "auth": {"path": "/var/log/auth.log", "level": 3, "type": "file"},
         "dpkg": {"path": "/var/log/dpkg.log", "level": 3, "type": "file"},
-        "aicore": {"path": "/tmp/aicore.log", "level": 3, "type": "file"},
-        "gaming": {"path": "/tmp/gaming_mode.log", "level": 3, "type": "file"},
+        "aicore": {"path": str(LOG_DIR / "aicore.log"), "level": 3, "type": "file"},
+        "gaming": {"path": str(LOG_DIR / "gaming_mode.log"), "level": 3, "type": "file"},
     },
 }
 

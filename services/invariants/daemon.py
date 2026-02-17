@@ -66,7 +66,7 @@ try:
     from config.paths import AICORE_LOG as _INV_LOG_ROOT
     LOG_DIR = _INV_LOG_ROOT / "invariants"
 except ImportError:
-    LOG_DIR = Path("/home/ai-core-node/aicore/logs/invariants")
+    LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs" / "invariants"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG = logging.getLogger("invariants.daemon")

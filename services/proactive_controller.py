@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 try:
     from config.paths import AICORE_ROOT
 except ImportError:
-    AICORE_ROOT = Path("/home/ai-core-node/aicore/opt/aicore")
+    AICORE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AICORE_ROOT))
 sys.path.insert(0, str(AICORE_ROOT / "tools"))
 
@@ -34,7 +34,11 @@ LOG = logging.getLogger("proactive_controller")
 
 # ── State ─────────────────────────────────────────────────────────
 
-_STATE_FILE = Path("/tmp/frank_proactive_state.json")
+try:
+    from config.paths import get_temp as _pc_get_temp
+    _STATE_FILE = _pc_get_temp("proactive_state.json")
+except ImportError:
+    _STATE_FILE = Path("/tmp/frank/proactive_state.json")
 
 # ── Thresholds ────────────────────────────────────────────────────
 

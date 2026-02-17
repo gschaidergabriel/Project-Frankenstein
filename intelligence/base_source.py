@@ -153,7 +153,7 @@ class TrainingSource(IntelligenceSource):
             from config.paths import TRAINING_LOG_DIR
             _default_training_log = str(TRAINING_LOG_DIR)
         except ImportError:
-            _default_training_log = "/home/ai-core-node/.local/share/frank/logs/training"
+            _default_training_log = str(Path.home() / ".local/share/frank/logs/training")
         self.training_log_path = config.get(
             "training_log_path",
             _default_training_log

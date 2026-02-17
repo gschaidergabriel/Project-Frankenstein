@@ -28,8 +28,16 @@ LOG = logging.getLogger("agentic.executor")
 TOOLBOX_URL = "http://127.0.0.1:8096"
 
 # Approval queue file for integration with overlay
-APPROVAL_QUEUE_FILE = Path("/tmp/frank_approval_queue.json")
-APPROVAL_RESPONSE_FILE = Path("/tmp/frank_approval_responses.json")
+try:
+    from config.paths import get_temp as _ex_get_temp
+    APPROVAL_QUEUE_FILE = _ex_get_temp("approval_queue.json")
+    APPROVAL_RESPONSE_FILE = _ex_get_temp("approval_responses.json")
+except ImportError:
+    import tempfile as _ex_tempfile
+    _ex_tmp = Path(_ex_tempfile.gettempdir()) / "frank"
+    _ex_tmp.mkdir(parents=True, exist_ok=True)
+    APPROVAL_QUEUE_FILE = _ex_tmp / "approval_queue.json"
+    APPROVAL_RESPONSE_FILE = _ex_tmp / "approval_responses.json"
 
 
 @dataclass

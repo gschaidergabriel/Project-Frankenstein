@@ -296,7 +296,11 @@ class CalendarMixin:
         # Track reminded UIDs to avoid duplicates (persisted to file)
         if not hasattr(self, "_reminded_calendar_uids"):
             self._reminded_calendar_uids = set()
-            _reminded_file = Path("/tmp/frank_reminded_uids.txt")
+            try:
+                from config.paths import get_temp as _get_temp_cal
+                _reminded_file = _get_temp_cal("reminded_uids.txt")
+            except ImportError:
+                _reminded_file = Path("/tmp/frank/reminded_uids.txt")
             try:
                 if _reminded_file.exists():
                     self._reminded_calendar_uids = set(
@@ -312,7 +316,7 @@ class CalendarMixin:
             self._reminded_calendar_uids.add(uid)
             # Persist so restarts don't re-remind
             try:
-                Path("/tmp/frank_reminded_uids.txt").write_text(
+                _reminded_file.write_text(
                     "\n".join(self._reminded_calendar_uids)
                 )
             except Exception:

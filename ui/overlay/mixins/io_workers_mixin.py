@@ -133,7 +133,7 @@ class IOWorkersMixin:
                     from config.paths import AICORE_ROOT as _AICORE_ROOT
                 except ImportError:
                     from pathlib import Path as _P
-                    _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                    _AICORE_ROOT = _P(__file__).resolve().parents[3]
                 sys.path.insert(0, str(_AICORE_ROOT))
                 from tools.steam_integration import list_games_formatted
                 result = list_games_formatted()
@@ -157,7 +157,7 @@ class IOWorkersMixin:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT
             except ImportError:
                 from pathlib import Path as _P
-                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT = _P(__file__).resolve().parents[3]
             sys.path.insert(0, str(_AICORE_ROOT))
             from tools.steam_integration import launch_game_by_name
 
@@ -182,7 +182,7 @@ class IOWorkersMixin:
                 from config.paths import AICORE_ROOT as _AICORE_ROOT
             except ImportError:
                 from pathlib import Path as _P
-                _AICORE_ROOT = _P("/home/ai-core-node/aicore/opt/aicore")
+                _AICORE_ROOT = _P(__file__).resolve().parents[3]
             sys.path.insert(0, str(_AICORE_ROOT))
             from tools.steam_integration import close_game
 

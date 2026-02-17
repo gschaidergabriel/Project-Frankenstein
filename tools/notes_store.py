@@ -27,7 +27,7 @@ try:
     from config.paths import get_db
     _DB_PATH = get_db("notes")
 except ImportError:
-    _DB_PATH = Path("/home/ai-core-node/aicore/database/notes.db")
+    _DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "notes.db"
 _MAX_NOTE_LENGTH = 2000
 _MAX_NOTES = 500
 

@@ -86,6 +86,26 @@ class AgenticMixin:
             if trigger in query_lower:
                 return True
 
+        # Self-analysis / code inspection triggers
+        # These MUST use agentic mode to actually read files (not hallucinate)
+        self_analysis_triggers = [
+            "such einen bug", "such nach einem bug", "such nach bug",
+            "such ein bug", "such bug", "find a bug", "find bugs",
+            "geh in deinen", "schau in deinen code", "schau in deinem code",
+            "analysiere deinen code", "analysiere dein system",
+            "untersuche deinen code", "check your code",
+            "inspect your code", "scan your code", "scan your system",
+            "pruefe deinen code", "pruef deinen code", "prüfe deinen code",
+            "lies deine dateien", "read your files", "read your code",
+            "schau dir deine dateien an", "schau in deinen systemordner",
+            "geh in deinen systemordner", "schau dir deinen code an",
+            "analyze your code", "examine your code",
+            "debug deinen code", "debug your code",
+        ]
+        for trigger in self_analysis_triggers:
+            if trigger in query_lower:
+                return True
+
         # Regex-based triggers — imperative/infinitive ONLY, not past participle
         # programmiere/programmieren → agentic (requesting action)
         # implementiert/programmiert → NOT agentic (describing past action)

@@ -116,6 +116,19 @@ class VoiceMixin:
         low = msg.lower().strip()
         LOG.info(f"🎤 Processing voice input: '{msg[:50]}...'")
 
+        # Block input while agentic mode is active (prevent parallel LLM responses)
+        if hasattr(self, '_agentic_active') and self._agentic_active:
+            # Allow cancel/stop commands through
+            if low in ("abbrechen", "stop", "cancel", "stopp"):
+                if hasattr(self, '_cancel_agentic_execution'):
+                    self._cancel_agentic_execution()
+                return
+            # Block everything else — agent is working
+            LOG.info(f"🎤 Voice input blocked (agentic active): '{msg[:50]}...'")
+            self._hide_typing()
+            self._add_message("Frank", "I'm still working on the previous task. Say 'cancel' to stop it.", is_system=True)
+            return
+
         # File path detection
         p = _maybe_path(msg)
         if p:

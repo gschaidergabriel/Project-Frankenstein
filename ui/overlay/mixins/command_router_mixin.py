@@ -195,6 +195,11 @@ class CommandRouterMixin:
             if hasattr(self, '_handle_agentic_response') and self._handle_agentic_response(msg):
                 self._add_message("Du", msg, is_user=True)
                 return
+            # Block ALL other input while agent is running (prevent parallel LLM chat)
+            self._add_message("Du", msg, is_user=True)
+            self._add_message("Frank", "I'm still working on the previous task. Say 'cancel' to stop it.", is_system=True)
+            LOG.info(f"Blocked input during agentic execution: '{msg[:50]}...'")
+            return
 
         # Agentic execution detection - complex multi-step tasks
         # PRIORITY: Must come BEFORE keyword matchers (fs, steam, system control)

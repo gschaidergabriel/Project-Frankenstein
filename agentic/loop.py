@@ -48,7 +48,7 @@ LOG = logging.getLogger("agentic.loop")
 class AgentConfig:
     """Configuration for the agent loop."""
     max_iterations: int = 20  # Maximum think-act-observe cycles
-    max_consecutive_failures: int = 5
+    max_consecutive_failures: int = 8  # Qwen 7B has ~30% JSON parse rate, needs headroom
     thinking_timeout_s: float = 300.0
     execution_timeout_s: float = 120.0
     auto_approve_risk_threshold: float = 0.3
@@ -82,27 +82,30 @@ AGENT_SYSTEM_PROMPT = """You are a code agent. Respond ONLY with a JSON tool cal
 ## Plan
 {plan}
 
-## IMPORTANT Rules
-1. Respond ONLY with JSON - no text before or after.
-2. Use the real paths from the goal - NEVER placeholders.
-3. For CREATING tasks: mkdir first, then fs_write files. ONE file per call!
-4. For ANALYSIS tasks (find bugs, review code): Use fs_read and fs_list to read files, then final_answer with your findings.
-5. final_answer when you have completed the task. For analysis: report what you found. For creation: after fs_write succeeded.
-6. NEVER use backslashes in paths! Neither in JSON nor in generated code!
-   WRONG: /home/user/my\\ folder or first\\ programming
-   RIGHT: /home/user/my folder or first programming
-7. Write ONLY valid JSON. ALWAYS use double quotes (") and colon (:).
-8. For fs_write ALWAYS set "overwrite":true.
-9. Keep each file under 150 lines. Split large programs into modules.
-10. In generated Python code: Write paths with spaces WITHOUT backslashes!
-    WRONG: open('/path/my\\ folder/file.txt')
-    RIGHT: open('/path/my folder/file.txt')
+## Available Tools
+- fs_list: List a DIRECTORY. Input: {{"path":"/some/dir/"}}. Do NOT use on files!
+- fs_read: Read a FILE's contents. Input: {{"path":"/some/file.py"}}. Use for code, configs, text.
+- fs_write: Write a file. Input: {{"path":"...","content":"...","overwrite":true}}.
+- bash_execute: Run a shell command. Input: {{"command":"..."}}.
+  Use for: sqlite3 (DB inspection), python3, grep, find, etc.
+- final_answer: Return your result. Input: {{"response":"Your answer here"}}.
 
-## JSON Formats
-Directory: {{"action":"bash_execute","action_input":{{"command":"mkdir -p '/home/user/my folder'"}}}}
-File: {{"action":"fs_write","action_input":{{"path":"/home/user/my folder/file.py","content":"#!/usr/bin/env python3\\nprint('hello')\\n","overwrite":true}}}}
-Execute: {{"action":"bash_execute","action_input":{{"command":"cd '/home/user/my folder' && python3 file.py"}}}}
-Done: {{"action":"final_answer","action_input":{{"response":"Description"}}}}
+## Rules
+1. Respond with ONLY a JSON object — no text, no markdown, no explanation.
+2. Use REAL paths from the context — never placeholders.
+3. For ANALYSIS: Read files with fs_read, inspect DBs with bash_execute + sqlite3, then final_answer.
+4. For CREATION: mkdir with bash_execute, then fs_write files.
+5. NEVER repeat the same tool call with the same arguments — try a different approach.
+6. After reading files, THINK about what you found and report via final_answer.
+7. Do NOT use fs_list on a file path — use fs_read instead.
+8. For SQLite databases (.db files): Use bash_execute with sqlite3, e.g.:
+   {{"action":"bash_execute","action_input":{{"command":"sqlite3 /path/to/db '.schema' 2>&1 | head -50"}}}}
+
+## JSON Format Examples
+{{"action":"fs_list","action_input":{{"path":"/home/user/project/"}}}}
+{{"action":"fs_read","action_input":{{"path":"/home/user/project/main.py"}}}}
+{{"action":"bash_execute","action_input":{{"command":"sqlite3 /path/db '.tables'"}}}}
+{{"action":"final_answer","action_input":{{"response":"Found 2 bugs: ..."}}}}
 """
 
 
@@ -211,6 +214,9 @@ class AgentLoop:
     def _run_loop(self, state: AgentState) -> Tuple[str, AgentState]:
         """Main execution loop."""
         iteration = 0
+        # Track previous tool calls to detect duplicates
+        _prev_tool_calls: List[str] = []
+        _consecutive_parse_failures = 0
 
         while iteration < self.config.max_iterations:
             iteration += 1
@@ -218,6 +224,21 @@ class AgentLoop:
 
             # Check abort conditions
             if state.should_abort(self.config.max_consecutive_failures):
+                # Before aborting: if we have any successful reads, force a final_answer
+                if state.successful_tool_calls > 0:
+                    state.add_context(
+                        "INSTRUCTION: You have read files successfully. "
+                        "Now call final_answer with your findings. Do NOT call more tools."
+                    )
+                    self._emit_event("thinking", {"iteration": iteration})
+                    thought, tool_call = self._think(state)
+                    if tool_call and tool_call.is_final_answer:
+                        response = tool_call.action_input.get("response", "Analysis complete.")
+                        state.mark_completed(response)
+                        self.store.save(state)
+                        self._emit_event("completed", {"response": response})
+                        return response, state
+
                 self._capture_visual_context(
                     f"Agentic loop abort: {state.consecutive_failures} consecutive failures, goal: {state.goal[:80]}"
                 )
@@ -226,7 +247,7 @@ class AgentLoop:
                 return "Too many consecutive errors. Aborting.", state
 
             # THINK: Analyze state and decide action
-            self._emit_event("thinking", {"iteration": iteration})
+            self._emit_event("thinking", {"iteration": iteration, "total": self.config.max_iterations})
             thought, tool_call = self._think(state)
 
             if thought:
@@ -256,14 +277,48 @@ class AgentLoop:
                 self.store.save(state)
                 return question, state
 
-            # No valid action
+            # No valid action — give parse format reminder
             if not tool_call:
+                _consecutive_parse_failures += 1
                 state.record_failure()
+
+                # After multiple parse failures, inject a strong JSON reminder
+                if _consecutive_parse_failures >= 2:
+                    state.add_context(
+                        'PARSE ERROR: Your response was not valid JSON. '
+                        'Respond with ONLY a JSON object like: '
+                        '{"action":"fs_read","action_input":{"path":"/some/file.py"}} '
+                        'NO text before or after the JSON.'
+                    )
+
+                # After many parse failures, force final_answer if we have results
+                if _consecutive_parse_failures >= 4 and state.successful_tool_calls > 0:
+                    state.add_context(
+                        "INSTRUCTION: Too many parse failures. Call final_answer NOW with whatever you found so far."
+                    )
+
                 if self.config.enable_replanning and self._replan_count < self.config.max_replans:
                     self._replan(state, "No valid action parsed from response")
                     continue
                 else:
                     return thought or "I could not find a suitable action.", state
+
+            _consecutive_parse_failures = 0  # Reset on successful parse
+
+            # Duplicate tool call detection
+            call_sig = f"{tool_call.action}:{json.dumps(tool_call.action_input, sort_keys=True)}"
+            if call_sig in _prev_tool_calls:
+                LOG.warning(f"Duplicate tool call detected: {call_sig[:100]}")
+                state.record_failure()
+                state.add_context(
+                    f"DUPLICATE: You already called {tool_call.action} with these exact arguments. "
+                    f"Try a DIFFERENT tool or different arguments. "
+                    f"Available tools: fs_read (read files), fs_list (list directories), "
+                    f"bash_execute (run commands like sqlite3), final_answer (report findings)."
+                )
+                self.store.save(state)
+                continue
+            _prev_tool_calls.append(call_sig)
 
             # Validate tool call
             validation_error = validate_tool_call(tool_call, self.registry)
@@ -368,6 +423,9 @@ class AgentLoop:
 
         # Parse tool call from response
         tool_call = parse_tool_call(response)
+
+        if not tool_call:
+            LOG.warning(f"Failed to parse tool call from LLM response ({len(response)} chars): {response[:300]}")
 
         return response, tool_call
 

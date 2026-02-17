@@ -233,9 +233,18 @@ class AgenticMixin:
                     "\n- Titan memory DB: /home/ai-core-node/.local/share/frank/db/titan.db"
                     "\n- Chat memory DB: /home/ai-core-node/.local/share/frank/db/chat_memory.db"
                     "\n- Config: /home/ai-core-node/.local/share/frank/db/"
-                    "\n- Use fs_read to read Python files, NOT bash_execute with cat."
-                    "\n- Start by listing the target directory with fs_list, then read specific files with fs_read."
-                    "\n- Look for actual code bugs: exception handling, logic errors, race conditions, missing imports."
+                    "\n"
+                    "\nHOW TO ANALYZE:"
+                    "\n1. For Python source files (.py): Use fs_read to read them."
+                    "\n2. For SQLite databases (.db): Use bash_execute with sqlite3:"
+                    "\n   {\"action\":\"bash_execute\",\"action_input\":{\"command\":\"sqlite3 /path/to/file.db '.schema'\"}}"
+                    "\n   {\"action\":\"bash_execute\",\"action_input\":{\"command\":\"sqlite3 /path/to/file.db 'SELECT * FROM table LIMIT 5'\"}}"
+                    "\n3. For directories: Use fs_list to see contents, then fs_read individual files."
+                    "\n4. Do NOT use fs_list on a file — use fs_read instead."
+                    "\n5. After reading code, call final_answer with your bug findings."
+                    "\n"
+                    "\nSTART: List the target directory first, then read specific files."
+                    "\nLook for: exception handling, logic errors, race conditions, missing imports, type errors."
                 )
 
             # Create and run agent

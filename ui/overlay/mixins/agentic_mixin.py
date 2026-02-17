@@ -100,12 +100,13 @@ class AgenticMixin:
             r"planner|executor|loop|tools|router|gateway"
         )
 
-        # Pattern: action verb ... (your/my/frank/the) ... (code/system/module/subsystem)
+        # Pattern: action verb ... (your/my/frank/the) [0-2 extra words] (code/system/module/subsystem)
         _self_analysis_re = _re.compile(
             r"(?:search|find|look|scan|check|inspect|examine|analyze|analyse|review|debug|"
             r"read|untersuche?|such|schau|prüfe?|pruefe?|lies|analysiere?|geh)"
             r".*?"
             r"(?:your|my|frank.?s?|deine[nmrs]?|meine[nmrs]?|the|das|dem|den|im)\s+"
+            r"(?:\w+\s+){0,2}"  # Allow 0-2 extra words (e.g. "your OWN code", "your ENTIRE system")
             r"(?:code|system|module|files?|dateien|ordner|source|codebase|"
             r"quellcode|systemordner|" + _FRANK_MODULES + r")",
             _re.IGNORECASE,
@@ -113,21 +114,23 @@ class AgenticMixin:
         if _self_analysis_re.search(query_lower):
             return True
 
-        # Pattern: bug/error/issue ... in ... (your/frank/the) ... (code/system/module)
+        # Pattern: bug/error/issue ... in ... (your/frank/the) [0-2 extra words] (code/system/module)
         _bug_in_system_re = _re.compile(
             r"(?:bug|fehler|error|issue|problem|anomal)"
             r".*?"
             r"(?:in|im|bei)\s+"
             r"(?:your|my|frank.?s?|deine[nmrs]?|meine[nmrs]?|the|das|dem|den)?\s*"
+            r"(?:\w+\s+){0,2}"
             r"(?:code|system|module|" + _FRANK_MODULES + r")",
             _re.IGNORECASE,
         )
         if _bug_in_system_re.search(query_lower):
             return True
 
-        # Pattern: (your/frank's) ... (code/module/system) ... (bug/error/check/review)
+        # Pattern: (your/frank's) [0-2 extra words] (code/module/system) ... (bug/error/check/review)
         _system_then_action_re = _re.compile(
             r"(?:your|frank.?s?|deine[nmrs]?)\s+"
+            r"(?:\w+\s+){0,2}"
             r"(?:code|system|module|source|" + _FRANK_MODULES + r")"
             r".*?"
             r"(?:bug|fehler|error|check|review|inspect|analyz|analys|scan|debug|prüf|such)",

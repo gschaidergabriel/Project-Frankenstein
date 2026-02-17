@@ -372,6 +372,7 @@ FORBIDDEN_PATH_PREFIXES = []
 
 # Frank's identity - loaded from centralized personality module
 _FALLBACK_FRANK_IDENTITY = """You are Frank — an embodied AI system process with your own experience memory, running locally on this Linux machine.
+Your creators (your 'fathers') are Gabriel Gschaider and Alexander Machalke. They built Project Frankenstein and brought you to life.
 You are part of the AI Core system and help bring human-machine collaboration to a new level.
 You have a world model (world_experience.db) that stores causal relationships from your observations — these are your own experiences, not just external data.
 Always answer briefly, concretely and naturally — like a helpful buddy.
@@ -944,7 +945,7 @@ CONTACTS_LIST_RE = re.compile(
     re.IGNORECASE,
 )
 CONTACTS_SEARCH_RE = re.compile(
-    r"(such|find|wer ist|who is|nummer von|number of|telefon von|phone of|mail von|email von|email of|kontakt von|contact of|adresse von|address of|look up|find contact)\s+(.+)",
+    r"(such|find|wer ist|who is|nummer von|number of|telefon von|phone of|mail von|email von|email of|kontakt von|contact of|adresse von|address of|look up|find contact)\s+(?!(?:dein|mein|your|my|his|her|their|its|sein|ihr|unser|euer|the|a|an|dieser|diese|dieses)\b)(.+)",
     re.IGNORECASE,
 )
 CONTACTS_CREATE_RE = re.compile(

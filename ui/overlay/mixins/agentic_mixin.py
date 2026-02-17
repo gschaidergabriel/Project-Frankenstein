@@ -86,37 +86,55 @@ class AgenticMixin:
             if trigger in query_lower:
                 return True
 
-        # Self-analysis / code inspection triggers
-        # These MUST use agentic mode to actually read files (not hallucinate)
-        self_analysis_triggers = [
-            # German
-            "such einen bug", "such nach einem bug", "such nach bug",
-            "such ein bug", "such bug", "such fehler", "such nach fehler",
-            "geh in deinen", "schau in deinen code", "schau in deinem code",
-            "analysiere deinen code", "analysiere dein system",
-            "untersuche deinen code",
-            "pruefe deinen code", "pruef deinen code", "prüfe deinen code",
-            "lies deine dateien", "schau dir deine dateien an",
-            "schau in deinen systemordner", "geh in deinen systemordner",
-            "schau dir deinen code an",
-            "debug deinen code",
-            # English
-            "find a bug", "find bugs", "find errors in your",
-            "search for bug", "search for bugs", "search for error",
-            "look for bug", "look for bugs",
-            "check your code", "check your system",
-            "inspect your code", "scan your code", "scan your system",
-            "read your files", "read your code",
-            "analyze your code", "examine your code",
-            "debug your code", "review your code",
-            "search your code", "search through your",
-            "bugs in your", "errors in your code",
-            "bug in your", "bug in the",
-            "bugs in the titan", "bugs in the",
-        ]
-        for trigger in self_analysis_triggers:
-            if trigger in query_lower:
-                return True
+        # Self-analysis / code inspection — regex-based for flexible word order
+        # Matches any combination of action verb + Frank's own systems/code
+        # Works on any system where Frank runs, not hardcoded to paths
+
+        # Frank's own subsystem names (case-insensitive)
+        _FRANK_MODULES = (
+            r"titan|e-?pq|ego.?construct|consciousness|agentic|"
+            r"wallpaper|sentinel|genesis|asrs|akam|adi|bsn|vcb|"
+            r"world.?model|world.?experience|chat.?memory|"
+            r"core.?awareness|personality|self.?knowledge|"
+            r"voice.?mixin|chat.?mixin|command.?router|"
+            r"planner|executor|loop|tools|router|gateway"
+        )
+
+        # Pattern: action verb ... (your/my/frank/the) ... (code/system/module/subsystem)
+        _self_analysis_re = _re.compile(
+            r"(?:search|find|look|scan|check|inspect|examine|analyze|analyse|review|debug|"
+            r"read|untersuche?|such|schau|prüfe?|pruefe?|lies|analysiere?|geh)"
+            r".*?"
+            r"(?:your|my|frank.?s?|deine[nmrs]?|meine[nmrs]?|the|das|dem|den|im)\s+"
+            r"(?:code|system|module|files?|dateien|ordner|source|codebase|"
+            r"quellcode|systemordner|" + _FRANK_MODULES + r")",
+            _re.IGNORECASE,
+        )
+        if _self_analysis_re.search(query_lower):
+            return True
+
+        # Pattern: bug/error/issue ... in ... (your/frank/the) ... (code/system/module)
+        _bug_in_system_re = _re.compile(
+            r"(?:bug|fehler|error|issue|problem|anomal)"
+            r".*?"
+            r"(?:in|im|bei)\s+"
+            r"(?:your|my|frank.?s?|deine[nmrs]?|meine[nmrs]?|the|das|dem|den)?\s*"
+            r"(?:code|system|module|" + _FRANK_MODULES + r")",
+            _re.IGNORECASE,
+        )
+        if _bug_in_system_re.search(query_lower):
+            return True
+
+        # Pattern: (your/frank's) ... (code/module/system) ... (bug/error/check/review)
+        _system_then_action_re = _re.compile(
+            r"(?:your|frank.?s?|deine[nmrs]?)\s+"
+            r"(?:code|system|module|source|" + _FRANK_MODULES + r")"
+            r".*?"
+            r"(?:bug|fehler|error|check|review|inspect|analyz|analys|scan|debug|prüf|such)",
+            _re.IGNORECASE,
+        )
+        if _system_then_action_re.search(query_lower):
+            return True
 
         # Regex-based triggers — imperative/infinitive ONLY, not past participle
         # programmiere/programmieren → agentic (requesting action)

@@ -93,7 +93,8 @@ AGENT_SYSTEM_PROMPT = """You are a code agent. Respond ONLY with a JSON tool cal
 ## Rules
 1. Respond with ONLY a JSON object — no text, no markdown, no explanation.
 2. Use REAL paths from the context — never placeholders.
-3. For ANALYSIS: Read files with fs_read, inspect DBs with bash_execute + sqlite3, then final_answer.
+3. For ANALYSIS: Read at least 5 source files with fs_read before calling final_answer.
+   Skip __init__.py and trivial files — read the MAIN modules (.py files over 50 lines).
 4. For CREATION: mkdir with bash_execute, then fs_write files.
 5. NEVER repeat the same tool call with the same arguments — try a different approach.
 6. After reading files, THINK about what you found and report via final_answer.
@@ -261,14 +262,29 @@ class AgentLoop:
             if thought:
                 state.add_message("assistant", thought)
 
-            # Check if done — block premature final_answer only on iteration 1
-            # (Analysis tasks use fs_read not fs_write, so don't require writes)
+            # Check if done — block premature final_answer
             if tool_call and tool_call.is_final_answer:
-                if state.successful_tool_calls == 0 and iteration <= 1:
-                    # First iteration with no tools at all — force at least one tool call
-                    LOG.warning("Blocked premature final_answer (no successful tools yet)")
+                # Detect analysis tasks (need to read multiple files)
+                goal_lower = state.goal.lower()
+                _is_analysis = any(w in goal_lower for w in [
+                    "bug", "error", "issue", "review", "search", "find", "scan",
+                    "check", "inspect", "analyze", "analyse", "debug",
+                    "such", "prüf", "pruef", "fehler", "untersuche", "analysiere",
+                ])
+                min_tools = 5 if _is_analysis else 1  # Analysis: read multiple files
+
+                if state.successful_tool_calls < min_tools and iteration <= min_tools + 2:
+                    LOG.warning(
+                        f"Blocked premature final_answer "
+                        f"({state.successful_tool_calls}/{min_tools} tools, iter {iteration})"
+                    )
                     state.record_failure()
-                    state.add_context("BLOCKED: final_answer not allowed before at least one tool was successful.")
+                    state.add_context(
+                        f"BLOCKED: You only used {state.successful_tool_calls} tools. "
+                        f"For analysis tasks, you must read at least {min_tools} files before concluding. "
+                        f"Read more source files with fs_read — check the main Python modules, "
+                        f"not just __init__.py files."
+                    )
                     self.store.save(state)
                     continue
                 response = tool_call.action_input.get("response", "Task completed.")

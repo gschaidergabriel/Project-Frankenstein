@@ -237,6 +237,12 @@ class VoiceMixin:
                     self._voice_respond("Ich kann gerade nicht auf meine Selbst-Analyse zugreifen.")
                 return
 
+        # Agentic execution detection — complex tasks that need real tools
+        if hasattr(self, '_is_agentic_query') and self._is_agentic_query(msg):
+            LOG.info(f"🎤 Voice -> Agentic execution: '{msg[:50]}...'")
+            self._start_agentic_execution(msg)
+            return
+
         # Default: Send to LLM (chat mode)
         LOG.info(f"🎤 Voice -> LLM chat: '{msg[:50]}...'")
         self._chat_q.put(("chat", {

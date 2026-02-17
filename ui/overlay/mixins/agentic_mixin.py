@@ -89,18 +89,30 @@ class AgenticMixin:
         # Self-analysis / code inspection triggers
         # These MUST use agentic mode to actually read files (not hallucinate)
         self_analysis_triggers = [
+            # German
             "such einen bug", "such nach einem bug", "such nach bug",
-            "such ein bug", "such bug", "find a bug", "find bugs",
+            "such ein bug", "such bug", "such fehler", "such nach fehler",
             "geh in deinen", "schau in deinen code", "schau in deinem code",
             "analysiere deinen code", "analysiere dein system",
-            "untersuche deinen code", "check your code",
-            "inspect your code", "scan your code", "scan your system",
+            "untersuche deinen code",
             "pruefe deinen code", "pruef deinen code", "prüfe deinen code",
-            "lies deine dateien", "read your files", "read your code",
-            "schau dir deine dateien an", "schau in deinen systemordner",
-            "geh in deinen systemordner", "schau dir deinen code an",
+            "lies deine dateien", "schau dir deine dateien an",
+            "schau in deinen systemordner", "geh in deinen systemordner",
+            "schau dir deinen code an",
+            "debug deinen code",
+            # English
+            "find a bug", "find bugs", "find errors in your",
+            "search for bug", "search for bugs", "search for error",
+            "look for bug", "look for bugs",
+            "check your code", "check your system",
+            "inspect your code", "scan your code", "scan your system",
+            "read your files", "read your code",
             "analyze your code", "examine your code",
-            "debug deinen code", "debug your code",
+            "debug your code", "review your code",
+            "search your code", "search through your",
+            "bugs in your", "errors in your code",
+            "bug in your", "bug in the",
+            "bugs in the titan", "bugs in the",
         ]
         for trigger in self_analysis_triggers:
             if trigger in query_lower:

@@ -85,9 +85,9 @@ AGENT_SYSTEM_PROMPT = """You are a code agent. Respond ONLY with a JSON tool cal
 ## IMPORTANT Rules
 1. Respond ONLY with JSON - no text before or after.
 2. Use the real paths from the goal - NEVER placeholders.
-3. FIRST step: Create directory with bash_execute.
-4. SECOND step: Write files with fs_write. ONE file per call!
-5. final_answer ONLY when at least one fs_write was SUCCESSFUL.
+3. For CREATING tasks: mkdir first, then fs_write files. ONE file per call!
+4. For ANALYSIS tasks (find bugs, review code): Use fs_read and fs_list to read files, then final_answer with your findings.
+5. final_answer when you have completed the task. For analysis: report what you found. For creation: after fs_write succeeded.
 6. NEVER use backslashes in paths! Neither in JSON nor in generated code!
    WRONG: /home/user/my\\ folder or first\\ programming
    RIGHT: /home/user/my folder or first programming
@@ -232,13 +232,14 @@ class AgentLoop:
             if thought:
                 state.add_message("assistant", thought)
 
-            # Check if done — but block premature final_answer
+            # Check if done — block premature final_answer only on iteration 1
+            # (Analysis tasks use fs_read not fs_write, so don't require writes)
             if tool_call and tool_call.is_final_answer:
-                if state.successful_tool_calls == 0:
-                    # No successful tool calls yet — force continuation
+                if state.successful_tool_calls == 0 and iteration <= 1:
+                    # First iteration with no tools at all — force at least one tool call
                     LOG.warning("Blocked premature final_answer (no successful tools yet)")
                     state.record_failure()
-                    state.add_context("BLOCKED: final_answer not allowed before at least one tool was successful. Use fs_write!")
+                    state.add_context("BLOCKED: final_answer not allowed before at least one tool was successful.")
                     self.store.save(state)
                     continue
                 response = tool_call.action_input.get("response", "Task completed.")

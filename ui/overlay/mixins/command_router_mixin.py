@@ -1019,70 +1019,81 @@ class CommandRouterMixin:
             self._io_q.put(("notes_general", {"user_msg": msg}))
             return
 
+        # Skip keyword-based command routing for long messages (>120 chars).
+        # Long messages are conversations, not commands. Commands are short
+        # ("zeig meine aufgaben", "erinner mich an meeting"). This prevents
+        # false matches on words like "Erinnerungen" (memory vs reminder),
+        # "Prozesse" (philosophical vs sysadmin), etc.
+        _skip_keyword_routing = len(msg) > 120
+
         # Todo/Tasks — list → complete → delete → create → general
         # (non-ambiguous patterns first, create last to avoid false matches)
-        if TODO_LIST_RE.search(low):
+        if not _skip_keyword_routing and TODO_LIST_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("todo_list", {}))
             return
 
-        if TODO_COMPLETE_RE.search(low):
+        if not _skip_keyword_routing and TODO_COMPLETE_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("todo_complete", {"query": msg, "user_msg": msg}))
             return
 
-        if TODO_DELETE_RE.search(low):
+        if not _skip_keyword_routing and TODO_DELETE_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("todo_delete", {"query": msg, "user_msg": msg}))
             return
 
-        tm = TODO_CREATE_RE.search(msg)
-        if tm:
-            todo_content = tm.group(2).strip()
-            self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("todo_create", {"user_msg": msg, "content": todo_content}))
-            return
+        if not _skip_keyword_routing:
+            tm = TODO_CREATE_RE.search(msg)
+            if tm:
+                todo_content = tm.group(2).strip()
+                self._add_message("Du", msg, is_user=True)
+                self._io_q.put(("todo_create", {"user_msg": msg, "content": todo_content}))
+                return
 
-        if TODO_GENERAL_RE.search(low):
+        if not _skip_keyword_routing and TODO_GENERAL_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("todo_general", {"user_msg": msg}))
             return
 
         # Clipboard History — clear → restore → search → delete → list → general
-        if CLIPBOARD_CLEAR_RE.search(low):
+        if not _skip_keyword_routing and CLIPBOARD_CLEAR_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("clipboard_clear", {}))
             return
 
-        cm = CLIPBOARD_RESTORE_RE.search(msg)
-        if cm:
-            entry_id_str = cm.group(3)
-            entry_id = int(entry_id_str) if entry_id_str else 0
-            self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("clipboard_restore", {"entry_id": entry_id, "query": msg}))
-            return
+        if not _skip_keyword_routing:
+            cm = CLIPBOARD_RESTORE_RE.search(msg)
+            if cm:
+                entry_id_str = cm.group(3)
+                entry_id = int(entry_id_str) if entry_id_str else 0
+                self._add_message("Du", msg, is_user=True)
+                self._io_q.put(("clipboard_restore", {"entry_id": entry_id, "query": msg}))
+                return
 
-        cm = CLIPBOARD_SEARCH_RE.search(msg)
-        if cm:
-            search_query = cm.group(3).strip()
-            self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("clipboard_search", {"query": search_query}))
-            return
+        if not _skip_keyword_routing:
+            cm = CLIPBOARD_SEARCH_RE.search(msg)
+            if cm:
+                search_query = cm.group(3).strip()
+                self._add_message("Du", msg, is_user=True)
+                self._io_q.put(("clipboard_search", {"query": search_query}))
+                return
 
-        cm = CLIPBOARD_DELETE_RE.search(msg)
-        if cm:
-            entry_id_str = cm.group(4) if cm.lastindex and cm.lastindex >= 4 else None
-            entry_id = int(entry_id_str) if entry_id_str else 0
-            self._add_message("Du", msg, is_user=True)
-            self._io_q.put(("clipboard_delete", {"entry_id": entry_id, "query": msg}))
-            return
+        if not _skip_keyword_routing:
+            cm = CLIPBOARD_DELETE_RE.search(msg)
+            if cm:
+                entry_id_str = cm.group(4) if cm.lastindex and cm.lastindex >= 4 else None
+                entry_id = int(entry_id_str) if entry_id_str else 0
+                self._add_message("Du", msg, is_user=True)
+                self._io_q.put(("clipboard_delete", {"entry_id": entry_id, "query": msg}))
+                return
 
-        if CLIPBOARD_LIST_RE.search(low):
+        if not _skip_keyword_routing and CLIPBOARD_LIST_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("clipboard_list", {}))
             return
 
-        if CLIPBOARD_GENERAL_RE.search(low):
+        if not _skip_keyword_routing and CLIPBOARD_GENERAL_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("clipboard_list", {}))
             return

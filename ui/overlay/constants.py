@@ -1014,9 +1014,12 @@ TODO_DELETE_RE = re.compile(
     re.IGNORECASE,
 )
 TODO_GENERAL_RE = re.compile(
-    r"\b(aufgabe|aufgaben|todos?|tasks?|to-dos?|erinnerung|erinnerungen|reminders?)\b",
+    r"\b(aufgabe|aufgaben|todos?|tasks?|to-dos?|reminders?)\b",
     re.IGNORECASE,
 )
+# Note: "erinnerung/erinnerungen" removed — too ambiguous in German
+# (means both "reminder" and "memory"). TODO_CREATE_RE still has
+# "erinner mich" which is specific enough for creating reminders.
 
 # ── Converter/Calculator regex patterns ──────────────────────────
 

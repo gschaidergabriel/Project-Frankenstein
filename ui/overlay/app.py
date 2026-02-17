@@ -321,6 +321,7 @@ class ChatOverlay(
         # Fullscreen detection state
         self._fullscreen_yielded = False
         self._fullscreen_wid = None  # Track which window is fullscreen
+        self._bsn_positioning_until = 0  # BSN coordination: skip fullscreen detection during positioning
 
         # System tray icon for minimize-to-tray
         self._tray_available = start_tray_icon()

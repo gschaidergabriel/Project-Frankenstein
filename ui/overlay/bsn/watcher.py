@@ -28,7 +28,7 @@ class WindowWatcher:
         LOG.info("BSN: WindowWatcher stopped")
 
     def _loop(self):
-        """Main loop - checks every 250ms for new windows."""
+        """Main loop - checks every 200ms for new windows."""
         while self.running:
             try:
                 current = self._get_windows()
@@ -50,7 +50,7 @@ class WindowWatcher:
             except Exception as e:
                 LOG.error(f"BSN: WindowWatcher error: {e}")
 
-            time.sleep(0.25)
+            time.sleep(0.2)
 
     def _get_windows(self) -> set:
         """Gets all window IDs via wmctrl."""
@@ -106,10 +106,37 @@ class WindowWatcher:
 
         LOG.info(f"BSN: New window detected: {win_id}")
 
-        # Wait briefly until window is fully rendered
-        time.sleep(0.1)
+        # Immediately unmaximize if the window started maximized
+        # (prevents visible flash of fullscreen before BSN repositions)
+        self._unmaximize_if_needed(win_id)
+
+        # Brief wait for window to be renderable
+        time.sleep(0.05)
 
         self.controller.handle_new_window(win_id)
+
+    def _unmaximize_if_needed(self, win_id: str):
+        """Immediately unmaximize a window if it started maximized.
+
+        Apps like Firefox, Nautilus, etc. often start maximized by default.
+        BSN needs them un-maximized to position them side-by-side with Frank.
+        Doing this ASAP prevents the visible flash of a fullscreen window.
+        """
+        try:
+            result = subprocess.run(
+                ["xprop", "-id", win_id, "_NET_WM_STATE"],
+                capture_output=True, text=True, timeout=1
+            )
+            state = result.stdout
+            if ('_NET_WM_STATE_MAXIMIZED_VERT' in state
+                    and '_NET_WM_STATE_MAXIMIZED_HORZ' in state):
+                LOG.info(f"BSN: Window {win_id} started maximized — unmaximizing for layout")
+                subprocess.run([
+                    "wmctrl", "-i", "-r", win_id,
+                    "-b", "remove,maximized_vert,maximized_horz"
+                ], capture_output=True, timeout=1)
+        except Exception as e:
+            LOG.debug(f"BSN: Unmaximize check error: {e}")
 
     def _is_frank_window(self, win_id: str) -> bool:
         """Checks if it is the Frank window."""
@@ -157,23 +184,13 @@ class WindowWatcher:
             return False
 
     def _is_fullscreen_app(self, win_id: str) -> bool:
-        """Detect apps that need full screen (too wide for side-by-side with Frank).
+        """Detect apps that need full screen (Frank yields to background).
 
-        These apps get maximized on the primary monitor and Frank yields to background.
+        Currently no apps are forced fullscreen — all apps get positioned
+        side-by-side with Frank via BSN. Steam is treated as a regular window.
+        Games (steam_app_*) are handled separately by _is_game().
         """
-        try:
-            result = subprocess.run(
-                ["xprop", "-id", win_id, "WM_CLASS"],
-                capture_output=True, text=True, timeout=1
-            )
-            wm_class = result.stdout.lower()
-
-            # Steam client (NOT steam games which have "steam_app_")
-            if '"steam"' in wm_class and "steam_app_" not in wm_class:
-                return True
-
-        except Exception:
-            pass
+        # No apps currently need forced fullscreen — all go through BSN layout
         return False
 
     def _is_game(self, win_id: str) -> bool:

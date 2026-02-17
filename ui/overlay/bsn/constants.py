@@ -151,7 +151,7 @@ class BSNConstants:
     APP_MIN_HEIGHT = 400       # Minimum for usable app
 
     # Layout
-    GAP = 15                   # Gap between Frank and app
+    GAP = 2                    # Minimal gap between Frank and app (seamless tiling)
     PANEL_HEIGHT = _WORKAREA["y"]   # Dynamic: from _NET_WORKAREA (GNOME Top Panel)
     DOCK_WIDTH = _WORKAREA["x"]     # Dynamic: from _NET_WORKAREA (GNOME Dock)
 

@@ -353,11 +353,22 @@ class SkillRegistry:
             return list(self._skills.values())
 
     def match_keywords(self, text: str) -> Optional[LoadedSkill]:
-        """Match user input against skill keyword patterns. Returns first match."""
+        """Match user input against skill keyword patterns. Returns first match.
+
+        For long messages (>80 chars), only match if the keyword appears
+        in the first 80 characters. This prevents false positives when
+        conversational text incidentally contains a skill keyword
+        (e.g. 'alle Prozesse' in a philosophical question matching sysadmin).
+        """
         with self._lock:
             for skill in self._skills.values():
-                if skill.keyword_re and skill.keyword_re.search(text):
-                    return skill
+                if skill.keyword_re:
+                    m = skill.keyword_re.search(text)
+                    if m:
+                        # Long messages: keyword must be near the start
+                        if len(text) > 80 and m.start() >= 80:
+                            continue
+                        return skill
         return None
 
     def reload(self, name: str = None) -> int:

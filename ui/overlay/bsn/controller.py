@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 from overlay.constants import LOG
 from overlay.bsn.constants import BSNConstants, get_workarea_y, get_workarea_x, get_workarea, get_primary_monitor
@@ -70,6 +71,10 @@ class LayoutController:
     def handle_new_window(self, win_id: str):
         """Called when a new window is detected."""
         try:
+            # Signal fullscreen poller to ignore maximized states during positioning
+            # (BSN is intentionally un-maximizing and repositioning this window)
+            self.overlay._bsn_positioning_until = time.time() + 2.5
+
             layout = self.negotiator.negotiate()
 
             if layout["success"]:

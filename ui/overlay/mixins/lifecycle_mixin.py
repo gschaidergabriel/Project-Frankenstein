@@ -235,65 +235,83 @@ class LifecycleMixin:
     # ---------- Fullscreen detection ----------
 
     def _poll_fullscreen(self):
-        """Detect if ANY window is fullscreen and yield topmost.
+        """Detect if ANY window is fullscreen/maximized and yield topmost.
 
-        Checks both the active window AND (if already yielded) tracks the
-        fullscreen window specifically. This prevents the overlay from
-        re-appearing when focus shifts during video playback.
+        Checks active window first (fast path), then scans all windows
+        on the current desktop. Detects both true fullscreen and maximized
+        windows (videos, browsers, etc.).
         """
         try:
+            import time as _time
+            # Skip detection while BSN is actively positioning a new window
+            # (BSN un-maximizes windows before repositioning — don't interfere)
+            if getattr(self, '_bsn_positioning_until', 0) > _time.time():
+                self.after(500, self._poll_fullscreen)
+                return
+
             env = {**os.environ, 'DISPLAY': ':0'}
             fullscreen_found = False
 
-            # 1. Check active window
+            # 1. Fast path: check active window
             result = subprocess.run(
                 ['xdotool', 'getactivewindow'],
                 capture_output=True, text=True, timeout=2, env=env,
             )
             active_wid = result.stdout.strip()
             if active_wid:
-                if self._is_window_fullscreen(active_wid, env):
+                if self._is_window_covering(active_wid, env):
                     fullscreen_found = True
                     self._fullscreen_wid = active_wid
 
-            # 2. If we previously yielded, also check the tracked fullscreen window
-            #    (it may have lost focus but still be fullscreen)
-            if not fullscreen_found and hasattr(self, '_fullscreen_wid') and self._fullscreen_wid:
-                if self._is_window_fullscreen(self._fullscreen_wid, env):
+            # 2. Check tracked window (may have lost focus but still covering)
+            if not fullscreen_found and getattr(self, '_fullscreen_wid', None):
+                if self._is_window_covering(self._fullscreen_wid, env):
                     fullscreen_found = True
 
-            # 3. Scan all windows on current desktop for fullscreen (fallback)
-            if not fullscreen_found and self._fullscreen_yielded:
-                fullscreen_found = self._any_window_fullscreen(env)
+            # 3. Always scan all windows if not found yet (catches cases
+            #    where Frank has focus or active window isn't the covering one)
+            if not fullscreen_found:
+                fullscreen_found = self._any_window_covering(env)
 
             if fullscreen_found and not self._fullscreen_yielded:
                 self._fullscreen_yielded = True
                 self.attributes("-topmost", False)
                 self.lower()
-                LOG.info("Fullscreen detected — overlay yielded topmost")
+                LOG.info("Fullscreen/maximized detected — overlay yielded topmost")
             elif not fullscreen_found and self._fullscreen_yielded:
                 self._fullscreen_yielded = False
                 self._fullscreen_wid = None
                 if not self._fas_dimmed:
                     self.attributes("-topmost", True)
-                    LOG.info("Fullscreen exited — overlay topmost restored")
+                    LOG.info("Fullscreen/maximized exited — overlay topmost restored")
         except Exception as e:
             LOG.debug(f"Fullscreen poll error: {e}")
         self.after(500, self._poll_fullscreen)
 
-    def _is_window_fullscreen(self, wid: str, env: dict) -> bool:
-        """Check if a specific window has _NET_WM_STATE_FULLSCREEN."""
+    def _is_window_covering(self, wid: str, env: dict) -> bool:
+        """Check if a window is fullscreen OR maximized (covers the screen).
+
+        Detects:
+        - True fullscreen (_NET_WM_STATE_FULLSCREEN) — F11, video fullscreen
+        - Maximized both axes (_NET_WM_STATE_MAXIMIZED_VERT + _HORZ) — maximized windows
+        """
         try:
             prop = subprocess.run(
                 ['xprop', '-id', wid, '_NET_WM_STATE'],
                 capture_output=True, text=True, timeout=2, env=env,
             )
-            return '_NET_WM_STATE_FULLSCREEN' in prop.stdout
+            state = prop.stdout
+            if '_NET_WM_STATE_FULLSCREEN' in state:
+                return True
+            if ('_NET_WM_STATE_MAXIMIZED_VERT' in state
+                    and '_NET_WM_STATE_MAXIMIZED_HORZ' in state):
+                return True
+            return False
         except Exception:
             return False
 
-    def _any_window_fullscreen(self, env: dict) -> bool:
-        """Check if ANY window on the current desktop is fullscreen."""
+    def _any_window_covering(self, env: dict) -> bool:
+        """Check if ANY window on the current desktop is fullscreen/maximized."""
         try:
             result = subprocess.run(
                 ['wmctrl', '-l'], capture_output=True, text=True, timeout=2, env=env,
@@ -308,7 +326,7 @@ class LifecycleMixin:
                 title = (parts[4] if len(parts) > 4 else '').lower()
                 if 'f.r.a.n.k' in title:
                     continue
-                if self._is_window_fullscreen(wid, env):
+                if self._is_window_covering(wid, env):
                     self._fullscreen_wid = wid
                     return True
         except Exception:

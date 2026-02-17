@@ -229,9 +229,16 @@ class AgenticMixin:
                 "systemordner", "dateien", "titan", "your files",
             ]
             if any(h in query_lower for h in _self_analysis_hints):
-                # Dynamically list actual source files so Qwen uses real paths
+                # Dynamically resolve paths — works on any system
                 import subprocess as _sp
-                _src_root = "/home/ai-core-node/aicore/opt/aicore"
+                try:
+                    from config.paths import AICORE_ROOT, AICORE_DATA
+                    _src_root = str(AICORE_ROOT)
+                    _db_dir = str(AICORE_DATA / "db")
+                except ImportError:
+                    _src_root = str(Path(__file__).resolve().parents[4])
+                    _db_dir = str(Path.home() / ".local" / "share" / "frank" / "db")
+
                 try:
                     _find = _sp.run(
                         ["find", _src_root, "-name", "*.py",
@@ -240,7 +247,7 @@ class AgenticMixin:
                          "-printf", "%P\\n"],
                         capture_output=True, text=True, timeout=5
                     )
-                    _files = sorted(_find.stdout.strip().split("\n"))[:40]  # Top 40 files
+                    _files = sorted(_find.stdout.strip().split("\n"))[:40]
                     _file_list = "\n".join(f"  {_src_root}/{f}" for f in _files if f)
                 except Exception:
                     _file_list = "  (could not list files — use fs_list)"
@@ -248,14 +255,14 @@ class AgenticMixin:
                 context += (
                     "\n\nSELF-ANALYSIS CONTEXT:"
                     f"\nSource root: {_src_root}/"
-                    "\nDatabases: /home/ai-core-node/.local/share/frank/db/ (titan.db, chat_memory.db)"
+                    f"\nDatabases: {_db_dir}/ (titan.db, chat_memory.db)"
                     "\n"
                     "\nACTUAL SOURCE FILES (use these exact paths with fs_read):"
                     f"\n{_file_list}"
                     "\n"
                     "\nINSTRUCTIONS:"
                     "\n- Use fs_read with the EXACT paths listed above. Do NOT invent file names."
-                    "\n- For .db files: use bash_execute with sqlite3 (e.g. sqlite3 /path/db '.schema')"
+                    f"\n- For .db files: use bash_execute with sqlite3 (e.g. sqlite3 {_db_dir}/titan.db '.schema')"
                     "\n- Read at least 5 files, then call final_answer with your findings."
                     "\n- Look for: exception handling, logic errors, race conditions, type errors."
                 )

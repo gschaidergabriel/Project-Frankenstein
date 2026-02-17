@@ -356,27 +356,33 @@ class AgenticMixin:
         elif event_type == "completed":
             response = event.get("response", "Task completed.")
             self._remove_agent_progress()
+            self._hide_typing()
             self._add_message("Frank", response)
+            # Speak the response via TTS if available
+            if hasattr(self, '_tts_speak'):
+                self._tts_speak(response[:500])
 
         elif event_type == "failed":
             error = event.get("error", "Unknown error")
-            if self._agent_progress_widget:
-                self._agent_progress_widget.mark_failed(error)
-            else:
-                self._add_message("Frank", f"Failed: {error}", is_system=True)
+            self._remove_agent_progress()
+            self._hide_typing()
+            self._add_message("Frank", f"Failed: {error}", is_system=True)
 
         elif event_type == "final":
             response = event.get("response", "")
             self._remove_agent_progress()
+            self._hide_typing()
             if response:
                 self._add_message("Frank", response)
+                # Speak the response via TTS if available
+                if hasattr(self, '_tts_speak'):
+                    self._tts_speak(response[:500])
 
         elif event_type == "error":
             error = event.get("error", "Unknown error")
-            if self._agent_progress_widget:
-                self._agent_progress_widget.mark_failed(error)
-            else:
-                self._add_message("Frank", f"Error: {error}", is_system=True)
+            self._remove_agent_progress()
+            self._hide_typing()
+            self._add_message("Frank", f"Error: {error}", is_system=True)
 
     def _ensure_agent_progress(self):
         """Create progress widget if not exists."""

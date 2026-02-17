@@ -50,6 +50,14 @@ CENTER_Y = MONITOR_HEIGHT // 2 + 40
 PANEL_OFFSET = 40  # HUD offset from top
 _shutdown = threading.Event()
 
+# Frank character icon for core texture rendering
+try:
+    from config.paths import AICORE_ROOT as _AICORE_ROOT_PATH
+    FRANK_ICON_PATH = os.path.join(str(_AICORE_ROOT_PATH), "assets", "icons", "frank-overlay.png")
+except ImportError:
+    _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    FRANK_ICON_PATH = os.path.join(os.path.dirname(_SCRIPT_DIR), "assets", "icons", "frank-overlay.png")
+
 
 def detect_primary_monitor():
     """
@@ -133,6 +141,7 @@ uniform float u_halo;       // Halo intensity (0.0 - 1.0)
 uniform float u_glitch;     // Glitch intensity (0.0 = none, 1.0 = max)
 uniform float u_think;      // Thinking intensity (0.0 = idle, 1.0 = deep thought)
 uniform vec3 u_event_color; // Event-specific color (each event has unique color)
+uniform sampler2D u_frank_tex; // Frank character texture
 
 // ============================================
 // SIMPLEX NOISE
@@ -302,45 +311,105 @@ void main() {
     color += WHITE_HOT * cross * cross * mask * 2.0;
 
     // ========================================
-    // 10. KERN (Stark morphend, nutzt vorhandene Noise-Werte!)
-    //     u_think verstärkt Morphing + vergrößert Kern
+    // 10. FRANK CHARACTER (Sample texture, remove plasma behind)
     // ========================================
-    float coreBoost = exp(-d * 25.0);  // Filamente im Kern verstärken
-    color *= 1.0 + coreBoost * (2.0 + u_think * 0.4);
 
-    // MORPHING: Distanz mit vorhandenen Noise-Werten verzerren
-    // u_think verstärkt Verzerrung sanft (1.0 bis 1.8x)
-    float thinkMorph = 1.0 + u_think * 0.8;
-    float coreDistort = (nA1 * 0.025 + nB1 * 0.018 + nC * 0.012) * thinkMorph;
-    float dCore = length(uv + vec2(coreDistort, coreDistort * 0.8));
+    // Sample Frank texture
+    float frankRadius = 0.14;
+    vec2 texCoord = uv / (frankRadius * 2.0) + 0.5;
 
-    // Zusätzliche Morph-Schichten — u_think verstärkt sanft
-    float thinkMorphAmp = 1.0 + u_think * 0.5;
-    float morphA = filA * 0.008 * thinkMorphAmp;
-    float morphB = filB * 0.005 * thinkMorphAmp;
-    // Leicht schnellere Oszillation beim Denken (gelassen, nicht hektisch)
-    float thinkTimeBoost = u_think * 2.0;
-    dCore += morphA * sin(t * (8.0 + thinkTimeBoost)) + morphB * cos(t * (11.0 + thinkTimeBoost));
+    // ---- Skeletal animation: rigid body-part rotation ----
+    // Each body part rotates as a rigid piece around its joint pivot.
+    // Hierarchy: base → torso → head, plus independent bolt wiggles.
+    float anim = u_time;
 
-    // Puls + Morph-Intensität — sanfte Amplitude beim Denken
-    float corePulseAmp = 0.4 + u_think * 0.08;  // 0.4 normal, 0.48 beim Denken
-    float corePulse = (1.0 - corePulseAmp) + corePulseAmp * sin(t * (12.0 + thinkTimeBoost));
-    float morphPulse = 0.8 + (0.2 + u_think * 0.05) * sin(t * (7.0 + thinkTimeBoost * 0.5) + nA1 * 3.0);
+    // Organic time signals (non-harmonic frequencies → never-repeating pattern)
+    float m1 = sin(anim * 0.71);
+    float m2 = sin(anim * 0.53 + 2.3);
+    float m3 = sin(anim * 0.43 + 5.1);
+    float m4 = sin(anim * 1.13 + 1.1);
+    float m5 = sin(anim * 0.37 + 3.7);
+    float m6 = sin(anim * 0.89 + 0.7);
 
-    // Weißer Kern mit Morphing — Kern wächst leicht beim Denken
-    float coreDecay = 160.0 - u_think * 25.0;  // 160 normal, 135 beim Denken (leicht größer)
-    float coreWhite = exp(-dCore * coreDecay) * corePulse * morphPulse;
-    float coreGlow = exp(-dCore * (45.0 - u_think * 5.0)) * corePulse;
+    // Joint rotation angles (radians)
+    float baseRot  = m1 * 0.008 + m3 * 0.005;                   // Subtle base sway
+    float torsoRot = m2 * 0.018 + m5 * 0.012;                   // Torso lean
+    float headRot  = m4 * 0.035 + m6 * 0.022 + m2 * 0.015;     // Head tilt (most motion)
+    float lBoltRot = m3 * 0.07 + m1 * 0.04;                     // Left bolt wiggle
+    float rBoltRot = -m5 * 0.07 - m4 * 0.04;                    // Right bolt (counter-phase)
 
-    // Kern-Rand zerfasert (organisch) — etwas breiter beim Denken
-    float coreEdge = exp(-dCore * (90.0 - u_think * 8.0)) * (0.5 + filTotal * 0.5);
+    // Breathing: horizontal torso pulse
+    float breathAmt = sin(anim * 1.27) * 0.005 + sin(anim * 0.61) * 0.003;
+    // Vertical bob
+    float bob = m1 * 0.003 + m6 * 0.002;
 
-    // Think-Farbe für den Kern-Glow (sanfter Blau-Shift)
-    vec3 thinkCoreColor = mix(WHITE_HOT, vec3(0.7, 0.9, 1.0), u_think);  // Weiß → Blau-Weiß
+    vec2 tc = texCoord;
+    float yN = texCoord.y;  // Original y for region masks (0=bottom, 1=top)
 
-    color += vec3(1.0) * coreWhite * (9.0 + u_think * 0.5);
-    color += thinkCoreColor * coreGlow * (3.5 + u_think * 0.5);
-    color += thinkCoreColor * coreEdge * (1.5 + u_think * 0.3);
+    // Global vertical bob
+    tc.y += bob;
+
+    // --- BASE SWAY: pivot at character base (0.50, 0.11) ---
+    float baseW = smoothstep(0.05, 0.18, yN);
+    float baseA = -baseRot * baseW;
+    float baseCa = cos(baseA); float baseSa = sin(baseA);
+    vec2 baseD = tc - vec2(0.50, 0.11);
+    tc = vec2(0.50, 0.11) + vec2(baseD.x*baseCa - baseD.y*baseSa,
+                                  baseD.x*baseSa + baseD.y*baseCa);
+
+    // --- TORSO LEAN: pivot at waist (0.50, 0.45) ---
+    float torsoW = smoothstep(0.35, 0.50, yN);
+    float torsoA = -torsoRot * torsoW;
+    float torsoCa = cos(torsoA); float torsoSa = sin(torsoA);
+    vec2 torsoD = tc - vec2(0.50, 0.45);
+    tc = vec2(0.50, 0.45) + vec2(torsoD.x*torsoCa - torsoD.y*torsoSa,
+                                  torsoD.x*torsoSa + torsoD.y*torsoCa);
+
+    // --- BREATHING: torso horizontal scale ---
+    float breathW = smoothstep(0.15, 0.35, yN) * (1.0 - smoothstep(0.52, 0.65, yN));
+    tc.x += (tc.x - 0.5) * breathAmt * breathW * 3.0;
+
+    // --- HEAD TILT: pivot at neck (0.50, 0.50) ---
+    float headW = smoothstep(0.46, 0.56, yN);
+    float headA = -headRot * headW;
+    float headCa = cos(headA); float headSa = sin(headA);
+    vec2 headD = tc - vec2(0.50, 0.50);
+    tc = vec2(0.50, 0.50) + vec2(headD.x*headCa - headD.y*headSa,
+                                  headD.x*headSa + headD.y*headCa);
+
+    // --- LEFT BOLT WIGGLE: pivot at bolt attachment (0.18, 0.63) ---
+    float lBoltW = (1.0 - smoothstep(0.05, 0.22, tc.x))
+                 * smoothstep(0.56, 0.62, yN) * (1.0 - smoothstep(0.72, 0.78, yN));
+    float lBoltA = -lBoltRot * lBoltW;
+    float lBoltCa = cos(lBoltA); float lBoltSa = sin(lBoltA);
+    vec2 lBoltD = tc - vec2(0.18, 0.63);
+    tc = mix(tc, vec2(0.18, 0.63) + vec2(lBoltD.x*lBoltCa - lBoltD.y*lBoltSa,
+                                          lBoltD.x*lBoltSa + lBoltD.y*lBoltCa), lBoltW);
+
+    // --- RIGHT BOLT WIGGLE: pivot at bolt attachment (0.82, 0.63) ---
+    float rBoltW = smoothstep(0.78, 0.95, tc.x)
+                 * smoothstep(0.56, 0.62, yN) * (1.0 - smoothstep(0.72, 0.78, yN));
+    float rBoltA = -rBoltRot * rBoltW;
+    float rBoltCa = cos(rBoltA); float rBoltSa = sin(rBoltA);
+    vec2 rBoltD = tc - vec2(0.82, 0.63);
+    tc = mix(tc, vec2(0.82, 0.63) + vec2(rBoltD.x*rBoltCa - rBoltD.y*rBoltSa,
+                                          rBoltD.x*rBoltSa + rBoltD.y*rBoltCa), rBoltW);
+
+    texCoord = tc;
+    // ---- End skeletal animation ----
+
+    vec4 frankTex = texture2D(u_frank_tex, texCoord);
+    float inBounds = step(0.001, texCoord.x) * step(texCoord.x, 0.999)
+                   * step(0.001, texCoord.y) * step(texCoord.y, 0.999);
+    frankTex *= inBounds;
+
+    // Hard cutoff: remove ALL plasma within entire visible core area
+    // Plasma edge is at d≈0.182 (edgeMask=1-d*5.5), cut at 0.22 for margin
+    float suppressPlasma = step(0.22, length(uv));
+    color *= suppressPlasma;
+
+    // Core glow value (used by section 11 for mood/event effects)
+    float coreGlow = exp(-d * 45.0);
 
     // ========================================
     // 11. KOLLABORATIONS-LAYER (Mood, Halo, Glitch)
@@ -391,6 +460,14 @@ void main() {
     finalColor = sqrt(finalColor * 0.85);
 
     finalColor = min(finalColor, vec3(1.0));
+
+    // Composite Frank character ON TOP (after falloff/gamma, not darkened)
+    vec3 frankColor = frankTex.rgb * 1.4;  // Well-lit character
+    frankColor = min(frankColor, vec3(1.0));
+    // Smooth alpha edge for anti-aliasing (slightly soften hard alpha transitions)
+    float frankAlpha = smoothstep(0.02, 0.15, frankTex.a);
+    finalColor = mix(finalColor, frankColor, frankAlpha);
+
     gl_FragColor = vec4(finalColor, 1.0);
 }
 """
@@ -629,6 +706,7 @@ class PlasmaGLWidget(QOpenGLWidget):
         self.time = 0.0
         self.shader_program = None
         self.initialized = False
+        self.frank_tex_id = 0
 
         # Kollaborations-Layer state
         self.mood = 0.0      # 0.0 = passive, 1.0 = active (CPU-driven)
@@ -661,9 +739,63 @@ class PlasmaGLWidget(QOpenGLWidget):
             print("[CYBERCORE] GLSL shaders compiled successfully")
             self.initialized = True
 
+            # Load Frank character texture
+            self._load_frank_texture()
+
         except Exception as e:
             print(f"[CYBERCORE] Shader compilation failed: {e}")
             self.initialized = False
+
+    def _load_frank_texture(self):
+        """Load Frank character PNG as OpenGL texture with high-quality scaling."""
+        try:
+            from PIL import Image, ImageFilter
+            if not os.path.exists(FRANK_ICON_PATH):
+                print(f"[CYBERCORE] Frank icon not found: {FRANK_ICON_PATH}")
+                return
+
+            img = Image.open(FRANK_ICON_PATH).convert("RGBA")
+            orig_size = img.size
+
+            # Pre-scale to display size with LANCZOS for best quality.
+            # frankRadius=0.14, screen height=600 → render diameter ~168px.
+            # Use 256x256 (slight oversample for GL_LINEAR quality).
+            target_size = 256
+            img = img.resize((target_size, target_size), Image.LANCZOS)
+
+            # Sharpen to counteract any softness from downscale
+            img = img.filter(ImageFilter.SHARPEN)
+
+            # Flip vertically for OpenGL coordinate system (origin at bottom-left)
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            img_data = img.tobytes()
+
+            self.frank_tex_id = int(glGenTextures(1))
+            glBindTexture(GL_TEXTURE_2D, self.frank_tex_id)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img.width, img.height,
+                         0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+            # GL_LINEAR (no mipmaps) - texture is pre-scaled to ~display size
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            # Anisotropic filtering for sharper texture sampling
+            try:
+                from OpenGL.GL.EXT.texture_filter_anisotropic import (
+                    GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,
+                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                )
+                max_aniso = glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT)
+                glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, max_aniso)
+                print(f"[CYBERCORE] Anisotropic filtering: {max_aniso}x")
+            except Exception:
+                pass  # Extension not available, GL_LINEAR is fine
+            glBindTexture(GL_TEXTURE_2D, 0)
+
+            print(f"[CYBERCORE] Frank texture loaded: {orig_size[0]}x{orig_size[1]} → {target_size}x{target_size} (LANCZOS+SHARPEN)")
+        except Exception as e:
+            print(f"[CYBERCORE] Frank texture loading failed: {e}")
+            self.frank_tex_id = 0
 
     def paintGL(self):
         """Render using GLSL shader."""
@@ -709,6 +841,13 @@ class PlasmaGLWidget(QOpenGLWidget):
             glUniform1f(loc_think, self.think)
         if loc_event_color >= 0:
             glUniform3f(loc_event_color, self.event_color[0], self.event_color[1], self.event_color[2])
+
+        # Bind Frank character texture
+        loc_frank = glGetUniformLocation(self.shader_program, "u_frank_tex")
+        if loc_frank >= 0 and self.frank_tex_id:
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.frank_tex_id)
+            glUniform1i(loc_frank, 0)
 
         # Draw fullscreen quad using immediate mode (most compatible)
         glBegin(GL_TRIANGLE_STRIP)
@@ -822,6 +961,25 @@ class NeuralCybercoreWindow(QWidget):
         self._thinking_pulse_count = 0
 
         self._desktop_configured = False
+
+        # --- Adaptive resolution: track current size and monitor for changes ---
+        self._last_w = MONITOR_WIDTH
+        self._last_h = MONITOR_HEIGHT
+        self._relayout_pending = False
+
+        # Connect QScreen geometry change signals
+        app = QApplication.instance()
+        if app:
+            for screen in app.screens():
+                screen.geometryChanged.connect(self._on_screen_changed)
+            app.screenAdded.connect(self._on_screen_added)
+            app.screenRemoved.connect(lambda: self._on_screen_changed())
+
+        # Fallback: periodic xrandr check every 30s
+        self._resolution_check_timer = QTimer(self)
+        self._resolution_check_timer.timeout.connect(self._check_resolution_change)
+        self._resolution_check_timer.start(30000)
+
         print(f"[CYBERCORE] GLSL Shader Mode initialized (CPU-enhanced)")
         print(f"[CYBERCORE] SAFETY: Press Alt+1 to exit")
 
@@ -832,6 +990,143 @@ class NeuralCybercoreWindow(QWidget):
         print("[CYBERCORE] EMERGENCY EXIT!")
         _shutdown.set()
         QApplication.quit()
+
+    # --- Adaptive Resolution ---
+
+    def _on_screen_added(self, screen):
+        """New screen connected — attach signal and check."""
+        screen.geometryChanged.connect(self._on_screen_changed)
+        self._on_screen_changed()
+
+    def _on_screen_changed(self):
+        """QScreen geometry changed — debounce and relayout."""
+        if self._relayout_pending:
+            return
+        self._relayout_pending = True
+        QTimer.singleShot(500, self._deferred_relayout)
+
+    def _check_resolution_change(self):
+        """Periodic fallback: re-detect via xrandr and relayout if changed."""
+        detect_primary_monitor()
+        if MONITOR_WIDTH != self._last_w or MONITOR_HEIGHT != self._last_h:
+            print(f"[CYBERCORE] Resolution change detected: {self._last_w}x{self._last_h} → {MONITOR_WIDTH}x{MONITOR_HEIGHT}")
+            self._relayout()
+
+    def _deferred_relayout(self):
+        """Debounced relayout after screen change signal."""
+        self._relayout_pending = False
+        detect_primary_monitor()
+        if MONITOR_WIDTH != self._last_w or MONITOR_HEIGHT != self._last_h:
+            print(f"[CYBERCORE] Screen signal: {self._last_w}x{self._last_h} → {MONITOR_WIDTH}x{MONITOR_HEIGHT}")
+            self._relayout()
+
+    def _relayout(self):
+        """Reposition and resize all elements to current monitor dimensions."""
+        self._last_w = MONITOR_WIDTH
+        self._last_h = MONITOR_HEIGHT
+
+        # Window geometry
+        self.setGeometry(MONITOR_X, MONITOR_Y, MONITOR_WIDTH, MONITOR_HEIGHT)
+
+        # Background
+        self.bg_widget.setGeometry(0, 0, MONITOR_WIDTH, MONITOR_HEIGHT)
+
+        # OpenGL renderer
+        self.renderer.setGeometry(0, 0, MONITOR_WIDTH, MONITOR_HEIGHT)
+
+        # Scanlines (recreate baked pixmap)
+        self._recreate_scanlines()
+
+        # Corner markers
+        self._reposition_corners()
+
+        # HUD boxes
+        self._reposition_hud()
+
+        # Ghost text
+        self._reposition_ghost_text()
+
+        # Error display
+        self.lbl_error.setGeometry(CENTER_X - 150, CENTER_Y + 120, 300, 30)
+
+        # Re-configure as desktop window (xid may change)
+        self._desktop_configured = False
+        self._configure_as_desktop()
+
+        print(f"[CYBERCORE] Relayout complete: {MONITOR_WIDTH}x{MONITOR_HEIGHT}+{MONITOR_X}+{MONITOR_Y}")
+
+    def _recreate_scanlines(self):
+        """Recreate scanline overlay pixmap for current resolution."""
+        pattern = QPixmap(1, 4)
+        pattern.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pattern)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.fillRect(0, 2, 1, 2, QColor(0, 0, 0, 8))
+        painter.end()
+
+        self.scanline_widget.setGeometry(0, 0, MONITOR_WIDTH, MONITOR_HEIGHT)
+        scanline_pixmap = QPixmap(MONITOR_WIDTH, MONITOR_HEIGHT)
+        scanline_pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(scanline_pixmap)
+        for y in range(0, MONITOR_HEIGHT, 4):
+            painter.drawPixmap(0, y, MONITOR_WIDTH, 4, pattern.scaled(MONITOR_WIDTH, 4))
+        painter.end()
+        self.scanline_widget.setPixmap(scanline_pixmap)
+
+    def _reposition_corners(self):
+        """Reposition corner markers to current monitor dimensions."""
+        marker_len = 40
+        marker_thick = 1
+
+        # Top-left (stays at 10,10)
+        self.corner_tl_h.setGeometry(10, 10, marker_len, marker_thick)
+        self.corner_tl_v.setGeometry(10, 10, marker_thick, marker_len)
+
+        # Top-right
+        self.corner_tr_h.setGeometry(MONITOR_WIDTH - 10 - marker_len, 10, marker_len, marker_thick)
+        self.corner_tr_v.setGeometry(MONITOR_WIDTH - 10 - marker_thick, 10, marker_thick, marker_len)
+
+        # Bottom-left
+        self.corner_bl_h.setGeometry(10, MONITOR_HEIGHT - 10 - marker_thick, marker_len, marker_thick)
+        self.corner_bl_v.setGeometry(10, MONITOR_HEIGHT - 10 - marker_len, marker_thick, marker_len)
+
+        # Bottom-right
+        self.corner_br_h.setGeometry(MONITOR_WIDTH - 10 - marker_len, MONITOR_HEIGHT - 10 - marker_thick, marker_len, marker_thick)
+        self.corner_br_v.setGeometry(MONITOR_WIDTH - 10 - marker_thick, MONITOR_HEIGHT - 10 - marker_len, marker_thick, marker_len)
+
+    def _reposition_hud(self):
+        """Reposition HUD and modules boxes to current monitor width."""
+        box_width = 420
+        box_height = 70
+        box_x = MONITOR_WIDTH - 60 - box_width
+        box_y = PANEL_OFFSET + 40
+
+        self.hud_box.setGeometry(box_x, box_y, box_width, box_height)
+
+        mod_box_width = 180
+        mod_box_height = 130
+        self._modules_base_x = MONITOR_WIDTH - mod_box_width - 60
+        self._modules_base_y = PANEL_OFFSET + 120
+        self.modules_box.setGeometry(self._modules_base_x, self._modules_base_y, mod_box_width, mod_box_height)
+
+    def _reposition_ghost_text(self):
+        """Reposition ghost text labels relative to current CENTER_X/CENTER_Y."""
+        positions = [
+            # Left side
+            (CENTER_X - 420, CENTER_Y - 200), (CENTER_X - 380, CENTER_Y - 120),
+            (CENTER_X - 450, CENTER_Y - 40), (CENTER_X - 400, CENTER_Y + 60),
+            (CENTER_X - 360, CENTER_Y + 140), (CENTER_X - 420, CENTER_Y + 220),
+            # Right side
+            (CENTER_X + 250, CENTER_Y - 190), (CENTER_X + 300, CENTER_Y - 100),
+            (CENTER_X + 280, CENTER_Y - 20), (CENTER_X + 320, CENTER_Y + 80),
+            (CENTER_X + 260, CENTER_Y + 160), (CENTER_X + 300, CENTER_Y + 240),
+            # Top/Bottom scattered
+            (CENTER_X - 180, CENTER_Y - 280), (CENTER_X + 120, CENTER_Y - 260),
+            (CENTER_X - 150, CENTER_Y + 280), (CENTER_X + 80, CENTER_Y + 300),
+        ]
+        for i, lbl in enumerate(self.ghost_labels):
+            if i < len(positions):
+                lbl.move(positions[i][0], positions[i][1])
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1413,6 +1708,9 @@ class NeuralCybercoreWindow(QWidget):
                     from OpenGL.GL import glDeleteProgram
                     glDeleteProgram(self.renderer.shader_program)
                     self.renderer.shader_program = None
+                    if self.renderer.frank_tex_id:
+                        glDeleteTextures([self.renderer.frank_tex_id])
+                        self.renderer.frank_tex_id = 0
                     self.renderer.doneCurrent()
                 except Exception as e:
                     print(f"[CYBERCORE] OpenGL cleanup warning: {e}")

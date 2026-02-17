@@ -78,13 +78,20 @@ signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
 
 # --- Create icon ---
 try:
-    from config.paths import TEMP_FILES as _TF2
+    from config.paths import TEMP_FILES as _TF2, AICORE_ROOT as _AICORE_ROOT
     icon_dir = _TF2["icons_dir"]
 except ImportError:
+    _AICORE_ROOT = Path(__file__).resolve().parents[3]
     icon_dir = Path("/tmp/frank/icons")
 icon_dir.mkdir(exist_ok=True)
 icon_path = icon_dir / "frank-tray.png"
-if not icon_path.exists():
+# Use the designed icon from assets; fall back to generating one
+_src_icon = _AICORE_ROOT / "assets" / "icons" / "frank-overlay.png"
+if _src_icon.exists():
+    from PIL import Image
+    _img = Image.open(str(_src_icon)).convert("RGBA").resize((64, 64), Image.LANCZOS)
+    _img.save(str(icon_path))
+elif not icon_path.exists():
     from PIL import Image, ImageDraw
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))

@@ -7,7 +7,7 @@ Plain mixin class; all `self.*` references resolve at runtime via MRO.
 import tkinter as tk
 from tkinter import filedialog
 from overlay.constants import COLORS, LOG, FRANK_IDENTITY, DND_AVAILABLE, DND_FILES
-from overlay.bsn.constants import get_workarea_y
+from overlay.bsn.constants import get_workarea_y, get_primary_monitor
 from overlay.widgets.modern_button import ModernButton
 from overlay.widgets.modern_entry import ModernEntry
 from overlay.widgets.file_action_bar import FileActionBar
@@ -299,26 +299,26 @@ class UiMixin:
         self.configure(cursor="fleur")
 
     def _on_drag(self, event):
-        """Handle window dragging with screen boundary enforcement."""
+        """Handle window dragging with screen boundary enforcement.
+
+        Constrains to PRIMARY monitor bounds to prevent jumping to secondary monitors.
+        """
         if not getattr(self, '_dragging', False):
             return
 
         x = self.winfo_x() + (event.x - self._drag_start_x)
         y = self.winfo_y() + (event.y - self._drag_start_y)
 
-        # Get screen dimensions and window size
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
+        # Use PRIMARY monitor bounds (not total screen which spans all monitors)
+        mon = get_primary_monitor()
+        mon_right = mon["x"] + mon["width"]
+        mon_bottom = mon["y"] + mon["height"]
         win_w = self.winfo_width()
-        win_h = self.winfo_height()
 
-        # Enforce strict boundaries -- titlebar with controls must ALWAYS
-        # remain fully on-screen so the user can never lose the window.
-        # Horizontal: entire window width stays on screen
-        x = max(0, min(x, screen_w - win_w))
-        # Vertical: NEVER above GNOME panel (dynamic from workarea)
+        # Enforce strict boundaries — overlay stays on primary monitor
+        x = max(mon["x"], min(x, mon_right - win_w))
         min_y = get_workarea_y()
-        y = max(min_y, min(y, screen_h - 44))
+        y = max(min_y, min(y, mon_bottom - 44))
 
         self.geometry(f"+{x}+{y}")
 

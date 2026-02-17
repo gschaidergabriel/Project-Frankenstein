@@ -12,7 +12,10 @@ import time
 from pathlib import Path
 
 from overlay.constants import LOG
-from overlay.bsn.constants import get_workarea_y, get_workarea_x
+from overlay.bsn.constants import (
+    get_workarea_y, get_workarea_x, get_workarea,
+    refresh_workarea, BSNConstants, get_primary_monitor,
+)
 from overlay.bsn.controller import LayoutController
 
 try:
@@ -232,35 +235,85 @@ class LifecycleMixin:
     # ---------- Fullscreen detection ----------
 
     def _poll_fullscreen(self):
-        """Detect if another window is fullscreen and yield topmost."""
+        """Detect if ANY window is fullscreen and yield topmost.
+
+        Checks both the active window AND (if already yielded) tracks the
+        fullscreen window specifically. This prevents the overlay from
+        re-appearing when focus shifts during video playback.
+        """
         try:
+            env = {**os.environ, 'DISPLAY': ':0'}
+            fullscreen_found = False
+
+            # 1. Check active window
             result = subprocess.run(
                 ['xdotool', 'getactivewindow'],
-                capture_output=True, text=True, timeout=2,
-                env={**os.environ, 'DISPLAY': ':0'}
+                capture_output=True, text=True, timeout=2, env=env,
             )
             active_wid = result.stdout.strip()
             if active_wid:
-                prop = subprocess.run(
-                    ['xprop', '-id', active_wid, '_NET_WM_STATE'],
-                    capture_output=True, text=True, timeout=2,
-                    env={**os.environ, 'DISPLAY': ':0'}
-                )
-                is_fullscreen = '_NET_WM_STATE_FULLSCREEN' in prop.stdout
+                if self._is_window_fullscreen(active_wid, env):
+                    fullscreen_found = True
+                    self._fullscreen_wid = active_wid
 
-                if is_fullscreen and not self._fullscreen_yielded:
-                    self._fullscreen_yielded = True
-                    self.attributes("-topmost", False)
-                    self.lower()
-                    LOG.info("Fullscreen detected — overlay yielded topmost")
-                elif not is_fullscreen and self._fullscreen_yielded:
-                    self._fullscreen_yielded = False
-                    if not self._fas_dimmed:
-                        self.attributes("-topmost", True)
-                        LOG.info("Fullscreen exited — overlay topmost restored")
+            # 2. If we previously yielded, also check the tracked fullscreen window
+            #    (it may have lost focus but still be fullscreen)
+            if not fullscreen_found and hasattr(self, '_fullscreen_wid') and self._fullscreen_wid:
+                if self._is_window_fullscreen(self._fullscreen_wid, env):
+                    fullscreen_found = True
+
+            # 3. Scan all windows on current desktop for fullscreen (fallback)
+            if not fullscreen_found and self._fullscreen_yielded:
+                fullscreen_found = self._any_window_fullscreen(env)
+
+            if fullscreen_found and not self._fullscreen_yielded:
+                self._fullscreen_yielded = True
+                self.attributes("-topmost", False)
+                self.lower()
+                LOG.info("Fullscreen detected — overlay yielded topmost")
+            elif not fullscreen_found and self._fullscreen_yielded:
+                self._fullscreen_yielded = False
+                self._fullscreen_wid = None
+                if not self._fas_dimmed:
+                    self.attributes("-topmost", True)
+                    LOG.info("Fullscreen exited — overlay topmost restored")
         except Exception as e:
             LOG.debug(f"Fullscreen poll error: {e}")
         self.after(500, self._poll_fullscreen)
+
+    def _is_window_fullscreen(self, wid: str, env: dict) -> bool:
+        """Check if a specific window has _NET_WM_STATE_FULLSCREEN."""
+        try:
+            prop = subprocess.run(
+                ['xprop', '-id', wid, '_NET_WM_STATE'],
+                capture_output=True, text=True, timeout=2, env=env,
+            )
+            return '_NET_WM_STATE_FULLSCREEN' in prop.stdout
+        except Exception:
+            return False
+
+    def _any_window_fullscreen(self, env: dict) -> bool:
+        """Check if ANY window on the current desktop is fullscreen."""
+        try:
+            result = subprocess.run(
+                ['wmctrl', '-l'], capture_output=True, text=True, timeout=2, env=env,
+            )
+            for line in result.stdout.strip().split('\n'):
+                if not line:
+                    continue
+                parts = line.split(None, 4)
+                if len(parts) < 2 or parts[1] == '-1':
+                    continue
+                wid = parts[0]
+                title = (parts[4] if len(parts) > 4 else '').lower()
+                if 'f.r.a.n.k' in title:
+                    continue
+                if self._is_window_fullscreen(wid, env):
+                    self._fullscreen_wid = wid
+                    return True
+        except Exception:
+            pass
+        return False
 
     # ---------- BSN Layout Controller ----------
 
@@ -413,7 +466,8 @@ class LifecycleMixin:
 
     def _enforce_panel_boundary(self):
         """
-        Ensure the overlay is NEVER above the GNOME panel or left of the dock.
+        Ensure the overlay stays on the PRIMARY monitor, never above the
+        GNOME panel, and never on a secondary monitor.
 
         This is the single authoritative method that enforces correct positioning.
         Called at startup (multiple times), after focus hacks, after ADI profiles,
@@ -425,8 +479,13 @@ class LifecycleMixin:
 
             y = self.winfo_y()
             x = self.winfo_x()
+            w = self.winfo_width()
             min_y = get_workarea_y()
             min_x = 0  # Allow at screen edge, but not negative
+
+            # Get primary monitor bounds to prevent jumping to secondary
+            mon = get_primary_monitor()
+            max_x = mon["x"] + mon["width"] - w
 
             needs_fix = False
             new_y = y
@@ -438,13 +497,16 @@ class LifecycleMixin:
             if x < min_x:
                 new_x = min_x
                 needs_fix = True
+            if x > max_x:
+                new_x = max(min_x, max_x)
+                needs_fix = True
 
             if needs_fix:
                 if getattr(self, '_dragging', False):
                     return  # Never interfere with user drag
                 LOG.warning(
                     f"Panel boundary violated: was ({x},{y}), "
-                    f"correcting to ({new_x},{new_y}) [min_y={min_y}]"
+                    f"correcting to ({new_x},{new_y}) [min_y={min_y}, max_x={max_x}]"
                 )
                 self.geometry(f"+{new_x}+{new_y}")
                 self.update_idletasks()
@@ -458,3 +520,75 @@ class LifecycleMixin:
         except Exception:
             pass
         self.after(10000, self._periodic_panel_enforcement)
+
+    def _periodic_workarea_refresh(self):
+        """Periodic workarea refresh every 60s to detect resolution/monitor changes."""
+        try:
+            old_wa = get_workarea()
+            BSNConstants.refresh()
+            new_wa = get_workarea()
+
+            if (old_wa["x"] != new_wa["x"] or old_wa["y"] != new_wa["y"]
+                    or old_wa["width"] != new_wa["width"]
+                    or old_wa["height"] != new_wa["height"]):
+                LOG.info(
+                    f"Workarea changed: {old_wa['width']}x{old_wa['height']}+{old_wa['x']}+{old_wa['y']} → "
+                    f"{new_wa['width']}x{new_wa['height']}+{new_wa['x']}+{new_wa['y']}"
+                )
+                if hasattr(self, '_layout_controller') and hasattr(self._layout_controller, 'negotiator'):
+                    self._layout_controller.negotiator.invalidate_screen_info()
+                self._check_overlay_on_screen(new_wa)
+        except Exception as e:
+            LOG.debug(f"Workarea refresh error: {e}")
+        self.after(60000, self._periodic_workarea_refresh)
+
+    def _check_overlay_on_screen(self, wa: dict):
+        """Reposition overlay if it's outside the PRIMARY monitor after a resolution change.
+
+        Uses primary monitor bounds (NOT total workarea which spans all monitors)
+        to ensure the overlay never jumps to a secondary monitor.
+        """
+        try:
+            if not self.winfo_exists() or getattr(self, '_dragging', False):
+                return
+
+            # Get PRIMARY monitor bounds — overlay must stay on this monitor
+            mon = get_primary_monitor()
+            mon_left = mon["x"]
+            mon_right = mon["x"] + mon["width"]
+            mon_bottom = mon["y"] + mon["height"]
+            min_y = wa["y"]  # Panel height (from workarea)
+
+            x = self.winfo_x()
+            y = self.winfo_y()
+            w = self.winfo_width()
+            h = self.winfo_height()
+
+            needs_fix = False
+            new_x, new_y, new_w, new_h = x, y, w, h
+
+            # If window extends beyond primary monitor right edge
+            if x + w > mon_right:
+                new_x = max(wa["x"], mon_right - w)
+                needs_fix = True
+
+            # If window is left of primary monitor
+            if x < mon_left:
+                new_x = max(wa["x"], mon_left)
+                needs_fix = True
+
+            # If window extends beyond primary monitor bottom
+            if y + h > mon_bottom:
+                new_h = max(BSNConstants.FRANK_MIN_HEIGHT, mon_bottom - y)
+                if new_h < BSNConstants.FRANK_MIN_HEIGHT:
+                    new_y = max(min_y, mon_bottom - BSNConstants.FRANK_MIN_HEIGHT)
+                    new_h = BSNConstants.FRANK_MIN_HEIGHT
+                needs_fix = True
+
+            if needs_fix:
+                LOG.info(f"Overlay outside primary monitor, repositioning: "
+                         f"({x},{y},{w}x{h}) → ({new_x},{new_y},{new_w}x{new_h})")
+                self.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
+                self.update_idletasks()
+        except Exception as e:
+            LOG.debug(f"Overlay on-screen check error: {e}")

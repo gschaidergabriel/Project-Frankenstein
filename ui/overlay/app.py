@@ -319,6 +319,7 @@ class ChatOverlay(
 
         # Fullscreen detection state
         self._fullscreen_yielded = False
+        self._fullscreen_wid = None  # Track which window is fullscreen
 
         # System tray icon for minimize-to-tray
         self._tray_available = start_tray_icon()
@@ -337,6 +338,8 @@ class ChatOverlay(
         self.after(2000, self._enforce_panel_boundary)
         # Periodic enforcement every 10 seconds (catches drift from focus hacks, etc.)
         self.after(10000, self._periodic_panel_enforcement)
+        # Periodic workarea refresh every 60s (detects resolution/monitor changes)
+        self.after(60000, self._periodic_workarea_refresh)
 
         # Register SIGTERM/SIGINT handlers for graceful shutdown
         # MUST be after all init so cleanup can run properly

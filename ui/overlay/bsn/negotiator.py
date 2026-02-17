@@ -1,4 +1,4 @@
-from overlay.bsn.constants import BSNConstants, _get_primary_monitor
+from overlay.bsn.constants import BSNConstants, get_primary_monitor
 from overlay.constants import LOG
 
 
@@ -18,10 +18,14 @@ class SpaceNegotiator:
         self.screen_y = None   # Primary monitor Y offset
         self.usable_h = None
 
+    def invalidate_screen_info(self):
+        """Clear cached screen dimensions (call after monitor/resolution change)."""
+        self.screen_w = None
+
     def _ensure_screen_info(self):
         """Detects primary monitor and caches the values."""
         if self.screen_w is None:
-            self.monitor = _get_primary_monitor()
+            self.monitor = get_primary_monitor()
             self.screen_w = self.monitor["width"]
             self.screen_h = self.monitor["height"]
             self.screen_x = self.monitor["x"]

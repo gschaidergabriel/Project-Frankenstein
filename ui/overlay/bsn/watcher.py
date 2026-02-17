@@ -10,6 +10,7 @@ class WindowWatcher:
     def __init__(self, layout_controller):
         self.controller = layout_controller
         self.known_windows = set()
+        self.fullscreen_apps = set()  # Track windows that made Frank yield
         self.running = False
         self._thread = None
 
@@ -32,9 +33,18 @@ class WindowWatcher:
             try:
                 current = self._get_windows()
                 new_windows = current - self.known_windows
+                closed_windows = self.known_windows - current
 
                 for win_id in new_windows:
                     self._handle_new_window(win_id)
+
+                # Check if any fullscreen app was closed → restore Frank
+                closed_fs = self.fullscreen_apps & closed_windows
+                if closed_fs:
+                    self.fullscreen_apps -= closed_fs
+                    if not self.fullscreen_apps:
+                        LOG.info("BSN: All fullscreen apps closed — restoring Frank")
+                        self.controller.restore_frank()
 
                 self.known_windows = current
             except Exception as e:
@@ -84,6 +94,14 @@ class WindowWatcher:
         # Skip Wallpaper (FRANK NEURAL CORE)
         if self._is_wallpaper(win_id):
             LOG.debug(f"BSN: Wallpaper window - ignoring {win_id}")
+            return
+
+        # Fullscreen apps: apps that need the full screen (Frank yields)
+        if self._is_fullscreen_app(win_id):
+            LOG.info(f"BSN: Fullscreen app detected: {win_id} — maximizing, Frank yields")
+            self.fullscreen_apps.add(win_id)
+            time.sleep(0.1)
+            self.controller.handle_fullscreen_app(win_id)
             return
 
         LOG.info(f"BSN: New window detected: {win_id}")
@@ -137,6 +155,26 @@ class WindowWatcher:
             return w < 400 and h < 300
         except Exception:
             return False
+
+    def _is_fullscreen_app(self, win_id: str) -> bool:
+        """Detect apps that need full screen (too wide for side-by-side with Frank).
+
+        These apps get maximized on the primary monitor and Frank yields to background.
+        """
+        try:
+            result = subprocess.run(
+                ["xprop", "-id", win_id, "WM_CLASS"],
+                capture_output=True, text=True, timeout=1
+            )
+            wm_class = result.stdout.lower()
+
+            # Steam client (NOT steam games which have "steam_app_")
+            if '"steam"' in wm_class and "steam_app_" not in wm_class:
+                return True
+
+        except Exception:
+            pass
+        return False
 
     def _is_game(self, win_id: str) -> bool:
         """

@@ -37,6 +37,9 @@ def _get_workarea() -> dict:
 # Cache workarea at module load
 _WORKAREA = _get_workarea()
 
+# Cache primary monitor at module load (avoids xrandr on every 10s enforcement)
+_PRIMARY_MONITOR = None  # Lazy init on first access
+
 
 def get_workarea_y() -> int:
     """Get the Y offset where the usable screen area starts (below GNOME panel)."""
@@ -59,7 +62,25 @@ def refresh_workarea():
     _WORKAREA = _get_workarea()
 
 
-def _get_primary_monitor() -> dict:
+def get_primary_monitor() -> dict:
+    """Get cached primary monitor info. Use refresh_primary_monitor() to update."""
+    global _PRIMARY_MONITOR
+    if _PRIMARY_MONITOR is None:
+        _PRIMARY_MONITOR = _detect_primary_monitor()
+    return _PRIMARY_MONITOR
+
+
+def refresh_primary_monitor():
+    """Re-detect primary monitor (call from 60s timer, not 10s enforcement)."""
+    global _PRIMARY_MONITOR
+    _PRIMARY_MONITOR = _detect_primary_monitor()
+
+
+# Backward-compat alias: all existing callers now use the cached version
+_get_primary_monitor = get_primary_monitor
+
+
+def _detect_primary_monitor() -> dict:
     """
     Detect the primary monitor via xrandr.
 
@@ -133,3 +154,12 @@ class BSNConstants:
     GAP = 15                   # Gap between Frank and app
     PANEL_HEIGHT = _WORKAREA["y"]   # Dynamic: from _NET_WORKAREA (GNOME Top Panel)
     DOCK_WIDTH = _WORKAREA["x"]     # Dynamic: from _NET_WORKAREA (GNOME Dock)
+
+    @classmethod
+    def refresh(cls):
+        """Re-read workarea and primary monitor after monitor/resolution change."""
+        refresh_workarea()
+        refresh_primary_monitor()
+        cls.PANEL_HEIGHT = _WORKAREA["y"]
+        cls.DOCK_WIDTH = _WORKAREA["x"]
+        LOG.info(f"BSN: Constants refreshed: PANEL_HEIGHT={cls.PANEL_HEIGHT}, DOCK_WIDTH={cls.DOCK_WIDTH}")

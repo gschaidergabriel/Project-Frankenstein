@@ -4,7 +4,7 @@ import subprocess
 import threading
 from pathlib import Path
 from overlay.constants import LOG
-from overlay.bsn.constants import BSNConstants, get_workarea_y, get_workarea_x, get_workarea
+from overlay.bsn.constants import BSNConstants, get_workarea_y, get_workarea_x, get_workarea, get_primary_monitor
 from overlay.bsn.negotiator import SpaceNegotiator
 from overlay.bsn.positioner import WindowPositioner
 from overlay.bsn.watcher import WindowWatcher
@@ -80,6 +80,40 @@ class LayoutController:
         except Exception as e:
             LOG.error(f"BSN: Error handling new window: {e}")
 
+    def restore_frank(self):
+        """Restore Frank after all fullscreen apps have closed."""
+        def _restore():
+            try:
+                if not getattr(self.overlay, '_fullscreen_yielded', False):
+                    self.overlay.attributes("-topmost", True)
+                    self.overlay.lift()
+                    LOG.info("BSN: Frank restored (fullscreen app closed)")
+            except Exception as e:
+                LOG.debug(f"BSN: Frank restore error: {e}")
+        try:
+            self.overlay.after(0, _restore)
+        except Exception:
+            pass
+
+    def handle_fullscreen_app(self, win_id: str):
+        """Handle apps that need the full primary monitor (Steam, etc.).
+
+        Maximizes the app on the primary monitor and yields Frank to background.
+        """
+        try:
+            self.positioner.maximize_on_primary(win_id)
+            # Yield Frank: lower and remove topmost
+            def _yield_frank():
+                try:
+                    self.overlay.attributes("-topmost", False)
+                    self.overlay.lower()
+                    LOG.info("BSN: Frank yielded for fullscreen app")
+                except Exception as e:
+                    LOG.debug(f"BSN: Frank yield error: {e}")
+            self.overlay.after(0, _yield_frank)
+        except Exception as e:
+            LOG.error(f"BSN: Error handling fullscreen app: {e}")
+
     # ---------- Startup overlap avoidance ----------
 
     def _startup_avoid_overlap(self):
@@ -107,6 +141,15 @@ class LayoutController:
                 return
 
             LOG.info(f"BSN: Startup check - {len(existing)} existing window(s) found")
+
+            # Filter: only consider windows on the primary monitor
+            mon = get_primary_monitor()
+            mon_right = mon["x"] + mon["width"]
+            existing = [w for w in existing if w["x"] < mon_right]
+
+            if not existing:
+                LOG.info("BSN: No existing windows on primary monitor to avoid")
+                return
 
             frank = {
                 "x": self.overlay.winfo_x(),
@@ -264,6 +307,7 @@ class LayoutController:
     def _find_best_frank_position(self, frank: dict, windows: list, wa: dict) -> dict:
         """
         Find the best position for Frank that minimizes window overlaps.
+        All positions are constrained to the PRIMARY monitor.
 
         Strategy:
         1. Generate candidates from gaps between windows
@@ -276,7 +320,9 @@ class LayoutController:
         Returns best candidate dict with 'score' field, or None.
         """
         min_y = wa["y"]
-        screen_right = wa["x"] + wa["width"]
+        # Use PRIMARY monitor right edge, NOT total workarea (which spans all monitors)
+        mon = get_primary_monitor()
+        screen_right = mon["x"] + mon["width"]
         frank_h = frank["height"]
         gap = BSNConstants.GAP
 

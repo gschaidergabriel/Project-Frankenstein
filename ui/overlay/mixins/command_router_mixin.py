@@ -84,6 +84,12 @@ _PKG_WORDS = {"package", "packages", "paket", "pakete", "software", "installed",
 _APP_WORDS = {"app", "apps", "application", "applications", "anwendung", "anwendungen", "programm", "programme"}
 
 
+_ACTION_VERBS = {
+    "open", "launch", "start", "run", "play", "close", "kill", "stop", "quit",
+    "öffne", "starte", "starten", "schließe", "schließen", "beende",
+}
+
+
 def _detect_inventory_query(text: str):
     """Detect if user is asking about installed games/apps/packages.
 
@@ -91,6 +97,10 @@ def _detect_inventory_query(text: str):
     Returns "games", "apps", "pkg:<backend>", or None.
     """
     words = set(re.sub(r"[?!.,;:'\"]", " ", text).lower().split())
+
+    # Action verbs like "open steam" mean "launch it", NOT "list inventory"
+    if words & _ACTION_VERBS:
+        return None
 
     # Must have at least one query signal word
     if not words & _QUERY_SIGNALS:

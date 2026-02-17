@@ -2,6 +2,7 @@ import subprocess
 import threading
 import time
 from overlay.constants import LOG
+from overlay.bsn.constants import get_primary_monitor
 
 
 class WindowPositioner:
@@ -10,6 +11,25 @@ class WindowPositioner:
     def __init__(self, overlay):
         self.overlay = overlay
 
+    def _clamp_to_primary(self, x: int, y: int, w: int, h: int) -> tuple:
+        """Clamp geometry to primary monitor bounds. Never overflow to secondary."""
+        mon = get_primary_monitor()
+        mon_right = mon["x"] + mon["width"]
+        mon_bottom = mon["y"] + mon["height"]
+
+        # Clamp width so window doesn't extend beyond primary monitor
+        if x + w > mon_right:
+            w = mon_right - x
+        # If still too wide (x is near the edge), also shift x left
+        if w < 200 and x > mon["x"]:
+            x = max(mon["x"], mon_right - max(w, 200))
+            w = mon_right - x
+        # Clamp height
+        if y + h > mon_bottom:
+            h = mon_bottom - y
+
+        return x, y, max(w, 100), max(h, 100)
+
     def apply_layout(self, layout: dict, win_id: str):
         """Applies the layout."""
         # 1. Adjust Frank if necessary
@@ -17,8 +37,39 @@ class WindowPositioner:
             self._adjust_frank(layout["frank"], layout["frank_action"])
             time.sleep(0.15)
 
-        # 2. Position app (aggressive)
-        self._position_app_aggressive(win_id, layout["app"])
+        # 2. Clamp app geometry to primary monitor bounds
+        app = layout["app"]
+        app["x"], app["y"], app["width"], app["height"] = self._clamp_to_primary(
+            app["x"], app["y"], app["width"], app["height"]
+        )
+
+        # 3. Position app (aggressive)
+        self._position_app_aggressive(win_id, app)
+
+    def maximize_on_primary(self, win_id: str):
+        """Maximize a window on the primary monitor (for fullscreen apps like Steam)."""
+        mon = get_primary_monitor()
+        x, y = mon["x"], mon["y"]
+        w, h = mon["width"], mon["height"]
+
+        def _do():
+            LOG.info(f"BSN: Maximizing {win_id} on primary monitor: {w}x{h}+{x}+{y}")
+            # First unmaximize to ensure clean state
+            self._wmctrl_position(win_id, x, y, w, h)
+            time.sleep(0.2)
+            # Then maximize on primary monitor
+            try:
+                subprocess.run([
+                    "wmctrl", "-i", "-r", win_id,
+                    "-b", "add,maximized_vert,maximized_horz"
+                ], capture_output=True, timeout=2)
+            except Exception as e:
+                LOG.debug(f"BSN: wmctrl maximize error: {e}")
+            time.sleep(0.3)
+            # Verify it's on the primary monitor, force if needed
+            self._enforce_primary_bounds(win_id, x, y, w, h)
+
+        threading.Thread(target=_do, daemon=True).start()
 
     def _adjust_frank(self, geometry: dict, action: str):
         """Adjusts Frank (thread-safe via after())."""
@@ -75,12 +126,15 @@ class WindowPositioner:
                 LOG.debug(f"BSN: Stage 4 FORCE for {win_id}")
                 self._force_position(win_id, x, y, w, h)
 
-            # Stage 5: Final verification
+            # Stage 5: Final verification + primary monitor enforcement
             time.sleep(0.4)
             if self._verify_position(win_id, x):
                 LOG.info(f"BSN: Window {win_id} positioned successfully")
             else:
                 LOG.warning(f"BSN: Window {win_id} positioning may have failed")
+
+            # Stage 6: Enforce primary monitor bounds (catches apps that resize themselves)
+            self._enforce_primary_bounds(win_id, x, y, w, h)
 
         threading.Thread(target=_do_position, daemon=True).start()
 
@@ -114,6 +168,63 @@ class WindowPositioner:
                           capture_output=True, timeout=2)
         except Exception as e:
             LOG.debug(f"BSN: xdotool fallback error: {e}")
+
+    def _enforce_primary_bounds(self, win_id: str, target_x: int, target_y: int,
+                                target_w: int, target_h: int):
+        """Check actual window geometry and force it within primary monitor if it overflows."""
+        try:
+            result = subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", win_id],
+                capture_output=True, text=True, timeout=2
+            )
+            geo = {}
+            for line in result.stdout.strip().split('\n'):
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    geo[k] = int(v)
+
+            actual_x = geo.get("X", target_x)
+            actual_y = geo.get("Y", target_y)
+            actual_w = geo.get("WIDTH", target_w)
+            actual_h = geo.get("HEIGHT", target_h)
+
+            mon = get_primary_monitor()
+            mon_right = mon["x"] + mon["width"]
+            mon_bottom = mon["y"] + mon["height"]
+
+            needs_fix = False
+            fix_x, fix_y, fix_w, fix_h = actual_x, actual_y, actual_w, actual_h
+
+            # Window extends beyond primary monitor right edge
+            if actual_x + actual_w > mon_right:
+                fix_w = mon_right - actual_x
+                if fix_w < 200:
+                    fix_x = max(mon["x"], mon_right - max(actual_w, 400))
+                    fix_w = mon_right - fix_x
+                needs_fix = True
+
+            # Window extends below primary monitor
+            if actual_y + actual_h > mon_bottom:
+                fix_h = mon_bottom - actual_y
+                needs_fix = True
+
+            # Window is on secondary monitor entirely
+            if actual_x >= mon_right:
+                fix_x = target_x
+                fix_w = target_w
+                needs_fix = True
+
+            if needs_fix:
+                LOG.warning(
+                    f"BSN: Window {win_id} overflows primary monitor "
+                    f"(actual: {actual_w}x{actual_h}+{actual_x}+{actual_y}), "
+                    f"clamping to {fix_w}x{fix_h}+{fix_x}+{fix_y}"
+                )
+                self._wmctrl_position(win_id, fix_x, fix_y, fix_w, fix_h)
+                time.sleep(0.1)
+                self._force_position(win_id, fix_x, fix_y, fix_w, fix_h)
+        except Exception as e:
+            LOG.debug(f"BSN: Primary bounds enforcement error: {e}")
 
     def _verify_position(self, win_id: str, expected_x: int) -> bool:
         """Checks if window is correctly positioned."""

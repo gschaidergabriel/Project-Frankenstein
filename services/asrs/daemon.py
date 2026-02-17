@@ -980,7 +980,8 @@ class ASRSDaemon:
         except Exception:
             pass
 
-        # Error count
+        # Error count — exclude systemd service start/stop messages
+        # (ASRS's own restarts during rollback/revalidation generate these)
         error_count = 0
         try:
             result = subprocess.run(
@@ -988,7 +989,15 @@ class ASRSDaemon:
                  "-p", "err", "--no-pager", "-q"],
                 capture_output=True, text=True, timeout=5
             )
-            error_count = len([l for l in result.stdout.strip().split('\n') if l])
+            for line in result.stdout.strip().split('\n'):
+                if not line:
+                    continue
+                # Skip systemd service lifecycle messages (caused by ASRS restarts)
+                if 'systemd[' in line and ('Failed to start' in line or
+                    'Stopped' in line or 'Starting' in line or
+                    'Start request repeated' in line):
+                    continue
+                error_count += 1
         except Exception:
             pass
 

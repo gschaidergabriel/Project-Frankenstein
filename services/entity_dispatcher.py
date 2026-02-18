@@ -97,7 +97,7 @@ PID_FILES: dict[str, Path] = {
     "muse":      RUNTIME_DIR / "muse_agent.pid",
 }
 
-POLL_INTERVAL      = 60    # seconds between idle checks
+POLL_INTERVAL      = 600   # 10 min between idle checks
 COOLDOWN_COMPLETED = 300   # 5 min after a completed session
 COOLDOWN_RETURNED  = 600   # 10 min after user_returned
 IDLE_THRESHOLD     = 300   # 5 min idle required before starting

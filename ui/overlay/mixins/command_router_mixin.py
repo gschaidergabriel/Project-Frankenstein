@@ -1168,7 +1168,7 @@ class CommandRouterMixin:
 
         # Unit/Currency conversion — "150 USD in Euro", "500 MB in GB"
         # Check natural language pattern first (more specific), then direct pattern
-        cm = CONVERT_QUERY_RE.search(msg)
+        cm = CONVERT_QUERY_RE.search(msg) if len(msg) < 120 else None
         if cm:
             val_str = cm.group(1).replace(",", ".")
             try:
@@ -1182,7 +1182,7 @@ class CommandRouterMixin:
             except ValueError:
                 pass
 
-        cm = CONVERT_RE.search(msg)
+        cm = CONVERT_RE.search(msg) if len(msg) < 120 else None
         if cm:
             val_str = cm.group(1).replace(",", ".")
             try:

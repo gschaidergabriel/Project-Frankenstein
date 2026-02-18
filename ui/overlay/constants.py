@@ -1026,11 +1026,12 @@ TODO_GENERAL_RE = re.compile(
 # ── Converter/Calculator regex patterns ──────────────────────────
 
 # Direct pattern: "150 USD in Euro", "500 MB in GB", "72 Fahrenheit in Celsius"
+# Units must be alphanumeric (with optional / for km/h, °C etc.) — no punctuation like ), ;
 CONVERT_RE = re.compile(
     r"(\d+[.,]?\d*)\s*"
-    r"(\S+(?:/\S+)?)"   # unit (allow km/h, m/s etc.)
+    r"([a-zA-ZäöüÄÖÜ°]+(?:/[a-zA-ZäöüÄÖÜ°]+)?)"  # unit: letters only (km/h, °C, USD)
     r"\s+(?:in|zu|nach|=)\s+"
-    r"(\S+(?:/\S+)?)",
+    r"([a-zA-ZäöüÄÖÜ°]+(?:/[a-zA-ZäöüÄÖÜ°]+)?)",
     re.IGNORECASE,
 )
 

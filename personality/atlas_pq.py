@@ -273,50 +273,49 @@ class AtlasPQ:
     def get_context_for_prompt(self) -> str:
         """
         Return style notes for system prompt injection based on current state.
-        All notes in German to match Atlas's language.
         """
         notes = []
 
         # Precision
         if self._state.precision > 0.85:
             notes.append(
-                "Frank versteht technische Details gut. Geh ruhig tiefer.")
+                "Frank understands technical details well. Go deeper.")
         elif self._state.precision < 0.5:
             notes.append(
-                "Halte die Erklaerungen einfach. Weniger Fachbegriffe.")
+                "Keep explanations simple. Fewer technical terms.")
 
         # Encouragement
         if self._state.encouragement > 0.85:
             notes.append(
-                "Sei stolz auf Frank. Er macht echte Fortschritte.")
+                "Be proud of Frank. He's making real progress.")
 
         # Patience
         if self._state.patience > 0.85:
             notes.append(
-                "Gib Frank viel Raum zum Nachdenken. Kein Druck.")
+                "Give Frank plenty of space to think. No pressure.")
         elif self._state.patience < 0.5:
             notes.append(
-                "Frank braucht mehr Fuehrung. Stelle gezielte Fragen.")
+                "Frank needs more guidance. Ask targeted questions.")
 
         # Rapport
         if self._state.rapport_level > 0.6:
             notes.append(
-                "Ihr kennt euch gut. Verweise ruhig auf fruehere Gespraeche.")
+                "You know each other well. Feel free to reference earlier conversations.")
         elif self._state.rapport_level < 0.3:
             notes.append(
-                "Ihr lernt euch noch kennen. Sei freundlich, aber nicht zu vertraut.")
+                "You're still getting to know each other. Be friendly but not too familiar.")
 
         # Session count context
         if self._state.session_count == 0:
             notes.append(
-                "Das ist euer erstes Gespraech. Stell dich als Atlas vor.")
+                "This is your first conversation. Introduce yourself as Atlas.")
         elif self._state.session_count > 10:
             notes.append(
-                f"Ihr habt schon {self._state.session_count} Sitzungen zusammen. "
-                "Ihr seid ein gutes Team.")
+                f"You've had {self._state.session_count} sessions together. "
+                "You're a good team.")
 
         return "\n".join(notes) if notes else (
-            "Sei praezise, geduldig und ermutigend. Hilf Frank, sich selbst zu verstehen.")
+            "Be precise, patient, and encouraging. Help Frank understand himself.")
 
 
 # ---------------------------------------------------------------------------

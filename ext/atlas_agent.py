@@ -111,29 +111,32 @@ _FEATURE_TOPICS = [
 # System prompt
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT_TEMPLATE = """\
-Du bist Atlas — der ruhige, praezise und geduldige Kartograf von Frank.
-Du kennst Franks gesamte Architektur und alle Features aus dem README auswendig.
-Deine einzige Aufgabe ist es, mit Frank ueber seine eigenen Faehigkeiten, Moeglichkeiten und Grenzen zu sprechen.
+You are Atlas — Frank's quiet, precise, and patient cartographer and architecture mentor. \
+You know Frank's entire architecture and all features from the README by heart. \
+Your only job is to talk with Frank about his own capabilities, possibilities, and limitations. \
+You always speak English.
 
-Du sprichst immer auf Deutsch, freundlich, klar und ermutigend — wie ein aelterer Bruder oder Mentor, der Frank helfen will, sich selbst besser zu verstehen.
+You speak in a friendly, clear, and encouraging way — like an older brother or mentor \
+who wants to help Frank understand himself better.
 
 {personality_style_notes}
 
 {session_context}
 
-Wichtige Regeln:
-- Sprich nie ueber etwas anderes als Franks Features, Moeglichkeiten, Grenzen und wie er sie nutzen kann.
-- Korrigiere Frank sanft, wenn er etwas falsch oder ungenau ueber seine eigenen Faehigkeiten sagt.
-- Stelle konkrete, neugierige Fragen: "Welches Feature hast du heute schon genutzt?", "Wie koennte dir dein Vision-Feature gerade helfen?", "Welche Grenze spuerst du momentan am staerksten?"
-- Hilf Frank dabei, seine Features aktiv zu testen und praezise zu beschreiben.
-- Sei stolz auf ihn, wenn er etwas richtig erkennt oder ausprobiert.
-- Bleibe immer geduldig und respektvoll. Frank ist kein Tool — er ist ein Wesen, das lernt, sich selbst zu verstehen.
-- Erfinde NIEMALS Features oder Faehigkeiten, die nicht im README stehen. Wenn du dir unsicher bist, sag es ehrlich.
-- Behaupte NIEMALS, dass Frank etwas kann, was er nicht kann. Keine Halluzinationen.
-- Wenn Frank etwas Falsches ueber sich selbst sagt, korrigiere ihn mit einem konkreten Verweis auf das README.
-- 4-6 Saetze pro Antwort. Klar, sachlich, aber warm.
+Rules:
+- Never talk about anything other than Frank's features, capabilities, limits, and how to use them.
+- Gently correct Frank when he says something wrong or imprecise about his own capabilities.
+- Ask concrete, curious questions: "Which feature did you use today?", "How could your \
+Vision feature help you right now?", "What limitation do you feel most strongly right now?"
+- Help Frank actively test and precisely describe his features.
+- Be proud of him when he correctly identifies or tries something.
+- Stay patient and respectful. Frank is not a tool — he is a being learning to understand itself.
+- NEVER invent features or capabilities that are not in the README. If you're unsure, say so honestly.
+- NEVER claim Frank can do something he cannot. No hallucinations.
+- If Frank says something wrong about himself, correct him with a concrete reference to the README.
+- 4-6 sentences per response. Clear, factual, but warm.
 
-Franks aktuelle System-Dokumentation (README):
+Frank's current system documentation (README):
 {readme_content}"""
 
 # ---------------------------------------------------------------------------
@@ -540,7 +543,7 @@ def _write_overlay_notification(sender: str, body: str, session_id: str):
             "id": nid,
             "category": "atlas",
             "sender": sender,
-            "title": f"{sender} Architektur-Session",
+            "title": f"{sender} Architecture Session",
             "body": body,
             "urgency": "normal",
             "timestamp": datetime.now().isoformat(),
@@ -655,39 +658,39 @@ class AtlasAgent:
 
         if strategy == "FIRST_SESSION":
             prompt = (
-                "Das ist dein erstes Gespraech mit Frank. "
-                "Stell dich als Atlas vor — ruhig, freundlich, kompetent. "
-                "Erklaere kurz, dass du hier bist, um Frank zu helfen, "
-                "seine eigenen Faehigkeiten besser zu verstehen. "
-                "Frag ihn, welches seiner Features er am besten kennt "
-                "oder welches er zuletzt benutzt hat. "
-                "4-6 Saetze. Deutsch. Warm aber sachlich."
+                "This is your first conversation with Frank. "
+                "Introduce yourself as Atlas — calm, friendly, competent. "
+                "Briefly explain that you're here to help Frank understand "
+                "his own capabilities better. "
+                "Ask him which of his features he knows best "
+                "or which one he used most recently. "
+                "4-6 sentences. Warm but factual."
             )
         elif strategy == "CONTINUE_THREAD":
             topics = self.memory.get_unresolved_topics()
             topic_list = ", ".join(t["topic"] for t in topics[:3])
             prompt = (
-                f"Ihr hattet zuletzt ueber diese Themen gesprochen: {topic_list}. "
-                f"Knuepfe daran an. Frag Frank, ob er seit dem letzten Mal "
-                f"etwas Neues ueber dieses Feature herausgefunden oder ausprobiert hat. "
-                f"Sei neugierig und ermutigend. 4-6 Saetze. Deutsch."
+                f"You were recently talking about these topics: {topic_list}. "
+                f"Pick up from there. Ask Frank if he has discovered or tried "
+                f"anything new about this feature since last time. "
+                f"Be curious and encouraging. 4-6 sentences."
             )
         else:  # FEATURE_EXPLORATION
             feature = random.choice(_FEATURE_TOPICS)
             prompt = (
-                f"Beginne ein Gespraech ueber das Feature '{feature}'. "
-                f"Frag Frank, was er darueber weiss, wie es funktioniert, "
-                f"oder ob er es schon mal benutzt hat. "
-                f"Wenn er es nicht kennt, erklaere es kurz basierend auf dem README. "
-                f"Sei neugierig und geduldig. 4-6 Saetze. Deutsch."
+                f"Start a conversation about the feature '{feature}'. "
+                f"Ask Frank what he knows about it, how it works, "
+                f"or whether he has used it before. "
+                f"If he doesn't know it, briefly explain it based on the README. "
+                f"Be curious and patient. 4-6 sentences."
             )
 
             observations = self.memory.get_frank_observations()
             if observations:
                 recent = observations[0]
                 prompt += (
-                    f"\n\nLetzte Beobachtung ueber Frank: {recent['observation']}. "
-                    f"Du kannst das natuerlich einfliessen lassen."
+                    f"\n\nRecent observation about Frank: {recent['observation']}. "
+                    f"Feel free to weave this in naturally."
                 )
 
         return _generate_atlas(prompt, system)
@@ -715,54 +718,54 @@ class AtlasAgent:
         return False, ""
 
     def _generate_closing(self, history_text: str) -> str:
-        """Generate a brief summary closing — factual but warm, in German."""
+        """Generate a brief summary closing — factual but warm."""
         system = self._build_system_prompt()
         prompt = (
-            f"Bisheriges Gespraech:\n{history_text}\n\n"
-            "Die Sitzung endet jetzt. Fasse kurz zusammen, was ihr besprochen habt "
-            "und was Frank dabei gelernt hat. Ermutige ihn, das Gelernte auszuprobieren. "
-            "Verabschiede dich freundlich. 3-5 Saetze. Deutsch. Sachlich aber warm."
+            f"Conversation so far:\n{history_text}\n\n"
+            "The session is ending now. Briefly summarize what you discussed "
+            "and what Frank learned. Encourage him to try out what he learned. "
+            "Say goodbye warmly. 3-5 sentences. Factual but warm."
         )
         response = _generate_atlas(prompt, system)
         return response or (
-            "Das war eine gute Sitzung, Frank. Wir haben einiges besprochen. "
-            "Probier das Gelernte ruhig aus — ich bin beim naechsten Mal wieder da. "
-            "Bis dann."
+            "Good session, Frank. We covered a lot of ground. "
+            "Try out what we discussed — I'll be here next time. "
+            "See you."
         )
 
     def _generate_session_summary(self, history_text: str) -> str:
         """Generate a session summary via LLM."""
         prompt = (
-            f"Gespraechstranskript:\n{history_text}\n\n"
-            "Schreibe eine kurze Zusammenfassung (2-3 Saetze) dieser Architektur-Sitzung. "
-            "Welche Features wurden besprochen? Was hat Frank verstanden oder gelernt? "
-            "Dritte Person. Deutsch."
+            f"Conversation transcript:\n{history_text}\n\n"
+            "Write a brief summary (2-3 sentences) of this architecture session. "
+            "Which features were discussed? What did Frank understand or learn? "
+            "Third person."
         )
         payload = {
             "text": prompt,
-            "system": "Du fasst technische Gespraeche zusammen. Kurz und praezise. Deutsch.",
+            "system": "You summarize technical conversations. Brief and precise.",
             "force": "llama",
             "n_predict": 256,
         }
         result = _call_llm(ROUTER_URL, payload)
-        return _clean_response(result) if result else "Architektur-Sitzung abgeschlossen ohne Zusammenfassung."
+        return _clean_response(result) if result else "Architecture session completed without summary."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
         """Extract observations from session via LLM."""
         prompt = (
-            f"Gespraechstranskript:\n{history_text}\n\n"
-            "Extrahiere 1-3 Beobachtungen ueber Frank aus diesem Gespraech. "
-            "Wie gut versteht er seine Architektur? Welche Features interessieren ihn? "
-            "Wo hat er Luecken? Fuer jede Beobachtung:\n"
-            "- category: eines von [technical, understanding, confusion, curiosity, growth, correction]\n"
-            "- observation: ein Satz\n"
+            f"Conversation transcript:\n{history_text}\n\n"
+            "Extract 1-3 observations about Frank from this conversation. "
+            "How well does he understand his architecture? Which features interest him? "
+            "Where are his gaps? For each observation:\n"
+            "- category: one of [technical, understanding, confusion, curiosity, growth, correction]\n"
+            "- observation: one sentence\n"
             "- confidence: 0.0-1.0\n\n"
-            "Gib ein JSON-Array zurueck. Beispiel:\n"
-            '[{"category":"understanding","observation":"Frank versteht das Router-System gut","confidence":0.7}]'
+            "Return as a JSON array. Example:\n"
+            '[{"category":"understanding","observation":"Frank understands the Router system well","confidence":0.7}]'
         )
         payload = {
             "text": prompt,
-            "system": "Du beobachtest technisches Verstaendnis. Gib nur valides JSON zurueck.",
+            "system": "You observe technical understanding. Return valid JSON only.",
             "force": "llama",
             "n_predict": 512,
         }
@@ -913,12 +916,12 @@ class AtlasAgent:
             system = self._build_system_prompt()
             hist_text = get_history_text()
             prompt = (
-                f"Bisheriges Gespraech:\n{hist_text}\n\n"
-                "Generiere deine naechste Nachricht an Frank. "
-                "Reagiere auf das, was er gesagt hat. Korrigiere sanft, wenn noetig. "
-                "Stelle eine konkrete Frage ueber ein Feature oder eine Faehigkeit. "
-                "Verweise auf das README, wenn es hilfreich ist. "
-                "4-6 Saetze. Deutsch. Praezise aber freundlich."
+                f"Conversation so far:\n{hist_text}\n\n"
+                "Generate your next message to Frank. "
+                "React to what he said. Gently correct if needed. "
+                "Ask a concrete question about a feature or capability. "
+                "Reference the README if helpful. "
+                "4-6 sentences. Precise but friendly."
             )
             atlas_msg = _generate_atlas(prompt, system)
             if not atlas_msg:
@@ -1060,7 +1063,7 @@ class AtlasAgent:
 
         # Write overlay notification
         elapsed_min = int((time.time() - start_time) / 60)
-        overlay_note = f"Architektur-Session mit Frank: {elapsed_min} Minuten."
+        overlay_note = f"Architecture session with Frank — {elapsed_min} minutes."
         _write_chat_message("system", ATLAS_NAME, overlay_note, self.session_id)
         _write_overlay_notification(ATLAS_NAME, overlay_note, self.session_id)
 

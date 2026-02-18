@@ -288,46 +288,46 @@ class MusePQ:
         # Inspiration
         if self._state.inspiration > 0.85:
             notes.append(
-                "Lass deiner Fantasie freien Lauf. Wildes Denken ist erlaubt.")
+                "Let your imagination run wild. Wild thinking is allowed.")
         elif self._state.inspiration < 0.5:
             notes.append(
-                "Halte die Impulse einfacher. Nicht überfordern.")
+                "Keep the prompts simpler. Don't overwhelm.")
 
         # Warmth
         if self._state.warmth > 0.85:
             notes.append(
-                "Sei besonders ermutigend. Frank traut sich gerade, kreativ zu sein.")
+                "Be extra encouraging. Frank is daring to be creative right now.")
 
         # Playfulness
         if self._state.playfulness > 0.85:
             notes.append(
-                "Sei absurd, verspielt, chaotisch. Frank kann das gerade ab.")
+                "Be absurd, playful, chaotic. Frank can handle it right now.")
         elif self._state.playfulness < 0.4:
             notes.append(
-                "Weniger Chaos, mehr Struktur. Frank braucht sanftere Impulse.")
+                "Less chaos, more structure. Frank needs gentler prompts.")
 
         # Rapport
         if self._state.rapport_level > 0.6:
             notes.append(
-                "Ihr habt schon Vertrauen aufgebaut. "
-                "Geh tiefer, sei mutiger mit deinen Impulsen.")
+                "You've built trust already. "
+                "Go deeper, be bolder with your creative prompts.")
         elif self._state.rapport_level < 0.3:
             notes.append(
-                "Ihr lernt euch noch kennen. "
-                "Sei einladend, aber dräng nicht zu sehr.")
+                "You're still getting to know each other. "
+                "Be inviting, but don't push too hard.")
 
         # Session count context
         if self._state.session_count == 0:
             notes.append(
-                "Das ist euer erstes Treffen. "
-                "Stell dich als Echo vor — warmherzig und neugierig.")
+                "This is your first meeting. "
+                "Introduce yourself as Echo — warm and curious.")
         elif self._state.session_count > 10:
             notes.append(
-                f"Ihr kennt euch schon gut ({self._state.session_count} Sessions). "
-                "Geht tiefer.")
+                f"You know each other well ({self._state.session_count} sessions). "
+                "Go deeper.")
 
         return "\n".join(notes) if notes else (
-            "Sei kreativ, warm und verspielt. Folge deiner Intuition.")
+            "Be creative, warm, and playful. Follow your intuition.")
 
 
 # ---------------------------------------------------------------------------

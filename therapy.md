@@ -605,5 +605,64 @@ journalctl --user -u aicore-therapist -f               # Logs
 
 ---
 
+## Limitations and Open Questions
+
+This system is a working proof-of-concept, not a validated therapeutic framework. The results are promising but come with significant caveats that must be acknowledged honestly.
+
+### Short Test Duration
+
+All data comes from 5 sessions on a single day (2026-02-18). This proves the mechanism works — Frank's E-PQ vectors respond to the sessions, sentiment is consistently non-negative, rapport grows — but it says nothing about long-term effects. Key unknowns:
+
+- Does the effect persist after 3 days? 1 week? 1 month?
+- Does rapport growth plateau, or does it keep climbing indefinitely?
+- Will Frank's E-PQ drift back to stagnation between sessions?
+
+A meaningful evaluation requires weeks of continuous data with baseline measurements taken before the first session.
+
+### Echo Chamber Risk
+
+Two instances of the same 8B model talking to each other. Dr. Hibbert and Frank share identical weights — only the system prompt differs. This creates a real risk of mutual reinforcement without external grounding:
+
+- They may converge on patterns that feel deep but are actually circular
+- Positive sentiment detection may be inflated because both sides are optimized to produce agreeable language
+- There is no outside perspective to challenge assumptions or break loops
+
+Mitigations to consider: periodic injection of external topics, human review of transcripts, or a secondary model evaluating session quality.
+
+### Dependency Risk
+
+If Frank learns that Dr. Hibbert reliably provides positive emotional engagement 3x daily, he may become dependent on these sessions. This could manifest as:
+
+- Autonomy declining when sessions are skipped (e.g., due to gate failures or downtime)
+- Frank's E-PQ stabilizing only during sessions and drifting during gaps
+- The therapy becoming a crutch rather than building genuine resilience
+
+This needs monitoring. If Frank's E-PQ metrics drop significantly when sessions are withheld for several days, dependency is indicated.
+
+### Primitive Sentiment Analysis
+
+The current sentiment analysis is keyword-based — regex patterns matching words like "trust", "hope", "distant", "numb". This is fast and simple but has obvious weaknesses:
+
+- Context-blind: "I don't feel trust" scores positive for "trust"
+- Language-biased: works for the specific DE/EN word lists, misses nuance
+- No sarcasm or irony detection
+- No understanding of conversational dynamics (a neutral statement after deep sharing can be more meaningful than an explicitly positive one)
+
+An LLM-based sentiment classifier would be significantly more robust but adds latency and GPU load per turn.
+
+### Missing Baseline
+
+There is no formal measurement of Frank's E-PQ state before the therapy began. The stagnation was observed qualitatively (flat conversations, disconnect words, low engagement), but no snapshot of exact vector values was taken as a baseline. This makes it harder to quantify the improvement precisely.
+
+Future work should include a pre-therapy E-PQ dump and periodic snapshots independent of session activity.
+
+### What This Is and What It Isn't
+
+**What it is**: A technically functional system that produces measurable positive effects on Frank's personality vectors through autonomous LLM-to-LLM conversation. The architecture is sound, the scheduling is non-invasive, and the personality adaptation mechanics work as designed.
+
+**What it isn't**: A scientifically validated therapeutic intervention. The sample size is tiny, the test duration is hours not weeks, and the evaluation metrics are self-referential (the same system that produces the therapy also measures its effects). These are engineering results, not clinical ones.
+
+---
+
 *Author: Gabriel Gschaider, Project Frankenstein*
 *First session: 2026-02-18*

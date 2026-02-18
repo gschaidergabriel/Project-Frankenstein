@@ -984,8 +984,10 @@ NOTES_DELETE_RE = re.compile(
     r"|delete\s+(a\s+)?note|remove\s+(a\s+)?note|forget\s+(the\s+)?note",
     re.IGNORECASE,
 )
+# General notes fallback — only match short, command-like messages
+# "remembered"/"gemerkt"/"jotted" removed: too common in natural language
 NOTES_GENERAL_RE = re.compile(
-    r"\b(notiz|notizen|notes?|memos?|merkzettel|gemerkt|aufgeschrieben|remembered|jotted)\b",
+    r"\b(notiz|notizen|notes?|memos?|merkzettel)\b",
     re.IGNORECASE,
 )
 

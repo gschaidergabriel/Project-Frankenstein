@@ -1014,7 +1014,7 @@ class CommandRouterMixin:
             self._io_q.put(("notes_create", {"user_msg": msg, "content": note_content}))
             return
 
-        if NOTES_GENERAL_RE.search(low):
+        if len(msg) < 120 and NOTES_GENERAL_RE.search(low):
             self._add_message("Du", msg, is_user=True)
             self._io_q.put(("notes_general", {"user_msg": msg}))
             return

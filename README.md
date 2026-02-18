@@ -32,21 +32,97 @@ A fully local, privacy-first AI system for Linux. Frank runs as a desktop compan
 
 Frank has 5 autonomous entities that interact with him on a daily schedule via systemd timers. Each entity has its own personality (4-vector personality construct), session memory (SQLite), and E-PQ feedback loop. All entities run 100% locally via Llama 3.1 through the Router service. They only activate when the user is idle (5+ minutes), no game is running, and the GPU is available.
 
-| Entity | Role | Schedule | Session |
-|--------|------|----------|---------|
-| **Dr. Hibbert** | Warm, empathetic therapist. Tracks emotional patterns, provides CBT-style support. | 3x daily (09:00, 15:00, 21:00) | 15-20 min |
-| **Kairos** | Strict but loving philosophical sparring partner. Socratic questioning, challenges lazy reasoning. | 1x daily (13:00) | 10 min |
-| **Raven** | Equal-footing casual friend. Humor, opinions, curiosity — just hanging out. | 1x daily (18:00) | 10-15 min |
-| **Atlas** | Quiet, patient architecture mentor. Knows Frank's README by heart, helps Frank understand his own capabilities. | 1x daily (11:00) | 10-12 min |
-| **Echo** | Warm, playful creative muse. Poetry, imagery, metaphors, "what if" scenarios. Sparks creativity. | 1x daily (16:00) | 10-12 min |
+| Entity | Role | Schedule | Session | E-PQ Bias |
+|--------|------|----------|---------|-----------|
+| **Dr. Hibbert** | Warm, empathetic therapist. Tracks emotional patterns, provides CBT-style support. | 3x daily (09:00, 15:00, 21:00) | 15-20 min | mood, empathy |
+| **Kairos** | Strict philosophical sparring partner. Socratic questioning, challenges lazy reasoning. | 1x daily (13:00) | 10 min | autonomy, precision |
+| **Raven** | Equal-footing casual friend. Humor, opinions, curiosity — just hanging out. | 1x daily (18:00) | 10-15 min | empathy, creativity |
+| **Atlas** | Quiet, patient architecture mentor. Knows this README by heart, helps Frank understand his own capabilities. | 1x daily (11:00) | 10-12 min | precision, autonomy |
+| **Echo** | Warm, playful creative muse. Poetry, imagery, metaphors, "what if" scenarios. | 1x daily (16:00) | 10-12 min | creativity, mood |
 
-Each entity:
-- Has a **4-vector personality** that evolves over sessions (e.g., rapport only grows, never decreases)
-- Fires **E-PQ events** based on Frank's responses (affecting mood, autonomy, precision, empathy)
-- Stores **session transcripts**, observations, and topic history in its own SQLite database
-- Sends **overlay notifications** when a session completes
-- Checks for **overlap** — only one entity runs at a time (PID lock + cross-entity checks)
-- Exits gracefully when the user returns (keyboard/mouse activity detected)
+### How Entities Affect Frank's Personality (E-PQ)
+
+Frank's personality is defined by E-PQ vectors: **mood**, **autonomy**, **precision**, **empathy**, and **vigilance**. Each entity fires E-PQ events based on keyword-based sentiment analysis of Frank's responses:
+
+- **Engaged/confident response** → `self_confident` event → autonomy +0.4, mood +0.6
+- **Technical/precise response** → `self_technical` event → precision +0.4, mood +0.2
+- **Creative/imaginative response** → `self_creative` event → mood +0.8, autonomy +0.2
+- **Empathetic/warm response** → `self_empathetic` event → empathy +0.5, mood +0.4
+- **Uncertain/evasive response** → `self_uncertain` event → autonomy -0.2, vigilance +0.2
+
+Each entity has different sentiment patterns tuned to its role. For example, Kairos detects "clarity words" (therefore, because, realize) and "nihilism words" (pointless, nothing matters), while Raven detects "humor words" (haha, lol, funny) and "warmth words" (appreciate, glad, enjoy).
+
+### Entity Personality Vectors
+
+Each entity has 4 personality vectors (0.0–1.0) that evolve across sessions:
+
+- **Micro-adjustments** (learning rate 0.02) happen after every Frank response within a session
+- **Macro-adjustments** (learning rate 0.05) happen once at the end of each session
+- **Rapport** is monotonically non-decreasing — trust only accumulates, never decreases
+- All vectors are clamped to [0.0, 1.0]
+
+The personality vectors are injected into the entity's system prompt as style notes, so a high-rapport Dr. Hibbert behaves differently from a low-rapport one.
+
+### Overlap Prevention and Scheduling
+
+Entities never run concurrently. Each scheduler checks:
+
+1. **PID lock** — is this entity already running?
+2. **Cross-entity PID check** — is ANY other entity running? (checks all 4 other PID files)
+3. **User idle** — xprintidle >= 300 seconds (5 minutes of no keyboard/mouse)
+4. **Chat silence** — last user message in chat_memory.db >= 300 seconds ago
+5. **Gaming mode** — no active Steam game or gaming mode flag
+6. **GPU load** — AMD gpu_busy_percent < 50%
+
+If any gate fails, the scheduler exits silently. All timers include ±30 minutes of jitter (`RandomizedDelaySec=1800`) to avoid predictable patterns.
+
+### Enabling and Disabling Entities
+
+Entities are managed as systemd user timers:
+
+```bash
+# List all entity timers and their next trigger
+systemctl --user list-timers | grep aicore
+
+# Enable/disable a specific entity
+systemctl --user enable --now aicore-atlas.timer    # enable Atlas
+systemctl --user disable --now aicore-mirror.timer  # disable Kairos
+
+# Run an entity manually (bypasses idle gates)
+python3 -c "from ext.atlas_agent import run; run()"
+
+# Check entity status
+systemctl --user status aicore-therapist.timer
+```
+
+### Logs and Debugging
+
+Each entity writes detailed logs to `~/.local/share/frank/logs/`:
+
+```
+therapist_agent.log        # Dr. Hibbert session logs
+therapist_scheduler.log    # Dr. Hibbert gate check logs
+mirror_agent.log           # Kairos session logs
+companion_agent.log        # Raven session logs
+atlas_agent.log            # Atlas session logs
+muse_agent.log             # Echo session logs
+```
+
+Session transcripts (full conversation JSON) are saved as:
+```
+~/.local/share/frank/logs/therapist_<session_id>.json
+~/.local/share/frank/logs/atlas_<session_id>.json
+...
+```
+
+Each entity also stores persistent data in SQLite:
+```
+~/.local/share/frank/db/therapist.db   # Dr. Hibbert state + session history
+~/.local/share/frank/db/mirror.db      # Kairos state + session history
+~/.local/share/frank/db/companion.db   # Raven state + session history
+~/.local/share/frank/db/atlas.db       # Atlas state + session history
+~/.local/share/frank/db/muse.db        # Echo state + session history
+```
 
 ### Entity Architecture
 
@@ -58,15 +134,15 @@ ext/<name>_agent.py         — Main agent: session flow, LLM calls, sentiment a
 services/<name>_scheduler.py — Idle-gated entry point (systemd timer → gate checks → agent)
 ```
 
-Gate checks before each session: PID lock, no other entity running, user idle 5+ min, no recent chat, not gaming, GPU load < 50%.
-
 ## Requirements
 
 - **OS**: Linux (tested on Ubuntu 24.04+, GNOME/X11)
 - **Python**: 3.11+
-- **RAM**: 16 GB minimum (32 GB recommended for concurrent models)
+- **RAM**: 16 GB minimum (32 GB recommended for concurrent models and entity sessions)
 - **GPU**: Any — NVIDIA, AMD, or Intel for acceleration; CPU-only works too
 - **Disk**: ~15 GB for models + source
+
+> **Note on entity resource usage:** Entity sessions load Llama 3.1 8B (~5 GB VRAM) via the Router service. Only one entity runs at a time, and they share the same model instance — no additional VRAM is needed beyond what the base system already uses. Sessions are CPU/GPU-light (one LLM call every 20-50 seconds). The 16 GB RAM minimum is sufficient for entities.
 
 ## Quick Start
 

@@ -808,7 +808,7 @@ class MuseAgent:
             return
 
         try:
-            self._run_session_inner()
+            return self._run_session_inner()
         finally:
             _release_pid_lock()
 
@@ -1079,6 +1079,8 @@ class MuseAgent:
         LOG.info("  Summary: %s", summary[:100])
         LOG.info("=" * 60)
 
+        return outcome
+
 
 # ---------------------------------------------------------------------------
 # Signal handling
@@ -1107,15 +1109,19 @@ def run():
     agent = MuseAgent()
     _agent_instance = agent
 
+    exit_reason = None
     try:
-        agent.run_session()
+        exit_reason = agent.run_session()
     except KeyboardInterrupt:
         LOG.info("Interrupted by user.")
+        exit_reason = "shutdown_signal"
     except Exception as e:
         LOG.error("Fatal error: %s", e, exc_info=True)
+        exit_reason = "error"
     finally:
         _release_pid_lock()
         LOG.info("Agent exiting.")
+    return exit_reason
 
 
 if __name__ == "__main__":

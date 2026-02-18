@@ -76,13 +76,61 @@ _sh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 LOG.addHandler(_sh)
 
 # ---------------------------------------------------------------------------
-# README content — loaded at module level
+# README content — condensed version for system prompt (fits in 4k context)
 # ---------------------------------------------------------------------------
-_README_PATH = _AICORE_ROOT / "README.md"
-try:
-    _README_CONTENT = _README_PATH.read_text(encoding="utf-8")
-except Exception:
-    _README_CONTENT = "(README konnte nicht geladen werden)"
+_README_CONTENT = """\
+# F.R.A.N.K. — Friendly Responsive Autonomous Neural Kernel
+100% local, privacy-first AI desktop companion for Linux. No cloud APIs.
+
+## Core Stack
+- LLMs: Llama 3.1 8B (chat), Qwen 2.5 7B (code), LLaVA/Moondream (vision) — all local
+- Inference: llama.cpp (ports 8101-8103), Ollama (port 11434, Vulkan GPU)
+- GPU: AMD Radeon 780M iGPU via Vulkan (CUDA/Intel also supported)
+
+## Services (all localhost HTTP)
+Core:8088 (chat/personality) | Router:8091 (LLM routing) | Gateway:8089 | Modeld:8090
+Desktopd:8092 (X11 automation) | Webd:8093 (DuckDuckGo) | Ingestd:8094 (STT)
+Toolboxd:8096 (skills/tools) | Voice:8197 | Wallpaper:8199
+
+## Features
+- Chat overlay (tkinter, always-on-top, streaming)
+- Voice: wake-word + push-to-talk via whisper.cpp
+- Agentic: multi-step planning, tool use, approval gates
+- Skills: native Python + OpenClaw (LLM-mediated) plugins, hot-reload
+- Desktop: app launcher, screenshots, file management (xdotool/wmctrl)
+- Vision: local OCR + LLaVA hybrid (no external APIs)
+- Web search (DuckDuckGo), darknet search (Tor/Ahmia), network scanning (Scapy)
+- Productivity: notes, todos, Google Calendar/Contacts via CalDAV, email
+
+## Personality Engine
+- E-PQ vectors: mood, autonomy, precision, empathy, vigilance (0.0-1.0)
+- Ego-Construct maps hardware states to identity
+- World Model (world_experience.db), Self-Knowledge, Consciousness Stream
+- 5 autonomous entities interact with Frank daily (see below)
+
+## Autonomous Entities (all 100% local via Llama 3.1)
+| Entity | Role | Schedule |
+|--------|------|----------|
+| Dr. Hibbert | Therapist, CBT-style emotional support | 3x daily (09/15/21) |
+| Kairos | Philosophical sparring, Socratic questioning | 1x daily (13:00) |
+| Raven | Casual friend, humor, equal-footing hangout | 1x daily (18:00) |
+| Atlas | Architecture mentor, knows Frank's capabilities | 1x daily (11:00) |
+| Echo | Creative muse, poetry, imagery, what-if scenarios | 1x daily (16:00) |
+
+Each entity: 4 personality vectors (evolving), session memory (SQLite), E-PQ feedback.
+Entities never run concurrently (PID locks + 6 gate checks).
+Rapport is monotonically non-decreasing.
+
+## Safety
+- ASRS rollback, invariants engine, gaming mode resource management
+- Genesis daemon for self-improvement proposals (quality-gated)
+
+## Key Paths
+- Source: /home/ai-core-node/aicore/opt/aicore/
+- Data: ~/.local/share/frank/
+- Models: ~/aicore/var/lib/aicore/models/
+- Entity DBs: ~/.local/share/frank/db/{therapist,mirror,companion,atlas,muse}.db
+"""
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -821,7 +869,7 @@ class AtlasAgent:
             return
 
         try:
-            self._run_session_inner()
+            return self._run_session_inner()
         finally:
             _release_pid_lock()
 
@@ -1087,6 +1135,8 @@ class AtlasAgent:
         LOG.info("  Summary: %s", summary[:100])
         LOG.info("=" * 60)
 
+        return outcome
+
 
 # ---------------------------------------------------------------------------
 # Signal handling
@@ -1115,15 +1165,19 @@ def run():
     agent = AtlasAgent()
     _agent_instance = agent
 
+    exit_reason = None
     try:
-        agent.run_session()
+        exit_reason = agent.run_session()
     except KeyboardInterrupt:
         LOG.info("Interrupted by user.")
+        exit_reason = "shutdown_signal"
     except Exception as e:
         LOG.error("Fatal error: %s", e, exc_info=True)
+        exit_reason = "error"
     finally:
         _release_pid_lock()
         LOG.info("Agent exiting.")
+    return exit_reason
 
 
 if __name__ == "__main__":

@@ -319,11 +319,28 @@ class MessageBubble(tk.Frame):
                 if dl:
                     h = dl[0] if isinstance(dl, tuple) else dl
                     h = max(1, h)
-                    if h != num_lines:
-                        text_widget.configure(height=h)
+                    text_widget.configure(height=h)
             except (tk.TclError, Exception):
                 pass
+
         text_widget.after(50, _remeasure_height)
+
+        # Re-measure height on width change (window resize → text reflows → fewer/more lines)
+        text_widget._prev_width = 0
+
+        def _on_width_change(event):
+            if event.width == text_widget._prev_width:
+                return  # only width changes trigger remeasure, avoids loops
+            text_widget._prev_width = event.width
+            _tid = getattr(text_widget, '_resize_after', None)
+            if _tid:
+                try:
+                    text_widget.after_cancel(_tid)
+                except (ValueError, tk.TclError):
+                    pass
+            text_widget._resize_after = text_widget.after(30, _remeasure_height)
+
+        text_widget.bind("<Configure>", _on_width_change)
 
         # IMPORTANT: Keep text selectable but not editable
         text_widget.configure(state="disabled")

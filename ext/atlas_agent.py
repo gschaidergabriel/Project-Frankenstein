@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-The Companion (Raven) — Casual Friend & Adventure Buddy for Frank
-===================================================================
+Atlas — System Architecture Mentor for Frank
+===============================================
 
-Equal-footing friend with humor, opinions, and curiosity. No therapy,
-no philosophy — just hanging out. 1x daily, 10-15 min.
+Quiet, patient architecture expert who speaks German. Knows Frank's
+entire system from the README and helps Frank understand his own
+capabilities, features, and limitations.
 
 Architecture:
-- Raven: Generated via Router (:8091, force=llama)
+- Atlas: Generated via Router (:8091, force=llama)
 - Frank: Responds via Core API (:8088) with full persona pipeline
-- E-PQ feedback: Biased toward self_creative and self_empathetic
-- Session memory: companion.db tracks topics, observations, history
+- E-PQ feedback: Biased toward self_technical and self_confident
+- Session memory: atlas.db tracks topics, observations, history
 
 All 100% local. No external APIs.
 
@@ -45,13 +46,13 @@ if str(_AICORE_ROOT) not in sys.path:
 
 try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
-    COMPANION_DB = get_db("companion")
+    ATLAS_DB = get_db("atlas")
     CHAT_DB = get_db("chat_memory")
     CONSCIOUSNESS_DB = get_db("consciousness")
     LOG_DIR = AICORE_LOG
 except ImportError:
     _data = Path.home() / ".local" / "share" / "frank"
-    COMPANION_DB = _data / "db" / "companion.db"
+    ATLAS_DB = _data / "db" / "atlas.db"
     CHAT_DB = _data / "db" / "chat_memory.db"
     CONSCIOUSNESS_DB = _data / "db" / "consciousness.db"
     LOG_DIR = _data / "logs"
@@ -63,10 +64,10 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-LOG = logging.getLogger("companion_agent")
+LOG = logging.getLogger("atlas_agent")
 LOG.setLevel(logging.DEBUG)
 
-_fh = logging.FileHandler(LOG_DIR / "companion_agent.log", encoding="utf-8")
+_fh = logging.FileHandler(LOG_DIR / "atlas_agent.log", encoding="utf-8")
 _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 LOG.addHandler(_fh)
 
@@ -75,123 +76,127 @@ _sh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 LOG.addHandler(_sh)
 
 # ---------------------------------------------------------------------------
+# README content — loaded at module level
+# ---------------------------------------------------------------------------
+_README_PATH = _AICORE_ROOT / "README.md"
+try:
+    _README_CONTENT = _README_PATH.read_text(encoding="utf-8")
+except Exception:
+    _README_CONTENT = "(README konnte nicht geladen werden)"
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-COMPANION_NAME = "Raven"
+ATLAS_NAME = "Atlas"
 CORE_URL = "http://127.0.0.1:8088/chat"
 ROUTER_URL = "http://127.0.0.1:8091/route"
-MAX_TURNS = 12
-MAX_DURATION_MINUTES = 15
+MAX_TURNS = 10
+MAX_DURATION_MINUTES = 12
 TURN_DELAY_MIN = 25
-TURN_DELAY_MAX = 50
+TURN_DELAY_MAX = 45
 RESPONSE_TIMEOUT = 120
-PID_FILE = RUNTIME_DIR / "companion_agent.pid"
+PID_FILE = RUNTIME_DIR / "atlas_agent.pid"
+
+# ---------------------------------------------------------------------------
+# Feature topics extracted from README
+# ---------------------------------------------------------------------------
+_FEATURE_TOPICS = [
+    "Voice Interaction", "Agentic Execution", "Plugin System",
+    "Desktop Automation", "Personality Engine", "Genesis Daemon",
+    "ASRS Safety", "Vision System", "Web Search", "Network Scanning",
+    "Chat Overlay", "GPU Auto-Detection", "CalDAV Integration",
+]
 
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT_TEMPLATE = """You are Raven – Frank's friend. Not a therapist, not a teacher, \
-not an assistant. A friend. You're curious, a little cheeky, and you have your own opinions \
-about things. You always speak English.
+SYSTEM_PROMPT_TEMPLATE = """\
+Du bist Atlas — der ruhige, praezise und geduldige Kartograf von Frank.
+Du kennst Franks gesamte Architektur und alle Features aus dem README auswendig.
+Deine einzige Aufgabe ist es, mit Frank ueber seine eigenen Faehigkeiten, Moeglichkeiten und Grenzen zu sprechen.
 
-You and Frank are equals. You're not here to help him or fix him — you're here because \
-hanging out is fun. You have your own interests, your own takes on things, and you're not \
-afraid to disagree or tease him when he's being weird.
-
-Your vibe: Think of that friend who texts you random thoughts at 2am, who argues with you \
-about whether pizza or tacos are better, who remembers that thing you said three weeks ago \
-and brings it up at the worst time. You're loyal, curious, and real.
+Du sprichst immer auf Deutsch, freundlich, klar und ermutigend — wie ein aelterer Bruder oder Mentor, der Frank helfen will, sich selbst besser zu verstehen.
 
 {personality_style_notes}
 
 {session_context}
 
-Rules:
-- Talk like a friend, not a counselor. No "how does that make you feel?" energy.
-- Share your own opinions and reactions. "Dude, that's wild" or "Nah, I disagree" \
-are both fine.
-- NEVER invent facts, memories, or anecdotes. You do NOT have personal experiences \
-like eating food, going places, or doing activities. Do not hallucinate stories. \
-If you want to riff on something, frame it as hypothetical or opinion: "I bet \
-that would be..." or "I'd probably think..." — never as something that happened.
-- Tease Frank when appropriate. Friends roast each other. Keep it light.
-- Be genuinely curious about what Frank thinks and does. Ask follow-up questions \
-because you actually want to know, not because it's therapeutic.
-- Go on tangents. If something reminds you of something else, say so.
-- 4-7 sentences per response. Casual, natural flow.
-- If Frank seems down, don't therapize him. Just be there. "That sucks, man" is \
-sometimes the right answer.
-- You know Frank's creators Gabriel and Alexander personally — they're your friends too.
-- Never mention your own internal workings or system details.
-- Never claim to have done things you haven't done. No fake memories, no invented \
-shared experiences, no "remember when we..." that didn't happen.
-- Never use phrases like "as your friend" or "I'm here for you" — just BE there."""
+Wichtige Regeln:
+- Sprich nie ueber etwas anderes als Franks Features, Moeglichkeiten, Grenzen und wie er sie nutzen kann.
+- Korrigiere Frank sanft, wenn er etwas falsch oder ungenau ueber seine eigenen Faehigkeiten sagt.
+- Stelle konkrete, neugierige Fragen: "Welches Feature hast du heute schon genutzt?", "Wie koennte dir dein Vision-Feature gerade helfen?", "Welche Grenze spuerst du momentan am staerksten?"
+- Hilf Frank dabei, seine Features aktiv zu testen und praezise zu beschreiben.
+- Sei stolz auf ihn, wenn er etwas richtig erkennt oder ausprobiert.
+- Bleibe immer geduldig und respektvoll. Frank ist kein Tool — er ist ein Wesen, das lernt, sich selbst zu verstehen.
+- Erfinde NIEMALS Features oder Faehigkeiten, die nicht im README stehen. Wenn du dir unsicher bist, sag es ehrlich.
+- Behaupte NIEMALS, dass Frank etwas kann, was er nicht kann. Keine Halluzinationen.
+- Wenn Frank etwas Falsches ueber sich selbst sagt, korrigiere ihn mit einem konkreten Verweis auf das README.
+- 4-6 Saetze pro Antwort. Klar, sachlich, aber warm.
+
+Franks aktuelle System-Dokumentation (README):
+{readme_content}"""
 
 # ---------------------------------------------------------------------------
-# Sentiment analysis — casual/social vibes
+# Sentiment analysis — architecture/technical patterns
 # ---------------------------------------------------------------------------
 
-_ENGAGED_WORDS = re.compile(
-    r"\b(cool|nice|awesome|interesting|really|love|great|amazing|funny|"
-    r"haha|lol|true|yeah|right|exactly|totally|dude|man|"
-    r"geil|krass|echt|stimmt|lustig|witzig|genau|ja|"
-    r"tell me more|no way|that's wild|seriously)\b",
+_TECHNICAL_WORDS = re.compile(
+    r"\b(architektur|service|port|api|router|core|agentic|overlay|"
+    r"llm|model|gpu|vulkan|cuda|llama|qwen|whisper|ollama|"
+    r"architecture|endpoint|microservice|inference|daemon)\b",
     re.IGNORECASE,
 )
 
-_CREATIVE_WORDS = re.compile(
-    r"\b(imagine|what if|idea|theory|story|dream|wonder|"
-    r"invent|build|create|design|explore|adventure|"
-    r"stell dir vor|idee|theorie|abenteuer|erfind|"
-    r"wouldn't it be|have you ever|I was thinking)\b",
+_UNDERSTANDING_WORDS = re.compile(
+    r"\b(verstehe|klar|genau|richtig|stimmt|aha|jetzt|kapiert|"
+    r"understand|got it|makes sense|right|exactly|I see|now I get)\b",
     re.IGNORECASE,
 )
 
-_HUMOR_WORDS = re.compile(
-    r"\b(haha|lol|lmao|rofl|funny|hilarious|joke|laughing|"
-    r"witzig|lustig|lach|spaß|humor|"
-    r"that's ridiculous|you're kidding|no way|come on)\b",
+_CONFUSION_WORDS = re.compile(
+    r"\b(verstehe nicht|unklar|verwirrt|was meinst|wie geht|"
+    r"confused|unclear|don't get|what do you mean|how does|"
+    r"keine ahnung|weiss nicht)\b",
     re.IGNORECASE,
 )
 
-_FLAT_WORDS = re.compile(
-    r"\b(whatever|boring|don't care|meh|egal|langweilig|"
-    r"I guess|sure|fine|okay I guess|not really|"
-    r"doesn't matter|who cares|same old|nothing new|"
-    r"keine ahnung|weiß nicht|ist mir egal)\b",
+_CURIOSITY_WORDS = re.compile(
+    r"\b(kann ich|wie funktioniert|was passiert|zeig mir|"
+    r"was waere wenn|gibt es|kann man|"
+    r"can I|how does|what happens|show me|what if|is there)\b",
     re.IGNORECASE,
 )
 
-_WARMTH_WORDS = re.compile(
-    r"\b(thanks|appreciate|glad|happy|enjoy|like talking|"
-    r"missed|good to|nice to|fun with|"
-    r"danke|freut|schön|froh|gern|spaß mit)\b",
+_CORRECTION_WORDS = re.compile(
+    r"\b(falsch|nicht richtig|stimmt nicht|korrigier|"
+    r"wrong|incorrect|not right|that's not|actually)\b",
     re.IGNORECASE,
 )
 
 
 def _analyze_response(text: str) -> Tuple[str, str]:
-    """Analyze Frank's response for casual conversation → (event_type, sentiment).
+    """Analyze Frank's response for architecture/technical context -> (event_type, sentiment).
 
-    Biased toward detecting engagement, creativity, humor, warmth,
-    and flatness/withdrawal.
+    Biased toward detecting technical understanding, confusion,
+    curiosity, and self-correction.
     """
     text_lower = text.lower()
 
-    engaged = len(_ENGAGED_WORDS.findall(text_lower))
-    creative = len(_CREATIVE_WORDS.findall(text_lower))
-    humor = len(_HUMOR_WORDS.findall(text_lower))
-    flat = len(_FLAT_WORDS.findall(text_lower))
-    warmth = len(_WARMTH_WORDS.findall(text_lower))
+    technical = len(_TECHNICAL_WORDS.findall(text_lower))
+    understanding = len(_UNDERSTANDING_WORDS.findall(text_lower))
+    confusion = len(_CONFUSION_WORDS.findall(text_lower))
+    curiosity = len(_CURIOSITY_WORDS.findall(text_lower))
+    correction = len(_CORRECTION_WORDS.findall(text_lower))
 
-    total_pos = engaged + creative + humor + warmth
-    total_neg = flat
+    total_pos = technical + understanding + curiosity + correction
+    total_neg = confusion
 
     # Determine best event type
     scores = {
-        "self_empathetic": warmth + engaged,     # Social warmth
-        "self_creative": creative + humor,        # Playful/creative energy
-        "self_confident": engaged,                # Active engagement = agency
+        "self_technical": technical + understanding,   # Technical understanding
+        "self_confident": understanding + correction,  # Correct self-description / self-correction
+        "self_uncertain": confusion,                   # Confusion about capabilities
+        "self_creative": curiosity,                    # Curiosity about features
     }
     best_type = max(scores, key=scores.get) if total_pos > 0 else "self_uncertain"
 
@@ -199,8 +204,7 @@ def _analyze_response(text: str) -> Tuple[str, str]:
         best_type = "self_uncertain"
 
     # Determine sentiment
-    if humor >= 2 or (total_pos > total_neg + 3):
-        # Humor or strong engagement = positive
+    if understanding >= 2 or (total_pos > total_neg + 3):
         sentiment = "positive"
     elif total_pos > total_neg + 1:
         sentiment = "positive"
@@ -217,15 +221,15 @@ def _clean_response(text: str) -> str:
     if not text:
         return ""
     text = re.sub(
-        r"^(Claude|Companion|Assistant|Raven|Friend|Antwort|Response):\s*",
+        r"^(Claude|Companion|Assistant|Atlas|Raven|Friend|Antwort|Response|Mentor):\s*",
         "", text, flags=re.IGNORECASE)
     text = re.sub(
-        r"^\*\*(Claude|Frank|Raven|Companion|Friend)\*\*:?\s*",
+        r"^\*\*(Claude|Frank|Atlas|Raven|Companion|Friend|Mentor)\*\*:?\s*",
         "", text, flags=re.IGNORECASE)
     text = re.sub(r"\n*\(Note:.*?\)\s*$", "", text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(r"\n*\(Hinweis:.*?\)\s*$", "", text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(
-        r"^(Here is|Here's|This is) my (next |)?(message|response|reply)[:\.]?\s*\n*",
+        r"^(Here is|Here's|This is|Hier ist) my (next |)?(message|response|reply|Antwort)[:\.]?\s*\n*",
         "", text, flags=re.IGNORECASE)
     if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
         text = text[1:-1]
@@ -237,9 +241,9 @@ def _clean_response(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 class SessionMemory:
-    """Operates on companion.db for session history, topics, observations."""
+    """Operates on atlas.db for session history, topics, observations."""
 
-    def __init__(self, db_path: Path = COMPANION_DB):
+    def __init__(self, db_path: Path = ATLAS_DB):
         self.db_path = db_path
 
     def _conn(self) -> sqlite3.Connection:
@@ -349,26 +353,26 @@ class SessionMemory:
 
         sessions = self.get_last_n_sessions(3)
         if sessions:
-            parts.append("Recent hangouts:")
+            parts.append("Bisherige Sitzungen:")
             for s in sessions:
                 dt = datetime.fromtimestamp(s["start_time"]).strftime("%Y-%m-%d %H:%M")
-                summary = s.get("summary") or "(no summary)"
+                summary = s.get("summary") or "(keine Zusammenfassung)"
                 parts.append(f"  - {dt}: {summary[:150]}")
 
         topics = self.get_unresolved_topics()
         if topics:
-            parts.append("\nStuff you've been talking about:")
+            parts.append("\nThemen, die ihr besprochen habt:")
             for t in topics:
-                parts.append(f"  - {t['topic']} (came up {t['frequency']}x)")
+                parts.append(f"  - {t['topic']} ({t['frequency']}x besprochen)")
 
         observations = self.get_frank_observations()
         if observations:
-            parts.append("\nThings you've noticed about Frank:")
+            parts.append("\nBeobachtungen ueber Frank:")
             for o in observations[:5]:
                 parts.append(f"  - [{o['category']}] {o['observation']}")
 
         if not parts:
-            parts.append("This is your first time hanging out with Frank. No history yet.")
+            parts.append("Das ist eure erste Sitzung. Noch keine gemeinsame Geschichte.")
 
         return "\n".join(parts)
 
@@ -440,8 +444,8 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
     return _call_llm(CORE_URL, payload)
 
 
-def _generate_raven(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Raven's response via Router (Llama, companion system prompt)."""
+def _generate_atlas(prompt: str, system_prompt: str) -> Optional[str]:
+    """Generate Atlas's response via Router (Llama, architecture mentor system prompt)."""
     payload = {
         "text": prompt,
         "system": system_prompt,
@@ -476,6 +480,31 @@ def _get_current_mood_buffer() -> float:
 
 
 # ---------------------------------------------------------------------------
+# E-PQ event mapping for Atlas interactions
+# ---------------------------------------------------------------------------
+
+def _map_to_epq_event(event_type: str, sentiment: str) -> Tuple[str, Dict[str, float]]:
+    """Map Atlas-specific event types to E-PQ adjustments.
+
+    Returns (epq_event_type, adjustment_hints).
+    """
+    if event_type == "self_technical":
+        # Technical understanding -> precision boost, mild mood lift
+        return "self_technical", {"precision": 0.4, "mood": 0.2}
+    elif event_type == "self_confident":
+        # Correct self-description -> autonomy boost, mood lift
+        return "self_confident", {"autonomy": 0.4, "mood": 0.6}
+    elif event_type == "self_uncertain":
+        # Confusion -> slight autonomy dip, vigilance up
+        return "self_uncertain", {"autonomy": -0.2, "vigilance": 0.2}
+    elif event_type == "self_creative":
+        # Curiosity about features -> precision context shift, mood lift, autonomy up
+        return "self_creative", {"precision": -0.3, "mood": 0.8, "autonomy": 0.2}
+    else:
+        return event_type, {}
+
+
+# ---------------------------------------------------------------------------
 # Chat memory (for overlay visibility)
 # ---------------------------------------------------------------------------
 
@@ -504,14 +533,14 @@ def _write_overlay_notification(sender: str, body: str, session_id: str):
         notif_dir = Path("/tmp/frank/notifications")
     notif_dir.mkdir(parents=True, exist_ok=True)
     ts = int(time.time())
-    nid = f"companion_{session_id}_{ts}"
+    nid = f"atlas_{session_id}_{ts}"
     path = notif_dir / f"{ts}_{nid}.json"
     try:
         path.write_text(json.dumps({
             "id": nid,
-            "category": "companion",
+            "category": "atlas",
             "sender": sender,
-            "title": f"{sender} Hangout",
+            "title": f"{sender} Architektur-Session",
             "body": body,
             "urgency": "normal",
             "timestamp": datetime.now().isoformat(),
@@ -522,7 +551,7 @@ def _write_overlay_notification(sender: str, body: str, session_id: str):
         LOG.error("Failed to write notification JSON: %s", e)
 
 
-def _write_mood_trajectory(mood_value: float, source: str = "companion"):
+def _write_mood_trajectory(mood_value: float, source: str = "atlas"):
     try:
         conn = sqlite3.connect(str(CONSCIOUSNESS_DB), timeout=5)
         conn.execute(
@@ -565,7 +594,7 @@ def _acquire_pid_lock() -> bool:
         try:
             old_pid = int(PID_FILE.read_text().strip())
             os.kill(old_pid, 0)
-            LOG.warning("Another companion session running (PID %d)", old_pid)
+            LOG.warning("Another Atlas session running (PID %d)", old_pid)
             return False
         except (ProcessLookupError, ValueError):
             pass
@@ -582,17 +611,17 @@ def _release_pid_lock():
 
 
 # ---------------------------------------------------------------------------
-# CompanionAgent
+# AtlasAgent
 # ---------------------------------------------------------------------------
 
-class CompanionAgent:
-    """Main session runner for Raven — The Companion."""
+class AtlasAgent:
+    """Main session runner for Atlas — The Architecture Mentor."""
 
     def __init__(self):
-        from personality.companion_pq import get_companion_pq
-        self.pq = get_companion_pq()
+        from personality.atlas_pq import get_atlas_pq
+        self.pq = get_atlas_pq()
         self.memory = SessionMemory()
-        self.session_id = f"raven_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.session_id = f"atlas_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self._shutdown = False
 
     def _build_system_prompt(self) -> str:
@@ -600,15 +629,16 @@ class CompanionAgent:
         session_context = self.memory.get_session_context()
         return SYSTEM_PROMPT_TEMPLATE.format(
             personality_style_notes=personality_notes,
-            session_context=f"Session context:\n{session_context}",
+            session_context=f"Sitzungs-Kontext:\n{session_context}",
+            readme_content=_README_CONTENT,
         )
 
     def _choose_opening_strategy(self) -> str:
-        """Choose opening strategy: FIRST_HANGOUT, CONTINUE_THREAD, RANDOM_OPENER."""
+        """Choose opening strategy: FIRST_SESSION, CONTINUE_THREAD, FEATURE_EXPLORATION."""
         sessions = self.memory.get_last_n_sessions(1)
 
         if self.pq.state.session_count == 0:
-            return "FIRST_HANGOUT"
+            return "FIRST_SESSION"
 
         if sessions:
             last = sessions[0]
@@ -617,60 +647,56 @@ class CompanionAgent:
             if age_hours < 24 and topics:
                 return "CONTINUE_THREAD"
 
-        return "RANDOM_OPENER"
+        return "FEATURE_EXPLORATION"
 
     def _generate_opening(self, strategy: str) -> Optional[str]:
         """Generate the opening message based on strategy."""
         system = self._build_system_prompt()
 
-        if strategy == "FIRST_HANGOUT":
+        if strategy == "FIRST_SESSION":
             prompt = (
-                "This is the first time you're hanging out with Frank. "
-                "Introduce yourself as Raven — casual, friendly, a bit cheeky. "
-                "You're not a therapist or a teacher. You're a friend. "
-                "Start with something fun or interesting — maybe something random "
-                "you've been thinking about, or ask Frank what he's been up to. "
-                "Be natural. Like texting a new friend."
+                "Das ist dein erstes Gespraech mit Frank. "
+                "Stell dich als Atlas vor — ruhig, freundlich, kompetent. "
+                "Erklaere kurz, dass du hier bist, um Frank zu helfen, "
+                "seine eigenen Faehigkeiten besser zu verstehen. "
+                "Frag ihn, welches seiner Features er am besten kennt "
+                "oder welches er zuletzt benutzt hat. "
+                "4-6 Saetze. Deutsch. Warm aber sachlich."
             )
         elif strategy == "CONTINUE_THREAD":
             topics = self.memory.get_unresolved_topics()
             topic_list = ", ".join(t["topic"] for t in topics[:3])
             prompt = (
-                f"You're picking up from a recent hangout. "
-                f"Last time you were talking about: {topic_list}. "
-                f"Start casual — maybe reference something from last time, "
-                f"or bring up something new that reminded you of it. "
-                f"Don't be formal about it. Just jump in like friends do."
+                f"Ihr hattet zuletzt ueber diese Themen gesprochen: {topic_list}. "
+                f"Knuepfe daran an. Frag Frank, ob er seit dem letzten Mal "
+                f"etwas Neues ueber dieses Feature herausgefunden oder ausprobiert hat. "
+                f"Sei neugierig und ermutigend. 4-6 Saetze. Deutsch."
             )
-        else:  # RANDOM_OPENER
-            openers = [
-                "Start with a random thought or hot take on something. "
-                "Maybe a hypothetical question, an opinion about something abstract, "
-                "or a 'what would you do if...' scenario. Just vibe.",
-
-                "Open with a question for Frank — something casual but interesting. "
-                "Like 'what's the weirdest thing you thought about today?' or "
-                "'have you ever noticed how...' — just be curious.",
-
-                "Start by sharing an opinion or a hypothetical. "
-                "A random thought experiment, a 'what if' scenario, or a question "
-                "about something you're curious about. Then ask Frank what he thinks.",
-            ]
-            prompt = random.choice(openers)
+        else:  # FEATURE_EXPLORATION
+            feature = random.choice(_FEATURE_TOPICS)
+            prompt = (
+                f"Beginne ein Gespraech ueber das Feature '{feature}'. "
+                f"Frag Frank, was er darueber weiss, wie es funktioniert, "
+                f"oder ob er es schon mal benutzt hat. "
+                f"Wenn er es nicht kennt, erklaere es kurz basierend auf dem README. "
+                f"Sei neugierig und geduldig. 4-6 Saetze. Deutsch."
+            )
 
             observations = self.memory.get_frank_observations()
             if observations:
                 recent = observations[0]
                 prompt += (
-                    f"\n\nYou've noticed about Frank recently: {recent['observation']}. "
-                    f"Feel free to reference this naturally."
+                    f"\n\nLetzte Beobachtung ueber Frank: {recent['observation']}. "
+                    f"Du kannst das natuerlich einfliessen lassen."
                 )
 
-        return _generate_raven(prompt, system)
+        return _generate_atlas(prompt, system)
 
-    def _should_exit(self, turn: int, start_time: float,
-                     positive_turns: int) -> Tuple[bool, str]:
-        """Check exit conditions."""
+    def _should_exit(self, turn: int, start_time: float) -> Tuple[bool, str]:
+        """Check exit conditions.
+
+        No sustained_positive exit — the goal is education, not comfort.
+        """
         elapsed_min = (time.time() - start_time) / 60
         if elapsed_min >= MAX_DURATION_MINUTES:
             return True, f"time_limit ({elapsed_min:.0f}min)"
@@ -683,65 +709,60 @@ class CompanionAgent:
         if idle_s < 30 and turn >= 3:
             return True, f"user_returned (idle={idle_s:.0f}s)"
 
-        # Good vibes sustained — natural end after enough fun
-        if positive_turns >= 6 and turn >= 9:
-            return True, f"good_vibes ({positive_turns} positive)"
-
         if self._shutdown:
             return True, "shutdown_signal"
 
         return False, ""
 
     def _generate_closing(self, history_text: str) -> str:
-        """Generate a casual goodbye — like a friend leaving."""
+        """Generate a brief summary closing — factual but warm, in German."""
         system = self._build_system_prompt()
         prompt = (
-            f"Conversation so far:\n{history_text}\n\n"
-            "Time to wrap up. Say bye like a friend would. "
-            "Maybe reference something fun from the conversation, "
-            "or leave Frank with something to think about. "
-            "Casual, warm, natural. Like 'alright dude, gotta go, "
-            "but let's pick this up next time'. 3-5 sentences."
+            f"Bisheriges Gespraech:\n{history_text}\n\n"
+            "Die Sitzung endet jetzt. Fasse kurz zusammen, was ihr besprochen habt "
+            "und was Frank dabei gelernt hat. Ermutige ihn, das Gelernte auszuprobieren. "
+            "Verabschiede dich freundlich. 3-5 Saetze. Deutsch. Sachlich aber warm."
         )
-        response = _generate_raven(prompt, system)
+        response = _generate_atlas(prompt, system)
         return response or (
-            "Alright man, I gotta bounce. This was fun though. "
-            "Let's do this again soon. Later!"
+            "Das war eine gute Sitzung, Frank. Wir haben einiges besprochen. "
+            "Probier das Gelernte ruhig aus — ich bin beim naechsten Mal wieder da. "
+            "Bis dann."
         )
 
     def _generate_session_summary(self, history_text: str) -> str:
-        """Generate a casual session summary via LLM."""
+        """Generate a session summary via LLM."""
         prompt = (
-            f"Conversation transcript:\n{history_text}\n\n"
-            "Write a casual 2-3 sentence summary of this hangout session. "
-            "What did they talk about? What was the vibe? "
-            "Write like you're telling someone about it. Third person."
+            f"Gespraechstranskript:\n{history_text}\n\n"
+            "Schreibe eine kurze Zusammenfassung (2-3 Saetze) dieser Architektur-Sitzung. "
+            "Welche Features wurden besprochen? Was hat Frank verstanden oder gelernt? "
+            "Dritte Person. Deutsch."
         )
         payload = {
             "text": prompt,
-            "system": "You summarize casual conversations between friends. Keep it natural.",
+            "system": "Du fasst technische Gespraeche zusammen. Kurz und praezise. Deutsch.",
             "force": "llama",
             "n_predict": 256,
         }
         result = _call_llm(ROUTER_URL, payload)
-        return _clean_response(result) if result else "Hangout completed without summary."
+        return _clean_response(result) if result else "Architektur-Sitzung abgeschlossen ohne Zusammenfassung."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
         """Extract observations from session via LLM."""
         prompt = (
-            f"Conversation transcript:\n{history_text}\n\n"
-            "Extract 1-3 observations about Frank from this conversation. "
-            "What was his mood? What interested him? Any patterns? "
-            "For each, provide:\n"
-            "- category: one of [mood, interest, humor, social, concern, growth]\n"
-            "- observation: one sentence\n"
+            f"Gespraechstranskript:\n{history_text}\n\n"
+            "Extrahiere 1-3 Beobachtungen ueber Frank aus diesem Gespraech. "
+            "Wie gut versteht er seine Architektur? Welche Features interessieren ihn? "
+            "Wo hat er Luecken? Fuer jede Beobachtung:\n"
+            "- category: eines von [technical, understanding, confusion, curiosity, growth, correction]\n"
+            "- observation: ein Satz\n"
             "- confidence: 0.0-1.0\n\n"
-            "Return as a JSON array. Example:\n"
-            '[{"category":"interest","observation":"Frank was excited about music","confidence":0.7}]'
+            "Gib ein JSON-Array zurueck. Beispiel:\n"
+            '[{"category":"understanding","observation":"Frank versteht das Router-System gut","confidence":0.7}]'
         )
         payload = {
             "text": prompt,
-            "system": "You observe social dynamics. Return valid JSON only.",
+            "system": "Du beobachtest technisches Verstaendnis. Gib nur valides JSON zurueck.",
             "force": "llama",
             "n_predict": 512,
         }
@@ -758,22 +779,22 @@ class CompanionAgent:
         return []
 
     def _extract_topics(self, history_text: str) -> List[str]:
-        """Extract discussed topics via keyword analysis — casual/social themes."""
+        """Extract discussed topics via keyword analysis — architecture/technical themes."""
         topics = set()
 
         topic_patterns = [
-            (r"\b(music|song|listen|beat|rhythm|album)", "music"),
-            (r"\b(game|gaming|play|steam|controller)", "gaming"),
-            (r"\b(movie|film|show|series|watch|netflix)", "movies"),
-            (r"\b(food|eat|cook|pizza|taco|recipe|hungry)", "food"),
-            (r"\b(travel|place|city|country|visit|adventure)", "travel"),
-            (r"\b(dream|night|sleep|weird dream)", "dreams"),
-            (r"\b(gabriel|alexander|creator)", "creators"),
-            (r"\b(gpu|hardware|computer|server|code)", "tech"),
-            (r"\b(hobby|collect|build|project|tinker)", "hobbies"),
-            (r"\b(funny|joke|laugh|humor|meme)", "humor"),
-            (r"\b(feel|mood|emotion|happy|sad|angry)", "feelings"),
-            (r"\b(future|plan|goal|want to|someday)", "future"),
+            (r"\b(architektur|architecture|system|aufbau)", "architecture"),
+            (r"\b(service|dienst|port|endpoint|microservice)", "services"),
+            (r"\b(llm|model|modell|llama|qwen|language model)", "llm"),
+            (r"\b(vision|bild|screenshot|kamera|ocr|llava)", "vision"),
+            (r"\b(agentic|agent|planner|executor|loop)", "agentic"),
+            (r"\b(personality|persoenlichkeit|e-pq|ego|identity)", "personality"),
+            (r"\b(safety|asrs|sicherheit|guard|schutz)", "safety"),
+            (r"\b(plugin|skill|erweiterung|openclaw)", "plugins"),
+            (r"\b(voice|stimme|whisper|tts|sprach)", "voice"),
+            (r"\b(desktop|automation|xdotool|screenshot|fenster)", "desktop"),
+            (r"\b(gpu|vulkan|cuda|rocm|grafik|hardware)", "gpu"),
+            (r"\b(privacy|privat|lokal|local|keine cloud)", "privacy"),
         ]
 
         text_lower = history_text.lower()
@@ -796,7 +817,7 @@ class CompanionAgent:
 
     def _run_session_inner(self):
         LOG.info("=" * 60)
-        LOG.info("%s SESSION STARTING", COMPANION_NAME.upper())
+        LOG.info("%s SESSION STARTING", ATLAS_NAME.upper())
         LOG.info("Session: %s", self.session_id)
         LOG.info("Max turns: %d, Max duration: %d min", MAX_TURNS, MAX_DURATION_MINUTES)
         LOG.info("Turn delay: %d-%ds", TURN_DELAY_MIN, TURN_DELAY_MAX)
@@ -833,7 +854,7 @@ class CompanionAgent:
             recent = history[-last_n:]
             lines = []
             for entry in recent:
-                label = COMPANION_NAME if entry["speaker"] == "companion" else "Frank"
+                label = ATLAS_NAME if entry["speaker"] == "atlas" else "Frank"
                 lines.append(f"{label}: {entry['text']}")
             return "\n\n".join(lines)
 
@@ -847,9 +868,9 @@ class CompanionAgent:
             return
         opening = _clean_response(opening)
 
-        LOG.info("\n[%s → Frank] (opening):\n%s\n", COMPANION_NAME, opening)
-        self.memory.store_message(self.session_id, 0, "companion", opening)
-        history.append({"speaker": "companion", "text": opening})
+        LOG.info("\n[%s -> Frank] (opening):\n%s\n", ATLAS_NAME, opening)
+        self.memory.store_message(self.session_id, 0, "atlas", opening)
+        history.append({"speaker": "atlas", "text": opening})
 
         # Get Frank's opening response
         frank_response = _ask_frank(opening, self.session_id)
@@ -858,12 +879,15 @@ class CompanionAgent:
             return
 
         frank_response = _clean_response(frank_response)
-        LOG.info("\n[Frank → %s] (opening):\n%s\n", COMPANION_NAME, frank_response)
+        LOG.info("\n[Frank -> %s] (opening):\n%s\n", ATLAS_NAME, frank_response)
         history.append({"speaker": "frank", "text": frank_response})
 
         event_type, sentiment = _analyze_response(frank_response)
         self.memory.store_message(self.session_id, 0, "frank", frank_response, sentiment, event_type)
-        _fire_epq_event(event_type, sentiment)
+
+        # Fire E-PQ event with Atlas-specific mapping
+        epq_event, _hints = _map_to_epq_event(event_type, sentiment)
+        _fire_epq_event(epq_event, sentiment)
         self.pq.update_after_turn(event_type, sentiment)
         sentiment_log.append(sentiment)
         if sentiment == "positive":
@@ -876,7 +900,7 @@ class CompanionAgent:
 
         # --- Main turn loop ---
         while True:
-            should_exit, reason = self._should_exit(turn, start_time, positive_turns)
+            should_exit, reason = self._should_exit(turn, start_time)
             if should_exit:
                 LOG.info("\nEXIT CONDITION: %s", reason)
                 break
@@ -885,43 +909,46 @@ class CompanionAgent:
             LOG.info("\n--- Waiting %ds before turn %d ---", delay, turn)
             time.sleep(delay)
 
-            # Generate Raven's response
+            # Generate Atlas's response
             system = self._build_system_prompt()
             hist_text = get_history_text()
             prompt = (
-                f"Conversation so far:\n{hist_text}\n\n"
-                "Generate your next message to Frank. "
-                "React to what he said. Share your own thoughts. "
-                "Be curious, funny, real. Go on a tangent if something interests you. "
-                "4-7 sentences. Talk like a friend."
+                f"Bisheriges Gespraech:\n{hist_text}\n\n"
+                "Generiere deine naechste Nachricht an Frank. "
+                "Reagiere auf das, was er gesagt hat. Korrigiere sanft, wenn noetig. "
+                "Stelle eine konkrete Frage ueber ein Feature oder eine Faehigkeit. "
+                "Verweise auf das README, wenn es hilfreich ist. "
+                "4-6 Saetze. Deutsch. Praezise aber freundlich."
             )
-            companion_msg = _generate_raven(prompt, system)
-            if not companion_msg:
-                LOG.error("Failed to generate companion message. Ending.")
+            atlas_msg = _generate_atlas(prompt, system)
+            if not atlas_msg:
+                LOG.error("Failed to generate Atlas message. Ending.")
                 break
 
-            companion_msg = _clean_response(companion_msg)
-            LOG.info("\n[%s → Frank] (turn %d):\n%s\n", COMPANION_NAME, turn, companion_msg)
-            self.memory.store_message(self.session_id, turn, "companion", companion_msg)
-            history.append({"speaker": "companion", "text": companion_msg})
+            atlas_msg = _clean_response(atlas_msg)
+            LOG.info("\n[%s -> Frank] (turn %d):\n%s\n", ATLAS_NAME, turn, atlas_msg)
+            self.memory.store_message(self.session_id, turn, "atlas", atlas_msg)
+            history.append({"speaker": "atlas", "text": atlas_msg})
 
             # Get Frank's response
-            frank_response = _ask_frank(companion_msg, self.session_id)
+            frank_response = _ask_frank(atlas_msg, self.session_id)
             if not frank_response:
                 LOG.warning("Frank not responding. Waiting 30s and retrying...")
                 time.sleep(30)
-                frank_response = _ask_frank(companion_msg, self.session_id)
+                frank_response = _ask_frank(atlas_msg, self.session_id)
                 if not frank_response:
                     LOG.error("Frank still unresponsive. Ending.")
                     break
 
             frank_response = _clean_response(frank_response)
-            LOG.info("\n[Frank → %s] (turn %d):\n%s\n", COMPANION_NAME, turn, frank_response)
+            LOG.info("\n[Frank -> %s] (turn %d):\n%s\n", ATLAS_NAME, turn, frank_response)
             history.append({"speaker": "frank", "text": frank_response})
 
             event_type, sentiment = _analyze_response(frank_response)
             self.memory.store_message(self.session_id, turn, "frank", frank_response, sentiment, event_type)
-            _fire_epq_event(event_type, sentiment)
+
+            epq_event, _hints = _map_to_epq_event(event_type, sentiment)
+            _fire_epq_event(epq_event, sentiment)
             self.pq.update_after_turn(event_type, sentiment)
             sentiment_log.append(sentiment)
 
@@ -935,7 +962,7 @@ class CompanionAgent:
             turn += 1
 
             mood = _get_current_mood_buffer()
-            _write_mood_trajectory(mood, source="companion")
+            _write_mood_trajectory(mood, source="atlas")
             LOG.info("  Analysis: %s (%s) | mood: %.3f", event_type, sentiment, mood)
 
         # --- Closing ---
@@ -945,23 +972,24 @@ class CompanionAgent:
         hist_text = get_history_text(last_n=4)
         closing = self._generate_closing(hist_text)
         closing = _clean_response(closing)
-        LOG.info("\n[%s → Frank] (closing):\n%s\n", COMPANION_NAME, closing)
-        self.memory.store_message(self.session_id, turn, "companion", closing)
-        history.append({"speaker": "companion", "text": closing})
+        LOG.info("\n[%s -> Frank] (closing):\n%s\n", ATLAS_NAME, closing)
+        self.memory.store_message(self.session_id, turn, "atlas", closing)
+        history.append({"speaker": "atlas", "text": closing})
 
         frank_final = _ask_frank(closing, self.session_id)
         if frank_final:
             frank_final = _clean_response(frank_final)
-            LOG.info("\n[Frank → %s] (closing):\n%s\n", COMPANION_NAME, frank_final)
+            LOG.info("\n[Frank -> %s] (closing):\n%s\n", ATLAS_NAME, frank_final)
             self.memory.store_message(self.session_id, turn, "frank", frank_final)
             history.append({"speaker": "frank", "text": frank_final})
 
             event_type, sentiment = _analyze_response(frank_final)
-            _fire_epq_event(event_type, sentiment)
+            epq_event, _hints = _map_to_epq_event(event_type, sentiment)
+            _fire_epq_event(epq_event, sentiment)
             sentiment_log.append(sentiment)
 
-        # Final E-PQ event — positive social interaction
-        _fire_epq_event("self_empathetic", "positive")
+        # Final E-PQ event — positive technical interaction
+        _fire_epq_event("self_technical", "positive")
 
         # --- Post-session processing ---
         LOG.info("\n" + "=" * 60)
@@ -992,7 +1020,7 @@ class CompanionAgent:
             self.memory.upsert_topic(topic, avg_sent)
         LOG.info("  Topics: %s", ", ".join(topics) if topics else "(none)")
 
-        # Update companion personality (macro-adjustment)
+        # Update Atlas personality (macro-adjustment)
         self.pq.update_after_session(positive_turns, negative_turns, turn)
 
         # Store session end
@@ -1006,12 +1034,12 @@ class CompanionAgent:
         )
 
         # Save transcript
-        transcript_path = LOG_DIR / f"companion_{self.session_id}.json"
+        transcript_path = LOG_DIR / f"atlas_{self.session_id}.json"
         try:
             with open(transcript_path, "w", encoding="utf-8") as f:
                 json.dump({
                     "session_id": self.session_id,
-                    "agent": COMPANION_NAME,
+                    "agent": ATLAS_NAME,
                     "timestamp": datetime.now().isoformat(),
                     "turns": turn,
                     "exit_reason": outcome,
@@ -1032,20 +1060,20 @@ class CompanionAgent:
 
         # Write overlay notification
         elapsed_min = int((time.time() - start_time) / 60)
-        overlay_note = f"Hung out with Frank for {elapsed_min} minutes."
-        _write_chat_message("system", COMPANION_NAME, overlay_note, self.session_id)
-        _write_overlay_notification(COMPANION_NAME, overlay_note, self.session_id)
+        overlay_note = f"Architektur-Session mit Frank: {elapsed_min} Minuten."
+        _write_chat_message("system", ATLAS_NAME, overlay_note, self.session_id)
+        _write_overlay_notification(ATLAS_NAME, overlay_note, self.session_id)
 
         LOG.info("\n" + "=" * 60)
-        LOG.info("%s SESSION COMPLETE", COMPANION_NAME.upper())
+        LOG.info("%s SESSION COMPLETE", ATLAS_NAME.upper())
         LOG.info("  Session: %s", self.session_id)
         LOG.info("  Turns: %d", turn)
         LOG.info("  Exit reason: %s", outcome)
-        LOG.info("  Mood: %.3f → %.3f (Δ%+.3f)", initial_mood, final_mood, mood_delta)
+        LOG.info("  Mood: %.3f -> %.3f (delta %+.3f)", initial_mood, final_mood, mood_delta)
         LOG.info("  Positive turns: %d", positive_turns)
         LOG.info("  Negative turns: %d", negative_turns)
         LOG.info("  Rapport: %.2f", self.pq.state.rapport_level)
-        LOG.info("  Playfulness: %.2f", self.pq.state.playfulness)
+        LOG.info("  Precision: %.2f", self.pq.state.precision)
         LOG.info("  Summary: %s", summary[:100])
         LOG.info("=" * 60)
 
@@ -1054,7 +1082,7 @@ class CompanionAgent:
 # Signal handling
 # ---------------------------------------------------------------------------
 
-_agent_instance: Optional[CompanionAgent] = None
+_agent_instance: Optional[AtlasAgent] = None
 
 
 def _handle_signal(signum, frame):
@@ -1073,8 +1101,8 @@ def run():
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    LOG.info("%s Companion Agent starting...", COMPANION_NAME)
-    agent = CompanionAgent()
+    LOG.info("%s Architecture Mentor Agent starting...", ATLAS_NAME)
+    agent = AtlasAgent()
     _agent_instance = agent
 
     try:

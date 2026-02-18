@@ -63,9 +63,11 @@ class NotificationMixin:
                     "system_health": "\u26A0\uFE0F", # warning sign
                     "morning_briefing": "\u2600\uFE0F",  # sun
                     "download": "\U0001F4E5",        # inbox tray
-                    "therapist": "\U0001F9D1\u200D\u2695\uFE0F",  # health worker
-                    "mirror": "\U0001FA9E",                     # mirror
-                    "companion": "\U0001F91C",                  # right fist bump
+                    "therapist": "\U0001F49A",       # green heart (Dr. Hibbert)
+                    "mirror": "\u2694\uFE0F",         # crossed swords (Kairos)
+                    "companion": "\U0001F3B2",        # dice (Raven)
+                    "atlas": "\U0001F9ED",            # compass (Atlas)
+                    "muse": "\U0001F3A8",             # palette (Echo)
                 }
                 icon = icon_map.get(category, "\U0001F514")  # default: bell
 

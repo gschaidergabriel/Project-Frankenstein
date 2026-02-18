@@ -58,6 +58,10 @@ IDLE_MIN_S = 300        # 5 min mouse/keyboard idle
 CHAT_SILENCE_S = 300    # 5 min since last user-Frank chat
 GPU_MAX_LOAD = 0.50     # 50% GPU load (Ollama idles at ~40-47%)
 PID_FILE = RUNTIME_DIR / "therapist_agent.pid"
+MIRROR_PID_FILE = RUNTIME_DIR / "mirror_agent.pid"
+COMPANION_PID_FILE = RUNTIME_DIR / "companion_agent.pid"
+ATLAS_PID_FILE = RUNTIME_DIR / "atlas_agent.pid"
+MUSE_PID_FILE = RUNTIME_DIR / "muse_agent.pid"
 
 
 def _check_pid_lock() -> bool:
@@ -70,6 +74,23 @@ def _check_pid_lock() -> bool:
             return False
         except (ProcessLookupError, ValueError):
             PID_FILE.unlink(missing_ok=True)
+    return True
+
+
+def _check_no_other_agents() -> bool:
+    """Return True if NO other agent session is running (prevent overlap)."""
+    for name, pid_file in [("Kairos", MIRROR_PID_FILE),
+                            ("Raven", COMPANION_PID_FILE),
+                            ("Atlas", ATLAS_PID_FILE),
+                            ("Echo", MUSE_PID_FILE)]:
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                os.kill(pid, 0)
+                LOG.info("Gate FAIL: %s session running (PID %d)", name, pid)
+                return False
+            except (ProcessLookupError, ValueError):
+                pass
     return True
 
 
@@ -167,6 +188,7 @@ def main():
 
     gates = [
         ("pid_lock", _check_pid_lock),
+        ("no_other_agents", _check_no_other_agents),
         ("idle", _check_idle),
         ("chat_silence", _check_chat_silence),
         ("not_gaming", _check_not_gaming),

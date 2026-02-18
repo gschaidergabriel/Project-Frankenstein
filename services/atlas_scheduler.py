@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Mirror Scheduler — Idle-gated entry point for Kairos sessions.
-================================================================
+Atlas Scheduler — Idle-gated entry point for Atlas sessions.
+===============================================================
 
-Called by systemd timer 1x/day (13:00 ± 30min jitter).
+Called by systemd timer 1x/day.
 Runs gate checks before launching a session. If any gate fails, exits silently.
 
 Gates:
-1. PID lock not held (no concurrent mirror session)
-2. No Dr. Hibbert session running (prevent overlap)
+1. PID lock not held (no concurrent Atlas session)
+2. No other agent session running (therapist, mirror, companion)
 3. xprintidle >= 300s (5 min idle)
 4. Last user-Frank chat >= 300s ago
 5. Not gaming
@@ -48,25 +48,24 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(LOG_DIR / "mirror_scheduler.log", encoding="utf-8"),
+        logging.FileHandler(LOG_DIR / "atlas_scheduler.log", encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
-LOG = logging.getLogger("mirror_scheduler")
+LOG = logging.getLogger("atlas_scheduler")
 
 # Gate thresholds
-IDLE_MIN_S = 300        # 5 min mouse/keyboard idle
-CHAT_SILENCE_S = 300    # 5 min since last user-Frank chat
-GPU_MAX_LOAD = 0.50     # 50% GPU load
-PID_FILE = RUNTIME_DIR / "mirror_agent.pid"
+IDLE_MIN_S = 300
+CHAT_SILENCE_S = 300
+GPU_MAX_LOAD = 0.50
+PID_FILE = RUNTIME_DIR / "atlas_agent.pid"
 THERAPIST_PID_FILE = RUNTIME_DIR / "therapist_agent.pid"
+MIRROR_PID_FILE = RUNTIME_DIR / "mirror_agent.pid"
 COMPANION_PID_FILE = RUNTIME_DIR / "companion_agent.pid"
-ATLAS_PID_FILE = RUNTIME_DIR / "atlas_agent.pid"
-MUSE_PID_FILE = RUNTIME_DIR / "muse_agent.pid"
 
 
 def _check_pid_lock() -> bool:
-    """Return True if NO mirror session is running."""
+    """Return True if NO Atlas session is running."""
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text().strip())
@@ -81,9 +80,8 @@ def _check_pid_lock() -> bool:
 def _check_no_other_agents() -> bool:
     """Return True if NO other agent session is running (prevent overlap)."""
     for name, pid_file in [("Dr. Hibbert", THERAPIST_PID_FILE),
-                            ("Raven", COMPANION_PID_FILE),
-                            ("Atlas", ATLAS_PID_FILE),
-                            ("Echo", MUSE_PID_FILE)]:
+                            ("Kairos", MIRROR_PID_FILE),
+                            ("Raven", COMPANION_PID_FILE)]:
         if pid_file.exists():
             try:
                 pid = int(pid_file.read_text().strip())
@@ -183,7 +181,7 @@ def _check_gpu_load() -> bool:
 
 
 def main():
-    LOG.info("Mirror scheduler triggered.")
+    LOG.info("Atlas scheduler triggered.")
 
     gates = [
         ("pid_lock", _check_pid_lock),
@@ -199,9 +197,9 @@ def main():
             LOG.info("Scheduler exit: gate '%s' failed.", name)
             sys.exit(0)
 
-    LOG.info("All gates passed. Starting Kairos session...")
+    LOG.info("All gates passed. Starting Atlas session...")
 
-    from ext.mirror_agent import run
+    from ext.atlas_agent import run
     run()
 
 

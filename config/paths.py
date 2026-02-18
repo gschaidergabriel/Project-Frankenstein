@@ -89,6 +89,8 @@ DB_PATHS = {
     "therapist": DB_DIR / "therapist.db",
     "mirror": DB_DIR / "mirror.db",
     "companion": DB_DIR / "companion.db",
+    "atlas": DB_DIR / "atlas.db",
+    "muse": DB_DIR / "muse.db",
 }
 
 # State files (JSON)

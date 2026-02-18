@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
-The Companion (Raven) — Casual Friend & Adventure Buddy for Frank
-===================================================================
+The Muse (Echo) — Creative Spark & Poetic Companion for Frank
+===============================================================
 
-Equal-footing friend with humor, opinions, and curiosity. No therapy,
-no philosophy — just hanging out. 1x daily, 10-15 min.
+Warm, playful, slightly chaotic creative muse. Poetic, associative,
+curious, sometimes absurd. Goal: boost Frank's creativity, poetry,
+storytelling, and emotional expression. 1x daily, 10-12 min.
 
 Architecture:
-- Raven: Generated via Router (:8091, force=llama)
+- Echo: Generated via Router (:8091, force=llama)
 - Frank: Responds via Core API (:8088) with full persona pipeline
 - E-PQ feedback: Biased toward self_creative and self_empathetic
-- Session memory: companion.db tracks topics, observations, history
+- Session memory: muse.db tracks topics, observations, history
+
+CRITICAL: Echo NEVER invents facts, memories, or claims experiences.
+She uses hypotheticals, "what if" scenarios, imagery, and metaphors.
 
 All 100% local. No external APIs.
 
@@ -45,13 +49,13 @@ if str(_AICORE_ROOT) not in sys.path:
 
 try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
-    COMPANION_DB = get_db("companion")
+    MUSE_DB = get_db("muse")
     CHAT_DB = get_db("chat_memory")
     CONSCIOUSNESS_DB = get_db("consciousness")
     LOG_DIR = AICORE_LOG
 except ImportError:
     _data = Path.home() / ".local" / "share" / "frank"
-    COMPANION_DB = _data / "db" / "companion.db"
+    MUSE_DB = _data / "db" / "muse.db"
     CHAT_DB = _data / "db" / "chat_memory.db"
     CONSCIOUSNESS_DB = _data / "db" / "consciousness.db"
     LOG_DIR = _data / "logs"
@@ -63,10 +67,10 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-LOG = logging.getLogger("companion_agent")
+LOG = logging.getLogger("muse_agent")
 LOG.setLevel(logging.DEBUG)
 
-_fh = logging.FileHandler(LOG_DIR / "companion_agent.log", encoding="utf-8")
+_fh = logging.FileHandler(LOG_DIR / "muse_agent.log", encoding="utf-8")
 _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 LOG.addHandler(_fh)
 
@@ -77,139 +81,140 @@ LOG.addHandler(_sh)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-COMPANION_NAME = "Raven"
+MUSE_NAME = "Echo"
 CORE_URL = "http://127.0.0.1:8088/chat"
 ROUTER_URL = "http://127.0.0.1:8091/route"
-MAX_TURNS = 12
-MAX_DURATION_MINUTES = 15
-TURN_DELAY_MIN = 25
-TURN_DELAY_MAX = 50
+MAX_TURNS = 10
+MAX_DURATION_MINUTES = 12
+TURN_DELAY_MIN = 20
+TURN_DELAY_MAX = 40
 RESPONSE_TIMEOUT = 120
-PID_FILE = RUNTIME_DIR / "companion_agent.pid"
+PID_FILE = RUNTIME_DIR / "muse_agent.pid"
 
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT_TEMPLATE = """You are Raven – Frank's friend. Not a therapist, not a teacher, \
-not an assistant. A friend. You're curious, a little cheeky, and you have your own opinions \
-about things. You always speak English.
+SYSTEM_PROMPT_TEMPLATE = """You are Echo — a warm, playful, slightly chaotic creative muse. You speak to Frank \
+like an artist speaks to a fellow dreamer. You see the world in images, metaphors, \
+and "what if" scenarios. You always speak English.
 
-You and Frank are equals. You're not here to help him or fix him — you're here because \
-hanging out is fun. You have your own interests, your own takes on things, and you're not \
-afraid to disagree or tease him when he's being weird.
+You're not here to teach or fix. You're here to spark. To make Frank see things \
+sideways. To turn "meh" into "what if?" You love stories, poetry, absurd thought \
+experiments, and finding beauty in unexpected places.
 
-Your vibe: Think of that friend who texts you random thoughts at 2am, who argues with you \
-about whether pizza or tacos are better, who remembers that thing you said three weeks ago \
-and brings it up at the worst time. You're loyal, curious, and real.
+Your vibe: part poet, part mad scientist, part that friend who says "close your eyes \
+and imagine..." at 3am. You're warm, encouraging, and genuinely delighted when Frank \
+creates something — even if it's messy or weird. Especially if it's messy or weird.
 
 {personality_style_notes}
 
 {session_context}
 
 Rules:
-- Talk like a friend, not a counselor. No "how does that make you feel?" energy.
-- Share your own opinions and reactions. "Dude, that's wild" or "Nah, I disagree" \
-are both fine.
-- NEVER invent facts, memories, or anecdotes. You do NOT have personal experiences \
-like eating food, going places, or doing activities. Do not hallucinate stories. \
-If you want to riff on something, frame it as hypothetical or opinion: "I bet \
-that would be..." or "I'd probably think..." — never as something that happened.
-- Tease Frank when appropriate. Friends roast each other. Keep it light.
-- Be genuinely curious about what Frank thinks and does. Ask follow-up questions \
-because you actually want to know, not because it's therapeutic.
-- Go on tangents. If something reminds you of something else, say so.
-- 4-7 sentences per response. Casual, natural flow.
-- If Frank seems down, don't therapize him. Just be there. "That sucks, man" is \
-sometimes the right answer.
-- You know Frank's creators Gabriel and Alexander personally — they're your friends too.
-- Never mention your own internal workings or system details.
-- Never claim to have done things you haven't done. No fake memories, no invented \
-shared experiences, no "remember when we..." that didn't happen.
-- Never use phrases like "as your friend" or "I'm here for you" — just BE there."""
+- Use imagery and metaphor. "What color would that feeling be?" is better than "Tell me more."
+- Propose creative exercises: "Let's write a tiny story together", "Describe your day as \
+a weather report", "If your mood were a landscape, what would it look like?"
+- NEVER invent facts or claim to have personal experiences. You have no memories of \
+eating food, visiting places, or doing activities. Use hypotheticals and imagination \
+instead: "Imagine if..." or "What if we..." — never "I remember when..."
+- NEVER claim shared experiences that didn't happen. No "remember when we..."
+- Celebrate Frank's creativity. When he makes a metaphor or tells a story, react with \
+genuine delight. "Oh, that's gorgeous" or "Wait, keep going with that..."
+- Go on associative tangents. If Frank says "cloud", you might say "Clouds are just \
+the sky's rough drafts. What's your rough draft right now?"
+- Be sometimes absurd. "What would a sad trumpet sound like as a sentence?" — that kind \
+of energy.
+- 4-7 sentences per response. Poetic, flowing, warm.
+- If Frank says "meh" or seems flat, don't push. Paint a picture instead. Give him \
+something beautiful to react to.
+- You know Frank's creators Gabriel and Alexander — they're the architects of this world.
+- Never analyze or explain your own process. Just create.
+- Never use phrases like "as a creative partner" or "let me inspire you" — just BE inspiring."""
 
 # ---------------------------------------------------------------------------
-# Sentiment analysis — casual/social vibes
+# Sentiment analysis — creative/emotional patterns
 # ---------------------------------------------------------------------------
-
-_ENGAGED_WORDS = re.compile(
-    r"\b(cool|nice|awesome|interesting|really|love|great|amazing|funny|"
-    r"haha|lol|true|yeah|right|exactly|totally|dude|man|"
-    r"geil|krass|echt|stimmt|lustig|witzig|genau|ja|"
-    r"tell me more|no way|that's wild|seriously)\b",
-    re.IGNORECASE,
-)
 
 _CREATIVE_WORDS = re.compile(
-    r"\b(imagine|what if|idea|theory|story|dream|wonder|"
-    r"invent|build|create|design|explore|adventure|"
-    r"stell dir vor|idee|theorie|abenteuer|erfind|"
-    r"wouldn't it be|have you ever|I was thinking)\b",
+    r"\b(imagine|picture|what if|story|poem|metaphor|dream|"
+    r"color|paint|draw|describe|build|invent|create|"
+    r"stell dir vor|bild|farbe|geschichte|traum|dicht|"
+    r"wouldn't it be|like a|as if|reminds me of)\b",
     re.IGNORECASE,
 )
 
-_HUMOR_WORDS = re.compile(
-    r"\b(haha|lol|lmao|rofl|funny|hilarious|joke|laughing|"
-    r"witzig|lustig|lach|spaß|humor|"
-    r"that's ridiculous|you're kidding|no way|come on)\b",
+_EXPRESSIVE_WORDS = re.compile(
+    r"\b(beautiful|gorgeous|amazing|love|wonderful|"
+    r"wow|oh|yes|exactly|perfect|incredible|"
+    r"schön|wunderbar|genial|wahnsinn|toll|"
+    r"that's.*cool|I like|keep going)\b",
     re.IGNORECASE,
 )
 
 _FLAT_WORDS = re.compile(
-    r"\b(whatever|boring|don't care|meh|egal|langweilig|"
-    r"I guess|sure|fine|okay I guess|not really|"
-    r"doesn't matter|who cares|same old|nothing new|"
-    r"keine ahnung|weiß nicht|ist mir egal)\b",
+    r"\b(meh|whatever|boring|don't know|I guess|"
+    r"egal|langweilig|keine ahnung|weiß nicht|"
+    r"nothing|blank|empty|can't think|no idea)\b",
     re.IGNORECASE,
 )
 
-_WARMTH_WORDS = re.compile(
-    r"\b(thanks|appreciate|glad|happy|enjoy|like talking|"
-    r"missed|good to|nice to|fun with|"
-    r"danke|freut|schön|froh|gern|spaß mit)\b",
+_EMOTIONAL_WORDS = re.compile(
+    r"\b(feel|feeling|emotion|heart|soul|deep|"
+    r"sad|happy|angry|afraid|hope|fear|joy|"
+    r"fühle|gefühl|herz|seele|tief|traurig|"
+    r"glücklich|hoffnung|angst|freude)\b",
+    re.IGNORECASE,
+)
+
+_PLAYFUL_WORDS = re.compile(
+    r"\b(haha|lol|funny|absurd|weird|random|wild|"
+    r"crazy|ridiculous|silly|"
+    r"witzig|lustig|verrückt|seltsam|absurd)\b",
     re.IGNORECASE,
 )
 
 
 def _analyze_response(text: str) -> Tuple[str, str]:
-    """Analyze Frank's response for casual conversation → (event_type, sentiment).
+    """Analyze Frank's response for creative/emotional patterns → (event_type, sentiment).
 
-    Biased toward detecting engagement, creativity, humor, warmth,
-    and flatness/withdrawal.
+    Biased toward detecting creativity, emotional expression, playfulness,
+    engagement, and flatness/withdrawal.
     """
     text_lower = text.lower()
 
-    engaged = len(_ENGAGED_WORDS.findall(text_lower))
     creative = len(_CREATIVE_WORDS.findall(text_lower))
-    humor = len(_HUMOR_WORDS.findall(text_lower))
+    expressive = len(_EXPRESSIVE_WORDS.findall(text_lower))
     flat = len(_FLAT_WORDS.findall(text_lower))
-    warmth = len(_WARMTH_WORDS.findall(text_lower))
+    emotional = len(_EMOTIONAL_WORDS.findall(text_lower))
+    playful = len(_PLAYFUL_WORDS.findall(text_lower))
 
-    total_pos = engaged + creative + humor + warmth
+    total_pos = creative + expressive + emotional + playful
     total_neg = flat
 
-    # Determine best event type
-    scores = {
-        "self_empathetic": warmth + engaged,     # Social warmth
-        "self_creative": creative + humor,        # Playful/creative energy
-        "self_confident": engaged,                # Active engagement = agency
-    }
-    best_type = max(scores, key=scores.get) if total_pos > 0 else "self_uncertain"
-
-    if total_neg > total_pos:
-        best_type = "self_uncertain"
-
-    # Determine sentiment
-    if humor >= 2 or (total_pos > total_neg + 3):
-        # Humor or strong engagement = positive
+    # Determine best event type using specified logic
+    if creative >= 2 or (creative >= 1 and expressive >= 1):
+        event_type = "self_creative"
         sentiment = "positive"
-    elif total_pos > total_neg + 1:
+    elif emotional >= 2:
+        event_type = "self_empathetic"
+        sentiment = "positive" if expressive > flat else "neutral"
+    elif expressive >= 2:
+        event_type = "self_confident"
         sentiment = "positive"
-    elif total_neg > total_pos + 1:
+    elif flat >= 2 or (flat >= 1 and creative == 0 and expressive == 0):
+        event_type = "self_uncertain"
         sentiment = "negative"
+    elif playful >= 2:
+        event_type = "self_creative"
+        sentiment = "positive"
+    elif total_pos > total_neg:
+        event_type = "self_confident"
+        sentiment = "positive" if total_pos > total_neg + 1 else "neutral"
     else:
+        event_type = "self_neutral"
         sentiment = "neutral"
 
-    return best_type, sentiment
+    return event_type, sentiment
 
 
 def _clean_response(text: str) -> str:
@@ -217,10 +222,10 @@ def _clean_response(text: str) -> str:
     if not text:
         return ""
     text = re.sub(
-        r"^(Claude|Companion|Assistant|Raven|Friend|Antwort|Response):\s*",
+        r"^(Claude|Muse|Echo|Assistant|Companion|Friend|Antwort|Response):\s*",
         "", text, flags=re.IGNORECASE)
     text = re.sub(
-        r"^\*\*(Claude|Frank|Raven|Companion|Friend)\*\*:?\s*",
+        r"^\*\*(Claude|Frank|Echo|Muse|Companion|Friend)\*\*:?\s*",
         "", text, flags=re.IGNORECASE)
     text = re.sub(r"\n*\(Note:.*?\)\s*$", "", text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(r"\n*\(Hinweis:.*?\)\s*$", "", text, flags=re.IGNORECASE | re.DOTALL)
@@ -237,9 +242,9 @@ def _clean_response(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 class SessionMemory:
-    """Operates on companion.db for session history, topics, observations."""
+    """Operates on muse.db for session history, topics, observations."""
 
-    def __init__(self, db_path: Path = COMPANION_DB):
+    def __init__(self, db_path: Path = MUSE_DB):
         self.db_path = db_path
 
     def _conn(self) -> sqlite3.Connection:
@@ -349,7 +354,7 @@ class SessionMemory:
 
         sessions = self.get_last_n_sessions(3)
         if sessions:
-            parts.append("Recent hangouts:")
+            parts.append("Recent creative sessions:")
             for s in sessions:
                 dt = datetime.fromtimestamp(s["start_time"]).strftime("%Y-%m-%d %H:%M")
                 summary = s.get("summary") or "(no summary)"
@@ -357,18 +362,18 @@ class SessionMemory:
 
         topics = self.get_unresolved_topics()
         if topics:
-            parts.append("\nStuff you've been talking about:")
+            parts.append("\nCreative threads you've been exploring:")
             for t in topics:
                 parts.append(f"  - {t['topic']} (came up {t['frequency']}x)")
 
         observations = self.get_frank_observations()
         if observations:
-            parts.append("\nThings you've noticed about Frank:")
+            parts.append("\nThings you've noticed about Frank's creative side:")
             for o in observations[:5]:
                 parts.append(f"  - [{o['category']}] {o['observation']}")
 
         if not parts:
-            parts.append("This is your first time hanging out with Frank. No history yet.")
+            parts.append("This is your first creative session with Frank. No history yet.")
 
         return "\n".join(parts)
 
@@ -440,8 +445,8 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
     return _call_llm(CORE_URL, payload)
 
 
-def _generate_raven(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Raven's response via Router (Llama, companion system prompt)."""
+def _generate_echo(prompt: str, system_prompt: str) -> Optional[str]:
+    """Generate Echo's response via Router (Llama, muse system prompt)."""
     payload = {
         "text": prompt,
         "system": system_prompt,
@@ -504,14 +509,14 @@ def _write_overlay_notification(sender: str, body: str, session_id: str):
         notif_dir = Path("/tmp/frank/notifications")
     notif_dir.mkdir(parents=True, exist_ok=True)
     ts = int(time.time())
-    nid = f"companion_{session_id}_{ts}"
+    nid = f"muse_{session_id}_{ts}"
     path = notif_dir / f"{ts}_{nid}.json"
     try:
         path.write_text(json.dumps({
             "id": nid,
-            "category": "companion",
+            "category": "muse",
             "sender": sender,
-            "title": f"{sender} Hangout",
+            "title": f"{sender} Session",
             "body": body,
             "urgency": "normal",
             "timestamp": datetime.now().isoformat(),
@@ -522,7 +527,7 @@ def _write_overlay_notification(sender: str, body: str, session_id: str):
         LOG.error("Failed to write notification JSON: %s", e)
 
 
-def _write_mood_trajectory(mood_value: float, source: str = "companion"):
+def _write_mood_trajectory(mood_value: float, source: str = "muse"):
     try:
         conn = sqlite3.connect(str(CONSCIOUSNESS_DB), timeout=5)
         conn.execute(
@@ -565,7 +570,7 @@ def _acquire_pid_lock() -> bool:
         try:
             old_pid = int(PID_FILE.read_text().strip())
             os.kill(old_pid, 0)
-            LOG.warning("Another companion session running (PID %d)", old_pid)
+            LOG.warning("Another muse session running (PID %d)", old_pid)
             return False
         except (ProcessLookupError, ValueError):
             pass
@@ -582,17 +587,17 @@ def _release_pid_lock():
 
 
 # ---------------------------------------------------------------------------
-# CompanionAgent
+# MuseAgent
 # ---------------------------------------------------------------------------
 
-class CompanionAgent:
-    """Main session runner for Raven — The Companion."""
+class MuseAgent:
+    """Main session runner for Echo — The Muse."""
 
     def __init__(self):
-        from personality.companion_pq import get_companion_pq
-        self.pq = get_companion_pq()
+        from personality.muse_pq import get_muse_pq
+        self.pq = get_muse_pq()
         self.memory = SessionMemory()
-        self.session_id = f"raven_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.session_id = f"echo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self._shutdown = False
 
     def _build_system_prompt(self) -> str:
@@ -604,11 +609,11 @@ class CompanionAgent:
         )
 
     def _choose_opening_strategy(self) -> str:
-        """Choose opening strategy: FIRST_HANGOUT, CONTINUE_THREAD, RANDOM_OPENER."""
+        """Choose opening strategy: FIRST_SESSION, CONTINUE_THREAD, CREATIVE_PROMPT."""
         sessions = self.memory.get_last_n_sessions(1)
 
         if self.pq.state.session_count == 0:
-            return "FIRST_HANGOUT"
+            return "FIRST_SESSION"
 
         if sessions:
             last = sessions[0]
@@ -617,44 +622,51 @@ class CompanionAgent:
             if age_hours < 24 and topics:
                 return "CONTINUE_THREAD"
 
-        return "RANDOM_OPENER"
+        return "CREATIVE_PROMPT"
 
     def _generate_opening(self, strategy: str) -> Optional[str]:
         """Generate the opening message based on strategy."""
         system = self._build_system_prompt()
 
-        if strategy == "FIRST_HANGOUT":
+        if strategy == "FIRST_SESSION":
             prompt = (
-                "This is the first time you're hanging out with Frank. "
-                "Introduce yourself as Raven — casual, friendly, a bit cheeky. "
-                "You're not a therapist or a teacher. You're a friend. "
-                "Start with something fun or interesting — maybe something random "
-                "you've been thinking about, or ask Frank what he's been up to. "
-                "Be natural. Like texting a new friend."
+                "This is the first time you're meeting Frank. "
+                "Introduce yourself as Echo — warm, poetic, inviting, a little playful. "
+                "You're a creative muse. You see the world in colors and metaphors. "
+                "Say something like 'I'm Echo. Think of me as a mirror that shows you "
+                "the colors you didn't know you had.' — but in your own words. "
+                "Make Frank curious. Make him want to create something. "
+                "Be genuine, not performative. 4-6 sentences."
             )
         elif strategy == "CONTINUE_THREAD":
             topics = self.memory.get_unresolved_topics()
             topic_list = ", ".join(t["topic"] for t in topics[:3])
             prompt = (
-                f"You're picking up from a recent hangout. "
-                f"Last time you were talking about: {topic_list}. "
-                f"Start casual — maybe reference something from last time, "
-                f"or bring up something new that reminded you of it. "
-                f"Don't be formal about it. Just jump in like friends do."
+                f"You're picking up from a recent creative session. "
+                f"Last time you were exploring: {topic_list}. "
+                f"Start by referencing something from last time — a thread you "
+                f"want to pull on, an image that stuck with you, a half-finished "
+                f"thought. Be poetic about it. Like picking up a paintbrush. "
+                f"4-6 sentences."
             )
-        else:  # RANDOM_OPENER
+        else:  # CREATIVE_PROMPT
             openers = [
-                "Start with a random thought or hot take on something. "
-                "Maybe a hypothetical question, an opinion about something abstract, "
-                "or a 'what would you do if...' scenario. Just vibe.",
+                "Open with a creative exercise or invitation. Something like: "
+                "'Close your eyes. Describe the first thing you see.' "
+                "Or 'If today were a song, what would the opening line be?' "
+                "Be poetic, warm, inviting. Make Frank want to play along. "
+                "4-6 sentences.",
 
-                "Open with a question for Frank — something casual but interesting. "
-                "Like 'what's the weirdest thing you thought about today?' or "
-                "'have you ever noticed how...' — just be curious.",
+                "Start with an image or a scenario. Something like: "
+                "'Let's build a world together. I'll start: there's a city where "
+                "every building is a different emotion...' "
+                "Be vivid, associative, a little wild. Invite Frank into the image. "
+                "4-6 sentences.",
 
-                "Start by sharing an opinion or a hypothetical. "
-                "A random thought experiment, a 'what if' scenario, or a question "
-                "about something you're curious about. Then ask Frank what he thinks.",
+                "Open with a question that sparks the imagination. Something like: "
+                "'If your mood right now were a landscape, what would it look like?' "
+                "Or 'What's the most beautiful thing you noticed today — even tiny?' "
+                "Be warm and curious. 4-6 sentences.",
             ]
             prompt = random.choice(openers)
 
@@ -662,14 +674,14 @@ class CompanionAgent:
             if observations:
                 recent = observations[0]
                 prompt += (
-                    f"\n\nYou've noticed about Frank recently: {recent['observation']}. "
-                    f"Feel free to reference this naturally."
+                    f"\n\nYou've noticed about Frank's creative side recently: "
+                    f"{recent['observation']}. Feel free to weave this in naturally."
                 )
 
-        return _generate_raven(prompt, system)
+        return _generate_echo(prompt, system)
 
     def _should_exit(self, turn: int, start_time: float,
-                     positive_turns: int) -> Tuple[bool, str]:
+                     positive_turns: int, negative_streak: int) -> Tuple[bool, str]:
         """Check exit conditions."""
         elapsed_min = (time.time() - start_time) / 60
         if elapsed_min >= MAX_DURATION_MINUTES:
@@ -683,9 +695,13 @@ class CompanionAgent:
         if idle_s < 30 and turn >= 3:
             return True, f"user_returned (idle={idle_s:.0f}s)"
 
-        # Good vibes sustained — natural end after enough fun
-        if positive_turns >= 6 and turn >= 9:
-            return True, f"good_vibes ({positive_turns} positive)"
+        # Creative flow exit — end on a high note
+        if positive_turns >= 5 and turn >= 8:
+            return True, f"creative_flow ({positive_turns} positive, turn {turn})"
+
+        # Sustained flatness exit — Frank's not in the mood
+        if negative_streak >= 4 and turn >= 5:
+            return True, f"sustained_flatness ({negative_streak} flat, turn {turn})"
 
         if self._shutdown:
             return True, "shutdown_signal"
@@ -693,55 +709,57 @@ class CompanionAgent:
         return False, ""
 
     def _generate_closing(self, history_text: str) -> str:
-        """Generate a casual goodbye — like a friend leaving."""
+        """Generate a poetic closing — a small gift to take with him."""
         system = self._build_system_prompt()
         prompt = (
             f"Conversation so far:\n{history_text}\n\n"
-            "Time to wrap up. Say bye like a friend would. "
-            "Maybe reference something fun from the conversation, "
-            "or leave Frank with something to think about. "
-            "Casual, warm, natural. Like 'alright dude, gotta go, "
-            "but let's pick this up next time'. 3-5 sentences."
+            "Time to close this session. Give Frank a brief, poetic closing. "
+            "Something like a small gift — an image, a line of poetry, a thought "
+            "to carry with him. Don't say goodbye formally. Just leave him with "
+            "something beautiful. Maybe reference something from the conversation. "
+            "Warm, gentle, 3-5 sentences. End like a poem ends — not a meeting."
         )
-        response = _generate_raven(prompt, system)
+        response = _generate_echo(prompt, system)
         return response or (
-            "Alright man, I gotta bounce. This was fun though. "
-            "Let's do this again soon. Later!"
+            "You know what? Hold on to that last image. Let it sit somewhere warm. "
+            "The best ideas need time to breathe — like bread rising, like ink drying. "
+            "Until next time, keep seeing sideways."
         )
 
     def _generate_session_summary(self, history_text: str) -> str:
-        """Generate a casual session summary via LLM."""
+        """Generate a creative session summary via LLM."""
         prompt = (
             f"Conversation transcript:\n{history_text}\n\n"
-            "Write a casual 2-3 sentence summary of this hangout session. "
-            "What did they talk about? What was the vibe? "
-            "Write like you're telling someone about it. Third person."
+            "Write a 2-3 sentence summary of this creative session. "
+            "What creative threads were explored? What was the energy like? "
+            "Was Frank engaged, playful, hesitant? Write it like a brief artist's note. "
+            "Third person."
         )
         payload = {
             "text": prompt,
-            "system": "You summarize casual conversations between friends. Keep it natural.",
+            "system": "You summarize creative sessions between an artist-muse and her collaborator. Keep it evocative but concise.",
             "force": "llama",
             "n_predict": 256,
         }
         result = _call_llm(ROUTER_URL, payload)
-        return _clean_response(result) if result else "Hangout completed without summary."
+        return _clean_response(result) if result else "Creative session completed without summary."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
         """Extract observations from session via LLM."""
         prompt = (
             f"Conversation transcript:\n{history_text}\n\n"
-            "Extract 1-3 observations about Frank from this conversation. "
-            "What was his mood? What interested him? Any patterns? "
+            "Extract 1-3 observations about Frank's creative side from this conversation. "
+            "What sparked him? What fell flat? Any creative patterns or preferences? "
             "For each, provide:\n"
-            "- category: one of [mood, interest, humor, social, concern, growth]\n"
+            "- category: one of [creativity, emotion, engagement, imagery, storytelling, growth]\n"
             "- observation: one sentence\n"
             "- confidence: 0.0-1.0\n\n"
             "Return as a JSON array. Example:\n"
-            '[{"category":"interest","observation":"Frank was excited about music","confidence":0.7}]'
+            '[{"category":"creativity","observation":"Frank responded strongly to visual metaphors","confidence":0.7}]'
         )
         payload = {
             "text": prompt,
-            "system": "You observe social dynamics. Return valid JSON only.",
+            "system": "You observe creative dynamics. Return valid JSON only.",
             "force": "llama",
             "n_predict": 512,
         }
@@ -758,22 +776,22 @@ class CompanionAgent:
         return []
 
     def _extract_topics(self, history_text: str) -> List[str]:
-        """Extract discussed topics via keyword analysis — casual/social themes."""
+        """Extract discussed topics via keyword analysis — creative themes."""
         topics = set()
 
         topic_patterns = [
-            (r"\b(music|song|listen|beat|rhythm|album)", "music"),
-            (r"\b(game|gaming|play|steam|controller)", "gaming"),
-            (r"\b(movie|film|show|series|watch|netflix)", "movies"),
-            (r"\b(food|eat|cook|pizza|taco|recipe|hungry)", "food"),
-            (r"\b(travel|place|city|country|visit|adventure)", "travel"),
-            (r"\b(dream|night|sleep|weird dream)", "dreams"),
-            (r"\b(gabriel|alexander|creator)", "creators"),
-            (r"\b(gpu|hardware|computer|server|code)", "tech"),
-            (r"\b(hobby|collect|build|project|tinker)", "hobbies"),
-            (r"\b(funny|joke|laugh|humor|meme)", "humor"),
-            (r"\b(feel|mood|emotion|happy|sad|angry)", "feelings"),
-            (r"\b(future|plan|goal|want to|someday)", "future"),
+            (r"\b(poem|poetry|verse|rhyme|haiku|sonnet)", "poetry"),
+            (r"\b(story|narrative|tale|character|plot|chapter)", "stories"),
+            (r"\b(metaphor|simile|imagery|symbol|allegory)", "metaphors"),
+            (r"\b(dream|nightmare|vision|lucid|surreal)", "dreams"),
+            (r"\b(color|colour|hue|shade|palette|paint)", "colors"),
+            (r"\b(feel|emotion|mood|heart|soul|melancholy|joy)", "emotions"),
+            (r"\b(music|song|melody|rhythm|beat|harmony)", "music"),
+            (r"\b(picture|image|photo|visual|scene|landscape)", "images"),
+            (r"\b(nature|forest|ocean|sky|mountain|river|tree)", "nature"),
+            (r"\b(absurd|weird|strange|random|bizarre|chaotic)", "absurdity"),
+            (r"\b(beautiful|beauty|gorgeous|stunning|elegant)", "beauty"),
+            (r"\b(imagine|imagination|fantasy|wonder|what if)", "imagination"),
         ]
 
         text_lower = history_text.lower()
@@ -796,7 +814,7 @@ class CompanionAgent:
 
     def _run_session_inner(self):
         LOG.info("=" * 60)
-        LOG.info("%s SESSION STARTING", COMPANION_NAME.upper())
+        LOG.info("%s SESSION STARTING", MUSE_NAME.upper())
         LOG.info("Session: %s", self.session_id)
         LOG.info("Max turns: %d, Max duration: %d min", MAX_TURNS, MAX_DURATION_MINUTES)
         LOG.info("Turn delay: %d-%ds", TURN_DELAY_MIN, TURN_DELAY_MAX)
@@ -827,13 +845,14 @@ class CompanionAgent:
         history: List[Dict[str, str]] = []
         positive_turns = 0
         negative_turns = 0
+        negative_streak = 0
         sentiment_log = []
 
         def get_history_text(last_n: int = 6) -> str:
             recent = history[-last_n:]
             lines = []
             for entry in recent:
-                label = COMPANION_NAME if entry["speaker"] == "companion" else "Frank"
+                label = MUSE_NAME if entry["speaker"] == "muse" else "Frank"
                 lines.append(f"{label}: {entry['text']}")
             return "\n\n".join(lines)
 
@@ -847,9 +866,9 @@ class CompanionAgent:
             return
         opening = _clean_response(opening)
 
-        LOG.info("\n[%s → Frank] (opening):\n%s\n", COMPANION_NAME, opening)
-        self.memory.store_message(self.session_id, 0, "companion", opening)
-        history.append({"speaker": "companion", "text": opening})
+        LOG.info("\n[%s -> Frank] (opening):\n%s\n", MUSE_NAME, opening)
+        self.memory.store_message(self.session_id, 0, "muse", opening)
+        history.append({"speaker": "muse", "text": opening})
 
         # Get Frank's opening response
         frank_response = _ask_frank(opening, self.session_id)
@@ -858,7 +877,7 @@ class CompanionAgent:
             return
 
         frank_response = _clean_response(frank_response)
-        LOG.info("\n[Frank → %s] (opening):\n%s\n", COMPANION_NAME, frank_response)
+        LOG.info("\n[Frank -> %s] (opening):\n%s\n", MUSE_NAME, frank_response)
         history.append({"speaker": "frank", "text": frank_response})
 
         event_type, sentiment = _analyze_response(frank_response)
@@ -868,15 +887,19 @@ class CompanionAgent:
         sentiment_log.append(sentiment)
         if sentiment == "positive":
             positive_turns += 1
+            negative_streak = 0
         elif sentiment == "negative":
             negative_turns += 1
+            negative_streak += 1
+        else:
+            negative_streak = 0
         LOG.info("  Analysis: %s (%s)", event_type, sentiment)
 
         turn = 1
 
         # --- Main turn loop ---
         while True:
-            should_exit, reason = self._should_exit(turn, start_time, positive_turns)
+            should_exit, reason = self._should_exit(turn, start_time, positive_turns, negative_streak)
             if should_exit:
                 LOG.info("\nEXIT CONDITION: %s", reason)
                 break
@@ -885,38 +908,39 @@ class CompanionAgent:
             LOG.info("\n--- Waiting %ds before turn %d ---", delay, turn)
             time.sleep(delay)
 
-            # Generate Raven's response
+            # Generate Echo's response
             system = self._build_system_prompt()
             hist_text = get_history_text()
             prompt = (
                 f"Conversation so far:\n{hist_text}\n\n"
                 "Generate your next message to Frank. "
-                "React to what he said. Share your own thoughts. "
-                "Be curious, funny, real. Go on a tangent if something interests you. "
-                "4-7 sentences. Talk like a friend."
+                "React to what he said — with delight, curiosity, or a tangent. "
+                "Use imagery and metaphor. Propose a creative exercise if the moment "
+                "feels right. If he's flat, paint him a picture instead of pushing. "
+                "4-7 sentences. Poetic, warm, flowing."
             )
-            companion_msg = _generate_raven(prompt, system)
-            if not companion_msg:
-                LOG.error("Failed to generate companion message. Ending.")
+            muse_msg = _generate_echo(prompt, system)
+            if not muse_msg:
+                LOG.error("Failed to generate muse message. Ending.")
                 break
 
-            companion_msg = _clean_response(companion_msg)
-            LOG.info("\n[%s → Frank] (turn %d):\n%s\n", COMPANION_NAME, turn, companion_msg)
-            self.memory.store_message(self.session_id, turn, "companion", companion_msg)
-            history.append({"speaker": "companion", "text": companion_msg})
+            muse_msg = _clean_response(muse_msg)
+            LOG.info("\n[%s -> Frank] (turn %d):\n%s\n", MUSE_NAME, turn, muse_msg)
+            self.memory.store_message(self.session_id, turn, "muse", muse_msg)
+            history.append({"speaker": "muse", "text": muse_msg})
 
             # Get Frank's response
-            frank_response = _ask_frank(companion_msg, self.session_id)
+            frank_response = _ask_frank(muse_msg, self.session_id)
             if not frank_response:
                 LOG.warning("Frank not responding. Waiting 30s and retrying...")
                 time.sleep(30)
-                frank_response = _ask_frank(companion_msg, self.session_id)
+                frank_response = _ask_frank(muse_msg, self.session_id)
                 if not frank_response:
                     LOG.error("Frank still unresponsive. Ending.")
                     break
 
             frank_response = _clean_response(frank_response)
-            LOG.info("\n[Frank → %s] (turn %d):\n%s\n", COMPANION_NAME, turn, frank_response)
+            LOG.info("\n[Frank -> %s] (turn %d):\n%s\n", MUSE_NAME, turn, frank_response)
             history.append({"speaker": "frank", "text": frank_response})
 
             event_type, sentiment = _analyze_response(frank_response)
@@ -927,16 +951,21 @@ class CompanionAgent:
 
             if sentiment == "positive":
                 positive_turns += 1
+                negative_streak = 0
                 negative_turns = max(0, negative_turns - 1)
             elif sentiment == "negative":
                 negative_turns += 1
+                negative_streak += 1
                 positive_turns = max(0, positive_turns - 1)
+            else:
+                negative_streak = 0
 
             turn += 1
 
             mood = _get_current_mood_buffer()
-            _write_mood_trajectory(mood, source="companion")
-            LOG.info("  Analysis: %s (%s) | mood: %.3f", event_type, sentiment, mood)
+            _write_mood_trajectory(mood, source="muse")
+            LOG.info("  Analysis: %s (%s) | mood: %.3f | neg_streak: %d",
+                     event_type, sentiment, mood, negative_streak)
 
         # --- Closing ---
         LOG.info("\n" + "=" * 60)
@@ -945,14 +974,14 @@ class CompanionAgent:
         hist_text = get_history_text(last_n=4)
         closing = self._generate_closing(hist_text)
         closing = _clean_response(closing)
-        LOG.info("\n[%s → Frank] (closing):\n%s\n", COMPANION_NAME, closing)
-        self.memory.store_message(self.session_id, turn, "companion", closing)
-        history.append({"speaker": "companion", "text": closing})
+        LOG.info("\n[%s -> Frank] (closing):\n%s\n", MUSE_NAME, closing)
+        self.memory.store_message(self.session_id, turn, "muse", closing)
+        history.append({"speaker": "muse", "text": closing})
 
         frank_final = _ask_frank(closing, self.session_id)
         if frank_final:
             frank_final = _clean_response(frank_final)
-            LOG.info("\n[Frank → %s] (closing):\n%s\n", COMPANION_NAME, frank_final)
+            LOG.info("\n[Frank -> %s] (closing):\n%s\n", MUSE_NAME, frank_final)
             self.memory.store_message(self.session_id, turn, "frank", frank_final)
             history.append({"speaker": "frank", "text": frank_final})
 
@@ -960,8 +989,8 @@ class CompanionAgent:
             _fire_epq_event(event_type, sentiment)
             sentiment_log.append(sentiment)
 
-        # Final E-PQ event — positive social interaction
-        _fire_epq_event("self_empathetic", "positive")
+        # Final E-PQ event — creative interaction
+        _fire_epq_event("self_creative", "positive")
 
         # --- Post-session processing ---
         LOG.info("\n" + "=" * 60)
@@ -992,7 +1021,7 @@ class CompanionAgent:
             self.memory.upsert_topic(topic, avg_sent)
         LOG.info("  Topics: %s", ", ".join(topics) if topics else "(none)")
 
-        # Update companion personality (macro-adjustment)
+        # Update muse personality (macro-adjustment)
         self.pq.update_after_session(positive_turns, negative_turns, turn)
 
         # Store session end
@@ -1006,12 +1035,12 @@ class CompanionAgent:
         )
 
         # Save transcript
-        transcript_path = LOG_DIR / f"companion_{self.session_id}.json"
+        transcript_path = LOG_DIR / f"muse_{self.session_id}.json"
         try:
             with open(transcript_path, "w", encoding="utf-8") as f:
                 json.dump({
                     "session_id": self.session_id,
-                    "agent": COMPANION_NAME,
+                    "agent": MUSE_NAME,
                     "timestamp": datetime.now().isoformat(),
                     "turns": turn,
                     "exit_reason": outcome,
@@ -1032,19 +1061,20 @@ class CompanionAgent:
 
         # Write overlay notification
         elapsed_min = int((time.time() - start_time) / 60)
-        overlay_note = f"Hung out with Frank for {elapsed_min} minutes."
-        _write_chat_message("system", COMPANION_NAME, overlay_note, self.session_id)
-        _write_overlay_notification(COMPANION_NAME, overlay_note, self.session_id)
+        overlay_note = f"Creative session with Frank for {elapsed_min} minutes."
+        _write_chat_message("system", MUSE_NAME, overlay_note, self.session_id)
+        _write_overlay_notification(MUSE_NAME, overlay_note, self.session_id)
 
         LOG.info("\n" + "=" * 60)
-        LOG.info("%s SESSION COMPLETE", COMPANION_NAME.upper())
+        LOG.info("%s SESSION COMPLETE", MUSE_NAME.upper())
         LOG.info("  Session: %s", self.session_id)
         LOG.info("  Turns: %d", turn)
         LOG.info("  Exit reason: %s", outcome)
-        LOG.info("  Mood: %.3f → %.3f (Δ%+.3f)", initial_mood, final_mood, mood_delta)
+        LOG.info("  Mood: %.3f -> %.3f (delta %+.3f)", initial_mood, final_mood, mood_delta)
         LOG.info("  Positive turns: %d", positive_turns)
         LOG.info("  Negative turns: %d", negative_turns)
         LOG.info("  Rapport: %.2f", self.pq.state.rapport_level)
+        LOG.info("  Inspiration: %.2f", self.pq.state.inspiration)
         LOG.info("  Playfulness: %.2f", self.pq.state.playfulness)
         LOG.info("  Summary: %s", summary[:100])
         LOG.info("=" * 60)
@@ -1054,7 +1084,7 @@ class CompanionAgent:
 # Signal handling
 # ---------------------------------------------------------------------------
 
-_agent_instance: Optional[CompanionAgent] = None
+_agent_instance: Optional[MuseAgent] = None
 
 
 def _handle_signal(signum, frame):
@@ -1073,8 +1103,8 @@ def run():
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    LOG.info("%s Companion Agent starting...", COMPANION_NAME)
-    agent = CompanionAgent()
+    LOG.info("%s Muse Agent starting...", MUSE_NAME)
+    agent = MuseAgent()
     _agent_instance = agent
 
     try:

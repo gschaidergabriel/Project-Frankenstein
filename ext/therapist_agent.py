@@ -464,6 +464,33 @@ def _write_chat_message(role: str, sender: str, text: str,
         LOG.error("Failed to write chat message: %s", e)
 
 
+def _write_overlay_notification(sender: str, body: str, session_id: str):
+    """Write a notification JSON for real-time overlay pickup."""
+    try:
+        from config.paths import TEMP_DIR
+        notif_dir = TEMP_DIR / "notifications"
+    except ImportError:
+        notif_dir = Path("/tmp/frank/notifications")
+    notif_dir.mkdir(parents=True, exist_ok=True)
+    ts = int(time.time())
+    nid = f"therapist_{session_id}_{ts}"
+    path = notif_dir / f"{ts}_{nid}.json"
+    try:
+        path.write_text(json.dumps({
+            "id": nid,
+            "category": "therapist",
+            "sender": sender,
+            "title": f"{sender} Session",
+            "body": body,
+            "urgency": "normal",
+            "timestamp": datetime.now().isoformat(),
+            "read": False,
+        }, ensure_ascii=False, indent=2))
+        LOG.info("Notification JSON written: %s", path.name)
+    except Exception as e:
+        LOG.error("Failed to write notification JSON: %s", e)
+
+
 def _write_mood_trajectory(mood_value: float, source: str = "therapist"):
     try:
         conn = sqlite3.connect(str(CONSCIOUSNESS_DB), timeout=5)
@@ -960,6 +987,9 @@ class TherapistAgent:
         elapsed_min = int((time.time() - start_time) / 60)
         overlay_note = f"Frank spoke to me for {elapsed_min} minutes."
         _write_chat_message("system", THERAPIST_NAME, overlay_note, self.session_id)
+        # Also write notification JSON for real-time overlay pickup
+        # (DB write alone doesn't trigger display — overlay only loads DB at startup)
+        _write_overlay_notification(THERAPIST_NAME, overlay_note, self.session_id)
 
         LOG.info("\n" + "=" * 60)
         LOG.info("%s SESSION COMPLETE", THERAPIST_NAME.upper())

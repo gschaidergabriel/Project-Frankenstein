@@ -63,15 +63,17 @@ class NotificationMixin:
                     "system_health": "\u26A0\uFE0F", # warning sign
                     "morning_briefing": "\u2600\uFE0F",  # sun
                     "download": "\U0001F4E5",        # inbox tray
+                    "therapist": "\U0001F9D1\u200D\u2695\uFE0F",  # health worker
                 }
                 icon = icon_map.get(category, "\U0001F514")  # default: bell
 
                 msg = f"{icon} {body}"
                 is_system = urgency != "critical"
+                sender = data.get("sender", "Frank")
 
                 self._ui_call(
-                    lambda m=msg, s=is_system: self._add_message(
-                        "Frank", m, is_system=s,
+                    lambda m=msg, s=is_system, sn=sender: self._add_message(
+                        sn, m, is_system=s,
                     )
                 )
 

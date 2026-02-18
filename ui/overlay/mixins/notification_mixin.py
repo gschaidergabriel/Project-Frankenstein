@@ -72,15 +72,8 @@ class NotificationMixin:
                 icon = icon_map.get(category, "\U0001F514")  # default: bell
 
                 msg = f"{icon} {body}"
+                is_system = urgency != "critical"
                 sender = data.get("sender", "Frank")
-
-                # Entity session notifications should persist (survive overlay restart).
-                # Other notifications (calendar, system_health, etc.) are transient.
-                _ENTITY_CATEGORIES = {"therapist", "mirror", "companion", "atlas", "muse"}
-                if category in _ENTITY_CATEGORIES:
-                    is_system = False  # persisted to SQLite as regular message
-                else:
-                    is_system = urgency != "critical"
 
                 self._ui_call(
                     lambda m=msg, s=is_system, sn=sender: self._add_message(

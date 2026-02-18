@@ -25,11 +25,9 @@ class MessageMixin:
     def _add_message(self, sender: str, message: str, is_user: bool = False, is_system: bool = False, persist: bool = True):
         LOG.debug(f"Adding message: {sender}: {message[:50]}...")
 
-        # Add to conversation history (for context in LLM calls AND persistence)
-        # Skip system messages (they're usually status/error messages)
+        # Add to LLM context ring buffer (skip system messages — they're not conversation)
         if not is_system and message.strip():
             role = "user" if is_user else "frank"
-            # Truncate very long messages for history (keep first 500 chars)
             hist_msg = message[:500] + "..." if len(message) > 500 else message
             self._chat_history.append({
                 "role": role,
@@ -38,24 +36,23 @@ class MessageMixin:
                 "is_user": is_user,
                 "ts": time.time(),
             })
-            # Keep only last N messages
             if len(self._chat_history) > self._chat_history_max:
                 self._chat_history = self._chat_history[-self._chat_history_max:]
-            # Persist to file
             if persist:
                 self._save_chat_history()
 
-            # Store full message in SQLite memory DB
-            if persist and hasattr(self, '_chat_memory_db'):
-                try:
-                    self._chat_memory_db.store_message(
-                        session_id=self._memory_session_id,
-                        role=role, sender=sender,
-                        text=message,
-                        is_user=is_user, is_system=is_system,
-                    )
-                except Exception as e:
-                    LOG.warning(f"Chat memory store error: {e}")
+        # Store ALL messages (including system) in SQLite for UI persistence
+        if persist and message.strip() and hasattr(self, '_chat_memory_db'):
+            try:
+                role = "user" if is_user else ("system" if is_system else "frank")
+                self._chat_memory_db.store_message(
+                    session_id=self._memory_session_id,
+                    role=role, sender=sender,
+                    text=message,
+                    is_user=is_user, is_system=is_system,
+                )
+            except Exception as e:
+                LOG.warning(f"Chat memory store error: {e}")
 
         # Build retry/speak callbacks for Frank messages
         _on_retry = None

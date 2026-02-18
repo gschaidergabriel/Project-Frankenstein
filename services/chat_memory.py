@@ -141,13 +141,12 @@ class ChatMemoryDB:
             return cur.lastrowid
 
     def get_recent_messages(self, limit: int = 50) -> List[dict]:
-        """Get the N most recent non-system messages for UI display."""
+        """Get the N most recent messages (including system) for UI display."""
         with self._lock:
             rows = self._conn.execute(
                 """SELECT id, session_id, role, sender, text, is_user,
                           is_system, timestamp, created_at
                    FROM messages
-                   WHERE is_system = 0
                    ORDER BY timestamp DESC
                    LIMIT ?""",
                 (limit,),

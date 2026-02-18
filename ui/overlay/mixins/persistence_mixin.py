@@ -50,13 +50,14 @@ class PersistenceMixin:
             try:
                 messages = self._chat_memory_db.get_recent_messages(limit=10)
                 if messages:
-                    # Populate in-memory ring buffer for LLM context fallback
+                    # Populate in-memory ring buffer for LLM context (skip system msgs)
                     self._chat_history = [
                         {"role": m["role"], "sender": m["sender"],
                          "text": m["text"][:500] if len(m["text"]) > 500 else m["text"],
                          "is_user": bool(m["is_user"]),
                          "ts": m["timestamp"]}
                         for m in messages[-self._chat_history_max:]
+                        if m.get("role") != "system"
                     ]
                     # Render all messages in UI
                     for msg in messages:

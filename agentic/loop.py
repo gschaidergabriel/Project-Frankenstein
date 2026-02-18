@@ -497,7 +497,10 @@ class AgentLoop:
 
         data = json.dumps(payload).encode("utf-8")
 
-        # Retry with short timeouts (30s each) instead of one 300s block
+        # Use threading to make LLM call cancellable: run urlopen in a
+        # sub-thread and poll _cancelled every 0.5s in the main loop thread.
+        import threading as _thr
+
         last_error = None
         for attempt in range(3):
             if self._cancelled:
@@ -509,17 +512,38 @@ class AgentLoop:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    return result.get("text", result.get("response", ""))
-            except urllib.request.URLError as e:
-                last_error = e
-                LOG.warning(f"LLM call attempt {attempt + 1}/3 failed: {e}")
+
+            _result_box: list = []  # [response_text] or []
+            _error_box: list = []   # [exception] or []
+
+            def _do_request():
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        result = json.loads(resp.read().decode("utf-8"))
+                        _result_box.append(result.get("text", result.get("response", "")))
+                except Exception as exc:
+                    _error_box.append(exc)
+
+            t = _thr.Thread(target=_do_request, daemon=True)
+            t.start()
+
+            # Poll until request finishes or cancel is requested
+            while t.is_alive():
+                if self._cancelled:
+                    raise RuntimeError("Cancelled by user")
+                t.join(timeout=0.5)
+
+            if _result_box:
+                return _result_box[0]
+
+            if _error_box:
+                err = _error_box[0]
+                if isinstance(err, json.JSONDecodeError):
+                    raise RuntimeError(f"LLM response parse error: {err}")
+                last_error = err
+                LOG.warning(f"LLM call attempt {attempt + 1}/3 failed: {err}")
                 if attempt < 2:
                     time.sleep(2)
-            except json.JSONDecodeError as e:
-                raise RuntimeError(f"LLM response parse error: {e}")
 
         raise RuntimeError(f"LLM network error after 3 attempts: {last_error}")
 

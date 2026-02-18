@@ -88,6 +88,7 @@ DB_PATHS = {
     "titan_validator": DB_DIR / "titan_validator.db",
     "therapist": DB_DIR / "therapist.db",
     "mirror": DB_DIR / "mirror.db",
+    "companion": DB_DIR / "companion.db",
 }
 
 # State files (JSON)

@@ -65,6 +65,7 @@ class NotificationMixin:
                     "download": "\U0001F4E5",        # inbox tray
                     "therapist": "\U0001F9D1\u200D\u2695\uFE0F",  # health worker
                     "mirror": "\U0001FA9E",                     # mirror
+                    "companion": "\U0001F91C",                  # right fist bump
                 }
                 icon = icon_map.get(category, "\U0001F514")  # default: bell
 

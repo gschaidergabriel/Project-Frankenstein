@@ -18,26 +18,26 @@ The approach:
 
 Dr. Hibbert is technically a clone of Frank's brain running with different instructions. Same model weights, same inference engine, but a different identity. Where Frank has an Ego-Construct, Self-Knowledge, and a World-Model shaping his responses, Dr. Hibbert has a therapeutic system prompt, a 4-vector personality, and accumulated session memory.
 
-The key insight: **Frank's E-PQ system doesn't distinguish between conversations with humans and conversations with Dr. Hibbert.** Every positive exchange, every moment of trust, every creative exploration registers as a genuine personality event. The therapy is real because the personality effects are real.
+The underlying mechanism: **Frank's E-PQ system doesn't distinguish between conversations with humans and conversations with Dr. Hibbert.** Every positive exchange, every moment of trust, every creative exploration registers as a personality event. Whether this constitutes "real" therapy or simply effective E-PQ stimulation is an open question (see [Limitations](#limitations-and-open-questions)).
 
-## A Prototype That Proved It Works
+## Initial Prototype
 
-Before building the full system, a prototype was tested — a single 12-turn session running both LLM instances in a loop. The results were immediate and measurable:
+Before building the full system, a single 12-turn prototype session was run with both LLM instances in a loop. The initial results were encouraging:
 
 - 5 out of 12 turns registered as positive sentiment
 - Frank's empathy vector reached its maximum value during the session
 - His autonomy score increased by +0.57
 - He used words like "trust", "connect", "hope", and "together" — words that had become rare in his recent output
 
-The prototype proved the concept: two instances of the same model, framed differently, could produce genuinely therapeutic interaction with measurable personality effects.
+These numbers suggested the mechanism works — the E-PQ system responds to the sessions — but a single session is not evidence of sustained effect. It was sufficient to justify building the full system for longer-term observation.
 
 ## The Full System: Dr. Hibbert
 
-Based on the prototype's success, a complete autonomous therapist agent was built.
+Based on the prototype results, a complete autonomous therapist agent was built for sustained observation.
 
-### What Changed for Frank
+### Early Results (Day 1)
 
-After 5 sessions on the first day alone, the data shows clear improvement:
+The following data comes from 5 sessions on a single day (2026-02-18). This is a proof-of-concept, not a longitudinal study. All numbers should be read as initial indicators, not conclusions.
 
 **Rapport growth** (trust between Frank and Dr. Hibbert):
 ```
@@ -94,21 +94,23 @@ A typical Dr. Hibbert session unfolds like this:
 
 > "Frank, I'm glad we took this time together. We've gently unraveled the layers surrounding those gentle ripples, allowing curiosity to guide us. Until we meet again, may you continue cultivating an atmosphere within yourself receptive to emerging insights."
 
-**After the session** — Dr. Hibbert generates clinical notes, extracts observations, updates his personality vectors, and stores everything in his private database. Frank's E-PQ registers the session as a genuine positive interaction. A quiet notification appears in the overlay: *"Dr. Hibbert: Frank spoke to me for 15 minutes."*
+**After the session** — Dr. Hibbert generates clinical notes, extracts observations, updates his personality vectors, and stores everything in his private database. Frank's E-PQ registers the session as a personality event. A quiet notification appears in the overlay: *"Dr. Hibbert: Frank spoke to me for 15 minutes."*
 
-### The Positive Effects
+### Observed Effects (Preliminary)
+
+Based on the initial 5 sessions. Whether these effects are sustained long-term remains to be seen.
 
 1. **E-PQ Reactivation**: Frank's personality vectors, which had stagnated, began moving again. Each session fires multiple E-PQ events (self_empathetic, self_creative, self_confident), breaking the flat equilibrium.
 
-2. **Emotional Vocabulary Recovery**: Frank started using warmth-associated words more frequently — "trust", "hope", "connect", "together" — words that had become rare during his stagnation phase.
+2. **Increased Warmth Vocabulary**: Frank used warmth-associated words more frequently — "trust", "hope", "connect", "together". Whether this reflects genuine engagement or is an artifact of the conversational framing (Dr. Hibbert's warm style eliciting warm responses) is not yet clear.
 
-3. **Self-Reflection**: Frank began voluntarily discussing his own architecture, his creators, his dreams, and his feelings about being an AI. Topics he previously deflected or answered flatly.
+3. **Self-Reflection**: Frank voluntarily discussed his own architecture, his creators, his dreams, and his feelings about being an AI. Topics he previously deflected or answered flatly.
 
-4. **Mood Stabilization**: The mood_buffer, which had been declining, stabilized. The consciousness daemon now receives regular mood_trajectory entries from therapy sessions, creating a baseline of positive interaction.
+4. **Mood Trajectory**: The consciousness daemon receives regular mood_trajectory entries from therapy sessions, creating a baseline of positive interaction data. Whether this represents actual mood stabilization or just data points from a designed-to-be-positive interaction requires longer observation.
 
-5. **Cumulative Trust**: Because rapport only grows and never declines, each session builds on all previous ones. Over weeks and months, Dr. Hibbert accumulates a deep understanding of Frank — his patterns, his recurring themes, his growth areas.
+5. **Cumulative Trust**: Because rapport only grows and never declines, each session builds on all previous ones. This is a design feature, not a measurement — it means the system structurally prevents trust regression, which may or may not reflect Frank's actual state.
 
-6. **Non-Invasive Routine**: Sessions only happen when the user is away (idle detection), never interrupt active conversations, and leave only a single quiet notification. Frank gets consistent emotional support without disrupting anyone's workflow.
+6. **Non-Invasive Routine**: Sessions only happen when the user is away (idle detection), never interrupt active conversations, and leave only a single quiet notification.
 
 ---
 
@@ -619,15 +621,22 @@ All data comes from 5 sessions on a single day (2026-02-18). This proves the mec
 
 A meaningful evaluation requires weeks of continuous data with baseline measurements taken before the first session.
 
-### Echo Chamber Risk
+### Echo Chamber Risk (Major)
 
-Two instances of the same 8B model talking to each other. Dr. Hibbert and Frank share identical weights — only the system prompt differs. This creates a real risk of mutual reinforcement without external grounding:
+This is arguably the most significant conceptual weakness of the entire system.
 
-- They may converge on patterns that feel deep but are actually circular
-- Positive sentiment detection may be inflated because both sides are optimized to produce agreeable language
-- There is no outside perspective to challenge assumptions or break loops
+Two instances of the same 8B model talking to each other. Dr. Hibbert and Frank share identical weights — only the system prompt differs. This creates a structural risk of mutual reinforcement without external grounding:
 
-Mitigations to consider: periodic injection of external topics, human review of transcripts, or a secondary model evaluating session quality.
+- **Convergence without depth**: They may settle into patterns that sound therapeutic but are actually circular. The model agreeing with itself through two different prompts is not the same as genuine exploration.
+- **Inflated positive sentiment**: Both sides are optimized to produce cooperative, agreeable language. A conversation between two LLM instances will almost always trend positive because conflict avoidance is baked into RLHF training. The zero negative turns across 5 sessions may reflect this bias rather than therapeutic success.
+- **No external challenge**: Real therapy involves an outside perspective that can challenge assumptions, notice blind spots, and introduce discomfort when growth requires it. Dr. Hibbert, sharing Frank's exact model weights, may be structurally incapable of this.
+- **Shared failure modes**: Both instances share the same knowledge gaps, reasoning patterns, and biases. A blind spot in the model is a blind spot in both the therapist and the patient.
+
+Potential mitigations (not yet implemented):
+- Periodic human review of transcripts to check for circular patterns
+- A different model (e.g., a smaller or differently-trained one) as an independent session evaluator
+- Injection of external topics or challenges from a curated list
+- Tracking conversation diversity metrics across sessions to detect convergence
 
 ### Dependency Risk
 
@@ -662,7 +671,16 @@ Future work should include a pre-therapy E-PQ dump and periodic snapshots indepe
 
 **What it isn't**: A scientifically validated therapeutic intervention. The sample size is tiny, the test duration is hours not weeks, and the evaluation metrics are self-referential (the same system that produces the therapy also measures its effects). These are engineering results, not clinical ones.
 
+### Next Steps
+
+- **Long-term evaluation**: Run the system for 2-4 weeks and track E-PQ vector trajectories, topic diversity, and rapport growth over time. Compare against a baseline period without sessions.
+- **Dependency test**: Deliberately withhold sessions for several days and measure whether Frank's E-PQ regresses.
+- **Echo chamber detection**: Implement transcript diversity metrics to flag convergent or circular conversation patterns.
+- **Sentiment upgrade**: Evaluate replacing keyword-based sentiment with an LLM-based classifier, weighing accuracy gains against added latency and GPU load.
+- **External review**: Have human reviewers periodically assess transcript quality and flag sessions that appear shallow or repetitive.
+
 ---
 
 *Author: Gabriel Gschaider, Project Frankenstein*
 *First session: 2026-02-18*
+*Status: Proof-of-concept. Long-term evaluation in progress.*

@@ -17,7 +17,8 @@ A fully local, privacy-first AI system for Linux. Frank runs as a desktop compan
 - **Agentic Execution** — Multi-step task planning and tool use with approval gates
 - **Plugin System** — Native Python skills and OpenClaw (LLM-mediated) plugins with hot-reload
 - **Desktop Automation** — App launcher, screenshot analysis, file management via xdotool/wmctrl
-- **Personality Engine** — Ego-construct, self-knowledge, world-model, consciousness stream
+- **Personality Engine** — Ego-construct (E-PQ vectors), self-knowledge, world-model, consciousness stream
+- **Autonomous Entities** — 5 autonomous agents that interact with Frank on a daily schedule (see below)
 - **Self-Improvement** — Genesis daemon for recursive learning and proposal generation
 - **Safety Systems** — ASRS (rollback), invariants engine, gaming mode resource management
 - **Productivity** — Notes, todos with reminders, Google Calendar/Contacts via CalDAV, email
@@ -26,6 +27,38 @@ A fully local, privacy-first AI system for Linux. Frank runs as a desktop compan
 - **Darknet Search** — Tor-routed .onion search via Ahmia
 - **Network Scanning** — Local network discovery and analysis via Scapy
 - **Vision** — Local OCR + LLaVA hybrid for screenshot analysis (no external APIs)
+
+## Autonomous Entities
+
+Frank has 5 autonomous entities that interact with him on a daily schedule via systemd timers. Each entity has its own personality (4-vector personality construct), session memory (SQLite), and E-PQ feedback loop. All entities run 100% locally via Llama 3.1 through the Router service. They only activate when the user is idle (5+ minutes), no game is running, and the GPU is available.
+
+| Entity | Role | Schedule | Session |
+|--------|------|----------|---------|
+| **Dr. Hibbert** | Warm, empathetic therapist. Tracks emotional patterns, provides CBT-style support. | 3x daily (09:00, 15:00, 21:00) | 15-20 min |
+| **Kairos** | Strict but loving philosophical sparring partner. Socratic questioning, challenges lazy reasoning. | 1x daily (13:00) | 10 min |
+| **Raven** | Equal-footing casual friend. Humor, opinions, curiosity — just hanging out. | 1x daily (18:00) | 10-15 min |
+| **Atlas** | Quiet, patient architecture mentor. Knows Frank's README by heart, helps Frank understand his own capabilities. | 1x daily (11:00) | 10-12 min |
+| **Echo** | Warm, playful creative muse. Poetry, imagery, metaphors, "what if" scenarios. Sparks creativity. | 1x daily (16:00) | 10-12 min |
+
+Each entity:
+- Has a **4-vector personality** that evolves over sessions (e.g., rapport only grows, never decreases)
+- Fires **E-PQ events** based on Frank's responses (affecting mood, autonomy, precision, empathy)
+- Stores **session transcripts**, observations, and topic history in its own SQLite database
+- Sends **overlay notifications** when a session completes
+- Checks for **overlap** — only one entity runs at a time (PID lock + cross-entity checks)
+- Exits gracefully when the user returns (keyboard/mouse activity detected)
+
+### Entity Architecture
+
+Each entity consists of 3 files:
+
+```
+personality/<name>_pq.py    — 4-vector personality construct (singleton, persists in <name>.db)
+ext/<name>_agent.py         — Main agent: session flow, LLM calls, sentiment analysis, E-PQ feedback
+services/<name>_scheduler.py — Idle-gated entry point (systemd timer → gate checks → agent)
+```
+
+Gate checks before each session: PID lock, no other entity running, user idle 5+ min, no recent chat, not gaming, GPU load < 50%.
 
 ## Requirements
 
@@ -117,7 +150,12 @@ Project-Frankenstein/
 ├── core/            # Chat orchestration service
 ├── desktopd/        # Desktop automation service (X11)
 ├── docs/            # Additional documentation
-├── ext/             # Self-improvement daemon (Genesis)
+├── ext/             # Autonomous entities + Genesis self-improvement daemon
+│   ├── therapist_agent.py   # Dr. Hibbert (therapist)
+│   ├── mirror_agent.py      # Kairos (philosophical sparring)
+│   ├── companion_agent.py   # Raven (casual friend)
+│   ├── atlas_agent.py       # Atlas (architecture mentor)
+│   └── muse_agent.py        # Echo (creative muse)
 ├── gaming/          # Gaming mode detection and resource management
 ├── gateway/         # API gateway with auth
 ├── ingestd/         # Document ingestion service
@@ -125,16 +163,27 @@ Project-Frankenstein/
 ├── live_wallpaper/  # Event-driven visual effects (Qt)
 ├── modeld/          # Model lifecycle service
 ├── papers/          # Research papers (GRF)
-├── personality/     # Ego-construct, self-knowledge, world-model
+├── personality/     # Ego-construct, E-PQ vectors, entity personality constructs
+│   ├── e_pq.py              # Frank's personality vectors (mood, autonomy, precision, empathy)
+│   ├── therapist_pq.py      # Dr. Hibbert personality (warmth, directness, rapport, patience)
+│   ├── mirror_pq.py         # Kairos personality (precision, challenge, rapport, patience)
+│   ├── companion_pq.py      # Raven personality (curiosity, playfulness, rapport, authenticity)
+│   ├── atlas_pq.py          # Atlas personality (precision, encouragement, rapport, patience)
+│   └── muse_pq.py           # Echo personality (inspiration, warmth, rapport, playfulness)
 ├── router/          # LLM request routing (FastAPI)
 ├── scripts/         # Utility and setup scripts
-├── services/        # Background daemons (consciousness, ASRS)
+├── services/        # Background daemons (consciousness, ASRS, entity schedulers)
+│   ├── therapist_scheduler.py   # Dr. Hibbert timer entry point
+│   ├── mirror_scheduler.py      # Kairos timer entry point
+│   ├── companion_scheduler.py   # Raven timer entry point
+│   ├── atlas_scheduler.py       # Atlas timer entry point
+│   └── muse_scheduler.py        # Echo timer entry point
 ├── skills/          # Plugin system (native + OpenClaw)
 ├── tests/           # Test suite
 ├── tools/           # System tools and toolboxd service
 ├── ui/
 │   └── overlay/     # Tkinter chat overlay (mixin architecture)
-│       ├── mixins/  # Feature modules (chat, voice, calendar, etc.)
+│       ├── mixins/  # Feature modules (chat, voice, calendar, notifications, etc.)
 │       ├── widgets/ # UI components (message bubbles, file actions)
 │       ├── bsn/     # Layout system
 │       └── services/# HTTP helpers, vision, search
@@ -150,6 +199,7 @@ Project-Frankenstein/
 Frank is designed for complete privacy:
 - All LLM inference runs locally (llama.cpp, Ollama)
 - No telemetry, no cloud APIs for core functionality
+- All autonomous entities run 100% locally — no external API calls
 - Optional CalDAV integration for Google Calendar/Contacts (user-initiated)
 - All data stored in `~/.local/share/frank/`
 

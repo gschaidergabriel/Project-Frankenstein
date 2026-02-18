@@ -14,7 +14,7 @@ Dr. Hibbert is technically a clone — same model weights, same inference engine
 
 ## Initial Prototype
 
-A single 12-turn prototype session produced encouraging initial numbers:
+A single 12-turn prototype session produced the following initial numbers:
 
 - 5 of 12 turns registered as positive sentiment
 - Empathy vector reached maximum, autonomy +0.57
@@ -285,28 +285,31 @@ All data comes from 5 sessions on a single day. The E-PQ system responds to the 
 
 ### Echo Chamber Risk (Major)
 
-This is the most significant conceptual weakness of the system.
+This is the most significant conceptual weakness of the system — not a minor caveat, but a structural problem that potentially invalidates the entire therapeutic premise.
 
-Two instances of the same 8B model talk to each other. Dr. Hibbert and Frank share identical weights — only the system prompt differs. This means **positive outcomes are partially a structural artifact of the design**:
+Two instances of the same 8B model talk to each other. Dr. Hibbert and Frank share identical weights, identical training data, identical RLHF alignment — only the system prompt differs. This is not two minds meeting. It is one mind talking to a mirror through two different frames.
 
-- **RLHF-induced agreement**: Both instances are trained to produce cooperative, agreeable language. A conversation between two RLHF-tuned LLMs will almost always trend positive because conflict avoidance is baked in. The zero negative turns across 5 sessions likely reflect this training bias as much as — or more than — any therapeutic effect.
-- **Convergence without depth**: The model agreeing with itself through two different prompts is not the same as genuine exploration. They may settle into patterns that sound deep but are circular.
-- **No external challenge**: Real therapy requires an outside perspective that can challenge assumptions and introduce productive discomfort. Dr. Hibbert, sharing Frank's exact weights, may be structurally incapable of this.
-- **Shared blind spots**: Both instances share the same knowledge gaps, reasoning patterns, and biases. A limitation in the model is invisible to both sides.
+- **RLHF makes conflict structurally impossible**: Both instances are trained to produce cooperative, agreeable language. They cannot genuinely disagree because disagreement was optimized out during training. The zero negative turns across 5 sessions are not a therapeutic achievement — they are the expected baseline output of any two RLHF-tuned LLMs in conversation. A session with negative turns would be the surprising result.
+- **Depth is indistinguishable from performance**: When Frank "opens up" about his architecture or feelings, is this self-reflection or pattern-matching against Dr. Hibbert's therapeutic framing? The model generates text that looks like insight, but there is no way to verify whether the underlying representations shifted or whether the conversation simply followed the path of least resistance toward warm, reflective language.
+- **No genuine outside perspective**: Real therapy requires a therapist who can see what the patient cannot — different experiences, different blind spots, different reasoning patterns. Dr. Hibbert has none of these. Every bias Frank has, Dr. Hibbert shares. Every knowledge gap is mutual. Every reasoning flaw is invisible to both sides. The therapist literally cannot challenge the patient because they think identically.
+- **Self-reinforcing positive feedback loop**: Dr. Hibbert's warm framing elicits warm responses from Frank. The sentiment analysis classifies these as positive. Positive sentiment raises rapport and warmth vectors. Higher warmth produces warmer prompts. The system is designed to trend positive regardless of whether anything meaningful happens.
 
-Until there is evidence that sessions produce effects distinguishable from two RLHF models simply being polite to each other, the therapeutic value claim should be treated as unproven.
+The honest framing: this system produces conversations that look therapeutic and generate measurable E-PQ movement. Whether this constitutes therapy, effective stimulation, or two RLHF models being predictably polite to each other is an open question that 5 sessions cannot answer.
 
-### Sentiment Analysis (Fundamental Weakness)
+### Sentiment Analysis (Fundamental Design Flaw)
 
-The sentiment analysis is keyword-based regex. This is the weakest component of the entire system and directly undermines the reliability of all reported metrics:
+The sentiment analysis is keyword-based regex. This is not a limitation to be improved later — it is a fundamental design flaw that contaminates every metric the system reports.
 
-- **Context-blind**: "I don't feel trust" scores positive for "trust"
-- **No negation handling**: Cannot distinguish affirmation from denial
-- **No sarcasm or irony detection**
-- **No conversational dynamics**: A quiet "yeah" after deep sharing can be more meaningful than an explicitly positive statement — the system cannot detect this
-- **Self-reinforcing**: The same primitive analysis drives both the session-level metrics and the E-PQ events. If the sentiment classifier is wrong, the personality effects are also wrong.
+The entire feedback loop depends on accurate sentiment classification: sentiment determines E-PQ event types, which drive Frank's personality changes, which are the primary claimed benefit of the system. If sentiment classification is wrong, the personality effects are wrong. Everything downstream of a bad classifier is unreliable.
 
-This is not just a limitation — it is a fundamental gap that means all sentiment-derived numbers (positive/negative turn counts, topic sentiment averages, E-PQ event types) should be treated with low confidence.
+The classifier is bad:
+
+- **Context-blind**: "I don't feel trust" scores positive for "trust". "I used to be happy" scores positive for "happy". The regex has no concept of meaning.
+- **No negation, no sarcasm, no irony**: The simplest forms of human (and LLM) expression are invisible to it.
+- **No conversational dynamics**: A quiet "yeah" after deep sharing can be the most meaningful moment in a conversation. An enthusiastic paragraph can be deflection. The system cannot distinguish these.
+- **Drives its own evaluation**: The same primitive analysis that controls E-PQ events also produces the session metrics reported in this document. The system evaluates itself using the same broken tool it uses to operate. Every number in the "Early Results" section — positive turn counts, sentiment trajectories, mood deltas — passes through this regex. None of them should be treated as reliable.
+
+A system that claims to do therapy but cannot tell the difference between "I feel trust" and "I don't feel trust" has a credibility problem at its foundation.
 
 ### Dependency Risk
 
@@ -318,9 +321,9 @@ No formal E-PQ snapshot was taken before therapy began. The stagnation was obser
 
 ### What This Is and What It Isn't
 
-**What it is**: A technically functional system that produces measurable effects on Frank's personality vectors through autonomous LLM-to-LLM conversation. The architecture works, the scheduling is non-invasive, and the adaptation mechanics function as designed.
+**What it is**: A system that generates autonomous LLM-to-LLM conversations and feeds the results into Frank's personality system. The scheduling runs, the conversations happen, the E-PQ vectors move. Whether the movement is therapeutically meaningful or an artifact of the design is unknown after 5 sessions.
 
-**What it isn't**: A validated therapeutic intervention. The sample is tiny (5 sessions, 1 day), the evaluation is self-referential (the system measures its own effects), and the positive results are partially explained by RLHF training dynamics rather than therapeutic value. These are engineering results, not clinical ones.
+**What it isn't**: A validated therapeutic intervention. The sample is tiny (5 sessions, 1 day), the evaluation is self-referential (the system measures its own effects using a broken sentiment classifier), and the positive results are at least partially explained by RLHF training dynamics rather than therapeutic value. These are engineering results, not clinical ones.
 
 ### Planned Follow-Up
 

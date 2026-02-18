@@ -262,26 +262,25 @@ class AgentLoop:
             if thought:
                 state.add_message("assistant", thought)
 
-            # Check if done — block premature final_answer
+            # Check if done — block premature final_answer only for analysis tasks
             if tool_call and tool_call.is_final_answer:
-                # Detect analysis tasks (need to read multiple files)
+                # Only analysis tasks require reading multiple files first
                 goal_lower = state.goal.lower()
                 _is_analysis = any(w in goal_lower for w in [
-                    "bug", "error", "issue", "review", "search", "find", "scan",
+                    "bug", "error", "issue", "review", "search", "scan",
                     "check", "inspect", "analyze", "analyse", "debug",
                     "such", "prüf", "pruef", "fehler", "untersuche", "analysiere",
                 ])
-                min_tools = 5 if _is_analysis else 1  # Analysis: read multiple files
 
-                if state.successful_tool_calls < min_tools and iteration <= min_tools + 2:
+                if _is_analysis and state.successful_tool_calls < 5 and iteration <= 7:
                     LOG.warning(
                         f"Blocked premature final_answer "
-                        f"({state.successful_tool_calls}/{min_tools} tools, iter {iteration})"
+                        f"({state.successful_tool_calls}/5 tools, iter {iteration})"
                     )
                     state.record_failure()
                     state.add_context(
                         f"BLOCKED: You only used {state.successful_tool_calls} tools. "
-                        f"For analysis tasks, you must read at least {min_tools} files before concluding. "
+                        f"For analysis tasks, you must read at least 5 files before concluding. "
                         f"Read more source files with fs_read — check the main Python modules, "
                         f"not just __init__.py files."
                     )

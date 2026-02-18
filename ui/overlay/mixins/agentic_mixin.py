@@ -52,7 +52,7 @@ class AgenticMixin:
         import re as _re
         query_lower = query.lower()
 
-        # ── Early exit: discussion/opinion/explanation queries are NEVER agentic ──
+        # ── Early exit: discussion/opinion/explanation/reflective queries are NEVER agentic ──
         discussion_patterns = [
             "meinung", "denkst du", "was hältst du", "was haeltst du",
             "reflektier", "erkläre", "erklaere", "erklär", "erklaer",
@@ -60,10 +60,19 @@ class AgenticMixin:
             "zusammenfassung", "zusammenfass", "was denkst",
             "deine sicht", "dein eindruck", "deine einschätzung",
             "deine einschaetzung", "kommentiere", "kommentar",
+            # Emotional/reflective (conversations about Frank's inner state)
+            "es klingt", "es wirkt als", "das zeigt", "das macht die",
+            "ich finde es", "ich spüre", "ich spuere",
+            "du beschreibst", "du betonst", "du spürst", "du spuerst",
+            "was fühlst", "was fuehlst", "was spürst", "was spuerst",
+            "was wahrnimmst", "wie fühlst", "wie fuehlst",
+            "ich bin bei dir", "das ist faszinierend",
+            "schritt für schritt",  # conversational, not literal multi-step
             # English
             "opinion", "what do you think", "explain", "summarize",
             "summary", "your view", "your impression", "comment on",
-            "how do you feel", "what's your take",
+            "how do you feel", "what's your take", "it sounds like",
+            "that shows", "i sense", "you describe",
         ]
         if any(p in query_lower for p in discussion_patterns):
             return False
@@ -101,11 +110,12 @@ class AgenticMixin:
         )
 
         # Pattern: action verb ... (your/my/frank/the) [0-2 extra words] (code/system/module/subsystem)
+        # \b prevents matching verbs inside compound words (e.g. "herausfinden" ≠ "find")
         _self_analysis_re = _re.compile(
-            r"(?:search|find|look|scan|check|inspect|examine|analyze|analyse|review|debug|"
-            r"read|untersuche?|such|schau|prüfe?|pruefe?|lies|analysiere?|geh)"
+            r"\b(?:search|find|look|scan|check|inspect|examine|analyze|analyse|review|debug|"
+            r"read|untersuche?|such|schau|prüfe?|pruefe?|lies|analysiere?|geh)\b"
             r".*?"
-            r"(?:your|my|frank.?s?|deine[nmrs]?|meine[nmrs]?|the|das|dem|den|im)\s+"
+            r"(?:your|my|frank.?s?|dein(?:e[nmrs]?)?|mein(?:e[nmrs]?)?|the|das|dem|den|im)\s+"
             r"(?:\w+\s+){0,2}"  # Allow 0-2 extra words (e.g. "your OWN code", "your ENTIRE system")
             r"(?:code|system|module|files?|dateien|ordner|source|codebase|"
             r"quellcode|systemordner|" + _FRANK_MODULES + r")",
@@ -116,10 +126,10 @@ class AgenticMixin:
 
         # Pattern: bug/error/issue ... in ... (your/frank/the) [0-2 extra words] (code/system/module)
         _bug_in_system_re = _re.compile(
-            r"(?:bug|fehler|error|issue|problem|anomal)"
+            r"\b(?:bug|fehler|error|issue|problem|anomal)\b"
             r".*?"
             r"(?:in|im|bei)\s+"
-            r"(?:your|my|frank.?s?|deine[nmrs]?|meine[nmrs]?|the|das|dem|den)?\s*"
+            r"(?:your|my|frank.?s?|dein(?:e[nmrs]?)?|mein(?:e[nmrs]?)?|the|das|dem|den)?\s*"
             r"(?:\w+\s+){0,2}"
             r"(?:code|system|module|" + _FRANK_MODULES + r")",
             _re.IGNORECASE,
@@ -133,7 +143,7 @@ class AgenticMixin:
             r"(?:\w+\s+){0,2}"
             r"(?:code|system|module|source|" + _FRANK_MODULES + r")"
             r".*?"
-            r"(?:bug|fehler|error|check|review|inspect|analyz|analys|scan|debug|prüf|such)",
+            r"\b(?:bug|fehler|error|check|review|inspect|analyz|analys|scan|debug|prüf|such)\b",
             _re.IGNORECASE,
         )
         if _system_then_action_re.search(query_lower):

@@ -86,6 +86,7 @@ DB_PATHS = {
     "sovereign": DB_DIR / "sovereign.db",
     "invariants": DB_DIR / "invariants.db",
     "titan_validator": DB_DIR / "titan_validator.db",
+    "therapist": DB_DIR / "therapist.db",
 }
 
 # State files (JSON)

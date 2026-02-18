@@ -109,7 +109,7 @@ echo "[2/9] Installing system dependencies..."
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
     python3 python3-venv python3-pip python3-tk \
-    xdotool wmctrl xprop xrandr \
+    xdotool wmctrl xprop x11-xserver-utils xprintidle \
     tesseract-ocr \
     pulseaudio-utils \
     curl wget git jq \
@@ -296,7 +296,124 @@ UNIT
     fi
 done
 
+# LLM server services (on-demand via llama-server)
+LLAMA_SERVER="$(dirname "$SCRIPT_DIR")/llama.cpp/build/bin/llama-server"
+if [ -x "$LLAMA_SERVER" ]; then
+    # Llama 3.1 8B GPU service
+    SVC_FILE="$SYSTEMD_USER_DIR/aicore-llama3-gpu.service"
+    if [ ! -f "$SVC_FILE" ]; then
+        cat > "$SVC_FILE" <<UNIT
+[Unit]
+Description=AI-Core Llama 3.1 8B (llama-server, GPU)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$LLAMA_SERVER -m $MODELS_DIR/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf --host 127.0.0.1 --port 8101 -ngl 99 -c 4096
+$(echo -e "$COMMON_ENV$GPU_ENV")
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+UNIT
+        echo "  Created $SVC_FILE"
+    fi
+
+    # Qwen 2.5 Coder 7B GPU service
+    SVC_FILE="$SYSTEMD_USER_DIR/aicore-qwen-gpu.service"
+    if [ ! -f "$SVC_FILE" ]; then
+        cat > "$SVC_FILE" <<UNIT
+[Unit]
+Description=AI-Core Qwen 2.5 Coder 7B (llama-server, GPU)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$LLAMA_SERVER -m $MODELS_DIR/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf --host 127.0.0.1 --port 8102 -ngl 99 -c 4096
+$(echo -e "$COMMON_ENV$GPU_ENV")
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+UNIT
+        echo "  Created $SVC_FILE"
+    fi
+else
+    echo "  Note: llama-server not found at $LLAMA_SERVER — skipping LLM server services."
+    echo "  Build llama.cpp first, then re-run install.sh to create these services."
+fi
+
+# Dr. Hibbert — Autonomous Therapist (timer + oneshot service)
+SVC_FILE="$SYSTEMD_USER_DIR/aicore-therapist.service"
+if [ ! -f "$SVC_FILE" ]; then
+    cat > "$SVC_FILE" <<UNIT
+[Unit]
+Description=Dr. Hibbert Therapist Session (one-shot)
+After=aicore-core.service aicore-router.service
+Wants=aicore-core.service aicore-router.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_BIN $SCRIPT_DIR/services/therapist_scheduler.py
+$(echo -e "$COMMON_ENV")
+TimeoutStartSec=1200
+Nice=15
+RemainAfterExit=no
+UNIT
+    echo "  Created $SVC_FILE"
+fi
+
+TMR_FILE="$SYSTEMD_USER_DIR/aicore-therapist.timer"
+if [ ! -f "$TMR_FILE" ]; then
+    cat > "$TMR_FILE" <<UNIT
+[Unit]
+Description=Dr. Hibbert Therapist Timer (3x daily)
+After=aicore-core.service aicore-router.service
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 15:00:00
+OnCalendar=*-*-* 21:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+    echo "  Created $TMR_FILE"
+fi
+
+# Consciousness daemon
+SVC_FILE="$SYSTEMD_USER_DIR/aicore-consciousness.service"
+if [ ! -f "$SVC_FILE" ]; then
+    cat > "$SVC_FILE" <<UNIT
+[Unit]
+Description=AI-Core Consciousness Daemon
+After=aicore-core.service aicore-router.service
+Wants=aicore-core.service aicore-router.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_BIN $SCRIPT_DIR/services/consciousness_daemon.py
+$(echo -e "$COMMON_ENV")
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+UNIT
+    echo "  Created $SVC_FILE"
+fi
+
 systemctl --user daemon-reload
+# Enable therapist timer
+systemctl --user enable aicore-therapist.timer 2>/dev/null || true
 echo "  Done."
 
 # --- 9. Desktop entries & dock icons ---

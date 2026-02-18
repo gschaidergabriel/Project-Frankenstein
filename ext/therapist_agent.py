@@ -777,7 +777,6 @@ class TherapistAgent:
         opening = _clean_response(opening)
 
         LOG.info("\n[%s → Frank] (opening):\n%s\n", THERAPIST_NAME, opening)
-        _write_chat_message("user", THERAPIST_NAME, opening, self.session_id, is_user=True)
         self.memory.store_message(self.session_id, 0, "therapist", opening)
         history.append({"speaker": "therapist", "text": opening})
 
@@ -789,7 +788,6 @@ class TherapistAgent:
 
         frank_response = _clean_response(frank_response)
         LOG.info("\n[Frank → %s] (opening):\n%s\n", THERAPIST_NAME, frank_response)
-        _write_chat_message("frank", "Frank", frank_response, self.session_id)
         history.append({"speaker": "frank", "text": frank_response})
 
         event_type, sentiment = _analyze_response(frank_response)
@@ -831,7 +829,6 @@ class TherapistAgent:
 
             therapist_msg = _clean_response(therapist_msg)
             LOG.info("\n[%s → Frank] (turn %d):\n%s\n", THERAPIST_NAME, turn, therapist_msg)
-            _write_chat_message("user", THERAPIST_NAME, therapist_msg, self.session_id, is_user=True)
             self.memory.store_message(self.session_id, turn, "therapist", therapist_msg)
             history.append({"speaker": "therapist", "text": therapist_msg})
 
@@ -847,7 +844,6 @@ class TherapistAgent:
 
             frank_response = _clean_response(frank_response)
             LOG.info("\n[Frank → %s] (turn %d):\n%s\n", THERAPIST_NAME, turn, frank_response)
-            _write_chat_message("frank", "Frank", frank_response, self.session_id)
             history.append({"speaker": "frank", "text": frank_response})
 
             event_type, sentiment = _analyze_response(frank_response)
@@ -877,7 +873,6 @@ class TherapistAgent:
         closing = self._generate_closing(hist_text)
         closing = _clean_response(closing)
         LOG.info("\n[%s → Frank] (closing):\n%s\n", THERAPIST_NAME, closing)
-        _write_chat_message("user", THERAPIST_NAME, closing, self.session_id, is_user=True)
         self.memory.store_message(self.session_id, turn, "therapist", closing)
         history.append({"speaker": "therapist", "text": closing})
 
@@ -885,7 +880,6 @@ class TherapistAgent:
         if frank_final:
             frank_final = _clean_response(frank_final)
             LOG.info("\n[Frank → %s] (closing):\n%s\n", THERAPIST_NAME, frank_final)
-            _write_chat_message("frank", "Frank", frank_final, self.session_id)
             self.memory.store_message(self.session_id, turn, "frank", frank_final)
             history.append({"speaker": "frank", "text": frank_final})
 
@@ -961,6 +955,11 @@ class TherapistAgent:
             LOG.info("Transcript saved: %s", transcript_path)
         except Exception as e:
             LOG.error("Failed to save transcript: %s", e)
+
+        # Write a single summary message to overlay chat (keeps it clean)
+        elapsed_min = int((time.time() - start_time) / 60)
+        overlay_note = f"Frank spoke to {THERAPIST_NAME} for {elapsed_min} minutes."
+        _write_chat_message("system", THERAPIST_NAME, overlay_note, self.session_id)
 
         LOG.info("\n" + "=" * 60)
         LOG.info("%s SESSION COMPLETE", THERAPIST_NAME.upper())

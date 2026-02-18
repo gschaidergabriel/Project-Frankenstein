@@ -958,7 +958,7 @@ class TherapistAgent:
 
         # Write a single summary message to overlay chat (keeps it clean)
         elapsed_min = int((time.time() - start_time) / 60)
-        overlay_note = f"Frank spoke to {THERAPIST_NAME} for {elapsed_min} minutes."
+        overlay_note = f"Frank spoke to me for {elapsed_min} minutes."
         _write_chat_message("system", THERAPIST_NAME, overlay_note, self.session_id)
 
         LOG.info("\n" + "=" * 60)

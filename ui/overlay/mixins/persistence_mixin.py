@@ -63,14 +63,18 @@ class PersistenceMixin:
                         sender = msg.get("sender", "Frank")
                         text = msg.get("text", "")
                         is_user = bool(msg.get("is_user", False))
+                        is_system = msg.get("role") == "system"
                         if text:
-                            on_retry, on_speak = self._build_bubble_callbacks(text, is_user)
+                            on_retry = None
+                            on_speak = None
+                            if not is_system:
+                                on_retry, on_speak = self._build_bubble_callbacks(text, is_user)
                             bubble = MessageBubble(
                                 self.messages_frame,
                                 sender=sender,
                                 message=text,
                                 is_user=is_user,
-                                is_system=False,
+                                is_system=is_system,
                                 on_link_click=lambda url: self._io_q.put(("open", url)),
                                 on_retry=on_retry,
                                 on_speak=on_speak,

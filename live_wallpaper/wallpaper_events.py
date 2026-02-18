@@ -194,6 +194,12 @@ def event_glitch(intensity: float = 1.0):
     """Trigger glitch effect."""
     publish_event("visual", "glitch", "info", {"intensity": intensity})
 
+def event_mood_update(mood_value: float):
+    """Push Frank's mood to wallpaper for eye expression animation.
+    mood_value: -1.0 (stressed/angry) to +1.0 (happy/content)
+    """
+    publish_event("personality", "mood.update", "info", {"mood": mood_value})
+
 # ============================================
 # Status/Control
 # ============================================

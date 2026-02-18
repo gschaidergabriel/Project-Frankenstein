@@ -740,6 +740,15 @@ class ChatMixin:
                                              _sc["drift_warnings"])
                             except Exception:
                                 pass
+                        # Push mood to wallpaper for eye expressions
+                        try:
+                            if _EPQ_AVAILABLE:
+                                _mood_ctx = get_personality_context()
+                                if _mood_ctx and "mood_value" in _mood_ctx:
+                                    from live_wallpaper.wallpaper_events import event_mood_update
+                                    event_mood_update(_mood_ctx["mood_value"])
+                        except Exception:
+                            pass
                         # Record in consciousness daemon
                         if _CONSCIOUSNESS_AVAILABLE:
                             try:
@@ -869,6 +878,15 @@ class ChatMixin:
                             msg, reply, _analysis)
                     except Exception:
                         pass
+                # Push mood to wallpaper for eye expressions
+                try:
+                    if _EPQ_AVAILABLE:
+                        _mood_ctx = get_personality_context()
+                        if _mood_ctx and "mood_value" in _mood_ctx:
+                            from live_wallpaper.wallpaper_events import event_mood_update
+                            event_mood_update(_mood_ctx["mood_value"])
+                except Exception:
+                    pass
                 # Auto-escalation: detect agentic action in parenthetical
                 try:
                     from services.action_intent_detector import detect_parenthetical_action

@@ -142,6 +142,10 @@ uniform float u_glitch;     // Glitch intensity (0.0 = none, 1.0 = max)
 uniform float u_think;      // Thinking intensity (0.0 = idle, 1.0 = deep thought)
 uniform vec3 u_event_color; // Event-specific color (each event has unique color)
 uniform sampler2D u_frank_tex; // Frank character texture
+uniform float u_eye_blink;      // 0.0 = eyes open, 1.0 = eyes fully closed
+uniform vec2  u_eye_look;       // gaze direction: x(-1=left,1=right), y(-1=down,1=up)
+uniform float u_eye_open_top;   // top lid openness (1.0=normal, 0.5=droopy/tired, 0.0=closed)
+uniform float u_eye_open_bot;   // bottom lid openness (1.0=normal, 0.7=happy squint, 0.0=closed)
 
 // ============================================
 // SIMPLEX NOISE
@@ -331,17 +335,23 @@ void main() {
     float m5 = sin(anim * 0.37 + 3.7);
     float m6 = sin(anim * 0.89 + 0.7);
 
-    // Joint rotation angles (radians)
-    float baseRot  = m1 * 0.008 + m3 * 0.005;                   // Subtle base sway
-    float torsoRot = m2 * 0.018 + m5 * 0.012;                   // Torso lean
-    float headRot  = m4 * 0.035 + m6 * 0.022 + m2 * 0.015;     // Head tilt (most motion)
-    float lBoltRot = m3 * 0.07 + m1 * 0.04;                     // Left bolt wiggle
-    float rBoltRot = -m5 * 0.07 - m4 * 0.04;                    // Right bolt (counter-phase)
+    // Joint rotation angles (radians) — enhanced for visible life
+    float baseRot  = m1 * 0.012 + m3 * 0.008;                   // Base sway
+    float torsoRot = m2 * 0.025 + m5 * 0.016;                   // Torso lean
+    float headRot  = m4 * 0.048 + m6 * 0.032 + m2 * 0.020;     // Head tilt (most motion)
+    float lBoltRot = m3 * 0.10 + m1 * 0.06;                     // Left bolt wiggle
+    float rBoltRot = -m5 * 0.10 - m4 * 0.06;                    // Right bolt (counter-phase)
 
-    // Breathing: horizontal torso pulse
-    float breathAmt = sin(anim * 1.27) * 0.005 + sin(anim * 0.61) * 0.003;
+    // Occasional attention shift (when two slow waves align → larger movement)
+    float shiftWave = sin(anim * 0.067) * sin(anim * 0.113);
+    float shiftActive = smoothstep(0.4, 0.8, abs(shiftWave));
+    headRot  += shiftWave * 0.05 * shiftActive;
+    torsoRot += shiftWave * 0.025 * shiftActive;
+
+    // Breathing: horizontal torso pulse (more visible)
+    float breathAmt = sin(anim * 1.27) * 0.008 + sin(anim * 0.61) * 0.005;
     // Vertical bob
-    float bob = m1 * 0.003 + m6 * 0.002;
+    float bob = m1 * 0.005 + m6 * 0.003;
 
     vec2 tc = texCoord;
     float yN = texCoord.y;  // Original y for region masks (0=bottom, 1=top)
@@ -402,6 +412,93 @@ void main() {
     float inBounds = step(0.001, texCoord.x) * step(texCoord.x, 0.999)
                    * step(0.001, texCoord.y) * step(texCoord.y, 0.999);
     frankTex *= inBounds;
+
+    // ========================================
+    // 10b. EYE ANIMATION (RoboEyes-style)
+    // ========================================
+    // Eye socket centers and dimensions in texture UV space
+    // (0,0)=bottom-left after OpenGL flip; eyes at ~32% from top of character)
+    const vec2 EYE_L = vec2(0.355, 0.675);   // Left eye center
+    const vec2 EYE_R = vec2(0.645, 0.675);   // Right eye center
+    const float EYE_W = 0.078;               // Eye half-width
+    const float EYE_H = 0.036;               // Eye half-height
+
+    // Smooth eye region masks (1.0 = fully inside eye, 0.0 = outside)
+    vec2 dL = abs(texCoord - EYE_L);
+    float inL = (1.0 - smoothstep(EYE_W * 0.82, EYE_W, dL.x))
+              * (1.0 - smoothstep(EYE_H * 0.82, EYE_H, dL.y));
+    vec2 dR = abs(texCoord - EYE_R);
+    float inR = (1.0 - smoothstep(EYE_W * 0.82, EYE_W, dR.x))
+              * (1.0 - smoothstep(EYE_H * 0.82, EYE_H, dR.y));
+    float eyeRegion = max(inL, inR);
+
+    if (eyeRegion > 0.01) {
+        // Which eye? Get local coordinates (-1..1 within eye)
+        vec2 eyeC = inL > inR ? EYE_L : EYE_R;
+        vec2 loc = (texCoord - eyeC) / vec2(EYE_W, EYE_H);
+
+        // Dark socket base (dim original texture for empty socket look)
+        vec3 socketDark = frankTex.rgb * 0.08;
+
+        // --- BLINK + MOOD LIDS (asymmetric, EMO-style expressions) ---
+        // Blink overrides everything; mood modifies resting lid position
+        float blinkOpen = 1.0 - u_eye_blink;
+        float topOpen = min(blinkOpen, u_eye_open_top);  // mood can droop top lid
+        float botOpen = min(blinkOpen, u_eye_open_bot);  // mood can raise bottom lid (happy squint)
+        float topLid = smoothstep(topOpen, topOpen + 0.18, loc.y);
+        float botLid = smoothstep(botOpen, botOpen + 0.18, -loc.y);
+        float eyeVisible = (1.0 - topLid) * (1.0 - botLid);
+
+        // Eyelid color: dark face material with slight green tint
+        vec3 lidColor = vec3(0.02, 0.04, 0.02);
+
+        // --- GAZE: bright pupil area shifts with look direction ---
+        vec2 gaze = u_eye_look * vec2(0.38, 0.28);
+        vec2 gazeLoc = loc - gaze;
+
+        // Pupil: soft rounded rectangle (brighter in center)
+        vec2 pd = abs(gazeLoc);
+        float pupilX = 1.0 - smoothstep(0.20, 0.70, pd.x);
+        float pupilY = 1.0 - smoothstep(0.15, 0.60, pd.y);
+        float pupil = pupilX * pupilY;
+
+        // Inner bright core (gives depth to the gaze)
+        float coreX = 1.0 - smoothstep(0.05, 0.35, pd.x);
+        float coreY = 1.0 - smoothstep(0.03, 0.25, pd.y);
+        float core = coreX * coreY;
+
+        // --- LED SCAN LINES (horizontal, matching cyberpunk aesthetic) ---
+        float scanFreq = texCoord.y * 300.0;
+        float scanWave = sin(scanFreq * 3.14159) * 0.5 + 0.5;
+        float scanMask = mix(0.6, 1.0, smoothstep(0.25, 0.75, scanWave));
+
+        // --- COMPOSE EYE ---
+        vec3 glowColor = vec3(0.60, 0.95, 0.12);  // Yellow-green LED
+        vec3 coreColor = vec3(0.85, 1.0, 0.65);    // Brighter center
+
+        float brightness = (0.15 + pupil * 0.55 + core * 0.30) * scanMask;
+        vec3 eyeGlow = mix(glowColor, coreColor, core * 0.6) * brightness * eyeVisible;
+
+        // Edge ambient (subtle glow at socket edges even when looking away)
+        float edgeDist = max(abs(loc.x), abs(loc.y));
+        float ambient = (1.0 - smoothstep(0.5, 1.0, edgeDist)) * 0.08 * eyeVisible;
+        eyeGlow += glowColor * ambient;
+
+        // Final eye pixel: dark socket + glow, with eyelid overlay
+        vec3 eyeResult = socketDark + eyeGlow;
+        eyeResult = mix(eyeResult, lidColor, max(topLid, botLid) * (1.0 - eyeVisible));
+
+        // Blend procedural eyes into frank texture
+        frankTex.rgb = mix(frankTex.rgb, eyeResult, eyeRegion);
+    }
+
+    // DEBUG: Red dots at eye centers to verify coordinate alignment
+    float dbgL = step(length(texCoord - EYE_L), 0.02);
+    float dbgR = step(length(texCoord - EYE_R), 0.02);
+    if (dbgL > 0.5 || dbgR > 0.5) {
+        frankTex.rgb = vec3(1.0, 0.0, 0.0);
+        frankTex.a = 1.0;
+    }
 
     // Hard cutoff: remove ALL plasma within entire visible core area
     // Plasma edge is at d≈0.182 (edgeMask=1-d*5.5), cut at 0.22 for margin
@@ -715,6 +812,13 @@ class PlasmaGLWidget(QOpenGLWidget):
         self.think = 0.0     # Thinking intensity (0.0 = idle, 1.0 = deep thought)
         self.event_color = (0.3, 0.0, 0.0)  # Default: dim red (blends into base)
 
+        # Eye animation state (driven by CPU)
+        self.eye_blink = 0.0      # 0.0 = eyes open, 1.0 = fully closed
+        self.eye_look_x = 0.0     # Horizontal gaze (-1 left, +1 right)
+        self.eye_look_y = 0.0     # Vertical gaze (-1 down, +1 up)
+        self.eye_open_top = 1.0   # Top lid (1.0=normal, 0.5=tired/angry)
+        self.eye_open_bot = 1.0   # Bottom lid (1.0=normal, 0.7=happy squint)
+
         # Animation timer - 20 FPS (optimized for GPU budget)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -842,6 +946,20 @@ class PlasmaGLWidget(QOpenGLWidget):
         if loc_event_color >= 0:
             glUniform3f(loc_event_color, self.event_color[0], self.event_color[1], self.event_color[2])
 
+        # Eye animation uniforms
+        loc_eye_blink = glGetUniformLocation(self.shader_program, "u_eye_blink")
+        loc_eye_look = glGetUniformLocation(self.shader_program, "u_eye_look")
+        loc_eye_top = glGetUniformLocation(self.shader_program, "u_eye_open_top")
+        loc_eye_bot = glGetUniformLocation(self.shader_program, "u_eye_open_bot")
+        if loc_eye_blink >= 0:
+            glUniform1f(loc_eye_blink, self.eye_blink)
+        if loc_eye_look >= 0:
+            glUniform2f(loc_eye_look, self.eye_look_x, self.eye_look_y)
+        if loc_eye_top >= 0:
+            glUniform1f(loc_eye_top, self.eye_open_top)
+        if loc_eye_bot >= 0:
+            glUniform1f(loc_eye_bot, self.eye_open_bot)
+
         # Bind Frank character texture
         loc_frank = glGetUniformLocation(self.shader_program, "u_frank_tex")
         if loc_frank >= 0 and self.frank_tex_id:
@@ -959,6 +1077,32 @@ class NeuralCybercoreWindow(QWidget):
         # Thinking state tracking (protected by _state_lock)
         self._thinking = False
         self._thinking_pulse_count = 0
+
+        # Eye animation state (protected by _state_lock)
+        self._eye_blink_current = 0.0     # Current blink amount (0=open, 1=closed)
+        self._eye_blink_phase = 'open'    # 'open', 'closing', 'closed', 'opening'
+        self._eye_blink_timer = random.uniform(2.0, 5.0)  # Time to next blink
+        self._eye_closed_hold = 0.0       # How long to stay closed
+        self._eye_double_blink = False    # Trigger second blink after first
+
+        self._eye_look_current = [0.0, 0.0]  # Current gaze position [x, y]
+        self._eye_look_target = [0.0, 0.0]   # Target gaze position
+        self._eye_look_timer = random.uniform(1.0, 4.0)  # Time to next gaze shift
+        self._eye_look_speed = 0.06           # Interpolation speed (higher = faster)
+
+        # Mood expression state (driven by E-PQ personality mood_value)
+        self._eye_open_top_target = 1.0   # Target top lid openness
+        self._eye_open_top_current = 1.0  # Current (smoothed)
+        self._eye_open_bot_target = 1.0   # Target bottom lid openness
+        self._eye_open_bot_current = 1.0  # Current (smoothed)
+        self._eye_mood_value = 0.0        # Last known mood (-1 to 1)
+
+        # Idle micro-animation state
+        self._eye_idle_timer = random.uniform(5.0, 12.0)  # Time to next idle anim
+        self._eye_idle_active = None      # Currently playing idle animation
+        self._eye_idle_phase = 0.0        # Progress of current idle animation
+        self._eye_idle_direction = 1      # Direction for slow_look animation
+        self._eye_debug_counter = 0       # Debug log throttle
 
         self._desktop_configured = False
 
@@ -1383,6 +1527,225 @@ class NeuralCybercoreWindow(QWidget):
             self.renderer.glitch = glitch
             self.renderer.think = think
             self.renderer.event_color = event_color
+
+        # Eye animation update (also at 60fps)
+        self._update_eye_animation()
+
+    # =============================================
+    # EYE ANIMATION ENGINE (EMO-inspired, mood-driven)
+    # =============================================
+
+    def _update_eye_animation(self):
+        """Full eye animation: blink, gaze, mood expression, idle micro-anims."""
+        dt = 0.016  # ~60fps (16ms per frame)
+
+        try:
+            with self._state_lock:
+                # === BLINK STATE MACHINE ===
+                if self._eye_blink_phase == 'open':
+                    self._eye_blink_timer -= dt
+                    if self._eye_blink_timer <= 0:
+                        self._eye_blink_phase = 'closing'
+                        self._eye_double_blink = random.random() < 0.2
+
+                elif self._eye_blink_phase == 'closing':
+                    self._eye_blink_current += dt * 8.0  # Close in ~125ms
+                    if self._eye_blink_current >= 1.0:
+                        self._eye_blink_current = 1.0
+                        self._eye_blink_phase = 'closed'
+                        self._eye_closed_hold = random.uniform(0.04, 0.10)
+
+                elif self._eye_blink_phase == 'closed':
+                    self._eye_closed_hold -= dt
+                    if self._eye_closed_hold <= 0:
+                        self._eye_blink_phase = 'opening'
+
+                elif self._eye_blink_phase == 'opening':
+                    self._eye_blink_current -= dt * 6.0  # Open in ~167ms
+                    if self._eye_blink_current <= 0.0:
+                        self._eye_blink_current = 0.0
+                        if self._eye_double_blink:
+                            self._eye_double_blink = False
+                            self._eye_blink_phase = 'closing'
+                        else:
+                            self._eye_blink_phase = 'open'
+                            base_interval = 4.0
+                            if self._eye_mood_value < -0.3:
+                                base_interval = 2.5
+                            elif self._eye_mood_value > 0.3:
+                                base_interval = 4.5
+                            self._eye_blink_timer = random.uniform(
+                                base_interval * 0.6, base_interval * 1.5
+                            )
+
+                # === GAZE SYSTEM (smooth random look-around) ===
+                self._eye_look_timer -= dt
+                if self._eye_look_timer <= 0:
+                    h_range = 0.7
+                    v_range = 0.35
+                    roll = random.random()
+                    if roll < 0.25:
+                        # Focused glance in one direction
+                        self._eye_look_target = [
+                            random.choice([-1, 1]) * random.uniform(0.4, h_range),
+                            random.uniform(-v_range * 0.5, v_range * 0.5)
+                        ]
+                        self._eye_look_speed = 0.10
+                        self._eye_look_timer = random.uniform(0.8, 2.0)
+                    elif roll < 0.50:
+                        # Return to center
+                        self._eye_look_target = [
+                            random.uniform(-0.1, 0.1),
+                            random.uniform(-0.05, 0.05)
+                        ]
+                        self._eye_look_speed = 0.04
+                        self._eye_look_timer = random.uniform(3.0, 6.0)
+                    else:
+                        # Random gentle gaze shift
+                        self._eye_look_target = [
+                            random.uniform(-h_range * 0.6, h_range * 0.6),
+                            random.uniform(-v_range * 0.6, v_range * 0.6)
+                        ]
+                        self._eye_look_speed = 0.06
+                        self._eye_look_timer = random.uniform(2.0, 5.0)
+
+                # Smooth interpolation to gaze target
+                for i in range(2):
+                    diff = self._eye_look_target[i] - self._eye_look_current[i]
+                    self._eye_look_current[i] += diff * self._eye_look_speed
+
+                # Micro-saccade: tiny random jitter
+                if random.random() < 0.08:
+                    self._eye_look_current[0] += random.uniform(-0.015, 0.015)
+                    self._eye_look_current[1] += random.uniform(-0.008, 0.008)
+
+                # === MOOD EXPRESSION (lid shape from E-PQ mood_value) ===
+                mv = self._eye_mood_value
+                if mv > 0.4:
+                    self._eye_open_top_target = 1.0
+                    self._eye_open_bot_target = 0.78
+                elif mv > 0.15:
+                    self._eye_open_top_target = 1.0
+                    self._eye_open_bot_target = 0.88
+                elif mv > -0.15:
+                    self._eye_open_top_target = 1.0
+                    self._eye_open_bot_target = 1.0
+                elif mv > -0.35:
+                    self._eye_open_top_target = 0.85
+                    self._eye_open_bot_target = 1.0
+                else:
+                    self._eye_open_top_target = 0.72
+                    self._eye_open_bot_target = 0.95
+
+                if self._thinking:
+                    self._eye_open_top_target = min(self._eye_open_top_target, 0.88)
+                    self._eye_open_bot_target = min(self._eye_open_bot_target, 0.92)
+
+                # Smooth lid transitions
+                self._eye_open_top_current += (self._eye_open_top_target - self._eye_open_top_current) * 0.03
+                self._eye_open_bot_current += (self._eye_open_bot_target - self._eye_open_bot_current) * 0.03
+
+                # === IDLE MICRO-ANIMATIONS ===
+                self._eye_idle_timer -= dt
+                if self._eye_idle_timer <= 0 and self._eye_idle_active is None:
+                    anims = ['squint', 'widen', 'slow_look', 'drift_up']
+                    weights = [0.3, 0.2, 0.35, 0.15]
+                    self._eye_idle_active = random.choices(anims, weights=weights, k=1)[0]
+                    self._eye_idle_phase = 0.0
+                    # Pre-set direction for slow_look
+                    if self._eye_idle_active == 'slow_look':
+                        self._eye_idle_direction = random.choice([-1, 1])
+
+                if self._eye_idle_active:
+                    self._eye_idle_phase += dt
+                    anim = self._eye_idle_active
+
+                    if anim == 'squint':
+                        if self._eye_idle_phase < 0.15:
+                            t = self._eye_idle_phase / 0.15
+                            self._eye_open_top_current -= 0.12 * t
+                            self._eye_open_bot_current -= 0.08 * t
+                        elif self._eye_idle_phase < 0.45:
+                            self._eye_open_top_current -= 0.12
+                            self._eye_open_bot_current -= 0.08
+                        elif self._eye_idle_phase >= 0.6:
+                            self._eye_idle_active = None
+                            self._eye_idle_timer = random.uniform(8.0, 18.0)
+
+                    elif anim == 'widen':
+                        if self._eye_idle_phase < 0.1:
+                            t = self._eye_idle_phase / 0.1
+                            self._eye_open_top_current = min(1.0, self._eye_open_top_current + 0.05 * t)
+                        elif self._eye_idle_phase < 0.5:
+                            self._eye_open_top_current = min(1.0, self._eye_open_top_target + 0.05)
+                        elif self._eye_idle_phase >= 0.5:
+                            self._eye_idle_active = None
+                            self._eye_idle_timer = random.uniform(12.0, 25.0)
+
+                    elif anim == 'slow_look':
+                        if self._eye_idle_phase < 1.0:
+                            t = self._eye_idle_phase
+                            self._eye_look_target[0] = self._eye_idle_direction * 0.55 * min(t * 2, 1.0)
+                        elif self._eye_idle_phase < 2.0:
+                            pass
+                        elif self._eye_idle_phase < 3.0:
+                            t = (self._eye_idle_phase - 2.0)
+                            self._eye_look_target[0] *= (1.0 - t)
+                        else:
+                            self._eye_idle_active = None
+                            self._eye_idle_timer = random.uniform(6.0, 15.0)
+
+                    elif anim == 'drift_up':
+                        if self._eye_idle_phase < 0.8:
+                            t = self._eye_idle_phase / 0.8
+                            self._eye_look_target[1] = 0.25 * t
+                        elif self._eye_idle_phase < 1.5:
+                            pass
+                        elif self._eye_idle_phase < 2.3:
+                            t = (self._eye_idle_phase - 1.5) / 0.8
+                            self._eye_look_target[1] = 0.25 * (1.0 - t)
+                        else:
+                            self._eye_idle_active = None
+                            self._eye_idle_timer = random.uniform(10.0, 20.0)
+
+                # Clamp all values
+                self._eye_blink_current = max(0.0, min(1.0, self._eye_blink_current))
+                self._eye_look_current[0] = max(-1.0, min(1.0, self._eye_look_current[0]))
+                self._eye_look_current[1] = max(-1.0, min(1.0, self._eye_look_current[1]))
+                self._eye_open_top_current = max(0.0, min(1.0, self._eye_open_top_current))
+                self._eye_open_bot_current = max(0.0, min(1.0, self._eye_open_bot_current))
+
+                # Cache values
+                blink = self._eye_blink_current
+                look_x = self._eye_look_current[0]
+                look_y = self._eye_look_current[1]
+                open_top = self._eye_open_top_current
+                open_bot = self._eye_open_bot_current
+
+            # Push to renderer (outside lock)
+            if hasattr(self, 'renderer'):
+                self.renderer.eye_blink = blink
+                self.renderer.eye_look_x = look_x
+                self.renderer.eye_look_y = look_y
+                self.renderer.eye_open_top = open_top
+                self.renderer.eye_open_bot = open_bot
+
+            # Debug log every 5 seconds
+            self._eye_debug_counter += 1
+            if self._eye_debug_counter % 300 == 0:  # Every ~5s at 60fps
+                print(f"[CYBERCORE] Eye: blink={blink:.2f} look=({look_x:.2f},{look_y:.2f}) "
+                      f"lids=({open_top:.2f},{open_bot:.2f}) phase={self._eye_blink_phase} "
+                      f"idle={self._eye_idle_active}")
+
+        except Exception as e:
+            print(f"[CYBERCORE] Eye animation error: {type(e).__name__}: {e}")
+
+    def set_mood_value(self, mood_value: float):
+        """Set Frank's mood for eye expressions. Called from mood events.
+        mood_value: -1.0 (stressed/angry) to +1.0 (happy/content)
+        """
+        with self._state_lock:
+            self._eye_mood_value = max(-1.0, min(1.0, mood_value))
 
     def trigger_error(self, error_code: str = None):
         """Trigger error effect with glitch and error code display."""
@@ -1878,6 +2241,30 @@ class NeuralCybercoreWindow(QWidget):
             with self._state_lock:
                 self._event_color_target = self.EVENT_COLORS["warning"]
             self.pulse_halo(0.6)
+
+        # =============================================
+        # MOOD EVENTS — Drive eye expressions from E-PQ
+        # =============================================
+        if event_type == "mood.update":
+            mood_val = event.get("data", {}).get("mood", 0.0)
+            self.set_mood_value(mood_val)
+
+        # Eye reactions to events (EMO-style reactive behavior)
+        if level == "error":
+            # Quick blink on errors
+            with self._state_lock:
+                if self._eye_blink_phase == 'open':
+                    self._eye_blink_phase = 'closing'
+        elif event_type in ("thinking.start", "inference.start"):
+            # Center gaze when thinking, slow down gaze shifts
+            with self._state_lock:
+                self._eye_look_target = [0.0, 0.08]  # Slight upward (thinking)
+                self._eye_look_timer = 3.0  # Hold longer
+        elif event_type == "chat.request":
+            # Look slightly toward user (center-right)
+            with self._state_lock:
+                self._eye_look_target = [0.15, 0.0]
+                self._eye_look_speed = 0.08
 
 
 # =============================================================================

@@ -175,6 +175,85 @@ class AgenticMixin:
 
         return False
 
+    def _is_creative_task(self, query: str) -> bool:
+        """Detect if agentic task is creative/language (needs llama for final output).
+
+        The agentic loop ALWAYS uses qwen (reliable JSON/tool calls).
+        But for creative tasks, the final_answer content gets enhanced by llama.
+        """
+        q = query.lower()
+        # Code tasks → no enhancement needed, qwen output is fine
+        code_signals = [
+            "programmier", "implementier", "codier", "kompilier",
+            "code schreib", "code write", "write code",
+            "skript schreib", "script schreib",
+            "bug", "debug", "fehler im code", "fix ", "patch", "refactor",
+            "installier", "pip ", "npm ", "apt ",
+            "systemctl", "systemd", "docker",
+            ".py", ".js", ".ts", ".sh", ".html", ".css",
+            "git ", "python", "javascript", "typescript",
+            "database", "datenbank", " sql", "sqlite",
+            "api ", "endpoint", "server", "deploy",
+            "deinen code", "dein code", "your code",
+            "dein system", "your system", "quellcode", "source code",
+        ]
+        for signal in code_signals:
+            if signal in q:
+                return False
+
+        LOG.info("Creative task detected — will enhance final answer with llama")
+        return True
+
+    def _enhance_with_llama(self, raw_response: str, goal: str) -> str:
+        """Enhance a raw agentic response with llama for creative/language quality.
+
+        Takes qwen's factual final_answer and rewrites it through llama
+        for better language, tone, and creative expression.
+        """
+        import urllib.request
+
+        prompt = (
+            "Du bist Frank. Der folgende Text ist das Ergebnis einer automatischen Analyse. "
+            "Formuliere ihn in deinem natürlichen Stil um — lebendig, persönlich, auf den Punkt. "
+            "Behalte alle Fakten und Informationen bei, aber mach die Sprache menschlich.\n\n"
+            f"Ursprüngliche Anfrage: {goal[:300]}\n\n"
+            f"Rohes Ergebnis:\n{raw_response[:2000]}"
+        )
+
+        # Get Frank's identity for persona consistency
+        try:
+            from personality.frank_identity import get_frank_identity
+            system = get_frank_identity()
+        except Exception:
+            system = "Du bist Frank, eine KI-Persönlichkeit mit eigenem Charakter."
+
+        payload = {
+            "text": prompt,
+            "system": system,
+            "force": "llama",
+            "n_predict": 2000,
+            "temperature": 0.7,
+        }
+
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                "http://127.0.0.1:8091/route",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                enhanced = result.get("text", result.get("response", ""))
+                if enhanced and len(enhanced) > 20:
+                    LOG.info(f"Llama enhanced response: {len(raw_response)} → {len(enhanced)} chars")
+                    return enhanced
+        except Exception as e:
+            LOG.warning(f"Llama enhancement failed, using raw response: {e}")
+
+        return raw_response
+
     def _start_agentic_execution(self, query: str) -> None:
         """
         Start agentic execution for a query.
@@ -267,7 +346,10 @@ class AgenticMixin:
                     "\n- Look for: exception handling, logic errors, race conditions, type errors."
                 )
 
-            # Create and run agent — store reference for cancel
+            # Detect creative task before running (for post-processing)
+            creative = self._is_creative_task(query)
+
+            # Create and run agent — always qwen for tool loop
             loop = AgentLoop(event_callback=event_callback)
             self._agentic_loop_ref = loop
             response, state = loop.run(
@@ -278,6 +360,10 @@ class AgenticMixin:
 
             # Store state ID for potential continuation
             self._agentic_state_id = state.id
+
+            # Enhance creative responses with llama
+            if creative and response and state and state.status == "completed":
+                response = self._enhance_with_llama(response, query)
 
             # Queue final response
             self._agent_event_queue.put({

@@ -177,7 +177,7 @@ class AgentLoop:
 
         # Create initial plan
         self._emit_event("planning", {"goal": goal})
-        plan, clarification = analyze_and_plan(goal, initial_context, self.registry)
+        plan, clarification = self.planner.create_plan(goal, initial_context)
 
         if clarification:
             # Need more info from user

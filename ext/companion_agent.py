@@ -66,13 +66,14 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG = logging.getLogger("companion_agent")
 LOG.setLevel(logging.DEBUG)
 
-_fh = logging.FileHandler(LOG_DIR / "companion_agent.log", encoding="utf-8")
-_fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-LOG.addHandler(_fh)
+if not LOG.handlers:  # guard against duplicate handlers on importlib.reload()
+    _fh = logging.FileHandler(LOG_DIR / "companion_agent.log", encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    LOG.addHandler(_fh)
 
-_sh = logging.StreamHandler()
-_sh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-LOG.addHandler(_sh)
+    _sh = logging.StreamHandler()
+    _sh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    LOG.addHandler(_sh)
 
 # ---------------------------------------------------------------------------
 # Configuration

@@ -403,7 +403,22 @@ def main():
         exit_reason = run_entity_session(entity)
 
         # 6. Update quotas based on exit reason
-        if exit_reason in COMPLETED_REASONS:
+        #    Note: agents may append details like "user_returned (idle=15s)"
+        #    so we use startswith() for prefix matching.
+        if exit_reason.startswith("user_returned"):
+            quotas.setdefault("last_session", {})[entity] = time.time()
+            save_quotas(quotas)
+            LOG.info("%s interrupted (%s). NOT counting against quota. "
+                     "Cooldown %ds.", display, exit_reason, COOLDOWN_RETURNED)
+            time.sleep(COOLDOWN_RETURNED)
+
+        elif exit_reason.startswith("shutdown_signal"):
+            LOG.info("Shutdown signal during %s session — exiting.", display)
+            break
+
+        elif exit_reason in COMPLETED_REASONS or any(
+            exit_reason.startswith(r) for r in COMPLETED_REASONS
+        ):
             quotas["completed"][entity] = quotas["completed"].get(entity, 0) + 1
             quotas.setdefault("last_session", {})[entity] = time.time()
             save_quotas(quotas)
@@ -413,16 +428,6 @@ def main():
                      COOLDOWN_COMPLETED)
             time.sleep(COOLDOWN_COMPLETED)
 
-        elif exit_reason == "user_returned":
-            quotas.setdefault("last_session", {})[entity] = time.time()
-            save_quotas(quotas)
-            LOG.info("%s interrupted (user_returned). NOT counting against quota. "
-                     "Cooldown %ds.", display, COOLDOWN_RETURNED)
-            time.sleep(COOLDOWN_RETURNED)
-
-        elif exit_reason == "shutdown_signal":
-            LOG.info("Shutdown signal during %s session — exiting.", display)
-            break
 
         else:
             # Unknown reason — treat conservatively, don't count

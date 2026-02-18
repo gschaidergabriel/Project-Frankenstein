@@ -884,7 +884,18 @@ class CompanionAgent:
 
             delay = random.randint(TURN_DELAY_MIN, TURN_DELAY_MAX)
             LOG.info("\n--- Waiting %ds before turn %d ---", delay, turn)
-            time.sleep(delay)
+            # Interruptible sleep: check idle every 5s, abort if user returns
+            _abort = False
+            for _elapsed in range(0, delay, 5):
+                time.sleep(min(5, delay - _elapsed))
+                if _get_xprintidle_s() < 30 and turn >= 3:
+                    LOG.info("User returned during delay — aborting early")
+                    _abort = True
+                    break
+            if _abort:
+                reason = f"user_returned (idle={_get_xprintidle_s():.0f}s)"
+                LOG.info("\nEXIT CONDITION: %s", reason)
+                break
 
             # Generate Raven's response
             system = self._build_system_prompt()

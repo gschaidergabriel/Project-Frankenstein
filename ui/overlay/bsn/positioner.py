@@ -72,30 +72,8 @@ class WindowPositioner:
         threading.Thread(target=_do, daemon=True).start()
 
     def _adjust_frank(self, geometry: dict, action: str):
-        """Adjusts Frank (thread-safe via after())."""
-        LOG.info(f"BSN: Adjusting Frank ({action}) -> {geometry['width']}x{geometry['height']} at ({geometry['x']},{geometry['y']})")
-
-        x, y = geometry["x"], geometry["y"]
-        w, h = geometry["width"], geometry["height"]
-        geo_str = f"{w}x{h}+{x}+{y}"
-
-        # CRITICAL: tkinter is NOT thread-safe! BSN runs in background threads.
-        # Must schedule geometry changes on the main tkinter thread via after().
-        # Also skip if user is currently dragging the window.
-        def _apply():
-            if getattr(self.overlay, '_dragging', False):
-                LOG.info("BSN: Skipping Frank adjustment — user is dragging")
-                return
-            try:
-                self.overlay.geometry(geo_str)
-                self.overlay.update_idletasks()
-            except Exception as e:
-                LOG.error(f"BSN: Failed to adjust Frank: {e}")
-
-        try:
-            self.overlay.after(0, _apply)
-        except Exception:
-            pass  # Overlay may be destroyed
+        """No-op in DOCK mode — Frank is a fixed panel with strut reservation."""
+        LOG.debug(f"BSN: Frank adjustment skipped (DOCK mode, action={action})")
 
     def _position_app_aggressive(self, win_id: str, geometry: dict):
         """Positions app with multi-stage escalation.

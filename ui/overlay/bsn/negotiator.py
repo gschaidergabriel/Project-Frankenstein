@@ -44,7 +44,8 @@ class SpaceNegotiator:
 
     def negotiate(self) -> dict:
         """
-        Calculates optimal layout.
+        Calculates optimal layout for DOCK mode.
+        Frank is fixed (DOCK panel with strut) — only app placement is calculated.
 
         Returns:
             {"success", "frank_action", "frank": {geometry}, "app": {geometry}}
@@ -52,27 +53,12 @@ class SpaceNegotiator:
         self._ensure_screen_info()
         frank = self.get_frank_geometry()
 
-        # Strategy 1: Frank stays, app fills the rest
+        # DOCK mode: Frank never moves/shrinks, app fills space right of Frank
         result = self._try_keep_frank(frank)
         if result["success"]:
             return result
 
-        # Strategy 2: Frank shrinks horizontally
-        result = self._try_shrink_frank(frank)
-        if result["success"]:
-            return result
-
-        # Strategy 3: Frank moves to the left edge
-        result = self._try_move_frank(frank)
-        if result["success"]:
-            return result
-
-        # Strategy 4: Frank shrinks AND moves
-        result = self._try_shrink_and_move()
-        if result["success"]:
-            return result
-
-        # Strategy 5: Emergency layout
+        # Screen too small for app beside fixed Frank
         return self._emergency_layout()
 
     def _try_keep_frank(self, frank: dict) -> dict:
@@ -105,96 +91,6 @@ class SpaceNegotiator:
                     "x": dock_x,
                     "y": BSNConstants.PANEL_HEIGHT,
                     "width": available_left,
-                    "height": self.usable_h
-                }
-            }
-
-        return {"success": False}
-
-    def _try_shrink_frank(self, frank: dict) -> dict:
-        """Strategy 2: Frank shrinks horizontally."""
-        max_frank_w = self.screen_w - BSNConstants.GAP - BSNConstants.APP_MIN_WIDTH
-
-        if max_frank_w < BSNConstants.FRANK_MIN_WIDTH:
-            return {"success": False}
-
-        new_frank_w = max(BSNConstants.FRANK_MIN_WIDTH, min(frank["width"], max_frank_w))
-
-        new_frank = {
-            "x": frank["x"],
-            "y": frank["y"],
-            "width": new_frank_w,
-            "height": frank["height"]
-        }
-
-        frank_right = new_frank["x"] + new_frank["width"]
-        app_w = self.screen_w - frank_right - BSNConstants.GAP
-
-        if app_w >= BSNConstants.APP_MIN_WIDTH:
-            return {
-                "success": True,
-                "frank_action": "shrink",
-                "frank": new_frank,
-                "app": {
-                    "x": frank_right + BSNConstants.GAP,
-                    "y": BSNConstants.PANEL_HEIGHT,
-                    "width": app_w,
-                    "height": self.usable_h
-                }
-            }
-
-        return {"success": False}
-
-    def _try_move_frank(self, frank: dict) -> dict:
-        """Strategy 3: Frank moves to the left edge (right of dock)."""
-        dock_x = BSNConstants.DOCK_WIDTH
-        new_frank = {
-            "x": dock_x,
-            "y": BSNConstants.PANEL_HEIGHT,
-            "width": frank["width"],
-            "height": min(frank["height"], self.usable_h)
-        }
-
-        frank_right = dock_x + frank["width"]
-        app_w = self.screen_w - frank_right - BSNConstants.GAP
-
-        if app_w >= BSNConstants.APP_MIN_WIDTH:
-            return {
-                "success": True,
-                "frank_action": "move",
-                "frank": new_frank,
-                "app": {
-                    "x": frank_right + BSNConstants.GAP,
-                    "y": BSNConstants.PANEL_HEIGHT,
-                    "width": app_w,
-                    "height": self.usable_h
-                }
-            }
-
-        return {"success": False}
-
-    def _try_shrink_and_move(self) -> dict:
-        """Strategy 4: Frank at minimum size at left edge (right of dock)."""
-        dock_x = BSNConstants.DOCK_WIDTH
-        new_frank = {
-            "x": dock_x,
-            "y": BSNConstants.PANEL_HEIGHT,
-            "width": BSNConstants.FRANK_MIN_WIDTH,
-            "height": min(BSNConstants.FRANK_MIN_HEIGHT, self.usable_h)
-        }
-
-        frank_right = dock_x + BSNConstants.FRANK_MIN_WIDTH
-        app_w = self.screen_w - frank_right - BSNConstants.GAP
-
-        if app_w >= BSNConstants.APP_MIN_WIDTH:
-            return {
-                "success": True,
-                "frank_action": "shrink_and_move",
-                "frank": new_frank,
-                "app": {
-                    "x": frank_right + BSNConstants.GAP,
-                    "y": BSNConstants.PANEL_HEIGHT,
-                    "width": app_w,
                     "height": self.usable_h
                 }
             }

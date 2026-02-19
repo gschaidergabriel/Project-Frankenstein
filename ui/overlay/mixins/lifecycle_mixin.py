@@ -7,14 +7,13 @@ at runtime via MRO.
 import json
 import os
 import signal
-import subprocess
 import time
 from pathlib import Path
 
 from overlay.constants import LOG
 from overlay.bsn.constants import (
     get_workarea_y, get_workarea_x, get_workarea,
-    refresh_workarea, BSNConstants, get_primary_monitor,
+    BSNConstants, get_primary_monitor,
 )
 from overlay.bsn.controller import LayoutController
 
@@ -115,6 +114,14 @@ class LifecycleMixin:
             except Exception as e:
                 LOG.debug(f"Chat memory shutdown: {e}")
 
+        # Clear DOCK strut before destroying window
+        try:
+            from overlay.dock_hints import clear_strut
+            xid = getattr(self, '_dock_xid', self.winfo_id())
+            clear_strut(xid)
+        except Exception:
+            pass
+
         self._stop_layout_controller()
         if hasattr(self, '_genesis_watcher'):
             self._genesis_watcher.stop()
@@ -146,10 +153,7 @@ class LifecycleMixin:
         """Restore this overlay after F.A.S. popup closes."""
         try:
             self._fas_dimmed = False
-            if not getattr(self, '_fullscreen_yielded', False):
-                self.attributes("-topmost", True)
             self.attributes("-alpha", self._fas_original_alpha)
-            self.lift()
         except Exception as e:
             print(f"Frank restore error: {e}")
 
@@ -157,9 +161,7 @@ class LifecycleMixin:
         """Dim this overlay for F.A.S. popup focus."""
         try:
             self._fas_dimmed = True
-            self.attributes("-topmost", False)
             self.attributes("-alpha", 0.3)
-            self.lower()
         except Exception as e:
             print(f"Frank dim error: {e}")
 
@@ -231,107 +233,6 @@ class LifecycleMixin:
             LOG.warning(f"Tray signal poll error: {e}")
         finally:
             self.after(300, self._poll_tray_signals)
-
-    # ---------- Fullscreen detection ----------
-
-    def _poll_fullscreen(self):
-        """Detect if ANY window is fullscreen/maximized and yield topmost.
-
-        Checks active window first (fast path), then scans all windows
-        on the current desktop. Detects both true fullscreen and maximized
-        windows (videos, browsers, etc.).
-        """
-        try:
-            import time as _time
-            # Skip detection while BSN is actively positioning a new window
-            # (BSN un-maximizes windows before repositioning — don't interfere)
-            if getattr(self, '_bsn_positioning_until', 0) > _time.time():
-                self.after(500, self._poll_fullscreen)
-                return
-
-            env = {**os.environ, 'DISPLAY': ':0'}
-            fullscreen_found = False
-
-            # 1. Fast path: check active window
-            result = subprocess.run(
-                ['xdotool', 'getactivewindow'],
-                capture_output=True, text=True, timeout=2, env=env,
-            )
-            active_wid = result.stdout.strip()
-            if active_wid:
-                if self._is_window_covering(active_wid, env):
-                    fullscreen_found = True
-                    self._fullscreen_wid = active_wid
-
-            # 2. Check tracked window (may have lost focus but still covering)
-            if not fullscreen_found and getattr(self, '_fullscreen_wid', None):
-                if self._is_window_covering(self._fullscreen_wid, env):
-                    fullscreen_found = True
-
-            # 3. Always scan all windows if not found yet (catches cases
-            #    where Frank has focus or active window isn't the covering one)
-            if not fullscreen_found:
-                fullscreen_found = self._any_window_covering(env)
-
-            if fullscreen_found and not self._fullscreen_yielded:
-                self._fullscreen_yielded = True
-                self.attributes("-topmost", False)
-                self.lower()
-                LOG.info("Fullscreen/maximized detected — overlay yielded topmost")
-            elif not fullscreen_found and self._fullscreen_yielded:
-                self._fullscreen_yielded = False
-                self._fullscreen_wid = None
-                if not self._fas_dimmed:
-                    self.attributes("-topmost", True)
-                    LOG.info("Fullscreen/maximized exited — overlay topmost restored")
-        except Exception as e:
-            LOG.debug(f"Fullscreen poll error: {e}")
-        self.after(500, self._poll_fullscreen)
-
-    def _is_window_covering(self, wid: str, env: dict) -> bool:
-        """Check if a window is fullscreen OR maximized (covers the screen).
-
-        Detects:
-        - True fullscreen (_NET_WM_STATE_FULLSCREEN) — F11, video fullscreen
-        - Maximized both axes (_NET_WM_STATE_MAXIMIZED_VERT + _HORZ) — maximized windows
-        """
-        try:
-            prop = subprocess.run(
-                ['xprop', '-id', wid, '_NET_WM_STATE'],
-                capture_output=True, text=True, timeout=2, env=env,
-            )
-            state = prop.stdout
-            if '_NET_WM_STATE_FULLSCREEN' in state:
-                return True
-            if ('_NET_WM_STATE_MAXIMIZED_VERT' in state
-                    and '_NET_WM_STATE_MAXIMIZED_HORZ' in state):
-                return True
-            return False
-        except Exception:
-            return False
-
-    def _any_window_covering(self, env: dict) -> bool:
-        """Check if ANY window on the current desktop is fullscreen/maximized."""
-        try:
-            result = subprocess.run(
-                ['wmctrl', '-l'], capture_output=True, text=True, timeout=2, env=env,
-            )
-            for line in result.stdout.strip().split('\n'):
-                if not line:
-                    continue
-                parts = line.split(None, 4)
-                if len(parts) < 2 or parts[1] == '-1':
-                    continue
-                wid = parts[0]
-                title = (parts[4] if len(parts) > 4 else '').lower()
-                if 'f.r.a.n.k' in title:
-                    continue
-                if self._is_window_covering(wid, env):
-                    self._fullscreen_wid = wid
-                    return True
-        except Exception:
-            pass
-        return False
 
     # ---------- BSN Layout Controller ----------
 
@@ -426,7 +327,7 @@ class LifecycleMixin:
         return False
 
     def _apply_display_profile(self, edid_hash: str):
-        """Apply saved display profile to Frank window."""
+        """Apply saved display profile to Frank window (DOCK mode: width + opacity only)."""
         try:
             from ui.adi_popup.profile_manager import load_profile
 
@@ -438,20 +339,21 @@ class LifecycleMixin:
             if not frank:
                 return
 
-            width = frank.get("width", 420)
-            height = frank.get("height", 720)
-            x = frank.get("x", get_workarea_x() + 1)
-            y = frank.get("y", get_workarea_y())
+            # DOCK mode: position and height are fixed, only width is configurable
+            width = frank.get("width", BSNConstants.FRANK_DEFAULT_WIDTH)
+            width = max(BSNConstants.FRANK_MIN_WIDTH, width)
+            cur_h = self.winfo_height()
+            dock_x = getattr(self, '_dock_x', get_workarea_x())
+            dock_y = getattr(self, '_workarea_y', get_workarea_y())
 
-            # Enforce: NEVER above GNOME panel
-            min_y = get_workarea_y()
-            if y < min_y:
-                LOG.warning(f"ADI profile y={y} below panel height {min_y}, clamping")
-                y = min_y
+            self.geometry(f"{width}x{cur_h}+{dock_x}+{dock_y}")
+            self._adi_profile_applied = True
+            LOG.info(f"Applied display profile (DOCK): width={width}")
 
-            self.geometry(f"{width}x{height}+{x}+{y}")
-            self._adi_profile_applied = True  # Flag for BSN: don't reposition
-            LOG.info(f"Applied display profile: {width}x{height}+{x}+{y}")
+            # Update strut for new width
+            if hasattr(self, '_update_strut'):
+                self.update_idletasks()
+                self._update_strut()
 
             opacity = frank.get("opacity", 0.95)
             try:
@@ -480,133 +382,3 @@ class LifecycleMixin:
             LOG.debug(f"ADI signal poll error: {e}")
         self.after(2000, self._poll_adi_apply_signal)
 
-    # ---------- Panel Boundary Enforcement ----------
-
-    def _enforce_panel_boundary(self):
-        """
-        Ensure the overlay stays on the PRIMARY monitor, never above the
-        GNOME panel, and never on a secondary monitor.
-
-        This is the single authoritative method that enforces correct positioning.
-        Called at startup (multiple times), after focus hacks, after ADI profiles,
-        after restore, and periodically.
-        """
-        try:
-            if not self.winfo_exists():
-                return
-
-            y = self.winfo_y()
-            x = self.winfo_x()
-            w = self.winfo_width()
-            min_y = get_workarea_y()
-            min_x = 0  # Allow at screen edge, but not negative
-
-            # Get primary monitor bounds to prevent jumping to secondary
-            mon = get_primary_monitor()
-            max_x = mon["x"] + mon["width"] - w
-
-            needs_fix = False
-            new_y = y
-            new_x = x
-
-            if y < min_y:
-                new_y = min_y
-                needs_fix = True
-            if x < min_x:
-                new_x = min_x
-                needs_fix = True
-            if x > max_x:
-                new_x = max(min_x, max_x)
-                needs_fix = True
-
-            if needs_fix:
-                if getattr(self, '_dragging', False):
-                    return  # Never interfere with user drag
-                LOG.warning(
-                    f"Panel boundary violated: was ({x},{y}), "
-                    f"correcting to ({new_x},{new_y}) [min_y={min_y}, max_x={max_x}]"
-                )
-                self.geometry(f"+{new_x}+{new_y}")
-                self.update_idletasks()
-        except Exception as e:
-            LOG.debug(f"Panel enforcement error: {e}")
-
-    def _periodic_panel_enforcement(self):
-        """Periodic check that runs every 10 seconds to catch any position drift."""
-        try:
-            self._enforce_panel_boundary()
-        except Exception:
-            pass
-        self.after(10000, self._periodic_panel_enforcement)
-
-    def _periodic_workarea_refresh(self):
-        """Periodic workarea refresh every 60s to detect resolution/monitor changes."""
-        try:
-            old_wa = get_workarea()
-            BSNConstants.refresh()
-            new_wa = get_workarea()
-
-            if (old_wa["x"] != new_wa["x"] or old_wa["y"] != new_wa["y"]
-                    or old_wa["width"] != new_wa["width"]
-                    or old_wa["height"] != new_wa["height"]):
-                LOG.info(
-                    f"Workarea changed: {old_wa['width']}x{old_wa['height']}+{old_wa['x']}+{old_wa['y']} → "
-                    f"{new_wa['width']}x{new_wa['height']}+{new_wa['x']}+{new_wa['y']}"
-                )
-                if hasattr(self, '_layout_controller') and hasattr(self._layout_controller, 'negotiator'):
-                    self._layout_controller.negotiator.invalidate_screen_info()
-                self._check_overlay_on_screen(new_wa)
-        except Exception as e:
-            LOG.debug(f"Workarea refresh error: {e}")
-        self.after(60000, self._periodic_workarea_refresh)
-
-    def _check_overlay_on_screen(self, wa: dict):
-        """Reposition overlay if it's outside the PRIMARY monitor after a resolution change.
-
-        Uses primary monitor bounds (NOT total workarea which spans all monitors)
-        to ensure the overlay never jumps to a secondary monitor.
-        """
-        try:
-            if not self.winfo_exists() or getattr(self, '_dragging', False):
-                return
-
-            # Get PRIMARY monitor bounds — overlay must stay on this monitor
-            mon = get_primary_monitor()
-            mon_left = mon["x"]
-            mon_right = mon["x"] + mon["width"]
-            mon_bottom = mon["y"] + mon["height"]
-            min_y = wa["y"]  # Panel height (from workarea)
-
-            x = self.winfo_x()
-            y = self.winfo_y()
-            w = self.winfo_width()
-            h = self.winfo_height()
-
-            needs_fix = False
-            new_x, new_y, new_w, new_h = x, y, w, h
-
-            # If window extends beyond primary monitor right edge
-            if x + w > mon_right:
-                new_x = max(wa["x"], mon_right - w)
-                needs_fix = True
-
-            # If window is left of primary monitor
-            if x < mon_left:
-                new_x = max(wa["x"], mon_left)
-                needs_fix = True
-
-            # If window extends beyond primary monitor bottom
-            if y + h > mon_bottom:
-                new_h = max(BSNConstants.FRANK_MIN_HEIGHT, mon_bottom - y)
-                if new_h < BSNConstants.FRANK_MIN_HEIGHT:
-                    new_y = max(min_y, mon_bottom - BSNConstants.FRANK_MIN_HEIGHT)
-                    new_h = BSNConstants.FRANK_MIN_HEIGHT
-                needs_fix = True
-
-            if needs_fix:
-                LOG.info(f"Overlay outside primary monitor, repositioning: "
-                         f"({x},{y},{w}x{h}) → ({new_x},{new_y},{new_w}x{new_h})")
-                self.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
-                self.update_idletasks()
-        except Exception as e:
-            LOG.debug(f"Overlay on-screen check error: {e}")

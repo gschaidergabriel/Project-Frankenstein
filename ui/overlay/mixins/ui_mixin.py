@@ -7,7 +7,7 @@ Plain mixin class; all `self.*` references resolve at runtime via MRO.
 import tkinter as tk
 from tkinter import filedialog
 from overlay.constants import COLORS, LOG, FRANK_IDENTITY, DND_AVAILABLE, DND_FILES
-from overlay.bsn.constants import get_workarea_y, get_primary_monitor
+from overlay.bsn.constants import get_workarea_y, get_primary_monitor, BSNConstants
 from overlay.widgets.modern_button import ModernButton
 from overlay.widgets.modern_entry import ModernEntry
 from overlay.widgets.file_action_bar import FileActionBar
@@ -102,12 +102,10 @@ class UiMixin:
         close_btn.bind("<Enter>", lambda e: close_btn.configure(fg="#ffffff", bg=COLORS["error"]))
         close_btn.bind("<Leave>", lambda e: close_btn.configure(fg=COLORS["text_muted"], bg=COLORS["bg_elevated"]))
 
-        # Drag bindings for moving window (expanded to more widgets)
+        # DOCK mode: no drag — panel is fixed. Click to focus instead.
         for widget in [titlebar, title_area, title_label, subtitle_label,
                        self.status_dot, accent_line]:
-            widget.bind("<Button-1>", self._start_drag)
-            widget.bind("<B1-Motion>", self._on_drag)
-            widget.bind("<ButtonRelease-1>", self._end_drag)
+            widget.bind("<Button-1>", self._on_window_click_focus)
 
         # Draw static status dot (animation starts after window reveal)
         self.status_dot.create_oval(1, 1, 7, 7, fill=COLORS["neon_cyan"], outline="")
@@ -288,161 +286,70 @@ class UiMixin:
         except Exception:
             pass  # Canvas may be temporarily unavailable during widget rebuild
 
-    # ---- Drag ----
-
-    def _start_drag(self, event):
-        """Start dragging the window."""
-        self._drag_start_x = event.x
-        self._drag_start_y = event.y
-        self._dragging = True  # Flag to block focus hack during drag
-        # Visual feedback: change cursor to move cursor
-        self.configure(cursor="fleur")
-
-    def _on_drag(self, event):
-        """Handle window dragging with screen boundary enforcement.
-
-        Constrains to PRIMARY monitor bounds to prevent jumping to secondary monitors.
-        """
-        if not getattr(self, '_dragging', False):
-            return
-
-        x = self.winfo_x() + (event.x - self._drag_start_x)
-        y = self.winfo_y() + (event.y - self._drag_start_y)
-
-        # Use PRIMARY monitor bounds (not total screen which spans all monitors)
-        mon = get_primary_monitor()
-        mon_right = mon["x"] + mon["width"]
-        mon_bottom = mon["y"] + mon["height"]
-        win_w = self.winfo_width()
-
-        # Enforce strict boundaries — overlay stays on primary monitor
-        x = max(mon["x"], min(x, mon_right - win_w))
-        min_y = get_workarea_y()
-        y = max(min_y, min(y, mon_bottom - 44))
-
-        self.geometry(f"+{x}+{y}")
-
-    def _end_drag(self, event):
-        """End dragging the window."""
-        self._dragging = False
-        # Restore default cursor
-        self.configure(cursor="")
-
-    # ---- Resize functionality for frameless window ----
+    # ---- Resize (east-edge only in DOCK mode) ----
 
     def _init_resize(self):
-        """Initialize resize handling for frameless window."""
+        """Initialize east-edge resize for DOCK panel."""
         self._resize_edge = None
         self._resize_start_x = 0
-        self._resize_start_y = 0
         self._resize_start_width = 0
-        self._resize_start_height = 0
-        self._resize_start_win_x = 0
-        self._resize_start_win_y = 0
+        self._last_strut_update = 0.0
 
-        # Bind mouse motion for cursor changes at edges
         self.bind("<Motion>", self._on_motion_resize_cursor)
         self.bind("<ButtonPress-1>", self._on_resize_start, add="+")
         self.bind("<B1-Motion>", self._on_resize_drag, add="+")
         self.bind("<ButtonRelease-1>", self._on_resize_end, add="+")
 
     def _get_resize_edge(self, event):
-        """Determine which edge/corner the mouse is near.
-
-        Uses screen-relative coordinates (event.x_root) converted to
-        window-relative, so edge detection works regardless of which
-        child widget received the event.
-        """
+        """Only detect east edge for width-only resize."""
         x = event.x_root - self.winfo_rootx()
-        y = event.y_root - self.winfo_rooty()
         w = self.winfo_width()
-        h = self.winfo_height()
-        edge_size = 12  # pixels from edge to trigger resize
-        top_edge_size = 6  # smaller at top to avoid conflict with titlebar drag
-
-        edge = ""
-        if y < top_edge_size:
-            edge += "n"
-        elif y > h - edge_size:
-            edge += "s"
-        if x < edge_size:
-            edge += "w"
-        elif x > w - edge_size:
-            edge += "e"
-
-        return edge if edge else None
+        if x > w - 12:
+            return "e"
+        return None
 
     def _on_motion_resize_cursor(self, event):
-        """Change cursor when near edges."""
+        """Change cursor when near east edge."""
         edge = self._get_resize_edge(event)
-
-        cursors = {
-            "n": "top_side", "s": "bottom_side",
-            "e": "right_side", "w": "left_side",
-            "ne": "top_right_corner", "nw": "top_left_corner",
-            "se": "bottom_right_corner", "sw": "bottom_left_corner"
-        }
-
-        if edge and edge in cursors:
-            self.configure(cursor=cursors[edge])
+        if edge == "e":
+            self.configure(cursor="right_side")
         else:
             self.configure(cursor="")
 
     def _on_resize_start(self, event):
-        """Start resize if mouse is on edge."""
-        # Don't start resize if dragging is active
-        if getattr(self, '_dragging', False):
-            return
+        """Start resize if mouse is on east edge."""
         self._resize_edge = self._get_resize_edge(event)
         if self._resize_edge:
             self._resize_start_x = event.x_root
-            self._resize_start_y = event.y_root
             self._resize_start_width = self.winfo_width()
-            self._resize_start_height = self.winfo_height()
-            self._resize_start_win_x = self.winfo_x()
-            self._resize_start_win_y = self.winfo_y()
 
     def _on_resize_drag(self, event):
-        """Handle resize drag."""
+        """Handle east-edge width resize with live strut update.
+
+        Position and height stay fixed. Adjacent maximized windows
+        resize smoothly as the strut changes during drag.
+        """
         if not self._resize_edge:
             return
-
         dx = event.x_root - self._resize_start_x
-        dy = event.y_root - self._resize_start_y
-
-        new_w = self._resize_start_width
-        new_h = self._resize_start_height
-        new_x = self._resize_start_win_x
-        new_y = self._resize_start_win_y
-
-        min_w, min_h = self.minsize()
-
-        if "e" in self._resize_edge:
-            new_w = max(min_w, self._resize_start_width + dx)
-        if "w" in self._resize_edge:
-            new_w = max(min_w, self._resize_start_width - dx)
-            if new_w > min_w:
-                new_x = self._resize_start_win_x + dx
-        if "s" in self._resize_edge:
-            new_h = max(min_h, self._resize_start_height + dy)
-        if "n" in self._resize_edge:
-            new_h = max(min_h, self._resize_start_height - dy)
-            if new_h > min_h:
-                new_y = self._resize_start_win_y + dy
-
-        # Enforce: NEVER above GNOME panel
-        min_y = get_workarea_y()
-        if new_y < min_y:
-            # Shrink height instead of going above panel
-            if "n" in self._resize_edge:
-                new_h -= (min_y - new_y)
-                new_h = max(min_h, new_h)
-            new_y = min_y
-
-        self.geometry(f"{int(new_w)}x{int(new_h)}+{int(new_x)}+{int(new_y)}")
+        min_w = self.minsize()[0]
+        new_w = max(min_w, self._resize_start_width + dx)
+        # Enforce max width (leave room for apps)
+        new_w = min(new_w, BSNConstants.FRANK_MAX_WIDTH)
+        self.geometry(f"{int(new_w)}x{self.winfo_height()}+{getattr(self, '_dock_x', 0)}+{getattr(self, '_workarea_y', 0)}")
+        # Live strut update — maximized windows adjust in real-time
+        # Throttled to ~20fps to avoid subprocess lag
+        import time as _t
+        now = _t.time()
+        if now - self._last_strut_update > 0.05 and hasattr(self, '_update_strut'):
+            self._last_strut_update = now
+            self._update_strut()
 
     def _on_resize_end(self, event):
-        """End resize."""
+        """End resize and finalize strut."""
+        if self._resize_edge == "e":
+            if hasattr(self, '_update_strut'):
+                self._update_strut()
         self._resize_edge = None
 
     # ---- Key bindings ----
@@ -454,16 +361,13 @@ class UiMixin:
 
     # ---- Focus hacks ----
 
-    def _on_window_click_focus(self, event):
-        """Focus the overlay when the user clicks on it.
+    def _on_window_click_focus(self, event=None):
+        """Focus the DOCK overlay when clicked.
 
-        With WM-managed windows (no overrideredirect), the WM handles focus
-        naturally. We just need to ensure the entry widget gets focus.
+        DOCK windows never receive automatic focus from the WM.
+        We must explicitly grab focus on any click inside the window.
         """
-        if getattr(self, '_dragging', False):
-            return
         try:
-            self.lift()
             self.focus_force()
             if hasattr(self, 'entry') and hasattr(self.entry, 'text'):
                 self.entry.text.focus_force()
@@ -486,51 +390,50 @@ class UiMixin:
         self._toggle_in_progress = False
 
     def _minimize_overlay(self):
-        """Minimize overlay to taskbar. Restore by clicking taskbar icon or tray."""
+        """Hide DOCK overlay. Restore via tray icon."""
         self._saved_geometry = self.geometry()
         self._overlay_minimized = True
         self._overlay_hidden = True
-        self.iconify()
-        LOG.info("Overlay minimized (geometry saved: %s)", self._saved_geometry)
+        # Clear strut so other windows can use the space
+        try:
+            from overlay.dock_hints import clear_strut
+            xid = getattr(self, '_dock_xid', self.winfo_id())
+            clear_strut(xid)
+        except Exception:
+            pass
+        self.withdraw()
+        LOG.info("Overlay hidden (strut cleared, geometry saved: %s)", self._saved_geometry)
 
     def _show_overlay(self):
-        """Restore overlay to visible state (from iconify or any hidden state)."""
+        """Restore DOCK overlay to visible state."""
         LOG.info("_show_overlay called (minimized=%s, hidden=%s)",
                  getattr(self, '_overlay_minimized', '?'),
                  getattr(self, '_overlay_hidden', '?'))
 
-        # Set flags FIRST to prevent re-entrant calls from pollers
         self._overlay_minimized = False
         self._overlay_hidden = False
 
-        # Clear user-closed signal — if user restores overlay, they want it running
         try:
             from overlay.mixins.lifecycle_mixin import USER_CLOSED_SIGNAL
             USER_CLOSED_SIGNAL.unlink(missing_ok=True)
         except Exception:
             pass
 
-        # Restore geometry if available
         if hasattr(self, '_saved_geometry') and self._saved_geometry:
             self.geometry(self._saved_geometry)
 
-        # deiconify restores from iconified (minimized) state
         self.deiconify()
-
-        if not getattr(self, '_fullscreen_yielded', False):
-            self.attributes("-topmost", True)
         self.attributes("-alpha", 0.95)
-        self.lift()
         self.update_idletasks()
 
-        # Enforce panel boundary after restore
-        if hasattr(self, '_enforce_panel_boundary'):
-            self.after(50, self._enforce_panel_boundary)
+        # Restore strut reservation
+        if hasattr(self, '_update_strut'):
+            self._update_strut()
         try:
             self.entry.focus_set()
         except Exception:
             pass
-        LOG.info("Overlay restored")
+        LOG.info("Overlay restored (strut re-applied)")
 
     # ---- File actions / results clearing ----
 

@@ -29,7 +29,7 @@ from overlay.constants import (
     SYSTEM_CONTROL_AVAILABLE,
     SESSION_ID,
 )
-from overlay.bsn.constants import BSNConstants, get_workarea_y, get_workarea_x, get_workarea
+from overlay.bsn.constants import BSNConstants, get_workarea_y, get_workarea_x, get_workarea, get_primary_monitor
 from overlay.bsn.controller import LayoutController
 from overlay.genesis.watcher import GenesisWatcher
 from overlay.services.system_control import sc_startup_scan
@@ -110,41 +110,30 @@ class ChatOverlay(
 
         self.title("F.R.A.N.K.")
 
-        # WM-managed window WITHOUT decorations (Motif hints).
-        # This gives us: taskbar entry, Alt+Tab, proper iconify/deiconify —
-        # while still having a custom titlebar and no WM frame.
+        # DOCK panel mode: WM-managed window with _NET_WM_WINDOW_TYPE_DOCK.
+        # The WM treats this as a panel (like the taskbar): no decorations,
+        # reserves screen space via strut, other windows avoid our area.
         self.overrideredirect(False)
-        self.attributes("-topmost", True)
 
-        # Dynamic position from workarea (respects GNOME panel + dock)
+        # Read workarea BEFORE setting our strut (after strut, workarea changes)
         wa = get_workarea()
         wa_y = wa["y"]   # Below GNOME panel
         wa_x = wa["x"]   # Right of GNOME dock
-        screen_h = self.winfo_screenheight()
-        frank_h = min(720, screen_h - wa_y - 10)
+        mon = get_primary_monitor()
+        frank_h = mon["height"] - wa_y  # Full height from panel to screen bottom
         frank_h = max(BSNConstants.FRANK_MIN_HEIGHT, frank_h)
         self._workarea_y = wa_y
         self._workarea_x = wa_x
+        self._dock_x = wa_x  # Fixed X position (right of GNOME dock)
 
-        self.geometry(f"{BSNConstants.FRANK_DEFAULT_WIDTH}x{frank_h}+{wa_x + 1}+{wa_y}")
+        self.geometry(f"{BSNConstants.FRANK_DEFAULT_WIDTH}x{frank_h}+{wa_x}+{wa_y}")
         self.minsize(BSNConstants.FRANK_MIN_WIDTH, BSNConstants.FRANK_MIN_HEIGHT)
         self.configure(bg=COLORS["bg_main"])
 
-        # Remove WM decorations via Motif hints (keeps taskbar + Alt+Tab)
+        # Set DOCK type on client window BEFORE mapping (Mutter reads it on MapRequest).
+        # update_idletasks() ensures the X window exists so xwininfo can find it.
         self.update_idletasks()
-        self._remove_wm_decorations()
-
-        # Set window icon for taskbar (reuse tray icon)
-        self._set_taskbar_icon()
-
-        # Track WM-initiated map/unmap (user clicks taskbar to restore)
-        self.bind("<Map>", self._on_wm_map)
-        self.bind("<Unmap>", self._on_wm_unmap)
-
-        # Variables for window dragging
-        self._drag_start_x = 0
-        self._drag_start_y = 0
-        self._dragging = False  # Flag to prevent focus hack during drag
+        self._setup_dock_type_pre_map()
 
         # State
         self._pending_results: List[SearchResult] = []
@@ -318,11 +307,6 @@ class ChatOverlay(
         self.after(25000, self._notification_poll_timer)
         LOG.info("Notification poll timer scheduled")
 
-        # Fullscreen detection state
-        self._fullscreen_yielded = False
-        self._fullscreen_wid = None  # Track which window is fullscreen
-        self._bsn_positioning_until = 0  # BSN coordination: skip fullscreen detection during positioning
-
         # System tray icon for minimize-to-tray
         self._tray_available = start_tray_icon()
         if self._tray_available:
@@ -330,18 +314,8 @@ class ChatOverlay(
             self._poll_tray_signals()
             self._poll_tray_quit_signal()
 
-        # Fullscreen detection polling
-        self.after(2000, self._poll_fullscreen)
-
-        # CRITICAL: Enforce position below GNOME panel after startup
-        # Multiple enforcement passes to catch any drift from WM, focus hacks, etc.
-        self.after(100, self._enforce_panel_boundary)
-        self.after(500, self._enforce_panel_boundary)
-        self.after(2000, self._enforce_panel_boundary)
-        # Periodic enforcement every 10 seconds (catches drift from focus hacks, etc.)
-        self.after(10000, self._periodic_panel_enforcement)
-        # Periodic workarea refresh every 60s (detects resolution/monitor changes)
-        self.after(60000, self._periodic_workarea_refresh)
+        # Periodic monitor change check (resolution/display changes)
+        self.after(60000, self._periodic_monitor_check)
 
         # Register SIGTERM/SIGINT handlers for graceful shutdown
         # MUST be after all init so cleanup can run properly
@@ -350,58 +324,55 @@ class ChatOverlay(
         # FINAL STEP: Reveal fully-built window in one frame — no flicker
         self._reveal_window()
 
-    def _remove_wm_decorations(self):
-        """Remove WM decorations via _MOTIF_WM_HINTS (keeps taskbar + Alt+Tab)."""
+    def _setup_dock_type_pre_map(self):
+        """Set DOCK type on the Tk client window BEFORE deiconify().
+
+        Mutter reads _NET_WM_WINDOW_TYPE during the initial MapRequest.
+        If set after mapping, decorations persist. We find the correct
+        client window (parent of winfo_id's internal container) and
+        set DOCK type while the window is still withdrawn/unmapped.
+        """
         try:
-            wid = self.winfo_id()
-            # Motif hints: flags=0x2 (decorations bit), decorations=0 (none)
-            subprocess.run(
-                ['xprop', '-id', str(wid),
-                 '-f', '_MOTIF_WM_HINTS', '32c',
-                 '-set', '_MOTIF_WM_HINTS', '0x2, 0x0, 0x0, 0x0, 0x0'],
-                capture_output=True, timeout=2,
-                env={**os.environ, 'DISPLAY': ':0'},
-            )
-            LOG.info("WM decorations removed via Motif hints (wid=%s)", wid)
+            from overlay.dock_hints import set_window_type_dock, find_client_window
+            client_xid = find_client_window(self.winfo_id())
+            self._dock_xid = client_xid
+            set_window_type_dock(client_xid)
+            LOG.info("DOCK type set pre-map on client window 0x%x", client_xid)
         except Exception as e:
-            LOG.warning("Could not remove WM decorations: %s — falling back to overrideredirect", e)
-            self.overrideredirect(True)
+            LOG.warning("Pre-map DOCK setup failed: %s — falling back to topmost", e)
+            self.attributes("-topmost", True)
 
-    def _set_taskbar_icon(self):
-        """Set window icon for taskbar/Alt+Tab display."""
+    def _update_strut(self):
+        """Update strut reservation based on current Frank width."""
         try:
-            import tkinter as tk
-            try:
-                from config.paths import TEMP_FILES as _TF_icon
-                icon_path = _TF_icon["icons_dir"] / "frank-tray.png"
-            except ImportError:
-                icon_path = Path("/tmp/frank/icons/frank-tray.png")
-            if icon_path.exists():
-                img = tk.PhotoImage(file=str(icon_path))
-                self.iconphoto(True, img)
-                self._taskbar_icon_img = img  # prevent GC
+            from overlay.dock_hints import set_strut_partial
+            xid = getattr(self, '_dock_xid', self.winfo_id())
+            frank_w = self.winfo_width()
+            left_total = self._dock_x + frank_w
+            mon = get_primary_monitor()
+            set_strut_partial(xid, left_total, 0, mon["height"] - 1)
         except Exception as e:
-            LOG.debug("Could not set taskbar icon: %s", e)
+            LOG.warning("Strut update failed: %s", e)
 
-    def _on_wm_map(self, event):
-        """Handle WM-initiated window map (e.g. user clicks taskbar icon)."""
-        if event.widget is not self:
-            return
-        if getattr(self, '_overlay_minimized', False):
-            self._overlay_minimized = False
-            self._overlay_hidden = False
-            if not getattr(self, '_fullscreen_yielded', False):
-                self.attributes("-topmost", True)
-            self.attributes("-alpha", 0.95)
-            LOG.info("Overlay restored via WM (taskbar click)")
-
-    def _on_wm_unmap(self, event):
-        """Handle WM-initiated window unmap (e.g. WM minimizes window)."""
-        if event.widget is not self:
-            return
-        if not getattr(self, '_overlay_minimized', False):
-            self._overlay_minimized = True
-            LOG.info("Overlay minimized via WM")
+    def _periodic_monitor_check(self):
+        """Check for monitor changes every 60s. Reapply DOCK geometry and strut."""
+        try:
+            old_mon = get_primary_monitor()
+            from overlay.bsn.constants import refresh_primary_monitor
+            refresh_primary_monitor()
+            new_mon = get_primary_monitor()
+            if (old_mon["width"] != new_mon["width"]
+                    or old_mon["height"] != new_mon["height"]):
+                LOG.info("Monitor changed: %dx%d -> %dx%d",
+                         old_mon["width"], old_mon["height"],
+                         new_mon["width"], new_mon["height"])
+                frank_h = new_mon["height"] - self._workarea_y
+                frank_h = max(BSNConstants.FRANK_MIN_HEIGHT, frank_h)
+                self.geometry(f"{self.winfo_width()}x{frank_h}+{self._dock_x}+{self._workarea_y}")
+                self._update_strut()
+        except Exception as e:
+            LOG.debug("Monitor check error: %s", e)
+        self.after(60000, self._periodic_monitor_check)
 
     def _startup_location_refresh(self):
         """Detect real location on startup via IP/WiFi geolocation (1x per session)."""
@@ -423,18 +394,16 @@ class ChatOverlay(
     def _reveal_window(self):
         """Reveal the UI shell instantly, then load messages asynchronously.
 
-        _build_ui() takes ~40ms. We show that immediately (titlebar + input).
-        Messages load in the background via after() so the UI stays responsive.
+        DOCK type was already set pre-map. Now set strut with real dimensions.
         """
         self.deiconify()
         self.update_idletasks()
+        # Set strut NOW — window has real dimensions after deiconify+update
+        self._update_strut()
         self.attributes("-alpha", 0.95)
-        if not getattr(self, '_fullscreen_yielded', False):
-            self.attributes("-topmost", True)
         # Start the status dot animation
         self.after(200, self._draw_status_dot)
         # Load chat history AFTER window is visible and has real dimensions.
-        # 200ms delay gives Tk time to process Configure events so canvas has real width.
         self.after(200, self._deferred_load_history)
 
     def _deferred_load_history(self):

@@ -161,7 +161,8 @@ class AgenticMixin:
         if agentic_verb_re.search(query_lower):
             return True
 
-        # Multi-step indicators
+        # Multi-step indicators — only trigger if combined with an action verb
+        # Prevents false positives on narratives like "there was X and then Y happened"
         multi_step_patterns = [
             " und dann ", " danach ", " anschließend ",
             " als nächstes ", ", dann ",
@@ -169,9 +170,16 @@ class AgenticMixin:
             " and then ", " after that ", " afterwards ",
             " next ", ", then ",
         ]
+        _action_verbs_re = _re.compile(
+            r"\b(mach|erstell|schreib|such|find|install|konfigurier|lösch|"
+            r"kopier|verschieb|änder|starte|stopp|lad|bau|"
+            r"make|create|write|search|find|install|configure|delete|"
+            r"copy|move|change|start|stop|download|build|run|fix|update)\b",
+            _re.IGNORECASE,
+        )
 
         step_count = sum(1 for p in multi_step_patterns if p in query_lower)
-        if step_count >= 1:
+        if step_count >= 1 and _action_verbs_re.search(query_lower):
             return True
 
         # Length + action heuristic (long requests with action verbs)

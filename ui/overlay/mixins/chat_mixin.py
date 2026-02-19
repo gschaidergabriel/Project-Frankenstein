@@ -254,6 +254,8 @@ class ChatMixin:
     # ---------- Workers ----------
     def _do_chat_worker(self, msg: str, max_tokens: int, timeout_s: int, task: str, force, voice: bool = False):
         LOG.debug(f"Chat worker received: {msg[:50]}...")
+        if voice:
+            self._thinking_cancelled = False  # Reset cancel flag for voice requests
         wp_chat_req("ui")  # Wallpaper event: chat request
         self._ui_call(self._show_typing)
 

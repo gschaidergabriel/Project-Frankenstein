@@ -47,7 +47,7 @@ RAM_ALERT_THRESHOLD = 85        # %
 DISK_ALERT_THRESHOLD = 90       # %
 HEALTH_COOLDOWN_S = 300         # 5 min between health alerts
 EMAIL_COOLDOWN_S = 3600         # 1 hour between email priority alerts
-DOWNLOAD_MIN_SIZE = 1_000_000   # 1 MB minimum
+DOWNLOAD_MIN_SIZE = 50_000      # 50 KB minimum
 DOWNLOAD_MAX_AGE_S = 600        # 10 minutes
 
 URGENCY_KEYWORDS = [
@@ -395,33 +395,39 @@ class ProactiveController:
                     continue
 
                 name = f.name
+
+                if name in known:
+                    current_files.append(name)
+                    continue
+
+                try:
+                    fstat = f.stat()
+                except OSError:
+                    continue
+
+                if fstat.st_size < DOWNLOAD_MIN_SIZE:
+                    continue
+
+                age_s = time.time() - fstat.st_mtime
+                if age_s > DOWNLOAD_MAX_AGE_S:
+                    # Too old — don't add to known so it can be picked up
+                    # if the file gets re-downloaded (new mtime)
+                    continue
+
+                size_mb = fstat.st_size / (1024 * 1024)
+                notifications.append({
+                    "id": f"download_{name}_{int(fstat.st_mtime)}",
+                    "category": "download",
+                    "title": "Download complete",
+                    "body": f"{name} ({size_mb:.1f} MB)",
+                    "filepath": str(f),
+                    "urgency": "low",
+                    "timestamp": datetime.now().isoformat(),
+                    "read": False,
+                })
                 current_files.append(name)
 
-                if name not in known:
-                    try:
-                        fstat = f.stat()
-                    except OSError:
-                        continue
-
-                    if fstat.st_size < DOWNLOAD_MIN_SIZE:
-                        continue
-
-                    age_s = time.time() - fstat.st_mtime
-                    if age_s > DOWNLOAD_MAX_AGE_S:
-                        continue
-
-                    size_mb = fstat.st_size / (1024 * 1024)
-                    notifications.append({
-                        "id": f"download_{name}_{int(fstat.st_mtime)}",
-                        "category": "download",
-                        "title": "Download complete",
-                        "body": f"{name} ({size_mb:.1f} MB)",
-                        "urgency": "low",
-                        "timestamp": datetime.now().isoformat(),
-                        "read": False,
-                    })
-
-            # Keep only last 100 known files
+            # Keep only notified + previously known files
             self._state["known_downloads"] = current_files[-100:]
 
         except Exception as e:

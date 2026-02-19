@@ -534,6 +534,15 @@ class UiMixin:
             except Exception:
                 pass
             try:
+                # GPU usage via sysfs (AMD/Intel)
+                import glob
+                for p in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
+                    gpu_pct = int(open(p).read().strip())
+                    parts.append(f"GPU:{gpu_pct}%")
+                    break
+            except Exception:
+                pass
+            try:
                 mem = psutil.virtual_memory()
                 parts.append(f"RAM:{mem.percent:.0f}%")
             except Exception:

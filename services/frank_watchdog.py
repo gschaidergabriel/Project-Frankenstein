@@ -100,14 +100,6 @@ MONITORED_SERVICES = {
         "reset_after": 300,
         "description": "System Toolbox",
     },
-    "aicore-voice": {
-        "critical": False,
-        "restart_delay": 3,
-        "max_restarts": 10,
-        "cooldown": 60,
-        "reset_after": 600,
-        "description": "Voice Daemon",
-    },
 }
 
 CHECK_INTERVAL = 15  # Check every 15 seconds

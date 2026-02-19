@@ -226,36 +226,36 @@ except ImportError:
     def _news_context_inject(msg: str, max_items: int = 5) -> str:
         return ""
 
-# ---------- Color Scheme (Cyberpunk Neon Theme - Magenta Dominant) ----------
+# ---------- Color Scheme (Cyberpunk Neon Theme - Matrix Green) ----------
 COLORS = {
-    # Background layers (ultra-dark, matching FAS popup)
-    "bg_deep": "#08080f",          # Deepest background
-    "bg_main": "#0a0a12",          # Main background (= FAS dark_bg)
-    "bg_elevated": "#12121a",      # Elevated elements
-    "bg_highlight": "#1a1a25",     # Hover/active states
+    # Background layers (pure dark — no color tint for contrast)
+    "bg_deep": "#060606",          # Deepest background
+    "bg_main": "#0a0a0a",          # Main background
+    "bg_elevated": "#141414",      # Elevated elements
+    "bg_highlight": "#1e1e1e",     # Hover/active states
 
-    # Chat bubbles (cyberpunk tints)
-    "bg_user_msg": "#1a1025",      # User bubble (dark magenta-tint)
-    "bg_ai_msg": "#0f1520",        # Frank bubble (dark cyan-tint)
-    "bg_chat": "#0a0a12",          # Chat area
-    "bg_input": "#08080f",         # Input (deeper)
-    "bg_system": "#0a0a12",        # System messages
+    # Chat bubbles (minimal tint for subtle distinction)
+    "bg_user_msg": "#0d1210",      # User bubble (very subtle green)
+    "bg_ai_msg": "#0a0f14",        # Frank bubble (very subtle cyan)
+    "bg_chat": "#0a0a0a",          # Chat area
+    "bg_input": "#060606",         # Input (deeper)
+    "bg_system": "#0a0a0a",        # System messages
 
-    # Accent colors (Soft Magenta primary - distinguishes from FAS Cyan)
-    "accent": "#cc44cc",           # Soft Magenta (Primary) - less harsh
+    # Accent colors (Matrix Green primary)
+    "accent": "#00cc44",           # Matrix Green (Primary)
     "accent_secondary": "#00fff9", # Neon Cyan (Secondary)
-    "accent_hover": "#dd66dd",     # Lighter magenta
-    "accent_dark": "#aa33aa",      # Darker magenta
-    "accent_glow": "#cc44cc40",    # Glow effect (with alpha)
+    "accent_hover": "#33dd66",     # Lighter green
+    "accent_dark": "#00aa33",      # Darker green
+    "accent_glow": "#00cc4440",    # Glow effect (with alpha)
 
     # Text colors (cyberpunk)
     "text_primary": "#e0e0e0",     # Primary text
-    "text_secondary": "#808090",   # Secondary text
-    "text_muted": "#505060",       # Hints, timestamps
+    "text_secondary": "#808080",   # Secondary text (neutral gray)
+    "text_muted": "#505050",       # Hints, timestamps (neutral gray)
     "text_user": "#ffffff",        # User message text
     "text_ai": "#e0e0e0",          # Frank message text
-    "text_system": "#808090",      # System message text
-    "user_label": "#cc44cc",       # User label (soft magenta)
+    "text_system": "#708070",      # System message text
+    "user_label": "#00cc44",       # User label (matrix green)
 
     # Links (cyan for contrast)
     "link": "#00fff9",             # Links (neon cyan)
@@ -263,7 +263,7 @@ COLORS = {
 
     # Neon colors
     "neon_cyan": "#00fff9",        # Neon Cyan
-    "neon_magenta": "#cc44cc",     # Soft Magenta (less harsh)
+    "neon_green": "#00cc44",       # Matrix Green
     "neon_yellow": "#ffff00",      # Neon Yellow
 
     # Status colors (neon)
@@ -275,17 +275,17 @@ COLORS = {
     # Shadows and effects (glow instead of shadow)
     "shadow": "#000000",           # Pure black shadow
     "shadow_light": "#00000040",   # Light shadow
-    "border": "#cc44cc",           # Soft Magenta border
-    "border_subtle": "#cc44cc40",  # Subtle border
-    "border_light": "#dd66dd",     # Lighter border
+    "border": "#00cc44",           # Matrix Green border
+    "border_subtle": "#00cc4440",  # Subtle border
+    "border_light": "#33dd66",     # Lighter border
 
-    # Scrollbar (soft magenta)
-    "scrollbar": "#cc44cc",        # Soft Magenta scrollbar
+    # Scrollbar (matrix green)
+    "scrollbar": "#00cc44",        # Matrix Green scrollbar
     "scrollbar_hover": "#00fff9",  # Cyan on hover
 
     # Darknet / Matrix style (green-on-black)
-    "darknet_bg": "#0a100a",          # Dark green-tinted background
-    "darknet_bg_hover": "#0f1a0f",    # Hover state
+    "darknet_bg": "#0a0a0a",          # Dark background (no tint)
+    "darknet_bg_hover": "#141414",    # Hover state
     "darknet_title": "#00ff41",       # Matrix bright green
     "darknet_title_hover": "#33ff66", # Lighter matrix green
     "darknet_snippet": "#33aa33",     # Dim green for text

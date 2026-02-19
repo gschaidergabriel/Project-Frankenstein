@@ -1022,6 +1022,59 @@ if command -v gsettings &>/dev/null; then
         echo "  Already pinned to dock."
     fi
 fi
+
+# Generate & set FRANK wallpaper (resolution-adaptive)
+LOGO_SRC="$SCRIPT_DIR/assets/frank_logo.png"
+WALLPAPER_OUT="$SCRIPT_DIR/assets/wallpaper_frank.png"
+if [ -f "$LOGO_SRC" ] && command -v gsettings &>/dev/null; then
+    python3 - "$LOGO_SRC" "$WALLPAPER_OUT" << 'PYGEN'
+import sys, subprocess
+from PIL import Image
+import numpy as np
+
+logo_path, out_path = sys.argv[1], sys.argv[2]
+
+# Detect screen resolution via xrandr
+try:
+    out = subprocess.check_output(["xrandr", "--current"], text=True)
+    for line in out.splitlines():
+        if " connected " in line and "primary" in line:
+            for part in line.split():
+                if "x" in part and "+" in part:
+                    res = part.split("+")[0]
+                    screen_w, screen_h = map(int, res.split("x"))
+                    break
+            break
+    else:
+        screen_w, screen_h = 1920, 1080
+except Exception:
+    screen_w, screen_h = 1920, 1080
+
+# Overlay left reservation: GNOME dock (~66px) + Frank default width (~420px)
+overlay_right = 486
+visible_w = screen_w - overlay_right
+
+# Load logo, scale to ~27% of visible width (keeps it tasteful)
+logo = Image.open(logo_path).convert("RGBA")
+target_w = int(visible_w * 0.27)
+scale = target_w / logo.size[0]
+target_h = int(logo.size[1] * scale)
+logo_small = logo.resize((target_w, target_h), Image.LANCZOS)
+
+# Center in visible area, vertically centered
+cx = overlay_right + (visible_w - target_w) // 2
+cy = (screen_h - target_h) // 2
+
+canvas = Image.new("RGB", (screen_w, screen_h), (0, 0, 0))
+canvas.paste(logo_small, (cx, cy), logo_small)
+canvas.save(out_path, "PNG")
+print(f"  Wallpaper: {screen_w}x{screen_h}, logo at ({cx},{cy}) {target_w}x{target_h}")
+PYGEN
+    gsettings set org.gnome.desktop.background picture-uri "file://$WALLPAPER_OUT" 2>/dev/null
+    gsettings set org.gnome.desktop.background picture-uri-dark "file://$WALLPAPER_OUT" 2>/dev/null
+    gsettings set org.gnome.desktop.background picture-options "zoom" 2>/dev/null
+    echo "  FRANK wallpaper set."
+fi
 echo "  Done."
 
 # ============================================================================

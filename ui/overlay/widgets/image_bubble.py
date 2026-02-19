@@ -42,7 +42,7 @@ class ImageBubble(tk.Frame):
         # Determine colors
         if is_user:
             self._bubble_bg = COLORS["bg_user_msg"]
-            self._border_color = COLORS["neon_magenta"]
+            self._border_color = COLORS["neon_green"]
             self._align = "e"
             self._sender_text = "USER"
             self._sender_icon = ">"
@@ -188,7 +188,7 @@ class ImageBubble(tk.Frame):
         self.img_label.bind("<Button-1>", self._on_image_click)
 
         # Hover effects
-        self.img_label.bind("<Enter>", lambda e: img_frame.configure(bg=COLORS["neon_magenta"] if not self.is_user else COLORS["neon_cyan"]))
+        self.img_label.bind("<Enter>", lambda e: img_frame.configure(bg=COLORS["neon_green"] if not self.is_user else COLORS["neon_cyan"]))
         self.img_label.bind("<Leave>", lambda e: img_frame.configure(bg=self._border_color))
 
         # Caption if provided

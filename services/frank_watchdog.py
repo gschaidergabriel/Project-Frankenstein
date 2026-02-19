@@ -9,8 +9,6 @@ Monitors:
 - aicore-core (Chat orchestrator)
 - aicore-router (Model routing)
 - aicore-llama3-gpu (Primary LLM)
-- frank-wallpaper (Visual embodiment)
-
 Unlike the Genesis-specific watchdog, this covers Frank's core
 infrastructure. If a service dies, it gets restarted automatically
 without needing user approval (crash recovery is always safe).
@@ -83,14 +81,6 @@ MONITORED_SERVICES = {
         "cooldown": 60,
         "reset_after": 600,
         "description": "Llama3 GPU (Primary LLM)",
-    },
-    "frank-wallpaper": {
-        "critical": False,      # Nice to have, not critical
-        "restart_delay": 5,
-        "max_restarts": 10,
-        "cooldown": 60,
-        "reset_after": 600,
-        "description": "Live Wallpaper (NEC)",
     },
     "aicore-toolboxd": {
         "critical": True,

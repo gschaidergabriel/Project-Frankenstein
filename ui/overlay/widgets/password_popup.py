@@ -358,7 +358,7 @@ class PasswordPopup(tk.Toplevel):
         ).pack(side="left", padx=(0, 8))
 
         self._make_button(
-            btn_frame, "🔒 SPERREN", "#ffffff", COLORS["neon_magenta"],
+            btn_frame, "🔒 SPERREN", "#ffffff", COLORS["neon_green"],
             self._do_lock_and_show
         ).pack(side="right")
 

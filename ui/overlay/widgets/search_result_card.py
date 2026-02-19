@@ -41,7 +41,7 @@ class SearchResultCard(tk.Frame):
             self._title_fg = COLORS["link"]
             self._title_hover_fg = COLORS["link_hover"]
             self._snippet_fg = COLORS["text_secondary"]
-            self._badge_bg = COLORS["neon_magenta"]
+            self._badge_bg = COLORS["neon_green"]
             self._badge_fg = COLORS["bg_main"]
 
         # Card container with left border
@@ -154,7 +154,7 @@ class SearchResultCard(tk.Frame):
                         pass
 
     def _on_enter(self, event):
-        hover_border = COLORS["darknet_title"] if self._darknet else COLORS["neon_magenta"]
+        hover_border = COLORS["darknet_title"] if self._darknet else COLORS["neon_green"]
         self._update_colors(self._hover_bg, hover_border)
         self.title.configure(fg=self._title_hover_fg)
 

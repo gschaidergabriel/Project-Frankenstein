@@ -20,7 +20,7 @@ class UiMixin:
 
     def _build_ui(self):
         # Main container with border
-        outer = tk.Frame(self, bg=COLORS["neon_magenta"], padx=2, pady=2)
+        outer = tk.Frame(self, bg=COLORS["neon_green"], padx=2, pady=2)
         outer.pack(fill="both", expand=True)
 
         main = tk.Frame(outer, bg=COLORS["bg_main"])
@@ -34,7 +34,7 @@ class UiMixin:
         titlebar.pack_propagate(False)  # Fixed height
 
         # Accent line at bottom of titlebar
-        accent_line = tk.Frame(titlebar, bg=COLORS["neon_magenta"], height=2)
+        accent_line = tk.Frame(titlebar, bg=COLORS["neon_green"], height=2)
         accent_line.pack(fill="x", side="bottom")
 
         # Title area (draggable)
@@ -53,7 +53,7 @@ class UiMixin:
             title_area,
             text="F.R.A.N.K.",
             bg=COLORS["bg_elevated"],
-            fg=COLORS["neon_magenta"],
+            fg=COLORS["neon_green"],
             font=("Consolas", 11, "bold")
         )
         title_label.pack(side="left", pady=12)
@@ -131,7 +131,7 @@ class UiMixin:
             chat_container,
             orient="vertical",
             command=self.chat_canvas.yview,
-            bg=COLORS["neon_magenta"],
+            bg=COLORS["neon_green"],
             troughcolor=COLORS["bg_deep"],
             activebackground=COLORS["neon_cyan"],
             width=6  # Thin scrollbar
@@ -223,39 +223,47 @@ class UiMixin:
         self.send_btn.pack(side="right")
 
         # ═══════════════════════════════════════════════════════════════
-        # STATUS BAR (bottom, thin, service health + hint)
+        # STATUS BAR (bottom, two rows: services + hardware stats)
         # ═══════════════════════════════════════════════════════════════
-        self._status_bar = tk.Frame(main, bg=COLORS["bg_deep"], height=20)
+        self._status_bar = tk.Frame(main, bg=COLORS["bg_deep"])
         self._status_bar.pack(side="bottom", fill="x")
-        self._status_bar.pack_propagate(False)
 
-        # Service health dots
+        # Row 1: Service health dots
+        svc_row = tk.Frame(self._status_bar, bg=COLORS["bg_deep"])
+        svc_row.pack(fill="x", padx=4, pady=(2, 0))
+
         self._svc_dots = {}
         for svc_name in ("Core", "LLM", "Tools", "Voice"):
             dot = tk.Label(
-                self._status_bar, text="\u25cf",
+                svc_row, text="\u25cf",
                 font=("Consolas", 7),
                 fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
             )
             dot.pack(side="left", padx=2)
             name_lbl = tk.Label(
-                self._status_bar, text=svc_name,
+                svc_row, text=svc_name,
                 font=("Consolas", 7),
                 fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
             )
             name_lbl.pack(side="left", padx=(0, 6))
             self._svc_dots[svc_name] = dot
 
-        # Hint text (right side)
-        self._status_hint = tk.Label(
-            self._status_bar, text="/ for commands  |  \u2191\u2193 history",
+        # Row 2: Hardware stats (own line)
+        hw_row = tk.Frame(self._status_bar, bg=COLORS["bg_deep"])
+        hw_row.pack(fill="x", padx=4, pady=(0, 2))
+
+        self._hw_stats_label = tk.Label(
+            hw_row, text="",
             font=("Consolas", 7),
-            fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
+            fg=COLORS["neon_green"], bg=COLORS["bg_deep"],
+            anchor="w",
         )
-        self._status_hint.pack(side="right", padx=8)
+        self._hw_stats_label.pack(side="left", padx=2)
 
         # Start health polling after UI is up
         self.after(5000, self._poll_service_health)
+        # Start hardware stats polling
+        self.after(3000, self._poll_hw_stats)
 
         # DnD support
         if DND_AVAILABLE:
@@ -489,3 +497,59 @@ class UiMixin:
         threading.Thread(target=_check, daemon=True).start()
         # Re-poll every 30 seconds
         self.after(30000, self._poll_service_health)
+
+    def _poll_hw_stats(self):
+        """Poll CPU/GPU temps, usage, and RAM. Update status bar."""
+        import threading
+
+        def _read():
+            import psutil
+            parts = []
+            try:
+                # CPU temp (k10temp or coretemp)
+                temps = psutil.sensors_temperatures()
+                cpu_t = None
+                for chip in ("k10temp", "coretemp", "zenpower"):
+                    if chip in temps and temps[chip]:
+                        cpu_t = int(temps[chip][0].current)
+                        break
+                if cpu_t is not None:
+                    parts.append(f"CPU:{cpu_t}°C")
+            except Exception:
+                pass
+            try:
+                # GPU temp (amdgpu)
+                temps = psutil.sensors_temperatures()
+                gpu_t = None
+                for chip in ("amdgpu", "nvidia", "radeon"):
+                    if chip in temps and temps[chip]:
+                        gpu_t = int(temps[chip][0].current)
+                        break
+                if gpu_t is not None:
+                    parts.append(f"GPU:{gpu_t}°C")
+            except Exception:
+                pass
+            try:
+                parts.append(f"CPU:{psutil.cpu_percent(interval=0.1):.0f}%")
+            except Exception:
+                pass
+            try:
+                mem = psutil.virtual_memory()
+                parts.append(f"RAM:{mem.percent:.0f}%")
+            except Exception:
+                pass
+
+            text = " | ".join(parts)
+
+            def _update():
+                try:
+                    self._hw_stats_label.configure(text=text)
+                except Exception:
+                    pass
+            try:
+                self.after(0, _update)
+            except Exception:
+                pass
+
+        threading.Thread(target=_read, daemon=True).start()
+        self.after(5000, self._poll_hw_stats)

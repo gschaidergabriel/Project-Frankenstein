@@ -164,9 +164,9 @@ class MessageBubble(tk.Frame):
         elif is_user:
             bubble_bg = COLORS["bg_user_msg"]
             text_color = COLORS["text_user"]
-            border_color = COLORS["neon_magenta"]
+            border_color = COLORS["neon_green"]
             align = "e"
-            sender_color = COLORS["neon_magenta"]
+            sender_color = COLORS["neon_green"]
             sender_text = "USER"
             sender_icon = "\u25b6"
         else:

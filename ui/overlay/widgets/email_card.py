@@ -79,7 +79,7 @@ class EmailCard(tk.Frame):
         if not email_data.read:
             badge = tk.Label(
                 header, text=" NEU ",
-                bg=COLORS["neon_magenta"], fg=COLORS["bg_main"],
+                bg=COLORS["neon_green"], fg=COLORS["bg_main"],
                 font=("Consolas", 8, "bold")
             )
             badge.pack(side="left", padx=(0, 6))
@@ -145,13 +145,13 @@ class EmailCard(tk.Frame):
                 child.configure(bg=bg_color)
                 for gc in child.winfo_children():
                     try:
-                        if gc.cget('bg') not in [COLORS["neon_magenta"]]:
+                        if gc.cget('bg') not in [COLORS["neon_green"]]:
                             gc.configure(bg=bg_color)
                     except tk.TclError:
                         pass
 
     def _on_enter(self, event):
-        self._update_colors(self._hover_bg, COLORS["neon_magenta"])
+        self._update_colors(self._hover_bg, COLORS["neon_green"])
         self.sender_label.configure(fg=COLORS.get("link_hover", COLORS["neon_cyan"]))
 
     def _on_leave(self, event):

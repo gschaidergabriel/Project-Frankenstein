@@ -21,7 +21,7 @@ class ModernEntry(tk.Frame):
     def __init__(self, parent, height=40, **kwargs):
         kwargs.pop('height', None)
 
-        super().__init__(parent, bg=COLORS["neon_magenta"], padx=2, pady=2)
+        super().__init__(parent, bg=COLORS["neon_green"], padx=2, pady=2)
 
         # Inner frame for dark background
         self.inner = tk.Frame(self, bg=COLORS["bg_deep"])
@@ -333,7 +333,7 @@ class ModernEntry(tk.Frame):
 
     def _on_focus_out(self, event):
         """Magenta border when unfocused."""
-        self.configure(bg=COLORS["neon_magenta"])
+        self.configure(bg=COLORS["neon_green"])
         # Dismiss palette on focus out
         self._dismiss_palette()
 

@@ -93,7 +93,7 @@ class GenesisNotificationPopup(tk.Toplevel):
 
         self.category_label = tk.Label(
             info_frame, text="", bg=COLORS["bg_elevated"],
-            fg=COLORS["neon_magenta"], font=("Consolas", 10, "bold"), padx=8, pady=2
+            fg=COLORS["neon_green"], font=("Consolas", 10, "bold"), padx=8, pady=2
         )
         self.category_label.pack(side="left")
 

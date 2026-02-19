@@ -10,7 +10,7 @@ class FileActionBar(tk.Frame):
         super().__init__(parent, bg=COLORS["bg_input"], padx=12, pady=10)
 
         # Top border line (neon accent)
-        border_line = tk.Frame(self, bg=COLORS["neon_magenta"], height=2)
+        border_line = tk.Frame(self, bg=COLORS["neon_green"], height=2)
         border_line.pack(fill="x", pady=(0, 8))
 
         # File info with cyberpunk styling

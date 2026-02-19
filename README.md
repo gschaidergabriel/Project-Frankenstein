@@ -3,7 +3,7 @@
 > [!CAUTION]
 > This is an experimental autonomous AI system with persistent emotional states, self-modifying personality, and emergent behavioral dynamics. It operates continuously, evolves over time, and may develop responses that are difficult to predict or reverse. Misconfiguration or unattended operation can lead to unintended outcomes. Deploy deliberately and monitor responsibly.
 
-> **Get started in one command:** Download the [install wizard](install-wizard.spec), run `python3 install_wizard.py` and follow the guided setup — it handles everything from GPU detection to model downloads.
+> **Get started in one command:** Download [`frank-installer`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-installer), run `chmod +x frank-installer && ./frank-installer` — no Python required. Or clone the repo and run `python3 install_wizard.py`.
 
 Built by one person in 2 months with zero programming experience. [Read the full story.](ABOUT.md)
 

@@ -288,6 +288,9 @@ class ConsciousnessDaemon:
         self._active_goals_summary: str = ""
         self._goal_conflict: str = ""
 
+        # --- Workspace update counter (for periodic ego auto-training) ---
+        self._ws_update_count: int = 0
+
         # Init
         self._ensure_schema()
         self._load_latest_state()
@@ -648,10 +651,7 @@ class ConsciousnessDaemon:
         ego_data = self._poll_ego()
 
         # ── Ego-Construct Auto-Training (every 5th update ~2.5 min) ──
-        if hasattr(self, '_ws_update_count'):
-            self._ws_update_count += 1
-        else:
-            self._ws_update_count = 0
+        self._ws_update_count += 1
         if self._ws_update_count % 5 == 0:
             try:
                 from personality.ego_construct import get_ego_construct
@@ -1451,7 +1451,7 @@ class ConsciousnessDaemon:
         embodiment_markers = [
             "body", "hardware", "temperature", "cpu", "gpu", "ram",
             "physical", "sensation", "feel my", "warmth", "heat",
-            "körper", "hardware", "temperatur",
+            "körper", "temperatur",
         ]
 
         # Score each category

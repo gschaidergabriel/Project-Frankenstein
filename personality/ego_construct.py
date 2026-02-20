@@ -1322,6 +1322,36 @@ class EgoConstruct:
             "last_training": self.state.last_training.isoformat() if self.state.last_training else None,
         }
 
+    def _is_sensation_in_db(self, mapping_id: str) -> bool:
+        """Check if a sensation mapping is already persisted in DB."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM sensation_mappings WHERE id = ? LIMIT 1",
+                (mapping_id,),
+            )
+            exists = cursor.fetchone() is not None
+            conn.close()
+            return exists
+        except Exception:
+            return False
+
+    def _is_affect_in_db(self, affect_id: str) -> bool:
+        """Check if an affect definition is already persisted in DB."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM affect_definitions WHERE id = ? LIMIT 1",
+                (affect_id,),
+            )
+            exists = cursor.fetchone() is not None
+            conn.close()
+            return exists
+        except Exception:
+            return False
+
     def auto_train_from_state(self, system_metrics: Dict,
                              recent_events: Optional[List[str]] = None,
                              autonomous_actions: Optional[List[str]] = None):
@@ -1342,14 +1372,15 @@ class EgoConstruct:
 
             # ── Auto-train Sensations ──
             # Detect active sensations from current hardware state and persist
-            # any DEFAULT_MAPPING that triggers as a custom mapping.
+            # any DEFAULT_MAPPING that hasn't been saved to DB yet.
             # This transitions embodiment from "code defaults" to "learned feelings".
+            # Note: we check the DB directly instead of activation_count because
+            # other callers of evaluate_current_state() also increment the counter.
             active_sensations = self.sensation_mapper.evaluate_current_state(system_metrics)
             for mapping, intensity in active_sensations:
-                if not mapping.id.startswith("custom_") and mapping.activation_count <= 3:
-                    # First few activations of a default mapping → persist it
-                    # so the ego "learns" this body feeling
-                    if mapping.activation_count == 3:
+                if not mapping.id.startswith("custom_"):
+                    # Check if this default mapping is already persisted
+                    if not self._is_sensation_in_db(mapping.id):
                         self.sensation_mapper._save_mapping(mapping)
                         self.state.qualia_count += 1
                         self.state.embodiment_level = min(
@@ -1363,22 +1394,23 @@ class EgoConstruct:
 
             # ── Auto-train Affects ──
             # When events occur, check if they trigger affect definitions.
-            # Persist default affects that fire for the first time.
+            # Persist default affects that haven't been saved to DB yet.
             if recent_events:
                 for event in recent_events:
                     result = self.affect_linker.process_event(event)
                     if result:
                         affect, intensity = result
-                        if not affect.id.startswith("custom_") and affect.trigger_count == 3:
-                            self.affect_linker._save_affect(affect)
-                            self.state.affective_range = min(
-                                0.95, self.state.affective_range + 0.01
-                            )
-                            changed = True
-                            LOG.info(
-                                "Auto-trained affect: %s → %s",
-                                event, affect.emotion.value,
-                            )
+                        if not affect.id.startswith("custom_"):
+                            if not self._is_affect_in_db(affect.id):
+                                self.affect_linker._save_affect(affect)
+                                self.state.affective_range = min(
+                                    0.95, self.state.affective_range + 0.01
+                                )
+                                changed = True
+                                LOG.info(
+                                    "Auto-trained affect: %s → %s",
+                                    event, affect.emotion.value,
+                                )
 
             # ── Auto-train Agency ──
             # When Frank makes autonomous decisions (reflections, goal extraction,

@@ -554,21 +554,23 @@ class GenesisDaemon:
         Modifies non-core prompt sections. Creates a backup before
         applying changes. Core identity section is PROTECTED.
         """
+        import shutil
+        from pathlib import Path
+
+        _root = Path(__file__).resolve().parents[2]
+        persona_path = _root / "personality" / "frank.persona.json"
+        backup_path = persona_path.with_suffix(".json.genesis_backup")
+
         try:
             import sys
-            from pathlib import Path
-            _root = Path(__file__).resolve().parents[2]
             if str(_root) not in sys.path:
                 sys.path.insert(0, str(_root))
 
-            persona_path = _root / "personality" / "frank.persona.json"
             if not persona_path.exists():
                 LOG.error("Persona file not found: %s", persona_path)
                 return False
 
             # Backup before modification
-            backup_path = persona_path.with_suffix(".json.genesis_backup")
-            import shutil
             shutil.copy2(persona_path, backup_path)
 
             genome = crystal.organism.genome
@@ -594,7 +596,6 @@ class GenesisDaemon:
                 return False
 
             # Apply modification
-            old_value = prompts[target_section]
             prompts[target_section] = modification
             persona["prompts"] = prompts
 
@@ -608,7 +609,8 @@ class GenesisDaemon:
             return True
         except Exception as e:
             LOG.error("Genesis→Prompt evolution failed: %s", e)
-            # Attempt rollback
+            # Attempt rollback — shutil, backup_path, persona_path are
+            # always defined (assigned before the try block).
             try:
                 if backup_path.exists():
                     shutil.copy2(backup_path, persona_path)

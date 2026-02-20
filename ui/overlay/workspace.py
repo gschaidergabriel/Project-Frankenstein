@@ -76,7 +76,8 @@ def build_workspace(
         factor = 0.5 + w  # 0.5 at w=0, 1.0 at w=0.5, 1.5 at w=1.0
         return max(50, int(base * factor))
 
-    b_emi = _scale(b_emi, "body")
+    b_body = _scale(b_emi, "body")
+    b_identity = _scale(b_emi, "identity")
     b_world = _scale(b_world, "memory")
     b_news = _scale(b_news, "memory")
     b_titan = _scale(b_titan, "memory")
@@ -85,7 +86,7 @@ def build_workspace(
     # Merge ego_construct embodied description with hardware metrics
     body = _build_body(ego_ctx, hw_summary, hw_detail)
     if body:
-        lines.append("Body: " + body[:b_emi])
+        lines.append("Body: " + body[:b_body])
 
     # --- Perception (RPT: recurrent perceptual feedback) ---
     if perception_ctx:
@@ -114,7 +115,7 @@ def build_workspace(
         lines.append("Memory: " + memory)
 
     # --- Identity ---
-    ident = _clean_ctx(identity_ctx, max_len=min(180, b_emi))
+    ident = _clean_ctx(identity_ctx, max_len=min(180, b_identity))
     if ident:
         lines.append("Identity: " + ident)
 

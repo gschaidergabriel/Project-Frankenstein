@@ -966,7 +966,7 @@ CONTACTS_GENERAL_RE = re.compile(
 # ── 20. Notes/Memos regex patterns (bilingual DE+EN) ─────────────
 
 NOTES_CREATE_RE = re.compile(
-    r"(merk\s?dir|merke?\s?dir|notiz(?!en\b)|memo(?!s\b)|note(?!n\b)|remember|schreib auf|aufschreiben|write down|jot down|save a note|make a note)"
+    r"^(merk\s?dir|merke?\s?dir|notiz(?!en\b)|memo(?!s\b)|note(?!n\b)|remember\s+that|remember[:;]|schreib auf|aufschreiben|write down|jot down|save a note|make a note)"
     r"\s*[:;]?\s*(?:dass?|that)?\s+(.+)",
     re.IGNORECASE | re.DOTALL,
 )

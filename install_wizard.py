@@ -71,7 +71,7 @@ SUBTITLE = f"[bold {MATRIX_CYAN}]AI CORE SYSTEM[/]  [dim {MATRIX_DIM}]—  Insta
 # ── Installation steps ──────────────────────────────────────────────────────
 STEPS = [
     {"id": "sysreq",   "name": "System Requirements",   "desc": "Checking RAM, disk space, architecture"},
-    {"id": "apt",      "name": "System Packages",       "desc": "Installing apt dependencies (python3, cmake, GTK, espeak...)"},
+    {"id": "apt",      "name": "System Packages",       "desc": "Installing apt dependencies (python3, cmake, GTK, firejail...)"},
     {"id": "gpu",      "name": "GPU Detection",         "desc": "Detecting GPU backend (Vulkan / CUDA / CPU)"},
     {"id": "venv",     "name": "Python Venv (main)",    "desc": "Creating virtual environment, installing pip packages"},
     {"id": "ingestd",  "name": "Python Venv (ingestd)", "desc": "Setting up ingestd venv (faster-whisper, ctranslate2)"},
@@ -82,7 +82,8 @@ STEPS = [
     {"id": "models",   "name": "LLM Models (GGUF)",     "desc": "Downloading Llama 3.1 8B + Qwen 2.5 Coder 7B (~10 GB)"},
     {"id": "voice",    "name": "Voice / TTS Setup",     "desc": "Piper (Thorsten DE) + Kokoro (am_fenrir EN) + espeak"},
     {"id": "systemd",  "name": "Systemd Services",      "desc": "Installing and enabling 25+ user services"},
-    {"id": "desktop",  "name": "Desktop Integration",   "desc": "Desktop entries, dock icons, launcher scripts"},
+    {"id": "desktop",  "name": "Desktop Integration",   "desc": "Desktop entries, dock icons, wallpaper, autostart"},
+    {"id": "start",    "name": "Start Services",        "desc": "Starting all services and the Frank overlay"},
 ]
 
 
@@ -419,6 +420,7 @@ def ask_options() -> list:
         "models": True,
         "build": True,
         "cpu_only": False,
+        "force": False,
     }
 
     # Models
@@ -442,6 +444,13 @@ def ask_options() -> list:
     options["cpu_only"] = r == "y"
     console.print()
 
+    # Force reinstall
+    console.print(f"  [{MATRIX_GREEN}][4][/] Force overwrite existing service files? (reinstall/update)")
+    console.print(f"      [{MATRIX_DIM}]Use when updating an existing installation[/]")
+    r = console.input(f"      [{MATRIX_BRIGHT}]> [y/N]: [/]").strip().lower()
+    options["force"] = r == "y"
+    console.print()
+
     args = []
     if not options["models"]:
         args.append("--no-models")
@@ -449,6 +458,8 @@ def ask_options() -> list:
         args.append("--no-build")
     if options["cpu_only"]:
         args.append("--cpu-only")
+    if options["force"]:
+        args.append("--force")
 
     return args
 
@@ -497,19 +508,20 @@ def run_installation(args: list):
 
     # Step-to-install.sh marker mapping
     STEP_MARKERS = {
-        "[1/13]":  "sysreq",
-        "[2/13]":  "apt",
-        "[3/13]":  "gpu",
-        "[4/13]":  "venv",
-        "[5/13]":  "ingestd",
-        "[6/13]":  "llama",
-        "[7/13]":  "whisper",
-        "[8/13]":  "dirs",
-        "[9/13]":  "ollama",
-        "[10/13]": "models",
-        "[11/13]": "voice",
-        "[12/13]": "systemd",
-        "[13/13]": "desktop",
+        "[1/14]":  "sysreq",
+        "[2/14]":  "apt",
+        "[3/14]":  "gpu",
+        "[4/14]":  "venv",
+        "[5/14]":  "ingestd",
+        "[6/14]":  "llama",
+        "[7/14]":  "whisper",
+        "[8/14]":  "dirs",
+        "[9/14]":  "ollama",
+        "[10/14]": "models",
+        "[11/14]": "voice",
+        "[12/14]": "systemd",
+        "[13/14]": "desktop",
+        "[14/14]": "start",
     }
 
     # Track which step we're on by parsing install.sh output
@@ -620,12 +632,17 @@ def show_completion(exit_code: int):
         console.print(Align.center(f"[bold {MATRIX_GREEN}]║                                          ║[/]"))
         console.print(Align.center(f"[bold {MATRIX_GREEN}]╚══════════════════════════════════════════╝[/]"))
         console.print()
-        console.print(f"  [{MATRIX_CYAN}]Start all services:[/]")
-        console.print(f"  [{MATRIX_GREEN}]  systemctl --user start aicore-router aicore-core aicore-llama3-gpu[/]")
-        console.print(f"  [{MATRIX_GREEN}]  systemctl --user start aicore-modeld aicore-toolboxd aicore-webd[/]")
+        console.print(f"  [{MATRIX_CYAN}]All services have been started automatically.[/]")
         console.print()
-        console.print(f"  [{MATRIX_CYAN}]Launch the overlay:[/]")
+        console.print(f"  [{MATRIX_CYAN}]Check service status:[/]")
+        console.print(f"  [{MATRIX_GREEN}]  systemctl --user status aicore-core[/]")
+        console.print(f"  [{MATRIX_GREEN}]  systemctl --user list-units 'aicore-*' --state=running[/]")
+        console.print()
+        console.print(f"  [{MATRIX_CYAN}]Restart overlay:[/]")
         console.print(f"  [{MATRIX_GREEN}]  {SCRIPT_DIR}/ui/frank_overlay_launcher.sh[/]")
+        console.print()
+        console.print(f"  [{MATRIX_CYAN}]View logs:[/]")
+        console.print(f"  [{MATRIX_GREEN}]  journalctl --user -u aicore-core -f[/]")
         console.print()
     else:
         console.print(Align.center(f"[bold #FF4444]╔══════════════════════════════════════════╗[/]"))
@@ -650,8 +667,19 @@ def setup_repo_if_needed() -> Path:
     """
     global SCRIPT_DIR, OPT_DIR, AICORE_ROOT, INSTALL_SH
 
-    # If install.sh exists (running from source), no setup needed
-    if INSTALL_SH.exists():
+    # Running from source tree (not a PyInstaller binary)?
+    # Check that the REAL source tree exists (not just the bundled install.sh)
+    if not getattr(sys, '_MEIPASS', None) and INSTALL_SH.exists():
+        return SCRIPT_DIR
+
+    # In standalone binary mode, check if real source exists at default path
+    default_src = DEFAULT_INSTALL_DIR / "opt" / "aicore"
+    if (default_src / "install.sh").exists() and (default_src / "core").is_dir():
+        SCRIPT_DIR = default_src
+        OPT_DIR = SCRIPT_DIR.parent
+        AICORE_ROOT = OPT_DIR.parent
+        INSTALL_SH = SCRIPT_DIR / "install.sh"
+        console.print(f"  [{MATRIX_GREEN}]Found existing installation at {SCRIPT_DIR}[/]")
         return SCRIPT_DIR
 
     console.print()

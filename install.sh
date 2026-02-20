@@ -2,7 +2,7 @@
 # ============================================================================
 # AI-Core / Frank — Installation Script
 # ============================================================================
-# Usage:  ./install.sh [--no-models] [--cpu-only] [--no-build]
+# Usage:  ./install.sh [--no-models] [--cpu-only] [--no-build] [--force]
 #
 # This script:
 #   1.  Checks system requirements (RAM, disk)
@@ -17,7 +17,8 @@
 #   10. Downloads LLM models (GGUF)
 #   11. Sets up Voice / TTS (Piper German + Kokoro English + espeak)
 #   12. Installs all systemd user services (25+ services)
-#   13. Creates desktop entries and dock icons
+#   13. Creates desktop entries, dock icons, wallpaper, autostart
+#   14. Starts all services
 # ============================================================================
 
 set -euo pipefail
@@ -26,16 +27,19 @@ set -euo pipefail
 NO_MODELS=false
 CPU_ONLY=false
 NO_BUILD=false
+FORCE=false
 for arg in "$@"; do
     case "$arg" in
         --no-models) NO_MODELS=true ;;
         --cpu-only)  CPU_ONLY=true ;;
         --no-build)  NO_BUILD=true ;;
+        --force)     FORCE=true ;;
         --help|-h)
-            echo "Usage: ./install.sh [--no-models] [--cpu-only] [--no-build]"
+            echo "Usage: ./install.sh [--no-models] [--cpu-only] [--no-build] [--force]"
             echo "  --no-models   Skip downloading LLM / voice model files"
             echo "  --cpu-only    Force CPU-only mode (no GPU acceleration)"
             echo "  --no-build    Skip building llama.cpp and whisper.cpp from source"
+            echo "  --force       Overwrite existing service files (for reinstall/update)"
             exit 0
             ;;
     esac
@@ -89,9 +93,9 @@ download_file() {
 }
 
 # ============================================================================
-# [1/13] System requirements check
+# [1/14] System requirements check
 # ============================================================================
-echo "[1/13] Checking system requirements..."
+echo "[1/14] Checking system requirements..."
 RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 mkdir -p "$MODELS_DIR" 2>/dev/null || true
 DISK_FREE_MB=$(df -BM --output=avail "$MODELS_DIR" 2>/dev/null | tail -1 | tr -d ' M')
@@ -110,9 +114,9 @@ if ! $NO_MODELS && [ "$DISK_FREE_MB" -lt 20000 ]; then
 fi
 
 # ============================================================================
-# [2/13] System dependencies
+# [2/14] System dependencies
 # ============================================================================
-echo "[2/13] Installing system dependencies..."
+echo "[2/14] Installing system dependencies..."
 sudo apt-get update -qq
 
 # Core system packages
@@ -123,6 +127,8 @@ sudo apt-get install -y -qq \
     tesseract-ocr \
     pulseaudio-utils \
     curl wget git jq lsof \
+    firejail \
+    libnotify-bin \
     libgirepository1.0-dev gir1.2-appindicator3-0.1 \
     2>/dev/null
 
@@ -141,9 +147,9 @@ sudo apt-get install -y -qq \
 echo "  Done."
 
 # ============================================================================
-# [3/13] GPU detection
+# [3/14] GPU detection
 # ============================================================================
-echo "[3/13] Detecting GPU..."
+echo "[3/14] Detecting GPU..."
 GPU_NAME="none"
 GPU_BACKEND="cpu"
 CMAKE_GPU_FLAG=""
@@ -186,9 +192,9 @@ else
 fi
 
 # ============================================================================
-# [4/13] Python venv (main)
+# [4/14] Python venv (main)
 # ============================================================================
-echo "[4/13] Setting up main Python virtual environment..."
+echo "[4/14] Setting up main Python virtual environment..."
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
 fi
@@ -199,9 +205,9 @@ deactivate
 echo "  Done. ($(python3 --version))"
 
 # ============================================================================
-# [5/13] Python venv (ingestd)
+# [5/14] Python venv (ingestd)
 # ============================================================================
-echo "[5/13] Setting up ingestd virtual environment..."
+echo "[5/14] Setting up ingestd virtual environment..."
 if [ ! -d "$VENV_INGESTD" ]; then
     python3 -m venv "$VENV_INGESTD"
 fi
@@ -214,12 +220,12 @@ deactivate
 echo "  Done."
 
 # ============================================================================
-# [6/13] Build llama.cpp
+# [6/14] Build llama.cpp
 # ============================================================================
 if $NO_BUILD; then
-    echo "[6/13] Skipping llama.cpp build (--no-build)"
+    echo "[6/14] Skipping llama.cpp build (--no-build)"
 else
-    echo "[6/13] Building llama.cpp..."
+    echo "[6/14] Building llama.cpp..."
     if [ ! -d "$LLAMA_DIR" ]; then
         git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
     fi
@@ -236,12 +242,12 @@ else
 fi
 
 # ============================================================================
-# [7/13] Build whisper.cpp
+# [7/14] Build whisper.cpp
 # ============================================================================
 if $NO_BUILD; then
-    echo "[7/13] Skipping whisper.cpp build (--no-build)"
+    echo "[7/14] Skipping whisper.cpp build (--no-build)"
 else
-    echo "[7/13] Building whisper.cpp..."
+    echo "[7/14] Building whisper.cpp..."
     if [ ! -d "$WHISPER_DIR" ]; then
         git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git "$WHISPER_DIR"
     fi
@@ -259,11 +265,19 @@ else
     # Download Whisper medium model
     if ! $NO_MODELS; then
         WHISPER_MODEL="$WHISPER_DIR/models/ggml-medium.bin"
+        mkdir -p "$WHISPER_DIR/models"
         if [ ! -f "$WHISPER_MODEL" ]; then
             echo "  Downloading Whisper medium model (~1.5 GB)..."
+            # Try the bundled download script first, then direct URL fallback
             cd "$WHISPER_DIR"
-            bash models/download-ggml-model.sh medium 2>/dev/null || \
-                echo "  WARNING: Whisper model download failed. Run: cd $WHISPER_DIR && bash models/download-ggml-model.sh medium"
+            bash models/download-ggml-model.sh medium 2>/dev/null || {
+                echo "  Script download failed, trying direct URL..."
+                download_file \
+                    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin" \
+                    "$WHISPER_MODEL" \
+                    "Whisper medium model (~1.5 GB)" || \
+                    echo "  WARNING: Whisper model download failed. Place ggml-medium.bin in $WHISPER_DIR/models/"
+            }
             cd "$SCRIPT_DIR"
         else
             echo "  Whisper medium model already present."
@@ -272,9 +286,9 @@ else
 fi
 
 # ============================================================================
-# [8/13] Create data directories
+# [8/14] Create data directories
 # ============================================================================
-echo "[8/13] Creating data directories..."
+echo "[8/14] Creating data directories..."
 mkdir -p "$MODELS_DIR" "$VOICES_DIR" "$KOKORO_DIR"
 mkdir -p "$DATA_DIR"/{state,logs,training,error_screenshots,sandbox,adi_profiles}
 mkdir -p "$CONFIG_DIR"
@@ -300,9 +314,9 @@ fi
 echo "  Done."
 
 # ============================================================================
-# [9/13] Install Ollama + pull vision models
+# [9/14] Install Ollama + pull vision models
 # ============================================================================
-echo "[9/13] Installing Ollama (local vision inference)..."
+echo "[9/14] Installing Ollama (local vision inference)..."
 if command -v ollama &>/dev/null; then
     echo "  Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown'))"
 else
@@ -346,12 +360,12 @@ elif ! $OLLAMA_READY; then
 fi
 
 # ============================================================================
-# [10/13] Download LLM models (GGUF)
+# [10/14] Download LLM models (GGUF)
 # ============================================================================
 if $NO_MODELS; then
-    echo "[10/13] Skipping model downloads (--no-models)"
+    echo "[10/14] Skipping model downloads (--no-models)"
 else
-    echo "[10/13] Downloading LLM models..."
+    echo "[10/14] Downloading LLM models..."
     mkdir -p "$MODELS_DIR"
 
     LLAMA_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
@@ -367,12 +381,12 @@ else
 fi
 
 # ============================================================================
-# [11/13] Voice / TTS setup
+# [11/14] Voice / TTS setup
 # ============================================================================
 if $NO_MODELS; then
-    echo "[11/13] Skipping voice model downloads (--no-models)"
+    echo "[11/14] Skipping voice model downloads (--no-models)"
 else
-    echo "[11/13] Setting up Voice / TTS..."
+    echo "[11/14] Setting up Voice / TTS..."
     mkdir -p "$VOICES_DIR" "$KOKORO_DIR"
 
     # --- German voice: Piper + Thorsten (high quality) ---
@@ -403,9 +417,9 @@ else
 fi
 
 # ============================================================================
-# [12/13] Systemd user services
+# [12/14] Systemd user services
 # ============================================================================
-echo "[12/13] Installing systemd user services..."
+echo "[12/14] Installing systemd user services..."
 mkdir -p "$SYSTEMD_USER_DIR"
 
 LLAMA_SERVER="$LLAMA_DIR/build/bin/llama-server"
@@ -414,16 +428,20 @@ PYTHON_SYS="/usr/bin/python3"
 PYTHON_VENV="$VENV_DIR/bin/python3"
 PYTHON_INGESTD="$VENV_INGESTD/bin/python3"
 
-# Helper: write a service file (only if not already present)
+# Helper: write a service file (overwrites if --force is set)
 write_service() {
     local name="$1"
     local content="$2"
     local target="$SYSTEMD_USER_DIR/${name}"
-    if [ ! -f "$target" ]; then
+    if $FORCE || [ ! -f "$target" ]; then
         printf '%s\n' "$content" > "$target"
-        echo "  Created $name"
+        if $FORCE && [ -f "$target" ]; then
+            echo "  Updated $name"
+        else
+            echo "  Created $name"
+        fi
     else
-        echo "  $name already exists (skipped)"
+        echo "  $name already exists (use --force to overwrite)"
     fi
 }
 
@@ -462,10 +480,11 @@ Requires=aicore-router.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/core/app.py
 Restart=always
 RestartSec=1
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=default.target"
@@ -549,10 +568,11 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/modeld/app.py
 Restart=always
 RestartSec=1
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=default.target"
@@ -564,11 +584,13 @@ After=network.target
 
 [Service]
 Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=AICORE_TOOLBOX_PORT=8096
+Environment=DISPLAY=:0
 ExecStart=$PYTHON_SYS -u $SCRIPT_DIR/tools/toolboxd.py
 Restart=always
 RestartSec=0.5
-Environment=AICORE_TOOLBOX_PORT=8096
-Environment=DISPLAY=:0
 
 [Install]
 WantedBy=default.target"
@@ -581,6 +603,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/webd/app.py
 Restart=always
@@ -618,12 +642,13 @@ After=default.target
 
 [Service]
 Type=simple
-WorkingDirectory=$SCRIPT_DIR/desktopd
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/desktopd/app.py
 Restart=always
 RestartSec=1
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=%h/.Xauthority
 
 [Install]
 WantedBy=default.target"
@@ -637,10 +662,11 @@ Wants=aicore-core.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/consciousness_daemon.py
 Restart=always
 RestartSec=5
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=default.target"
@@ -652,10 +678,12 @@ After=aicore-llama3-gpu.service aicore-qwen-gpu.service
 
 [Service]
 Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=DISPLAY=:0
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/gaming/gaming_mode.py --daemon
 Restart=on-failure
 RestartSec=5
-Environment=DISPLAY=:0
 
 [Install]
 WantedBy=default.target"
@@ -765,10 +793,11 @@ Wants=aicore-core.service aicore-router.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/entity_dispatcher.py
 Restart=on-failure
 RestartSec=60
-Environment=PYTHONUNBUFFERED=1
 Nice=15
 
 [Install]
@@ -794,9 +823,10 @@ Wants=aicore-core.service aicore-router.service
 [Service]
 Type=oneshot
 WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
 ExecStart=$PYTHON_SYS $SCRIPT_DIR/${ent_script}
 TimeoutStartSec=${ent_timeout}
-Environment=PYTHONUNBUFFERED=1
 Nice=15
 RemainAfterExit=no"
 done
@@ -935,9 +965,9 @@ systemctl --user enable aicore-fas.timer 2>/dev/null || true
 echo "  Done. ($(ls "$SYSTEMD_USER_DIR"/aicore-*.service 2>/dev/null | wc -l) services installed)"
 
 # ============================================================================
-# [13/13] Desktop entries & dock icons
+# [13/14] Desktop entries & dock icons
 # ============================================================================
-echo "[13/13] Creating desktop entries..."
+echo "[13/14] Creating desktop entries..."
 APPS_DIR="$HOME/.local/share/applications"
 ICONS_DIR="$HOME/.local/share/icons/hicolor"
 mkdir -p "$APPS_DIR" "$ICONS_DIR/48x48/apps" "$ICONS_DIR/256x256/apps"
@@ -1007,14 +1037,18 @@ fi
 LOGO_SRC="$SCRIPT_DIR/assets/frank_logo.png"
 WALLPAPER_OUT="$SCRIPT_DIR/assets/wallpaper_frank.png"
 if [ -f "$LOGO_SRC" ] && command -v gsettings &>/dev/null; then
-    python3 - "$LOGO_SRC" "$WALLPAPER_OUT" << 'PYGEN'
+    # Use venv Python which has Pillow installed (system python3 may not)
+    WALLPAPER_PYTHON="$PYTHON_VENV"
+    [ -x "$WALLPAPER_PYTHON" ] || WALLPAPER_PYTHON=python3
+
+    "$WALLPAPER_PYTHON" - "$LOGO_SRC" "$WALLPAPER_OUT" << 'PYGEN' || echo "  WARNING: Wallpaper generation failed (Pillow missing?). Skipping."
 import sys, subprocess
 from PIL import Image
-import numpy as np
 
 logo_path, out_path = sys.argv[1], sys.argv[2]
 
-# Detect screen resolution via xrandr
+# Detect screen resolution via xrandr (primary monitor)
+screen_w, screen_h = 1920, 1080
 try:
     out = subprocess.check_output(["xrandr", "--current"], text=True)
     for line in out.splitlines():
@@ -1026,13 +1060,21 @@ try:
                     break
             break
     else:
-        screen_w, screen_h = 1920, 1080
+        # No primary? Use first connected monitor
+        for line in out.splitlines():
+            if " connected " in line:
+                for part in line.split():
+                    if "x" in part and "+" in part:
+                        res = part.split("+")[0]
+                        screen_w, screen_h = map(int, res.split("x"))
+                        break
+                break
 except Exception:
-    screen_w, screen_h = 1920, 1080
+    pass
 
 # Overlay left reservation: GNOME dock (~66px) + Frank default width (~420px)
 overlay_right = 486
-visible_w = screen_w - overlay_right
+visible_w = max(screen_w - overlay_right, 200)
 
 # Load logo, scale to ~27% of visible width (keeps it tasteful)
 logo = Image.open(logo_path).convert("RGBA")
@@ -1050,11 +1092,72 @@ canvas.paste(logo_small, (cx, cy), logo_small)
 canvas.save(out_path, "PNG")
 print(f"  Wallpaper: {screen_w}x{screen_h}, logo at ({cx},{cy}) {target_w}x{target_h}")
 PYGEN
-    gsettings set org.gnome.desktop.background picture-uri "file://$WALLPAPER_OUT" 2>/dev/null
-    gsettings set org.gnome.desktop.background picture-uri-dark "file://$WALLPAPER_OUT" 2>/dev/null
-    gsettings set org.gnome.desktop.background picture-options "zoom" 2>/dev/null
-    echo "  FRANK wallpaper set."
+    if [ -f "$WALLPAPER_OUT" ]; then
+        gsettings set org.gnome.desktop.background picture-uri "file://$WALLPAPER_OUT" 2>/dev/null
+        gsettings set org.gnome.desktop.background picture-uri-dark "file://$WALLPAPER_OUT" 2>/dev/null
+        gsettings set org.gnome.desktop.background picture-options "zoom" 2>/dev/null
+        echo "  FRANK wallpaper set."
+    fi
 fi
+
+# Overlay autostart (XDG autostart — starts overlay on login)
+AUTOSTART_DIR="$HOME/.config/autostart"
+mkdir -p "$AUTOSTART_DIR"
+cat > "$AUTOSTART_DIR/frank-overlay.desktop" <<AUTOSTART
+[Desktop Entry]
+Name=Frank Overlay
+Comment=Start Frank AI Overlay on login
+Exec=$SCRIPT_DIR/ui/frank_overlay_launcher.sh
+Icon=$ICONS_DIR/48x48/apps/frank-overlay.svg
+Terminal=false
+Type=Application
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+AUTOSTART
+echo "  Overlay autostart installed."
+
+echo "  Done."
+
+# ============================================================================
+# [14/14] Start all services
+# ============================================================================
+echo "[14/14] Starting all services..."
+
+# Stop any existing overlay (clean state)
+pkill -f chat_overlay.py 2>/dev/null || true
+rm -f /tmp/frank_overlay.lock 2>/dev/null || true
+
+# Start infrastructure first
+systemctl --user start aicore-router.service 2>/dev/null || true
+sleep 1
+systemctl --user start aicore-core.service 2>/dev/null || true
+systemctl --user start aicore-llama3-gpu.service 2>/dev/null || true
+systemctl --user start aicore-modeld.service 2>/dev/null || true
+systemctl --user start aicore-toolboxd.service 2>/dev/null || true
+systemctl --user start aicore-webd.service 2>/dev/null || true
+systemctl --user start aicore-ingestd.service 2>/dev/null || true
+systemctl --user start aicore-whisper-gpu.service 2>/dev/null || true
+
+# System daemons
+systemctl --user start aicore-desktopd.service 2>/dev/null || true
+systemctl --user start aicore-consciousness.service 2>/dev/null || true
+systemctl --user start aicore-gaming-mode.service 2>/dev/null || true
+systemctl --user start aicore-asrs.service 2>/dev/null || true
+systemctl --user start aicore-invariants.service 2>/dev/null || true
+
+# Autonomous
+systemctl --user start aicore-genesis.service 2>/dev/null || true
+systemctl --user start aicore-genesis-watchdog.service 2>/dev/null || true
+systemctl --user start aicore-entities.service 2>/dev/null || true
+
+# Start the overlay
+echo "  Starting Frank overlay..."
+nohup "$SCRIPT_DIR/ui/frank_overlay_launcher.sh" >/dev/null 2>&1 &
+
+# Count running services
+sleep 2
+RUNNING=$(systemctl --user list-units 'aicore-*' --state=running --no-pager --no-legend 2>/dev/null | wc -l)
+echo "  $RUNNING services running."
 echo "  Done."
 
 # ============================================================================
@@ -1071,18 +1174,16 @@ echo "  Models:          $MODELS_DIR"
 echo "  Voices:          $VOICES_DIR (Piper DE) + $KOKORO_DIR (Kokoro EN)"
 echo "  Venv (main):     $VENV_DIR"
 echo "  Venv (ingestd):  $VENV_INGESTD"
+echo "  Services:        $RUNNING running"
 echo
-echo "  Start all services:"
-echo "    systemctl --user start aicore-router aicore-core aicore-llama3-gpu"
-echo "    systemctl --user start aicore-modeld aicore-toolboxd aicore-webd"
-echo "    systemctl --user start aicore-whisper-gpu"
-echo "    systemctl --user start aicore-consciousness aicore-entities"
+echo "  All services are already started."
 echo
-echo "  Start the overlay:"
-echo "    $SCRIPT_DIR/ui/frank_overlay_launcher.sh"
-echo
-echo "  View logs:"
+echo "  Manage services:"
+echo "    systemctl --user status aicore-core"
 echo "    journalctl --user -u aicore-core -f"
+echo
+echo "  Restart overlay:"
+echo "    $SCRIPT_DIR/ui/frank_overlay_launcher.sh"
 echo
 echo "  Ports:"
 echo "    8091 Router | 8088 Core | 8101 Llama3 | 8102 Qwen (on-demand)"

@@ -281,6 +281,10 @@ class UiMixin:
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
 
     def _on_canvas_configure(self, event):
+        # Skip width updates during active edge-resize to prevent
+        # message bubbles from re-laying out and blanking the chat.
+        if getattr(self, '_resize_edge', None):
+            return
         self.chat_canvas.itemconfig(self.canvas_window, width=event.width)
 
     def _on_mousewheel(self, event):
@@ -354,10 +358,20 @@ class UiMixin:
             self._update_strut()
 
     def _on_resize_end(self, event):
-        """End resize and finalize strut."""
+        """End resize and finalize strut + re-layout chat content."""
         if self._resize_edge == "e":
             if hasattr(self, '_update_strut'):
                 self._update_strut()
+            # Now apply the deferred canvas window width update
+            try:
+                cw = self.chat_canvas.winfo_width()
+                self.chat_canvas.itemconfig(self.canvas_window, width=cw)
+                self.update_idletasks()
+                self.chat_canvas.configure(
+                    scrollregion=self.chat_canvas.bbox("all"))
+                self._smart_scroll()
+            except Exception:
+                pass
         self._resize_edge = None
 
     # ---- Key bindings ----

@@ -1073,9 +1073,13 @@ class MirrorAgent:
             f"Zusammenfassung: {summary}"
         )
         _write_chat_message("system", MIRROR_NAME, summary_msg, self.session_id)
-        _write_overlay_notification(MIRROR_NAME,
-            f"Philosophical session with Frank — {elapsed_min} minutes.",
-            self.session_id)
+        _short_summary = " ".join((summary or "").split()[:15])
+        if _short_summary and not _short_summary.endswith("."):
+            _short_summary += "."
+        _notif_body = f"Philosophical session with Frank — {elapsed_min} minutes."
+        if _short_summary:
+            _notif_body += f"\n{_short_summary}"
+        _write_overlay_notification(MIRROR_NAME, _notif_body, self.session_id)
 
         LOG.info("\n" + "=" * 60)
         LOG.info("%s SESSION COMPLETE", MIRROR_NAME.upper())

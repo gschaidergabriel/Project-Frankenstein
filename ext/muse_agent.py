@@ -1100,9 +1100,13 @@ class MuseAgent:
             f"Zusammenfassung: {summary}"
         )
         _write_chat_message("system", MUSE_NAME, summary_msg, self.session_id)
-        _write_overlay_notification(MUSE_NAME,
-            f"Creative session with Frank for {elapsed_min} minutes.",
-            self.session_id)
+        _short_summary = " ".join((summary or "").split()[:15])
+        if _short_summary and not _short_summary.endswith("."):
+            _short_summary += "."
+        _notif_body = f"Creative session with Frank for {elapsed_min} minutes."
+        if _short_summary:
+            _notif_body += f"\n{_short_summary}"
+        _write_overlay_notification(MUSE_NAME, _notif_body, self.session_id)
 
         LOG.info("\n" + "=" * 60)
         LOG.info("%s SESSION COMPLETE", MUSE_NAME.upper())

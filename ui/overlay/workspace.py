@@ -148,7 +148,8 @@ def build_workspace(
         for part in extra_parts:
             # Memory and knowledge get more space than generic extras
             if part.startswith(("[Own Knowledge]", "[My Memory", "[I remember",
-                                "[Eigenes Wissen]", "[Mein Gedaechtnis", "[Ich erinnere")):
+                                "[Eigenes Wissen]", "[Mein Gedaechtnis", "[Ich erinnere",
+                                "[Entity session memory")):
                 max_l = min(500, b_titan)
             else:
                 max_l = 200

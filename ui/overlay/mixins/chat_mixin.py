@@ -85,6 +85,36 @@ try:
 except Exception as _e:
     LOG.debug("Titan not available: %s", _e)
 
+# ── Entity Session Memory: direct recall from entity DBs ──
+_ENTITY_MEMORY_AVAILABLE = False
+_ENTITY_DB_DIR = None
+_ENTITY_MAP = {
+    "atlas": {"db": "atlas.db", "role": "Architecture Mentor", "table_prefix": "atlas"},
+    "kairos": {"db": "mirror.db", "role": "Philosophical Mirror", "table_prefix": "mirror"},
+    "raven": {"db": "companion.db", "role": "Casual Companion", "table_prefix": "companion"},
+    "echo": {"db": "muse.db", "role": "Creative Muse", "table_prefix": "muse"},
+    "dr. hibbert": {"db": "therapist.db", "role": "Therapist", "table_prefix": "therapist"},
+    "hibbert": {"db": "therapist.db", "role": "Therapist", "table_prefix": "therapist"},
+}
+_ENTITY_QUESTION_RE = re.compile(
+    r"(atlas|kairos|raven|echo|hibbert|dr\.?\s*hibbert"
+    r"|entit(y|ies|ät)"
+    r"|session(s)?\s+(with|mit)"
+    r"|gespr(ä|ae)ch\s+(mit|with)"
+    r"|talk(ed|ing)?\s+(to|with)\s+(atlas|kairos|raven|echo|hibbert)"
+    r"|sitzung|therapie)",
+    re.IGNORECASE,
+)
+try:
+    from pathlib import Path as _P_ent
+    _ent_db_dir = _P_ent.home() / ".local" / "share" / "frank" / "db"
+    if _ent_db_dir.is_dir():
+        _ENTITY_DB_DIR = _ent_db_dir
+        _ENTITY_MEMORY_AVAILABLE = True
+        LOG.info("Entity session memory integration active (db_dir=%s)", _ent_db_dir)
+except Exception as _e:
+    LOG.debug("Entity session memory not available: %s", _e)
+
 # ── RPT: Reflection trigger pattern (overlay path) ──
 _REFLECT_OVERLAY_RE = re.compile(
     r"(warum\s+(denkst|meinst|glaubst|fuehlst|fuhlst)"
@@ -166,6 +196,100 @@ def _detect_chat_sentiment(user_msg: str) -> str:
     if neg > pos:
         return "negative"
     return "neutral"
+
+
+def _get_entity_session_context(msg: str) -> str:
+    """Query entity databases for session recall when user asks about entities.
+
+    Returns a compact context string with recent session summaries.
+    Only called when _ENTITY_QUESTION_RE matches the user message.
+    """
+    if not _ENTITY_MEMORY_AVAILABLE or not _ENTITY_DB_DIR:
+        return ""
+
+    import sqlite3
+    from datetime import datetime
+
+    # Determine which entities to query
+    msg_lower = msg.lower()
+    target_entities = []
+    for name, info in _ENTITY_MAP.items():
+        if name in msg_lower:
+            target_entities.append((name, info))
+
+    # If no specific entity mentioned, query all
+    if not target_entities:
+        target_entities = list(_ENTITY_MAP.items())
+        # Deduplicate (hibbert and dr. hibbert point to same DB)
+        seen_dbs = set()
+        deduped = []
+        for name, info in target_entities:
+            if info["db"] not in seen_dbs:
+                seen_dbs.add(info["db"])
+                deduped.append((name, info))
+        target_entities = deduped
+
+    parts = []
+    for name, info in target_entities:
+        db_path = _ENTITY_DB_DIR / info["db"]
+        if not db_path.exists():
+            continue
+        try:
+            conn = sqlite3.connect(str(db_path), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+            # Get last 3 sessions with summaries
+            rows = conn.execute(
+                "SELECT session_id, start_time, turns, primary_topic, "
+                "summary, mood_start, mood_end, outcome "
+                "FROM sessions WHERE summary IS NOT NULL AND summary != '' "
+                "ORDER BY start_time DESC LIMIT 3"
+            ).fetchall()
+            if not rows:
+                conn.close()
+                continue
+
+            entity_display = name.capitalize()
+            if name in ("hibbert", "dr. hibbert"):
+                entity_display = "Dr. Hibbert"
+
+            for row in rows:
+                ts = datetime.fromtimestamp(row["start_time"])
+                time_str = ts.strftime("%Y-%m-%d %H:%M")
+                topic = row["primary_topic"] or "general"
+                summary = (row["summary"] or "")[:300]
+                turns = row["turns"] or 0
+                mood_delta = (row["mood_end"] or 0) - (row["mood_start"] or 0)
+                parts.append(
+                    f"{entity_display} ({info['role']}) — {time_str}, "
+                    f"{turns} turns, topic: {topic}, mood Δ{mood_delta:+.2f}. "
+                    f"Summary: {summary}"
+                )
+
+            # If specific entity asked, also get key messages from latest session
+            if len(target_entities) <= 2 and rows:
+                latest_sid = rows[0]["session_id"]
+                msgs = conn.execute(
+                    "SELECT speaker, text FROM session_messages "
+                    "WHERE session_id = ? ORDER BY turn",
+                    (latest_sid,),
+                ).fetchall()
+                if msgs:
+                    transcript_parts = []
+                    for m in msgs[-6:]:  # last 6 messages
+                        speaker = m["speaker"]
+                        text = (m["text"] or "")[:150]
+                        transcript_parts.append(f"  {speaker}: {text}")
+                    parts.append(
+                        f"[Latest {entity_display} transcript excerpt:]\n"
+                        + "\n".join(transcript_parts)
+                    )
+            conn.close()
+        except Exception as e:
+            LOG.debug("Entity DB query failed for %s: %s", info["db"], e)
+
+    if not parts:
+        return ""
+    return "[Entity session memory: " + " | ".join(parts) + "]"
 
 
 class ChatMixin:
@@ -555,6 +679,16 @@ class ChatMixin:
 
             except Exception as e:
                 LOG.debug("Consciousness context injection skipped: %s", e)
+
+        # ── Entity Session Memory: direct DB recall ──
+        if _ENTITY_MEMORY_AVAILABLE and _ENTITY_QUESTION_RE.search(msg):
+            try:
+                entity_ctx = _get_entity_session_context(msg)
+                if entity_ctx:
+                    ws_extra.append(entity_ctx)
+                    LOG.info("Entity session memory injected (%d chars)", len(entity_ctx))
+            except Exception as e:
+                LOG.debug("Entity session memory injection failed: %s", e)
 
         # ── Dynamic Context Budget ──
         # Compute query embedding and allocate budget across channels

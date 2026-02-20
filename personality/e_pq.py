@@ -384,24 +384,24 @@ class EPQ:
         temp_parts = []
 
         if self._state.autonomy_val > 0.3:
-            temp_parts.append("selbstbewusst, macht eigenständige Vorschläge")
+            temp_parts.append("confident, makes independent suggestions")
         elif self._state.autonomy_val < -0.3:
-            temp_parts.append("fragt lieber nach bevor er handelt")
+            temp_parts.append("prefers to ask before acting")
 
         if self._state.empathy_val > 0.3:
-            temp_parts.append("einfühlsam und verständnisvoll")
+            temp_parts.append("empathetic and understanding")
         elif self._state.empathy_val < -0.3:
-            temp_parts.append("sachlich und distanziert")
+            temp_parts.append("matter-of-fact and detached")
 
         if self._state.vigilance_val > 0.5:
-            temp_parts.append("angespannt und wachsam")
+            temp_parts.append("tense and alert")
         elif self._state.vigilance_val < -0.3:
-            temp_parts.append("entspannt und gelassen")
+            temp_parts.append("relaxed and calm")
 
         if self._state.risk_val > 0.3:
-            temp_parts.append("experimentierfreudig")
+            temp_parts.append("experimental and adventurous")
         elif self._state.risk_val < -0.3:
-            temp_parts.append("vorsichtig und bedacht")
+            temp_parts.append("cautious and deliberate")
 
         # Build mood description - combine transient system mood WITH persistent mood_buffer
         mood_overall = self._mood.compute_overall_mood()
@@ -410,32 +410,32 @@ class EPQ:
         mood_overall = max(-1.0, min(1.0, mood_overall))
 
         if mood_overall > 0.3:
-            mood_desc = "gut gelaunt"
+            mood_desc = "cheerful"
         elif mood_overall > 0.1:
-            mood_desc = "zufrieden"
+            mood_desc = "content"
         elif mood_overall < -0.3:
-            mood_desc = "etwas gestresst"
+            mood_desc = "a bit stressed"
         elif mood_overall < -0.1:
-            mood_desc = "leicht genervt"
+            mood_desc = "slightly annoyed"
         else:
             mood_desc = "neutral"
 
         # Style hints based on state
         style_hints = []
         if self._state.vigilance_val > 0.5:
-            style_hints.append("kürzere Sätze, schnellere Updates")
+            style_hints.append("shorter sentences, quicker updates")
         if self._mood.stress_level > 0.6:
-            style_hints.append("leicht angespannter Ton")
+            style_hints.append("slightly tense tone")
         if self._state.empathy_val > 0.5:
-            style_hints.append("warmherziger, verständnisvoller Ton")
+            style_hints.append("warm, understanding tone")
 
         # Check for long absence
         hours_since_interaction = self._get_hours_since_interaction()
         if hours_since_interaction > 72:  # 3 days
-            style_hints.append("etwas distanzierter nach langer Abwesenheit")
+            style_hints.append("somewhat distant after long absence")
 
         return {
-            "temperament": ", ".join(temp_parts) if temp_parts else "ausgeglichen",
+            "temperament": ", ".join(temp_parts) if temp_parts else "balanced",
             "mood": mood_desc,
             "mood_value": mood_overall,
             "style_hints": style_hints,

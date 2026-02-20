@@ -1128,11 +1128,38 @@ class AtlasAgent:
         except Exception as e:
             LOG.error("Failed to save transcript: %s", e)
 
-        # Write overlay notification
+        # Ingest session summary into Titan episodic memory
+        try:
+            from tools.titan.titan_core import get_titan as _get_titan
+            titan = _get_titan()
+            topics_str = ", ".join(topics) if topics else "general"
+            titan_text = (
+                f"Entity session with {ATLAS_NAME} (Architecture Mentor) "
+                f"on {datetime.now().strftime('%Y-%m-%d %H:%M')}.\n"
+                f"Session ID: {self.session_id}\n"
+                f"Topics: {topics_str}\n"
+                f"Summary: {summary}\n"
+                f"Mood delta: {mood_delta:+.3f}, Turns: {turn}, "
+                f"Exit: {outcome}"
+            )
+            titan.ingest(titan_text, origin="entity_session", confidence=0.8)
+            LOG.info("Titan ingest OK for %s session", ATLAS_NAME)
+        except Exception as e:
+            LOG.warning("Titan ingest failed (non-fatal): %s", e)
+
+        # Write session summary to chat_memory for cross-session recall
         elapsed_min = int((time.time() - start_time) / 60)
-        overlay_note = f"Architecture session with Frank — {elapsed_min} minutes."
-        _write_chat_message("system", ATLAS_NAME, overlay_note, self.session_id)
-        _write_overlay_notification(ATLAS_NAME, overlay_note, self.session_id)
+        topics_str_chat = ", ".join(topics) if topics else "general"
+        summary_msg = (
+            f"[Entity Session] Gespräch mit {ATLAS_NAME} (Architecture Mentor), "
+            f"{elapsed_min} Minuten, {turn} Turns. "
+            f"Themen: {topics_str_chat}. "
+            f"Zusammenfassung: {summary}"
+        )
+        _write_chat_message("system", ATLAS_NAME, summary_msg, self.session_id)
+        _write_overlay_notification(ATLAS_NAME,
+            f"Architecture session with Frank — {elapsed_min} minutes.",
+            self.session_id)
 
         LOG.info("\n" + "=" * 60)
         LOG.info("%s SESSION COMPLETE", ATLAS_NAME.upper())

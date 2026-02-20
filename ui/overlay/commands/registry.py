@@ -54,6 +54,7 @@ COMMANDS: List[Command] = [
     Command("/print",     "Printer",         "Printer status",                 "print status",         icon="P", category="system"),
     Command("/qr",        "QR Code",         "Scan or generate QR code",       "qr scan",              icon="Q", category="system"),
     Command("/network",   "Network",         "Network information",            "network info",         icon="W", category="system"),
+    Command("/llm",       "LLM",             "Restart the LLM server",         "restart llm",          icon="L", category="system"),
 
     # ── Apps & Games ──
     Command("/apps",      "Apps",            "List installed apps",            "list apps",            icon="A", category="apps"),

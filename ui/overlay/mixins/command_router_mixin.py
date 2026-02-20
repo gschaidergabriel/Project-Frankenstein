@@ -312,6 +312,34 @@ class CommandRouterMixin:
             self._add_message("Frank", line, is_system=True)
             return
 
+        # ── LLM Restart Command (no LLM call needed) ──
+        if low in ("restart llm", "llm restart", "llm neustarten",
+                    "/llm", "neustart llm", "llm neu starten"):
+            self._add_message("Du", msg, is_user=True)
+            self._add_message("Frank", "Restarting LLM server...", is_system=True)
+            import threading
+            def _restart_llm():
+                import subprocess
+                try:
+                    r = subprocess.run(
+                        ["systemctl", "--user", "restart", "aicore-llama3-gpu.service"],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if r.returncode == 0:
+                        import time as _t
+                        _t.sleep(5)  # Give it time to load model
+                        self._ui_call(lambda: self._add_message(
+                            "Frank", "LLM server restarted successfully.", is_system=True))
+                    else:
+                        err = (r.stderr or r.stdout or "unknown error")[:200]
+                        self._ui_call(lambda: self._add_message(
+                            "Frank", f"LLM restart failed: {err}", is_system=True))
+                except Exception as e:
+                    self._ui_call(lambda: self._add_message(
+                        "Frank", f"LLM restart error: {e}", is_system=True))
+            threading.Thread(target=_restart_llm, daemon=True).start()
+            return
+
         # System Control - Check for pending confirmations first
         # This allows users to confirm/cancel actions with simple "ja"/"nein"
         if SYSTEM_CONTROL_AVAILABLE and sc_has_pending():

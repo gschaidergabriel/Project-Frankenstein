@@ -255,7 +255,7 @@ class ChatMemoryDB:
 
         # 2) Hybrid FTS5 + vector search from older messages (up to 600 chars)
         if query and budget > 200:
-            relevant = self._hybrid_search_history(query, limit=5, exclude_recent=10)
+            relevant = self._hybrid_search_history(query, limit=5, exclude_recent=recent_count)
             if relevant:
                 lines = []
                 chars = 0
@@ -307,16 +307,35 @@ class ChatMemoryDB:
             ).fetchall()
         return [dict(r) for r in reversed(rows)]
 
+    # Common stopwords that match too many messages and dilute FTS results
+    _STOPWORDS = frozenset({
+        "the", "and", "for", "that", "this", "with", "from", "have", "has",
+        "was", "were", "are", "been", "will", "would", "could", "should",
+        "not", "but", "what", "which", "when", "where", "how", "who",
+        "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer",
+        "und", "oder", "aber", "mit", "von", "aus", "bei", "nach", "vor",
+        "wie", "was", "wer", "wen", "wem", "ich", "hast", "hat", "ist",
+        "bin", "habe", "haben", "kann", "mein", "dein", "sein", "ihr",
+        "sich", "auch", "noch", "schon", "nur", "dann", "wenn", "weil",
+        "dass", "über", "ueber", "nicht", "kein", "keine",
+        "you", "your", "can", "did", "does", "had", "than", "also",
+    })
+
     def _search_relevant_history(
         self, query: str, limit: int = 3, exclude_recent: int = 10,
     ) -> List[dict]:
         """FTS5 search for relevant older messages."""
-        # Build FTS query: use significant words only
-        words = [w for w in query.split() if len(w) > 2]
+        # Build FTS query: filter stopwords, keep significant terms
+        import re as _re
+        words = [_re.sub(r'[^\w]', '', w) for w in query.split()]
+        words = [w for w in words if len(w) > 2 and w.lower() not in self._STOPWORDS]
+        if not words:
+            # Fallback: use all words >2 chars if stopword filter removed everything
+            words = [_re.sub(r'[^\w]', '', w) for w in query.split() if len(w) > 2]
         if not words:
             return []
         # OR-join for broader matching — quote each word to prevent FTS5 operator injection
-        fts_query = " OR ".join(f'"{w}"' for w in words[:5])
+        fts_query = " OR ".join(f'"{w}"' for w in words[:8])
 
         with self._lock:
             try:

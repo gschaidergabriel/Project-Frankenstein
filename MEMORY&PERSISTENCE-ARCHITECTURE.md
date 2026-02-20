@@ -598,7 +598,7 @@ def _memory_maintenance_timer(self):
 
 2. EMBEDDING:
    query_vec = EmbeddingService.embed_text("Was haben wir ueber Wetter gesprochen?")
-   -> 384-dim float32 vector
+   -> 384-dim vector (stored as float16, computed as float32)
 
 3. BUDGET ALLOCATION:
    allocate_budget(

@@ -138,6 +138,15 @@ class ChatMemoryDB:
             except sqlite3.OperationalError:
                 pass  # already exists
         self._conn.commit()
+        # One-time float32 -> float16 migration
+        try:
+            sample = self._conn.execute(
+                "SELECT embedding FROM message_embeddings LIMIT 1"
+            ).fetchone()
+            if sample and len(sample["embedding"]) == 384 * 4:
+                self.migrate_embeddings_to_float16()
+        except Exception:
+            pass
 
     # ── Message Storage ───────────────────────────────────────────
 
@@ -346,13 +355,15 @@ class ChatMemoryDB:
 
     @staticmethod
     def _pack_embedding(vec: np.ndarray) -> bytes:
-        """Pack float32 array to bytes for BLOB storage."""
-        return vec.astype(np.float32).tobytes()
+        """Pack embedding to float16 bytes for BLOB storage (768 bytes for 384-dim)."""
+        return vec.astype(np.float16).tobytes()
 
     @staticmethod
     def _unpack_embedding(blob: bytes) -> np.ndarray:
-        """Unpack BLOB to float32 array."""
-        return np.frombuffer(blob, dtype=np.float32)
+        """Unpack BLOB to float32 array. Handles both float16 (768B) and legacy float32 (1536B)."""
+        if len(blob) == 384 * 2:  # float16
+            return np.frombuffer(blob, dtype=np.float16).astype(np.float32)
+        return np.frombuffer(blob, dtype=np.float32)  # legacy float32
 
     def _store_embedding(self, message_id: int, text: str):
         """Embed text and store in message_embeddings table."""
@@ -515,6 +526,28 @@ class ChatMemoryDB:
         if total_done > 0:
             LOG.info(f"Embedding backfill complete: {total_done} messages embedded")
         return total_done
+
+    def migrate_embeddings_to_float16(self) -> int:
+        """One-time migration: convert existing float32 embeddings to float16."""
+        converted = 0
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT message_id, embedding FROM message_embeddings"
+            ).fetchall()
+            for r in rows:
+                blob = r["embedding"]
+                if len(blob) == 384 * 4:  # float32 (1536 bytes)
+                    vec = np.frombuffer(blob, dtype=np.float32)
+                    new_blob = vec.astype(np.float16).tobytes()
+                    self._conn.execute(
+                        "UPDATE message_embeddings SET embedding = ? WHERE message_id = ?",
+                        (new_blob, r["message_id"]),
+                    )
+                    converted += 1
+            if converted > 0:
+                self._conn.commit()
+                LOG.info(f"Migrated {converted} embeddings from float32 to float16")
+        return converted
 
     def get_recent_summaries(self, limit: int = 3) -> List[dict]:
         """Public wrapper for _get_recent_summaries (used by ChannelSummaryCache)."""

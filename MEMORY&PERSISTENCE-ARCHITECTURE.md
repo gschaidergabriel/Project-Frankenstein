@@ -109,10 +109,10 @@ CREATE TABLE sessions (
     summary         TEXT DEFAULT ''
 );
 
--- Semantic embeddings (MiniLM-L6-v2, 384-dim float32)
+-- Semantic embeddings (MiniLM-L6-v2, 384-dim float16)
 CREATE TABLE message_embeddings (
     message_id  INTEGER PRIMARY KEY,
-    embedding   BLOB NOT NULL,       -- 384 x float32 = 1536 bytes
+    embedding   BLOB NOT NULL,       -- 384 x float16 = 768 bytes
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
 );
 

@@ -114,7 +114,7 @@ class ChatMemoryDB:
     def __init__(self, db_path: Path = DB_PATH):
         self._path = db_path
         self._conn: Optional[sqlite3.Connection] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._ensure_db()
 
     # ── Setup ─────────────────────────────────────────────────────

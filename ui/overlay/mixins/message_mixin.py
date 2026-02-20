@@ -82,7 +82,6 @@ class MessageMixin:
                     LOG.debug(f"Action intent detected: {_goal[:80]}")
             except Exception:
                 pass
-
         bubble = MessageBubble(
             self.messages_frame,
             sender=sender,

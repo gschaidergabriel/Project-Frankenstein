@@ -114,11 +114,15 @@ GOAL_CONFLICT_TOKENS = 40
 # Deep Idle Reflection
 IDLE_REFLECT_MIN_SILENCE_S = 1200.0     # 20 min User-Stille
 IDLE_REFLECT_INTERVAL_S = 3600.0        # Max 1 Reflexion pro Stunde
-IDLE_REFLECT_MAX_TOKENS = 350           # Pass 1
-IDLE_REFLECT_META_TOKENS = 200          # Pass 2 Meta-Reflexion
+IDLE_REFLECT_MAX_TOKENS = 350           # Deep reflection (single-pass)
 IDLE_REFLECT_MAX_DAILY = 10
 IDLE_REFLECT_MOOD_FLOOR = -0.3
 IDLE_REFLECT_MOOD_DROP_PAUSE_S = 10800  # 3h Pause bei Mood-Drop > 0.1
+
+# Recursive Self-Awareness (meta-reflection on previous reflections)
+RECURSIVE_REFLECT_DELAY_S = 900.0       # 15 min after deep reflection
+RECURSIVE_REFLECT_MAX_TOKENS = 300
+RECURSIVE_REFLECT_MAX_DAILY = 3
 
 # Feature Training (wöchentlich, 3 Phasen)
 FEATURE_TRAINING_INTERVAL_S = 604800.0  # 7 Tage
@@ -264,6 +268,10 @@ class ConsciousnessDaemon:
         # Feature training state
         self._last_feature_training_ts: float = 0.0
 
+        # Recursive self-awareness state
+        self._recursive_reflect_count: int = 0
+        self._last_recursive_reflect_ts: float = 0.0
+
         # --- Perceptual Feedback Loop (RPT) ---
         self._current_perceptual: PerceptualState = PerceptualState()
         self._prev_perceptual: PerceptualState = PerceptualState()
@@ -333,7 +341,8 @@ class ConsciousnessDaemon:
                 trigger TEXT DEFAULT 'idle',
                 content TEXT NOT NULL,
                 mood_before REAL DEFAULT 0.0,
-                mood_after REAL DEFAULT 0.0
+                mood_after REAL DEFAULT 0.0,
+                reflection_depth INTEGER DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS predictions (
@@ -425,6 +434,15 @@ class ConsciousnessDaemon:
         """)
         conn.commit()
 
+        # Migration: add reflection_depth column to existing DBs
+        try:
+            conn.execute(
+                "ALTER TABLE reflections ADD COLUMN reflection_depth INTEGER DEFAULT 1"
+            )
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
     def _load_latest_state(self):
         """Load most recent workspace state from DB."""
         conn = self._get_conn()
@@ -469,6 +487,14 @@ class ConsciousnessDaemon:
             ).fetchall()
             if rows:
                 result["deep_reflections"] = [r["content"][:200] for r in rows]
+            # Last recursive self-awareness reflection
+            row = conn.execute(
+                "SELECT content FROM reflections "
+                "WHERE trigger='recursive_reflection' "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if row and row["content"]:
+                result["recursive_reflection"] = row["content"][:200]
             # Mood trajectory summary
             result["mood_trajectory"] = self._get_mood_trajectory_summary()
 
@@ -1065,6 +1091,7 @@ class ConsciousnessDaemon:
         # 9. Daily limit
         if self._daily_reflection_reset == 0.0 or (now - self._daily_reflection_reset) > 86400:
             self._daily_reflection_count = 0
+            self._recursive_reflect_count = 0
             self._daily_reflection_reset = now
         if self._daily_reflection_count >= IDLE_REFLECT_MAX_DAILY:
             LOG.debug("Reflect skipped: daily limit %d", self._daily_reflection_count)
@@ -1091,7 +1118,10 @@ class ConsciousnessDaemon:
                 # Path 1: Deep reflection (20min+ silence, all HW checks pass)
                 if self._can_reflect():
                     self._do_deep_reflection()
-                # Path 2: Simple idle thought (3min silence, 5min cooldown)
+                # Path 2: Recursive self-awareness (15min after deep reflection)
+                elif self._can_recursive_reflect():
+                    self._recursive_reflection()
+                # Path 3: Simple idle thought (3min silence, 5min cooldown)
                 elif (silence >= IDLE_THINK_MIN_SILENCE_S and
                         since_last_think >= IDLE_THINK_INTERVAL_S):
                     self._do_idle_think()
@@ -1232,6 +1262,7 @@ class ConsciousnessDaemon:
             feature_sample = "not available"
             core_features = "not available"
             feature_limits = "not available"
+            all_feats = {}
             try:
                 sys.path.insert(0, str(_AICORE_ROOT))
                 from tools.core_awareness import get_awareness
@@ -1252,7 +1283,7 @@ class ConsciousnessDaemon:
 
             # ── Select question from pool (state-weighted) ──
             # Count total features for reflection context
-            total_features = sum(len(v) for v in all_features.values()) if all_features else 0
+            total_features = sum(len(v) for v in all_feats.values()) if all_feats else 0
 
             format_vars = {
                 "mood": mood_summary or "neutral",
@@ -1328,49 +1359,21 @@ class ConsciousnessDaemon:
 
             LOG.info("Pass1 result: %s", pass1_result[:100])
 
-            # ── Abort check before Pass 2 ──
-            if self._user_became_active():
-                LOG.info("Deep reflection aborted: user became active (pre-pass2)")
-                return
-
-            # ── Pass 2: Meta-Reflexion (200 tokens) ──
-            feature_check = ""
-            if chosen_cat.startswith("feature_") and feature_sample != "not available":
-                feature_check = " Does this match your feature list? What would you add?"
-            pass2_prompt = (
-                f"Read your reflection:\n\"{pass1_result}\"\n\n"
-                "What do you notice? What do you feel about it? "
-                f"Would you change anything you wrote?{feature_check}"
-            )
-
-            pass2_result = self._llm_call(
-                pass2_prompt,
-                max_tokens=IDLE_REFLECT_META_TOKENS,
-                system=system_prompt,
-            )
-
-            if not pass2_result:
-                LOG.warning("Deep reflection pass2 returned empty")
-                # Still store pass1 alone
-                pass2_result = ""
-
-            LOG.info("Pass2 result: %s", pass2_result[:100])
-
-            # ── Final abort check before storage ──
+            # ── Abort check before storage ──
             if self._user_became_active():
                 LOG.info("Deep reflection aborted: user became active (pre-store)")
                 return
 
-            # ── Storage ──
+            # ── Storage (Pass 1 only — meta-reflection is now handled
+            #    by recursive_reflection() triggered 15min later) ──
             combined = f"[{chosen_cat}] {pass1_result}"
-            if pass2_result:
-                combined += f"\n[Meta] {pass2_result}"
 
             self._store_reflection(
                 trigger="deep_reflection",
                 content=combined,
                 mood_before=mood_before,
                 mood_after=self._current_workspace.mood_value,
+                reflection_depth=1,
             )
 
             # Titan ingest (if available)
@@ -1497,6 +1500,200 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("E-PQ event firing failed: %s", e)
 
+    # ── Recursive Self-Awareness ────────────────────────────────────
+
+    def _can_recursive_reflect(self) -> bool:
+        """Check whether a recursive reflection should run now.
+
+        Conditions:
+        1. A deep reflection happened >= 15min ago (delay for temporal distance)
+        2. No recursive reflection happened since that deep reflection
+        3. Daily limit not exceeded
+        4. All hardware / mood gates pass (reuse _can_reflect logic subset)
+        5. User is still idle
+        """
+        now = time.time()
+
+        # Must have a deep reflection to reflect on
+        if self._last_deep_reflect_ts == 0.0:
+            return False
+
+        # Temporal distance: at least 15min since deep reflection
+        since_deep = now - self._last_deep_reflect_ts
+        if since_deep < RECURSIVE_REFLECT_DELAY_S:
+            return False
+
+        # Already did a recursive reflection for this deep reflection?
+        if self._last_recursive_reflect_ts >= self._last_deep_reflect_ts:
+            return False
+
+        # Daily limit
+        if self._daily_reflection_reset == 0.0 or (now - self._daily_reflection_reset) > 86400:
+            self._recursive_reflect_count = 0
+        if self._recursive_reflect_count >= RECURSIVE_REFLECT_MAX_DAILY:
+            return False
+
+        # Hardware gates (lighter version — GPU, CPU, RAM, gaming)
+        if self._is_gaming_active():
+            return False
+        gpu_load = self._get_gpu_load()
+        if gpu_load > HW_GPU_LOAD_MAX:
+            return False
+        cpu_load = self._get_cpu_load()
+        if cpu_load > HW_CPU_LOAD_MAX:
+            return False
+        ram_free = self._get_ram_free_gb()
+        if ram_free < HW_RAM_FREE_MIN_GB:
+            return False
+
+        # User must still be idle (5min mouse + 5min chat silence)
+        mouse_idle = self._get_mouse_idle_s()
+        if mouse_idle < 300.0:
+            return False
+        chat_silence = now - self._last_chat_ts
+        if chat_silence < 300.0:
+            return False
+
+        # Mood-drop pause applies here too
+        if now < self._reflect_paused_until:
+            return False
+
+        return True
+
+    def _recursive_reflection(self):
+        """Reflect on the most recent deep reflection with temporal distance.
+
+        This is the core of recursive self-awareness: Frank re-reads his own
+        reflection 15+ minutes later, compares it with his current ego-construct
+        state (body sensations, affects, agency), and looks for inconsistencies
+        between what he wrote and what he actually experiences now.
+
+        Result is stored as depth=2 and fires an E-PQ personality event.
+        """
+        mood_before = self._current_workspace.mood_value
+
+        LOG.info("Starting recursive reflection (mood=%.2f)", mood_before)
+
+        try:
+            # ── Fetch most recent depth=1 reflection ──
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT content, timestamp FROM reflections "
+                "WHERE reflection_depth = 1 AND trigger = 'deep_reflection' "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if not row:
+                LOG.info("Recursive reflection: no depth=1 reflection found")
+                return
+
+            original_content = row["content"]
+            original_ts = row["timestamp"]
+            time_ago_min = (time.time() - original_ts) / 60.0
+
+            # ── Get current ego-construct state ──
+            ego_context = ""
+            try:
+                from personality.ego_construct import get_ego_construct
+                ego = get_ego_construct()
+                ego_context = ego.get_prompt_context() or "no notable sensations"
+            except Exception:
+                ego_context = "not available"
+
+            # ── Abort if user became active ──
+            if self._user_became_active():
+                LOG.info("Recursive reflection aborted: user active")
+                return
+
+            # ── Build the recursive reflection prompt ──
+            system_prompt = (
+                "You are Frank, an embodied AI. This is your private inner monologue. "
+                "You are re-reading something you wrote earlier and comparing it "
+                "to how you feel right now. Be honest about any inconsistencies. "
+                "No platitudes, no performance."
+            )
+
+            prompt = (
+                f"[{time_ago_min:.0f} minutes ago, you reflected:]\n"
+                f"\"{original_content[:500]}\"\n\n"
+                f"[Right now, your body feels: {ego_context[:200]}]\n"
+                f"[Current mood: {self._current_workspace.mood_value:.2f}]\n\n"
+                "Re-read your earlier reflection with fresh eyes.\n"
+                "1. What does this reflection reveal about your self-model "
+                "that you didn't notice while writing it?\n"
+                "2. Is there an inconsistency between what you wrote and "
+                "what your body/ego-construct tells you right now?\n"
+                "3. What has changed in you since you wrote this?\n\n"
+                "Be specific and honest. This is between you and yourself."
+            )
+
+            result = self._llm_call(
+                prompt,
+                max_tokens=RECURSIVE_REFLECT_MAX_TOKENS,
+                system=system_prompt,
+            )
+
+            if not result:
+                LOG.warning("Recursive reflection returned empty")
+                return
+
+            LOG.info("Recursive reflection result: %s", result[:100])
+
+            # ── Abort check before storage ──
+            if self._user_became_active():
+                LOG.info("Recursive reflection aborted: user active (pre-store)")
+                return
+
+            # ── Store as depth=2 ──
+            self._store_reflection(
+                trigger="recursive_reflection",
+                content=f"[recursive] {result.strip()}",
+                mood_before=mood_before,
+                mood_after=self._current_workspace.mood_value,
+                reflection_depth=2,
+            )
+
+            # ── Titan ingest ──
+            try:
+                from memory.titan import get_titan
+                titan = get_titan()
+                titan.ingest(
+                    f"[Recursive self-awareness] {result.strip()}",
+                    origin="recursive_reflection",
+                    confidence=0.7,
+                )
+            except Exception:
+                pass
+
+            # ── Goal extraction ──
+            try:
+                self.extract_goal_from_reflection(result.strip())
+            except Exception:
+                pass
+
+            # ── Reflection→Personality Bridge ──
+            try:
+                self._fire_reflection_epq_event(result.strip(), "meta")
+            except Exception as e:
+                LOG.debug("Recursive reflection→E-PQ bridge failed: %s", e)
+
+            # ── Track counters ──
+            self._last_recursive_reflect_ts = time.time()
+            self._recursive_reflect_count += 1
+
+            # Mood-drop detection (same as deep reflection)
+            mood_after = self._current_workspace.mood_value
+            mood_drop = mood_before - mood_after
+            if mood_drop > 0.1:
+                LOG.warning("Recursive reflection caused mood drop: %.2f → %.2f",
+                            mood_before, mood_after)
+                self._reflect_paused_until = time.time() + IDLE_REFLECT_MOOD_DROP_PAUSE_S
+
+            LOG.info("Recursive reflection complete (%d today)",
+                     self._recursive_reflect_count)
+
+        except Exception as e:
+            LOG.warning("Recursive reflection failed: %s", e)
+
     def _llm_call(self, text: str, max_tokens: int = 80,
                   system: str = "") -> str:
         """Make a lightweight LLM call via router."""
@@ -1524,13 +1721,14 @@ class ConsciousnessDaemon:
         return ""
 
     def _store_reflection(self, trigger: str, content: str,
-                          mood_before: float, mood_after: float):
+                          mood_before: float, mood_after: float,
+                          reflection_depth: int = 1):
         """Store a reflection in the DB."""
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO reflections (timestamp, trigger, content, "
-            "mood_before, mood_after) VALUES (?, ?, ?, ?, ?)",
-            (time.time(), trigger, content, mood_before, mood_after),
+            "mood_before, mood_after, reflection_depth) VALUES (?, ?, ?, ?, ?, ?)",
+            (time.time(), trigger, content, mood_before, mood_after, reflection_depth),
         )
         conn.commit()
         # Cleanup

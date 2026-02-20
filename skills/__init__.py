@@ -742,9 +742,9 @@ class SkillRegistry:
 
         timeout = timeout_s or skill.meta.get("timeout_s", 15.0)
         # OpenClaw skills need generous timeout: local 7B LLM + Frank persona
-        # (~4300 char system prompt) + skill instructions = slow inference
-        if skill.skill_type == "openclaw" and timeout < 60:
-            timeout = 60.0
+        # (~4300 char system prompt) + skill instructions @ ~12 tok/s (Vulkan)
+        if skill.skill_type == "openclaw" and timeout < 90:
+            timeout = 90.0
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:

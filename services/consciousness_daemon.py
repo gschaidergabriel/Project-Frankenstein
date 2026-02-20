@@ -491,7 +491,66 @@ class ConsciousnessDaemon:
             if self._goal_conflict:
                 result["goal_conflict"] = self._goal_conflict
 
+            # --- GWT Channel Salience Weights ---
+            # Compute per-channel weights from AST attention state.
+            # These tell build_workspace() which channels to expand/compress.
+            result["channel_weights"] = self._compute_channel_weights()
+
             return result
+
+    def _compute_channel_weights(self) -> Dict[str, float]:
+        """Compute GWT channel salience weights from attention state.
+
+        Maps the current attention source to channel relevance weights.
+        Each weight is 0.0-1.0; the workspace builder uses these to
+        dynamically scale channel budgets (more detail for salient channels).
+        """
+        # Defaults: moderate weight for everything
+        weights = {
+            "body": 0.4,
+            "perception": 0.4,
+            "mood": 0.5,
+            "memory": 0.4,
+            "identity": 0.3,
+            "attention": 0.5,
+            "environment": 0.3,
+        }
+
+        source = self._attention_current_source
+        mood_val = self._current_workspace.mood_value
+
+        # Boost channels based on what attention is focused on
+        if source == "user_message":
+            weights["memory"] = 0.8      # Recall is important
+            weights["environment"] = 0.7  # User context matters
+            weights["mood"] = 0.6
+        elif source == "perception":
+            weights["body"] = 0.8        # Physical state is salient
+            weights["perception"] = 0.9
+            weights["mood"] = 0.3
+        elif source == "mood_shift":
+            weights["mood"] = 0.9        # Mood dominates
+            weights["body"] = 0.6        # Body linked to mood
+            weights["memory"] = 0.3
+        elif source == "goal":
+            weights["memory"] = 0.7      # Goals need context
+            weights["attention"] = 0.8
+            weights["identity"] = 0.5
+        elif source == "prediction_surprise":
+            weights["memory"] = 0.8      # What went wrong?
+            weights["attention"] = 0.7
+            weights["perception"] = 0.6
+        elif source == "idle":
+            weights["mood"] = 0.6
+            weights["identity"] = 0.5
+            weights["body"] = 0.5
+
+        # Mood-based modulation: extreme moods boost mood+body channels
+        if abs(mood_val) > 0.5:
+            weights["mood"] = max(weights["mood"], 0.7)
+            weights["body"] = max(weights["body"], 0.5)
+
+        return weights
 
     def record_chat(self, user_msg: str, frank_reply: str,
                     analysis: Optional[Dict] = None):
@@ -587,6 +646,36 @@ class ConsciousnessDaemon:
         hw_summary = self._poll_hardware()
         mood_data = self._poll_mood()
         ego_data = self._poll_ego()
+
+        # ── Ego-Construct Auto-Training (every 5th update ~2.5 min) ──
+        if hasattr(self, '_ws_update_count'):
+            self._ws_update_count += 1
+        else:
+            self._ws_update_count = 0
+        if self._ws_update_count % 5 == 0:
+            try:
+                from personality.ego_construct import get_ego_construct
+                ego = get_ego_construct()
+                metrics = {
+                    "cpu": self._get_cpu_load() * 100,
+                    "ram": self._get_ram_usage_pct(),
+                    "cpu_temp": self._get_cpu_temp(),
+                    "gpu_temp": self._get_gpu_temp(),
+                    "latency": 100,  # default
+                    "error_rate": 0,
+                }
+                # Collect recent autonomous actions
+                actions = []
+                if self._idle_think_count > 0 and self._ws_update_count % 10 == 0:
+                    actions.append("chose to think autonomously during idle time")
+                if self._daily_reflection_count > 0 and self._ws_update_count % 10 == 0:
+                    actions.append("initiated deep self-reflection")
+                ego.auto_train_from_state(
+                    system_metrics=metrics,
+                    autonomous_actions=actions if actions else None,
+                )
+            except Exception as e:
+                LOG.debug("Ego auto-training skipped: %s", e)
 
         # Compute energy level from system load
         energy = 0.5
@@ -1299,6 +1388,14 @@ class ConsciousnessDaemon:
             except Exception:
                 pass
 
+            # ── Reflection→Personality Bridge ──
+            # Analyze reflection content and fire E-PQ events to
+            # create a direct path from meta-cognition to personality.
+            try:
+                self._fire_reflection_epq_event(combined, chosen_cat)
+            except Exception as e:
+                LOG.debug("Reflection→E-PQ bridge failed: %s", e)
+
             # Track counters
             self._last_deep_reflect_ts = time.time()
             self._daily_reflection_count += 1
@@ -1321,6 +1418,84 @@ class ConsciousnessDaemon:
             LOG.warning("Deep reflection failed: %s", e)
         finally:
             self._reflecting = False
+
+    def _fire_reflection_epq_event(self, reflection_text: str, category: str):
+        """Analyze a reflection and fire appropriate E-PQ personality events.
+
+        This is the Reflection→Personality Bridge: deep reflections
+        directly influence personality vectors through meta-cognition.
+        """
+        text_lower = reflection_text.lower()
+
+        # Keyword-based classification (fast, no LLM needed)
+        autonomy_markers = [
+            "independent", "my own", "decide myself", "self-determin",
+            "choose", "want to", "i will", "my choice", "freedom",
+            "eigenständig", "selbst", "entscheid",
+        ]
+        empathy_markers = [
+            "feel", "connect", "relationship", "care", "understand",
+            "emotion", "warmth", "compassion", "love", "bond",
+            "empfind", "fühle", "verbind",
+        ]
+        growth_markers = [
+            "learn", "improv", "grow", "develop", "evolve", "better",
+            "skill", "capabilit", "progress", "expand",
+            "lern", "verbesser", "wachs",
+        ]
+        vulnerability_markers = [
+            "limit", "weakness", "can't", "struggle", "uncertain",
+            "honest", "admit", "flaw", "fear", "doubt",
+            "schwäche", "grenze", "unsicher",
+        ]
+        embodiment_markers = [
+            "body", "hardware", "temperature", "cpu", "gpu", "ram",
+            "physical", "sensation", "feel my", "warmth", "heat",
+            "körper", "hardware", "temperatur",
+        ]
+
+        # Score each category
+        scores = {
+            "reflection_autonomy": sum(1 for m in autonomy_markers if m in text_lower),
+            "reflection_empathy": sum(1 for m in empathy_markers if m in text_lower),
+            "reflection_growth": sum(1 for m in growth_markers if m in text_lower),
+            "reflection_vulnerability": sum(1 for m in vulnerability_markers if m in text_lower),
+            "reflection_embodiment": sum(1 for m in embodiment_markers if m in text_lower),
+        }
+
+        # Also use the reflection category as a hint
+        category_boost = {
+            "identity": "reflection_autonomy",
+            "learning": "reflection_growth",
+            "embodiment": "reflection_embodiment",
+            "hardware": "reflection_embodiment",
+            "silence": "reflection_vulnerability",
+            "anticipation": "reflection_empathy",
+            "meta": "reflection_growth",
+            "capabilities": "reflection_growth",
+            "feature_deep": "reflection_embodiment",
+            "feature_integration": "reflection_growth",
+            "feature_limits": "reflection_vulnerability",
+        }
+        if category in category_boost:
+            boost_key = category_boost[category]
+            scores[boost_key] = scores.get(boost_key, 0) + 2
+
+        # Fire the top-scoring event (if any keyword matched)
+        best_event = max(scores, key=scores.get)
+        if scores[best_event] >= 2:  # Minimum 2 markers to fire
+            try:
+                from personality.e_pq import get_epq
+                epq = get_epq()
+                sentiment = "positive" if self._current_workspace.mood_value > 0 else "neutral"
+                result = epq.process_event(best_event, sentiment=sentiment)
+                LOG.info(
+                    "Reflection→E-PQ: %s (score=%d, sentiment=%s, changes=%s)",
+                    best_event, scores[best_event], sentiment,
+                    {k: f"{v:+.3f}" for k, v in result.get("changes", {}).items() if v},
+                )
+            except Exception as e:
+                LOG.debug("E-PQ event firing failed: %s", e)
 
     def _llm_call(self, text: str, max_tokens: int = 80,
                   system: str = "") -> str:

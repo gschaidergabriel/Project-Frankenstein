@@ -443,10 +443,36 @@ class GenesisDaemon:
             LOG.info(f"Crystal {crystal.id} approved!")
             self.stats["successful_manifestations"] += 1
 
-            # Integrate with A.S.R.S.
+            genome = crystal.organism.genome
+
+            # ── Genesis→E-PQ Bridge: Personality adjustments ──
+            if genome.idea_type == "personality_adjustment":
+                success = self._execute_personality_adjustment(crystal)
+                if success:
+                    self.reflector.record_outcome(crystal, True, "Personality adjusted")
+                else:
+                    self.reflector.record_outcome(crystal, False, "Personality adjustment failed")
+                self.manifestation_gate.record_success(crystal) if success else None
+                self.current_crystal = None
+                self.state = ContemplationState.REFLECTING
+                self.last_state_change = datetime.now()
+                return
+
+            # ── Genesis→Prompt Bridge: Prompt template evolution ──
+            if genome.idea_type == "prompt_evolution":
+                success = self._execute_prompt_evolution(crystal)
+                if success:
+                    self.reflector.record_outcome(crystal, True, "Prompt template evolved")
+                else:
+                    self.reflector.record_outcome(crystal, False, "Prompt evolution failed")
+                self.manifestation_gate.record_success(crystal) if success else None
+                self.current_crystal = None
+                self.state = ContemplationState.REFLECTING
+                self.last_state_change = datetime.now()
+                return
+
+            # ── Standard code integration via A.S.R.S. ──
             def implementation():
-                # The actual implementation would go here
-                # For now, just log
                 LOG.info(f"Implementing: {crystal.title}")
 
             success = self.asrs_connector.integrate_with_safety(
@@ -476,6 +502,120 @@ class GenesisDaemon:
         self.current_crystal = None
         self.state = ContemplationState.REFLECTING
         self.last_state_change = datetime.now()
+
+    def _execute_personality_adjustment(self, crystal: Crystal) -> bool:
+        """Execute a personality vector adjustment via E-PQ.
+
+        This is the Genesis→E-PQ Bridge: Genesis crystals can propose
+        changes to Frank's personality vectors, executed through E-PQ
+        process_event() with special event types.
+        """
+        try:
+            import sys
+            from pathlib import Path
+            _root = Path(__file__).resolve().parents[2]
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
+
+            from personality.e_pq import get_epq
+            epq = get_epq()
+
+            genome = crystal.organism.genome
+            target_vector = genome.traits.get("target_vector", genome.target)
+            amount = genome.traits.get("adjustment_amount", 0.1)
+
+            if genome.approach == "vector_boost":
+                event_type = "genesis_personality_boost"
+            else:
+                event_type = "genesis_personality_dampen"
+
+            result = epq.process_event(
+                event_type,
+                data={
+                    "target_vector": target_vector,
+                    "amount": amount,
+                    "event_id": f"genesis_{crystal.id}",
+                },
+                sentiment="positive",
+            )
+            LOG.info(
+                "Genesis→E-PQ: %s %s by %.2f (changes=%s)",
+                genome.approach, target_vector, amount,
+                {k: f"{v:+.3f}" for k, v in result.get("changes", {}).items() if v},
+            )
+            return True
+        except Exception as e:
+            LOG.error("Genesis→E-PQ bridge failed: %s", e)
+            return False
+
+    def _execute_prompt_evolution(self, crystal: Crystal) -> bool:
+        """Execute a prompt template modification on frank.persona.json.
+
+        Modifies non-core prompt sections. Creates a backup before
+        applying changes. Core identity section is PROTECTED.
+        """
+        try:
+            import sys
+            from pathlib import Path
+            _root = Path(__file__).resolve().parents[2]
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
+
+            persona_path = _root / "personality" / "frank.persona.json"
+            if not persona_path.exists():
+                LOG.error("Persona file not found: %s", persona_path)
+                return False
+
+            # Backup before modification
+            backup_path = persona_path.with_suffix(".json.genesis_backup")
+            import shutil
+            shutil.copy2(persona_path, backup_path)
+
+            genome = crystal.organism.genome
+            target_section = genome.target
+            modification = genome.traits.get("modification", "")
+
+            if not modification:
+                LOG.warning("No modification specified for prompt evolution")
+                return False
+
+            # PROTECTED sections that Genesis CANNOT modify
+            protected = {"identity_core", "language_policy"}
+            if target_section in protected:
+                LOG.warning("Genesis tried to modify protected section: %s", target_section)
+                return False
+
+            # Load persona
+            persona = json.loads(persona_path.read_text())
+            prompts = persona.get("prompts", {})
+
+            if target_section not in prompts:
+                LOG.warning("Unknown prompt section: %s", target_section)
+                return False
+
+            # Apply modification
+            old_value = prompts[target_section]
+            prompts[target_section] = modification
+            persona["prompts"] = prompts
+
+            # Save modified persona
+            persona_path.write_text(json.dumps(persona, indent=2, ensure_ascii=False))
+
+            LOG.info(
+                "Genesis→Prompt: Modified section '%s' (backup at %s)",
+                target_section, backup_path,
+            )
+            return True
+        except Exception as e:
+            LOG.error("Genesis→Prompt evolution failed: %s", e)
+            # Attempt rollback
+            try:
+                if backup_path.exists():
+                    shutil.copy2(backup_path, persona_path)
+                    LOG.info("Rolled back persona file from backup")
+            except Exception:
+                pass
+            return False
 
     def _on_integration_success(self, crystal: Crystal):
         """Called when A.S.R.S. confirms successful integration."""

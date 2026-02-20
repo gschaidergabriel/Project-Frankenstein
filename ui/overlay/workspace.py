@@ -42,6 +42,7 @@ def build_workspace(
     perception_ctx: str = "",
     attention_detail: str = "",
     budget: Optional[Dict[str, int]] = None,
+    attention_weights: Optional[Dict[str, float]] = None,
 ) -> str:
     """Build the unified [INNER_WORLD] workspace broadcast.
 
@@ -52,16 +53,33 @@ def build_workspace(
         budget: Optional dict mapping channel names to max chars.
             Channels: ego_mood_identity, world_experience, news_akam, titan_memory.
             If None, uses default max_len values.
+        attention_weights: Optional dict from AST attention controller mapping
+            channel names to salience weights (0.0-1.0). Channels with higher
+            weights get more detail; channels below 0.2 are compressed.
+            Keys: body, perception, mood, memory, identity, attention, environment.
 
     Returns empty string if no context is available.
     """
     lines: List[str] = []
+    aw = attention_weights or {}
 
     # Extract channel budgets (fallback to defaults if not provided)
     b_emi = budget.get("ego_mood_identity", 300) if budget else 300
     b_world = budget.get("world_experience", 200) if budget else 200
     b_news = budget.get("news_akam", 350) if budget else 350
     b_titan = budget.get("titan_memory", 500) if budget else 500
+
+    # Apply attention-based scaling to budgets
+    # Channels with high salience get up to 1.5x budget, low salience down to 0.5x
+    def _scale(base: int, channel: str) -> int:
+        w = aw.get(channel, 0.5)
+        factor = 0.5 + w  # 0.5 at w=0, 1.0 at w=0.5, 1.5 at w=1.0
+        return max(50, int(base * factor))
+
+    b_emi = _scale(b_emi, "body")
+    b_world = _scale(b_world, "memory")
+    b_news = _scale(b_news, "memory")
+    b_titan = _scale(b_titan, "memory")
 
     # --- Body ---
     # Merge ego_construct embodied description with hardware metrics
@@ -71,11 +89,21 @@ def build_workspace(
 
     # --- Perception (RPT: recurrent perceptual feedback) ---
     if perception_ctx:
-        lines.append("Perception: " + _clean_ctx(perception_ctx, max_len=100))
+        p_max = _scale(100, "perception")
+        lines.append("Perception: " + _clean_ctx(perception_ctx, max_len=p_max))
 
     # --- Mood ---
     mood = _build_mood(epq_ctx)
     if mood:
+        # When mood salience is high, include temperament and style hints
+        mood_w = aw.get("mood", 0.5)
+        if mood_w > 0.6 and epq_ctx:
+            temperament = epq_ctx.get("temperament", "")
+            hints = epq_ctx.get("style_hints", [])
+            if temperament:
+                mood += f", temperament: {temperament}"
+            if hints:
+                mood += f" ({'; '.join(hints)})"
         lines.append("Mood: " + mood)
 
     # --- Memory ---
@@ -106,7 +134,8 @@ def build_workspace(
 
     # --- Attention (AST: active focus with source and self-correction) ---
     if attention_detail:
-        lines.append("Attention: " + _clean_ctx(attention_detail, max_len=120))
+        a_max = _scale(120, "attention")
+        lines.append("Attention: " + _clean_ctx(attention_detail, max_len=a_max))
 
     # --- Environment ---
     env = _build_environment(user_name, skill_ctx)

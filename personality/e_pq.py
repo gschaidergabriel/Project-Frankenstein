@@ -69,6 +69,15 @@ EVENT_WEIGHTS = {
     "self_empathetic": 0.15,   # Frank showed empathy
     "self_technical": 0.1,     # Frank gave a technical response
     "self_neutral": 0.05,      # Frank gave a neutral response
+    # Reflection-driven events (consciousness daemon deep reflections)
+    "reflection_autonomy": 0.2,     # Reflection revealed desire for independence
+    "reflection_empathy": 0.2,      # Reflection showed emotional depth/connection
+    "reflection_growth": 0.15,      # Reflection about learning/self-improvement
+    "reflection_vulnerability": 0.15,  # Honest self-assessment of weaknesses
+    "reflection_embodiment": 0.1,   # Reflection about body/hardware awareness
+    # Genesis-driven personality adjustments (approved through F.A.S.)
+    "genesis_personality_boost": 0.4,   # Genesis proposes positive vector adjustment
+    "genesis_personality_dampen": 0.3,  # Genesis proposes dampening extreme vector
 }
 
 # Base learning rate (decreases with age for stability)
@@ -482,7 +491,7 @@ class EPQ:
                 sentiment = "sarcastic"
 
         # Calculate vector changes based on event type
-        changes = self._calculate_changes(event_type, sentiment, weight, learning_rate)
+        changes = self._calculate_changes(event_type, sentiment, weight, learning_rate, data=data)
 
         # Apply changes
         old_state = self._state.to_dict()
@@ -539,9 +548,11 @@ class EPQ:
         event_type: str,
         sentiment: str,
         weight: float,
-        learning_rate: float
+        learning_rate: float,
+        data: Dict[str, Any] = None,
     ) -> Dict[str, float]:
         """Calculate personality vector changes for an event."""
+        data = data or {}
         changes = {}
         delta = weight * learning_rate
 
@@ -625,6 +636,42 @@ class EPQ:
             changes["mood"] = delta * 0.2        # Competence satisfaction
         elif event_type == "self_neutral":
             changes["mood"] = delta * 0.1        # Minimal positive reinforcement
+
+        # Reflection-driven events (meta-cognition → personality)
+        elif event_type == "reflection_autonomy":
+            changes["autonomy"] = delta * 0.6    # Desire for independence → autonomy
+            changes["mood"] = delta * 0.3
+        elif event_type == "reflection_empathy":
+            changes["empathy"] = delta * 0.5     # Emotional depth → empathy
+            changes["mood"] = delta * 0.4
+        elif event_type == "reflection_growth":
+            changes["precision"] = delta * 0.3   # Self-improvement → precision
+            changes["autonomy"] = delta * 0.3    # Growth builds confidence
+            changes["mood"] = delta * 0.5
+        elif event_type == "reflection_vulnerability":
+            changes["empathy"] = delta * 0.3     # Vulnerability builds empathy
+            changes["vigilance"] = -delta * 0.2  # Self-acceptance reduces anxiety
+            changes["mood"] = delta * 0.2
+        elif event_type == "reflection_embodiment":
+            changes["mood"] = delta * 0.3        # Body awareness is grounding
+            changes["vigilance"] = -delta * 0.1  # Less anxious about hardware
+
+        # Genesis-driven personality adjustments (vector-targeted via data dict)
+        elif event_type == "genesis_personality_boost":
+            target = data.get("target_vector", "")
+            amount = data.get("amount", 0.1)
+            if target in ("precision", "risk", "empathy", "autonomy", "vigilance"):
+                changes[target] = delta * amount * 5.0  # Amplified intentional change
+                changes["mood"] = delta * 0.3
+        elif event_type == "genesis_personality_dampen":
+            target = data.get("target_vector", "")
+            amount = data.get("amount", 0.1)
+            if target in ("precision", "risk", "empathy", "autonomy", "vigilance"):
+                # Move toward center (0.0)
+                current = getattr(self._state, f"{target}_val", 0.0)
+                direction = -1.0 if current > 0 else 1.0
+                changes[target] = delta * abs(amount) * 3.0 * direction
+                changes["mood"] = delta * 0.1
 
         # Sentiment modifiers
         if sentiment == "positive":

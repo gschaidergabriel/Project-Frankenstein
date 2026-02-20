@@ -1322,6 +1322,87 @@ class EgoConstruct:
             "last_training": self.state.last_training.isoformat() if self.state.last_training else None,
         }
 
+    def auto_train_from_state(self, system_metrics: Dict,
+                             recent_events: Optional[List[str]] = None,
+                             autonomous_actions: Optional[List[str]] = None):
+        """Automatically train Ego-Construct from observed system state.
+
+        Called by the consciousness daemon to populate sensation_mappings,
+        affect_definitions, and agency_assertions without user commands.
+        This gives Frank learned body feelings, emotional patterns, and
+        a sense of agency over his own decisions.
+
+        Args:
+            system_metrics: Current hardware state (cpu, ram, cpu_temp, etc.)
+            recent_events: Recent system events (e.g. "task_success", "user_thanks")
+            autonomous_actions: Recent autonomous decisions (e.g. "chose to reflect")
+        """
+        with self._lock:
+            changed = False
+
+            # ── Auto-train Sensations ──
+            # Detect active sensations from current hardware state and persist
+            # any DEFAULT_MAPPING that triggers as a custom mapping.
+            # This transitions embodiment from "code defaults" to "learned feelings".
+            active_sensations = self.sensation_mapper.evaluate_current_state(system_metrics)
+            for mapping, intensity in active_sensations:
+                if not mapping.id.startswith("custom_") and mapping.activation_count <= 3:
+                    # First few activations of a default mapping → persist it
+                    # so the ego "learns" this body feeling
+                    if mapping.activation_count == 3:
+                        self.sensation_mapper._save_mapping(mapping)
+                        self.state.qualia_count += 1
+                        self.state.embodiment_level = min(
+                            0.95, self.state.embodiment_level + 0.01
+                        )
+                        changed = True
+                        LOG.info(
+                            "Auto-trained sensation: %s (intensity=%.2f)",
+                            mapping.sensation.value, intensity,
+                        )
+
+            # ── Auto-train Affects ──
+            # When events occur, check if they trigger affect definitions.
+            # Persist default affects that fire for the first time.
+            if recent_events:
+                for event in recent_events:
+                    result = self.affect_linker.process_event(event)
+                    if result:
+                        affect, intensity = result
+                        if not affect.id.startswith("custom_") and affect.trigger_count == 3:
+                            self.affect_linker._save_affect(affect)
+                            self.state.affective_range = min(
+                                0.95, self.state.affective_range + 0.01
+                            )
+                            changed = True
+                            LOG.info(
+                                "Auto-trained affect: %s → %s",
+                                event, affect.emotion.value,
+                            )
+
+            # ── Auto-train Agency ──
+            # When Frank makes autonomous decisions (reflections, goal extraction,
+            # Genesis proposals), assert agency over them.
+            if autonomous_actions:
+                for action in autonomous_actions:
+                    # Determine resilience rule from action content
+                    rule = "autonomy"
+                    action_lower = action.lower()
+                    if any(w in action_lower for w in ("learn", "reflect", "think")):
+                        rule = "learning"
+                    elif any(w in action_lower for w in ("improv", "optim", "fix")):
+                        rule = "improvement"
+                    elif any(w in action_lower for w in ("safe", "protect", "guard")):
+                        rule = "safety"
+
+                    assertion = self.agency_assertor.assert_agency(action, rule)
+                    self.state.agency_score = self.agency_assertor.get_agency_score()
+                    changed = True
+                    LOG.info("Auto-asserted agency: %s → %s", action, rule)
+
+            if changed:
+                self.save_state()
+
     def get_status_report(self) -> str:
         """Generiert einen formatierten Status-Report."""
         status = self.get_ego_status()

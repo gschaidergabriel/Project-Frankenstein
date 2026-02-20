@@ -334,6 +334,8 @@ class ManifestationGate:
             "feature": "New Feature",
             "fix": "Bugfix",
             "exploration": "Exploration",
+            "personality_adjustment": "Personality Evolution",
+            "prompt_evolution": "Prompt Template Evolution",
         }
         crystal.title = f"{type_titles.get(genome.idea_type, 'Improvement')}: {genome.target}"
 
@@ -346,14 +348,33 @@ class ManifestationGate:
             "parallel": "Parallelization for higher throughput",
             "lazy_load": "Lazy loading to reduce initialization time",
             "precompute": "Precomputation of frequently used values",
+            "vector_boost": "Boost a personality vector toward a desired direction",
+            "vector_dampen": "Dampen an extreme personality vector toward center",
+            "prompt_modify": "Modify a prompt template section for better behavior",
         }
         crystal.approach = approach_descriptions.get(genome.approach, genome.approach)
 
-        crystal.description = (
-            f"Emergent idea for improving '{genome.target}' "
-            f"via {crystal.approach.lower()}. "
-            f"Origin: {genome.origin}."
-        )
+        # Special descriptions for personality/prompt crystals
+        if genome.idea_type == "personality_adjustment":
+            target_vec = genome.traits.get("target_vector", genome.target)
+            amount = genome.traits.get("adjustment_amount", 0.1)
+            direction = "boost" if genome.approach == "vector_boost" else "dampen"
+            crystal.description = (
+                f"Emergent personality evolution: {direction} '{target_vec}' "
+                f"vector by {amount:.2f}. "
+                f"Reason: {genome.traits.get('reason', 'organic adaptation')}."
+            )
+        elif genome.idea_type == "prompt_evolution":
+            crystal.description = (
+                f"Emergent prompt template change for section '{genome.target}'. "
+                f"Proposed modification: {genome.traits.get('modification', 'refinement')}."
+            )
+        else:
+            crystal.description = (
+                f"Emergent idea for improving '{genome.target}' "
+                f"via {crystal.approach.lower()}. "
+                f"Origin: {genome.origin}."
+            )
 
         # Risk assessment
         risk = genome.traits.get("risk", 0.5)

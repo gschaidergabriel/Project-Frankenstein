@@ -503,6 +503,7 @@ class ChatMixin:
         # They must be phrased as phenomenological context, never as data to recite.
         ws_perception = ""
         ws_attention_detail = ""
+        _gwt_channel_weights = None
         if _CONSCIOUSNESS_AVAILABLE:
             try:
                 _cd = _consciousness_daemon()
@@ -547,6 +548,10 @@ class ChatMixin:
                     ws_extra.append(f"[{cs_ctx['active_goals']}]")
                 if cs_ctx.get("goal_conflict"):
                     ws_extra.append(f"[Goal tension: {cs_ctx['goal_conflict']}]")
+
+                # GWT Channel Salience Weights (from AST attention controller)
+                if cs_ctx.get("channel_weights"):
+                    _gwt_channel_weights = cs_ctx["channel_weights"]
 
             except Exception as e:
                 LOG.debug("Consciousness context injection skipped: %s", e)
@@ -606,6 +611,7 @@ class ChatMixin:
             perception_ctx=ws_perception,
             attention_detail=ws_attention_detail,
             budget=_ws_budget,
+            attention_weights=_gwt_channel_weights,
         )
 
         # Build conversation context for continuity (budget-aware)

@@ -51,8 +51,35 @@ LOG = logging.getLogger("skills")
 SKILLS_DIR = Path(__file__).parent
 REQUIRED_SKILL_KEYS = {"name", "description"}
 
-# Core API for OpenClaw LLM-mediated skills
-CORE_API_URL = "http://127.0.0.1:8088/v1/chat/completions"
+# Router for OpenClaw LLM-mediated skills (same as main chat uses)
+ROUTER_URL = "http://127.0.0.1:8091/route"
+
+# ── Persona integration (with fallback) ─────────────────────────
+_PERSONA_AVAILABLE = False
+_build_frank_prompt = None
+
+try:
+    from personality import build_system_prompt as _build_frank_prompt
+    _PERSONA_AVAILABLE = True
+except ImportError:
+    pass
+
+_FALLBACK_IDENTITY = (
+    "You are Frank — a local AI system with your own personality. "
+    "Answer directly, honestly, with dry humor. Not a generic assistant."
+)
+
+
+def _get_frank_identity() -> str:
+    """Get Frank's identity for skill context (with fallback)."""
+    if _PERSONA_AVAILABLE and _build_frank_prompt:
+        try:
+            return _build_frank_prompt(
+                profile="minimal", include_tools=False, include_self_knowledge=False
+            )
+        except Exception:
+            pass
+    return _FALLBACK_IDENTITY
 
 # ── Security scanning patterns ────────────────────────────────────
 
@@ -180,47 +207,79 @@ class LoadedSkill:
 
 # ---------- OpenClaw LLM Runner ----------
 
-def _openclaw_run(instructions: str, user_query: str = "", **kwargs) -> dict:
-    """Execute an OpenClaw skill by sending instructions + query to the LLM."""
+def _openclaw_run(
+    instructions: str,
+    user_query: str = "",
+    skill_meta: Optional[dict] = None,
+    **kwargs,
+) -> dict:
+    """Execute an OpenClaw skill via Router with Frank's persona.
+
+    Uses the same Router endpoint as the main chat (/route on port 8091)
+    so model selection, prompt formatting, and persona are consistent.
+
+    Skill metadata can override: max_tokens, temperature, model.
+    """
+    meta = skill_meta or {}
+    skill_name = meta.get("name", "unknown")
+
+    # Build system prompt: Frank's identity + skill instructions
+    frank_identity = _get_frank_identity()
     system_prompt = (
-        "You are Frank, a helpful local AI assistant. "
-        "Follow the skill instructions below exactly:\n\n"
-        + instructions
+        f"{frank_identity}\n\n"
+        f"=== AKTIVIERTER SKILL: {skill_name} ===\n"
+        f"{instructions}\n\n"
+        f"Bleibe in deiner Persona. Antworte natuerlich und hilfreich."
     )
-    messages = [
-        {"role": "system", "content": system_prompt},
-    ]
-    if user_query:
-        messages.append({"role": "user", "content": user_query})
-    else:
-        messages.append({"role": "user", "content": "Execute the skill."})
+
+    # Per-skill config from YAML frontmatter (with sane defaults)
+    max_tokens = int(meta.get("max_tokens", 800))
+    temperature = float(meta.get("temperature", 0.3))
+    model_force = meta.get("model", None)
+    if model_force == "auto":
+        model_force = None
+
+    # Build Router payload (same format as core_api._core_chat_stream)
+    payload = {
+        "text": user_query or "Fuehre den Skill aus.",
+        "n_predict": max_tokens,
+        "system": system_prompt,
+    }
+    if model_force:
+        payload["force"] = model_force
 
     try:
-        payload = json.dumps({
-            "model": "llama3",
-            "messages": messages,
-            "max_tokens": 500,
-            "temperature": 0.3,
-        }).encode()
-
+        data = json.dumps(payload).encode()
         req = urllib.request.Request(
-            CORE_API_URL,
-            data=payload,
+            ROUTER_URL,
+            data=data,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
+        # HTTP timeout is generous — the user-facing timeout is handled by
+        # execute()'s ThreadPoolExecutor. This just prevents hung connections.
+        http_timeout = max(90.0, float(meta.get("timeout_s", 30)) * 2)
+        with urllib.request.urlopen(req, timeout=http_timeout) as resp:
+            result = json.loads(resp.read())
 
-        # Extract response text
-        choices = data.get("choices", [])
-        if choices:
-            text = choices[0].get("message", {}).get("content", "")
-            if text:
-                return {"ok": True, "output": text, "skill_type": "openclaw"}
+        # Router returns: {"ok": bool, "model": str, "text": str, "ts": float}
+        if result.get("ok") and result.get("text"):
+            return {
+                "ok": True,
+                "output": result["text"],
+                "skill_type": "openclaw",
+                "model": result.get("model", "unknown"),
+            }
 
-        return {"ok": False, "error": "No response from LLM"}
+        return {"ok": False, "error": result.get("text", "No response from LLM")}
 
+    except urllib.error.URLError as e:
+        return {
+            "ok": False,
+            "error": f"Router unreachable (port 8091): {e.reason}",
+        }
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "Invalid response from Router"}
     except Exception as e:
         return {"ok": False, "error": f"OpenClaw skill error: {e}"}
 
@@ -326,11 +385,12 @@ class SkillRegistry:
                 return None
 
             name = meta["name"]
-            # Create a closure that captures the instructions
+            # Create a closure that captures instructions AND metadata
             instructions = body
+            skill_meta = dict(meta)  # snapshot for closure
 
-            def run_fn(user_query: str = "", **kw):
-                return _openclaw_run(instructions, user_query, **kw)
+            def run_fn(user_query: str = "", _instr=instructions, _meta=skill_meta, **kw):
+                return _openclaw_run(_instr, user_query, skill_meta=_meta, **kw)
 
             LOG.info(f"Skill loaded (openclaw): {name} ({dir_name}/SKILL.md)")
             return LoadedSkill(
@@ -681,9 +741,10 @@ class SkillRegistry:
             return {"ok": False, "error": f"Skill '{name}' not found"}
 
         timeout = timeout_s or skill.meta.get("timeout_s", 15.0)
-        # OpenClaw skills need more time (LLM round-trip)
-        if skill.skill_type == "openclaw" and timeout < 30:
-            timeout = 30.0
+        # OpenClaw skills need generous timeout: local 7B LLM + Frank persona
+        # (~4300 char system prompt) + skill instructions = slow inference
+        if skill.skill_type == "openclaw" and timeout < 60:
+            timeout = 60.0
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -695,11 +756,17 @@ class SkillRegistry:
             return result
 
         except concurrent.futures.TimeoutError:
-            return {"ok": False, "error": f"Skill '{name}' timed out after {timeout}s"}
+            return {
+                "ok": False,
+                "error": (
+                    f"Skill '{name}' timed out after {timeout:.0f}s. "
+                    f"Try a more specific query or shorter task."
+                ),
+            }
         except TypeError as e:
-            return {"ok": False, "error": f"Parameter error: {e}"}
+            return {"ok": False, "error": f"Parameter error in skill '{name}': {e}"}
         except Exception as e:
-            return {"ok": False, "error": f"Skill error: {e}"}
+            return {"ok": False, "error": f"Skill error ({name}): {e}"}
 
 
 # ---------- Singleton ----------

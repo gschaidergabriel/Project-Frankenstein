@@ -1,11 +1,14 @@
 ---
 name: essence-distiller
 description: Tiefenanalyse von Texten — Kernargumente, Annahmen, Widersprueche, Handlungsempfehlungen
-version: 1.0
+version: 1.1
 keywords: [analysiere, analyse, tiefenanalyse, essenz, kernaussage, argumente, annahmen, widersprueche, destilliere, distill, essence, deep analysis, kritisch analysieren]
 user-invocable: true
-timeout_s: 45
+timeout_s: 60
 risk_level: 0.0
+max_tokens: 1500
+temperature: 0.25
+model: auto
 ---
 
 # Essence Distiller — Tiefenanalyse

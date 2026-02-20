@@ -1,11 +1,14 @@
 ---
 name: sysadmin
 description: Linux-Systemadministration — Diagnose, Services, Netzwerk, Prozesse
-version: 1.0
+version: 1.1
 keywords: [sysadmin, systemstatus, dienste, services, netzwerk, prozesse, logs, speicherplatz, disk, ram, cpu, ports, firewall, systemctl, journalctl, diagnose, systemdiagnose]
 user-invocable: true
-timeout_s: 30
+timeout_s: 45
 risk_level: 0.1
+max_tokens: 1500
+temperature: 0.15
+model: auto
 ---
 
 # Sysadmin Toolbox

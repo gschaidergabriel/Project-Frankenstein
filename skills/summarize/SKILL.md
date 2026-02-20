@@ -1,11 +1,14 @@
 ---
 name: summarize
-description: Text oder Artikel zusammenfassen (OpenClaw-Format Beispiel)
-version: 1.0
+description: Text oder Artikel zusammenfassen
+version: 1.1
 keywords: [zusammenfassen, zusammenfassung, fasse zusammen, fass zusammen, fasse das zusammen, fass das zusammen, summarize, summary, tldr, kurz gefasst]
 user-invocable: true
 timeout_s: 30
 risk_level: 0.0
+max_tokens: 600
+temperature: 0.2
+model: auto
 ---
 
 # Text-Zusammenfassung

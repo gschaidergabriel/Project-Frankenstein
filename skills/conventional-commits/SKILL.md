@@ -1,11 +1,14 @@
 ---
 name: conventional-commits
 description: Git-Commit-Nachrichten im Conventional-Commits-Format erstellen
-version: 1.0
+version: 1.1
 keywords: [commit, commit message, git commit, conventional commit, commit schreiben, commit formulieren, commit nachricht, commit format]
 user-invocable: true
 timeout_s: 20
 risk_level: 0.0
+max_tokens: 300
+temperature: 0.15
+model: auto
 ---
 
 # Conventional Commits Helper

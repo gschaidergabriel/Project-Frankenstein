@@ -1,11 +1,14 @@
 ---
 name: regex-helper
 description: Regulaere Ausdruecke erstellen, erklaeren und testen
-version: 1.0
+version: 1.1
 keywords: [regex, regexp, regulaerer ausdruck, regular expression, muster, pattern, regex erstellen, regex erklaeren, regex testen, regex bauen]
 user-invocable: true
-timeout_s: 20
+timeout_s: 25
 risk_level: 0.0
+max_tokens: 800
+temperature: 0.15
+model: auto
 ---
 
 # Regex Helper

@@ -373,14 +373,62 @@ class AgentLoop:
                 "input": tool_call.action_input,
             })
 
-            # Auto-approve tools in agentic mode — user consented by
-            # triggering agentic execution.  Bash safety checks in
-            # _execute_bash() still block truly dangerous commands.
-            result = self.executor.execute(
-                tool_call.action,
-                tool_call.action_input,
-                skip_approval=True,
-            )
+            # Smart approval: read-only / low-risk tools are auto-approved
+            # in agentic mode.  High-risk mutating tools (bash, code exec,
+            # file delete/write/move) require user approval via the overlay.
+            _SAFE_AUTO_APPROVE = frozenset({
+                "fs_list", "fs_read", "fs_backup", "fs_copy",
+                "sys_summary", "sys_mem", "sys_disk", "sys_temps",
+                "sys_cpu", "sys_os", "sys_network", "sys_usb",
+                "sys_usb_storage", "sys_services",
+                "desktop_screenshot",
+                "app_list", "app_search",
+                "steam_list", "steam_search",
+                "web_search", "web_fetch",
+                "memory_search", "memory_store",
+                "entity_sessions", "entity_session_read",
+                "entity_sessions_search",
+                "final_answer",
+            })
+            _skip = tool_call.action in _SAFE_AUTO_APPROVE
+
+            if _skip:
+                # Safe tool — execute directly
+                result = self.executor.execute(
+                    tool_call.action,
+                    tool_call.action_input,
+                    skip_approval=True,
+                )
+            else:
+                # High-risk tool — request user approval via overlay
+                tool = self.executor.registry.get(tool_call.action)
+                risk = tool.risk_level if tool else 0.8
+                approval_id = self.executor.request_approval(
+                    tool, tool_call.action_input,
+                    reason=f"Agentic mode wants to execute: {tool_call.action}",
+                )
+                self._emit_event("waiting_approval", {
+                    "tool": tool_call.action,
+                    "input": tool_call.action_input,
+                    "risk": risk,
+                    "approval_id": approval_id,
+                })
+                approved = self.executor.wait_for_approval(
+                    approval_id, timeout_s=120.0,
+                )
+                if approved:
+                    result = self.executor.execute(
+                        tool_call.action,
+                        tool_call.action_input,
+                        skip_approval=True,  # already approved by user
+                    )
+                else:
+                    result = ToolResult(
+                        tool_name=tool_call.action,
+                        success=False,
+                        data={},
+                        error="User denied this action",
+                    )
 
             # OBSERVE: Process result
             self._emit_event("observing", {

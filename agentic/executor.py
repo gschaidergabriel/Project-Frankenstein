@@ -249,7 +249,7 @@ class ToolExecutor:
 
     @staticmethod
     def _build_firejail_cmd(inner_cmd: list, *, allow_network: bool = False) -> list:
-        """Build a firejail-wrapped command with appropriate restrictions.
+        """Build a firejail-wrapped command with filesystem restrictions.
 
         Restrictions applied:
         - --noprofile: ignore default profiles to avoid permission conflicts
@@ -260,9 +260,13 @@ class ToolExecutor:
         - --noroot: drop root capabilities
         - --nosound / --no3d / --nodvd: reduce attack surface
         - --net=none: block network (unless allow_network=True)
+        - --read-only critical paths (.ssh, .gnupg, .config, aicore)
+        - --blacklist sensitive locations
         """
         if not FIREJAIL_PATH:
             return inner_cmd
+
+        _home = str(Path.home())
 
         fj = [
             FIREJAIL_PATH,
@@ -275,6 +279,22 @@ class ToolExecutor:
             "--nosound",
             "--no3d",
             "--nodvd",
+            # Filesystem protection: blacklist critical paths entirely
+            f"--blacklist={_home}/.ssh",
+            f"--blacklist={_home}/.gnupg",
+            f"--blacklist={_home}/.mozilla",
+            f"--blacklist={_home}/.thunderbird",
+            f"--blacklist={_home}/.pki",
+            # Protect aicore installation from deletion/corruption
+            f"--read-only={_home}/aicore",
+            # Protect shell config
+            f"--read-only={_home}/.bashrc",
+            f"--read-only={_home}/.profile",
+            f"--read-only={_home}/.bash_profile",
+            # System protection
+            "--blacklist=/etc/shadow",
+            "--blacklist=/etc/passwd-",
+            "--blacklist=/etc/sudoers",
         ]
         if not allow_network:
             fj.append("--net=none")
@@ -359,22 +379,75 @@ class ToolExecutor:
                 error="No command provided",
             )
 
-        # Safety checks - block dangerous commands using regex for better matching.
-        # These remain as a first-pass filter even with Firejail, because
-        # Firejail can't catch everything (e.g. rm -rf $HOME).
+        # Safety checks - block dangerous commands using regex.
+        # Defence-in-depth: these fire BEFORE Firejail and BEFORE approval,
+        # catching destructive patterns the LLM might generate.
         import re
+
+        # Paths that must NEVER be targets of recursive delete / overwrite.
+        # Covers root, entire home, aicore installation, and dotfiles.
+        _home = str(Path.home())
+        _PROTECTED_PATH_LITERALS = [
+            "/", "/home", _home,
+            f"{_home}/.ssh", f"{_home}/.gnupg", f"{_home}/.config",
+            f"{_home}/.local", f"{_home}/aicore",
+            f"{_home}/.bashrc", f"{_home}/.profile",
+        ]
+
+        # Check for rm/shred/find-delete targeting protected paths
+        for ppath in _PROTECTED_PATH_LITERALS:
+            escaped = re.escape(ppath)
+            # rm -rf <path>, rm -r <path>, rm <path>
+            if re.search(rf"\brm\s+(-[a-zA-Z]*\s+)*{escaped}(\s|$|;|&|\|)", command):
+                return ToolResult(
+                    tool_name="bash_execute", success=False, data={},
+                    error=f"Blocked: recursive delete on protected path {ppath}",
+                )
+            # shred <path>
+            if re.search(rf"\bshred\b.*{escaped}", command):
+                return ToolResult(
+                    tool_name="bash_execute", success=False, data={},
+                    error=f"Blocked: shred on protected path {ppath}",
+                )
+
         dangerous_patterns = [
-            (r"rm\s+(-[rf]+\s+)*[/]($|\s|;)", "rm with root path"),
-            (r"rm\s+(-[rf]+\s+)+\*", "rm -rf with wildcard"),
-            (r"mkfs", "mkfs filesystem format"),
-            (r"dd\s+if=", "dd disk write"),
+            # rm with root or home-relative destruction
+            (r"rm\s+(-[a-zA-Z]*\s+)*[/]($|\s|;)", "rm with root path"),
+            (r"rm\s+(-[a-zA-Z]*\s+)*~", "rm targeting home directory"),
+            (r"rm\s+(-[a-zA-Z]*\s+)*\$HOME", "rm targeting $HOME"),
+            (r"rm\s+(-[a-zA-Z]*\s+)*\$\{?HOME\}?", "rm targeting ${HOME}"),
+            (r"rm\s+(-[a-zA-Z]*\s+)+\*", "rm -rf with wildcard"),
+            (r"rm\s+(-[a-zA-Z]*\s+)*\.", "rm targeting current directory"),
+            # Filesystem destruction
+            (r"\bmkfs\b", "mkfs filesystem format"),
+            (r"\bdd\s+if=", "dd disk write"),
             (r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;", "fork bomb"),
-            (r"chmod\s+(-R\s+)?777\s+/", "chmod 777 on root"),
+            (r"\bchmod\s+(-R\s+)?777\s+/", "chmod 777 on root"),
             (r">\s*/dev/sd[a-z]", "write to disk device"),
+            (r">\s*/dev/nvme", "write to NVMe device"),
+            # Remote code execution
             (r"(curl|wget)[^|]*\|\s*(ba)?sh", "pipe download to shell"),
-            (r"shred\s+.*\s+/", "shred on root"),
-            (r"fdisk\s+/dev/", "fdisk partition edit"),
-            (r"eval\s+.*\$", "eval with variable expansion"),
+            (r"(curl|wget)[^|]*\|\s*python", "pipe download to python"),
+            (r"(curl|wget)[^|]*\|\s*perl", "pipe download to perl"),
+            # Partition / disk tools
+            (r"\bshred\s+.*\s+/", "shred on root"),
+            (r"\bfdisk\s+/dev/", "fdisk partition edit"),
+            (r"\bparted\s+/dev/", "parted partition edit"),
+            # Dangerous eval / exec patterns
+            (r"\beval\s+.*\$", "eval with variable expansion"),
+            (r"python[23]?\s+(-c\s+['\"].*shutil\.rmtree|.*os\.remove)", "python destructive command"),
+            # find with -delete or -exec rm
+            (r"\bfind\b.*-delete\b", "find with -delete"),
+            (r"\bfind\b.*-exec\s+rm\b", "find with -exec rm"),
+            # xargs rm
+            (r"\bxargs\s+rm\b", "xargs rm"),
+            # Overwrite critical files via redirection
+            (r">\s*/etc/", "overwrite /etc files"),
+            (r">\s*~/\.", "overwrite dotfiles via redirect"),
+            # systemctl / service destruction
+            (r"\bsystemctl\s+(disable|mask|stop)\s+(--now\s+)?sshd", "disable sshd"),
+            # Git force push (data loss)
+            (r"\bgit\s+push\s+.*--force", "git force push"),
         ]
 
         for pattern, desc in dangerous_patterns:

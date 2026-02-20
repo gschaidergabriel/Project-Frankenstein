@@ -31,6 +31,7 @@ class AgenticMixin:
         """Initialize agentic execution support."""
         self._agentic_active = False
         self._agentic_state_id: Optional[str] = None
+        self._pending_approval_id: Optional[str] = None
         self._agentic_cancel_requested = False
         self._agentic_lock = threading.Lock()  # Thread safety for flags
         self._agent_progress_widget: Optional[AgentProgressBar] = None
@@ -472,6 +473,8 @@ class AgenticMixin:
 
         elif event_type == "waiting_approval":
             tool = event.get("tool", "?")
+            # Store the approval_id from the executor so responses match
+            self._pending_approval_id = event.get("approval_id")
             self._show_approval_request(tool, event.get("risk", 0.5))
 
         elif event_type == "completed":
@@ -612,12 +615,15 @@ class AgenticMixin:
                 with open(response_file, "r") as f:
                     responses = json.load(f)
 
-            # Add response for latest request
+            # Use the approval_id from the executor if available,
+            # otherwise fall back to state_id for backwards compat
+            aid = getattr(self, '_pending_approval_id', None) or self._agentic_state_id or "unknown"
             responses.append({
-                "id": self._agentic_state_id or "unknown",
+                "id": aid,
                 "approved": approved,
                 "timestamp": time.time(),
             })
+            self._pending_approval_id = None  # consumed
 
             with open(response_file, "w") as f:
                 json.dump(responses, f)

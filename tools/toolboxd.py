@@ -137,7 +137,53 @@ def _allow_read(path: Path) -> bool:
     return _within(path, MUTABLE_ROOTS) or _within(path, RO_ROOTS)
 
 def _allow_write(path: Path) -> bool:
-    return _within(path, MUTABLE_ROOTS)
+    if not _within(path, MUTABLE_ROOTS):
+        return False
+    # Protect critical paths from deletion/overwrite even inside MUTABLE_ROOTS
+    if _is_protected(path):
+        return False
+    return True
+
+# Paths that must never be deleted or overwritten via the API.
+# Sub-paths within these ARE writable (e.g. ~/.config/frank/new_file is fine)
+# but the root path itself and direct children of critical dirs are protected.
+_PROTECTED_PATHS = None  # lazily built
+
+def _get_protected_paths():
+    global _PROTECTED_PATHS
+    if _PROTECTED_PATHS is None:
+        _home = Path.home().resolve()
+        _PROTECTED_PATHS = {
+            _home,                          # entire home dir
+            _home / ".ssh",
+            _home / ".gnupg",
+            _home / ".config",
+            _home / ".local",
+            _home / ".bashrc",
+            _home / ".profile",
+            _home / ".bash_profile",
+            _home / ".mozilla",
+            _home / ".thunderbird",
+            _home / ".pki",
+            _home / "aicore",               # aicore installation root
+            _home / "aicore" / "opt",
+            _home / "aicore" / "opt" / "aicore",
+            Path("/"),
+            Path("/home"),
+            Path("/etc"),
+            Path("/usr"),
+            Path("/var"),
+            Path("/boot"),
+            Path("/bin"),
+            Path("/sbin"),
+            Path("/lib"),
+        }
+    return _PROTECTED_PATHS
+
+def _is_protected(path: Path) -> bool:
+    """Return True if path is a protected location that must not be deleted."""
+    resolved = path.resolve()
+    return resolved in _get_protected_paths()
 
 def _cache_get(key: str, ttl: float) -> Optional[Any]:
     v = _CACHE.get(key)
@@ -443,6 +489,9 @@ def fs_delete(path: str) -> Dict[str, Any]:
     p = _resolve(path)
     if not p.exists():
         return {"ok": False, "error": "not_found", "path": str(p)}
+    if _is_protected(p):
+        return {"ok": False, "error": "protected_path",
+                "detail": f"Cannot delete protected path: {p}", "path": str(p)}
     if not _allow_write(p):
         return {"ok": False, "error": "forbidden", "path": str(p)}
     try:

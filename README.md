@@ -22,23 +22,23 @@ A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ serv
 - **Agentic Execution** — Multi-step task planning with tool use, filesystem access, and approval gates
 - **Plugin System** — Native Python skills and OpenClaw (LLM-mediated) plugins with hot-reload
 - **Desktop Automation** — App launcher, screenshot analysis, window management via xdotool/wmctrl
-- **Personality Engine** — Ego-construct with E-PQ vectors, self-knowledge, world-model, consciousness stream
+- **Personality Engine** — E-PQ 5-vector personality, ego-construct (hardware→body mapping), self-knowledge
+- **Consciousness Stream** — 10-thread daemon: Global Workspace (GWT), attention controller (AST), perception loop (200ms), experience space (64-dim), goals, deep reflection, predictions, mood trajectory
 - **Autonomous Entities** — 5 AI agents that interact with Frank on a daily schedule (see below)
-- **Self-Improvement** — Genesis daemon for recursive learning and proposal generation
-- **Safety Systems** — ASRS (rollback), invariants engine, gaming mode resource management
+- **Self-Improvement** — Genesis daemon: idea organisms evolve in a primordial soup, crystallize, and manifest through approval gates
+- **Safety Systems** — ASRS (4-stage rollback), invariants engine (energy, entropy, core kernel, triple reality), gaming mode
 - **Productivity** — Notes, todos with reminders, Google Calendar/Contacts via CalDAV, email
 - **App Integration** — Thunderbird, Google Drive/Calendar/Gmail, Steam, Firefox, Tor Browser
 - **Web Search** — DuckDuckGo-based search with result summarization
 - **Darknet Search** — Tor-routed .onion search via Ahmia
 - **Network Intelligence** — Sentinel service for local network discovery and security analysis
 - **Vision** — Local OCR + LLaVA hybrid for screenshot analysis (no external APIs)
-- **Live Wallpaper** — Event-driven neural cybercore visual effects (Qt) that react to Frank's mood
 - **Frank Writer** — AI-assisted document editor with code sandbox and export
 
 ## Requirements
 
 - **OS**: Linux (tested on Ubuntu 24.04+, GNOME/X11)
-- **Python**: 3.11+
+- **Python**: 3.12+
 - **RAM**: 16 GB minimum (32 GB recommended)
 - **GPU**: Any — NVIDIA, AMD, or Intel for acceleration; CPU-only works too
 - **Disk**: ~20 GB for models + source
@@ -110,7 +110,6 @@ Frank is a microservice system where all services communicate via HTTP on localh
 | Service | Port | Purpose |
 |---------|------|---------|
 | Core | 8088 | Chat orchestration, personality, identity |
-| Gateway | 8089 | API gateway, auth, rate limiting |
 | Modeld | 8090 | Model lifecycle management |
 | Router | 8091 | LLM request routing, model selection |
 | Desktopd | 8092 | X11 desktop automation (xdotool, wmctrl) |
@@ -129,18 +128,16 @@ LLM inference:
 Background services (no port):
 | Service | Purpose |
 |---------|---------|
-| Watchdog | Ensures critical services stay alive |
-| Sentinel | Network intelligence and security scanning |
-| ASRS | Autonomous safety recovery system (rollback) |
-| Invariants | Physics engine for personality consistency |
-| Consciousness | Stream-of-consciousness daemon |
-| Genesis | Self-improvement via recursive learning |
-| News Scanner | Daily AI/tech/open-source news feed |
-| Notification Daemon | Calendar and todo reminders |
-| Gaming Mode | Detect active games, manage GPU resources |
-| Live Wallpaper | Event-driven neural visual effects (Qt) |
+| Consciousness | Stream-of-consciousness daemon (10 threads: GWT, AST, perception, goals, reflections) |
+| Genesis | Emergent self-improvement (primordial soup, motivational field, manifestation gate) |
+| Genesis Watchdog | Ensures Genesis never dies |
+| Entities | Idle-driven dispatcher for 5 autonomous agents |
+| Invariants | Physics engine — energy conservation, entropy bound, core kernel protection |
+| ASRS | Autonomous safety recovery system (4-stage monitoring, rollback) |
+| Gaming Mode | Detect active games, manage GPU resources, anti-cheat safety |
+| F.A.S. | Frank's Autonomous Scavenger — GitHub intelligence (scheduled) |
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) for the 9-layer memory system.
 
 ## Autonomous Entities
 
@@ -264,23 +261,21 @@ Project-Frankenstein/
 ├── gateway/           # API gateway with auth
 ├── ingestd/           # Document ingestion service
 ├── intelligence/      # Intelligence and analysis modules
-├── live_wallpaper/    # Event-driven neural visual effects (Qt)
 ├── modeld/            # Model lifecycle service
 ├── personality/       # Ego-construct, E-PQ, entity personality constructs
 ├── router/            # LLM request routing (FastAPI)
 ├── schemas/           # Data schemas
 ├── scripts/           # Utility and setup scripts
-├── services/          # Background daemons and schedulers
+├── services/          # Background daemons (consciousness, genesis, invariants, ASRS, entities)
 ├── skills/            # Plugin system (native + OpenClaw)
 ├── tests/             # Test suite
-├── tools/             # System tools and toolboxd
+├── tools/             # System tools, toolboxd, titan memory
 ├── ui/
 │   └── overlay/       # Tkinter chat overlay (mixin architecture)
 │       ├── mixins/    # Feature modules (chat, voice, agentic, calendar, ...)
 │       ├── widgets/   # UI components (message bubbles, file actions)
 │       ├── bsn/       # Layout system
 │       └── services/  # HTTP helpers, vision, search
-├── voice/             # Push-to-talk, STT pipeline
 ├── webd/              # Web search service
 └── writer/            # AI-assisted document editor with code sandbox
 ```

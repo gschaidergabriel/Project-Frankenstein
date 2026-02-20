@@ -645,26 +645,6 @@ Environment=PYTHONUNBUFFERED=1
 [Install]
 WantedBy=default.target"
 
-write_service "aicore-voice.service" "\
-[Unit]
-Description=Frank Voice Daemon
-After=pulseaudio.service pipewire.service
-Wants=pulseaudio.service pipewire.service
-
-[Service]
-Type=simple
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/voice/voice_daemon.py --daemon
-Restart=on-failure
-RestartSec=5
-Environment=PYTHONUNBUFFERED=1
-Environment=HOME=$HOME
-Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
-Environment=PULSE_SERVER=unix:/run/user/$(id -u)/pulse/native
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
-
-[Install]
-WantedBy=default.target"
-
 write_service "aicore-gaming-mode.service" "\
 [Unit]
 Description=AI Core Gaming Mode Daemon
@@ -938,7 +918,7 @@ systemctl --user enable aicore-whisper-gpu.service 2>/dev/null || true
 # Tier 2 — System daemons
 systemctl --user enable aicore-desktopd.service 2>/dev/null || true
 systemctl --user enable aicore-consciousness.service 2>/dev/null || true
-systemctl --user enable aicore-voice.service 2>/dev/null || true
+# Voice daemon removed — PTT uses Whisper server directly
 systemctl --user enable aicore-gaming-mode.service 2>/dev/null || true
 systemctl --user enable aicore-asrs.service 2>/dev/null || true
 systemctl --user enable aicore-invariants.service 2>/dev/null || true
@@ -1095,7 +1075,7 @@ echo
 echo "  Start all services:"
 echo "    systemctl --user start aicore-router aicore-core aicore-llama3-gpu"
 echo "    systemctl --user start aicore-modeld aicore-toolboxd aicore-webd"
-echo "    systemctl --user start aicore-whisper-gpu aicore-voice"
+echo "    systemctl --user start aicore-whisper-gpu"
 echo "    systemctl --user start aicore-consciousness aicore-entities"
 echo
 echo "  Start the overlay:"

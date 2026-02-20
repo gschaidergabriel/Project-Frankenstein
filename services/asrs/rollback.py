@@ -322,7 +322,6 @@ class RollbackExecutor:
             "aicore-qwen-gpu.service",
             "frank-training-daemon.service",
             "aicore-fas.service",
-            "nec-wallpaperd.service",
         ]
 
         for service in non_essential:

@@ -15,7 +15,6 @@ from overlay.services.toolbox import (
     _list_files, _move_file, _copy_file, _delete_file,
     _usb_storage, _usb_mount, _usb_unmount, _usb_eject,
 )
-from overlay.services.wallpaper import wp_web_search, wp_game_launch, wp_game_exit
 from overlay.file_utils import _format_file_list, _try_ingest_upload
 
 
@@ -23,7 +22,6 @@ class IOWorkersMixin:
     """Web search, file ingest, filesystem listing/actions, and Steam integration workers."""
 
     def _do_search_worker(self, query: str, limit: int = 8, voice: bool = False):
-        wp_web_search(query)  # Wallpaper event: web search
         self._ui_call(self._show_typing)
         res = _search_web(query, limit=limit)
         self._pending_results = res
@@ -150,7 +148,6 @@ class IOWorkersMixin:
 
     def _do_steam_launch_worker(self, game: str, voice: bool = False):
         """Launch a Steam game by name."""
-        wp_game_launch(f"{game}:steam")  # Wallpaper event: game launch
         try:
             import sys
             try:
@@ -175,7 +172,6 @@ class IOWorkersMixin:
 
     def _do_steam_close_worker(self, voice: bool = False):
         """Close the currently running game."""
-        wp_game_exit("steam")  # Wallpaper event: game exit
         try:
             import sys
             try:

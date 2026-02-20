@@ -5,11 +5,17 @@ Communicates via TEMP_DIR/tray_toggle signal file.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from overlay.constants import LOG
+
+# tray_indicator.py needs system GTK/GObject bindings (python3-gi,
+# gir1.2-ayatanaappindicator3) which are not available inside a venv
+# unless --system-site-packages is set.  Always use system python3.
+_SYSTEM_PYTHON = shutil.which("python3") or "/usr/bin/python3"
 
 try:
     from config.paths import TEMP_FILES as _TEMP_FILES
@@ -57,7 +63,7 @@ def start_tray_icon() -> bool:
     try:
         env = {**os.environ, "DISPLAY": ":0"}
         _proc = subprocess.Popen(
-            [sys.executable, str(_INDICATOR_SCRIPT)],
+            [_SYSTEM_PYTHON, str(_INDICATOR_SCRIPT)],
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

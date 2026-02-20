@@ -205,19 +205,12 @@ class ChatOverlay(
         # Location auto-detection (1x per session via IP geolocation)
         threading.Thread(target=self._startup_location_refresh, daemon=True).start()
 
-        # Voice integration
+        # Voice outbox file (used by PTT TTS responses)
         try:
             from config.paths import TEMP_FILES as _TF
-            self._voice_event_file = _TF["voice_event"]
             self._voice_outbox_file = _TF["voice_outbox"]
         except ImportError:
-            self._voice_event_file = Path("/tmp/frank/voice_event.json")
             self._voice_outbox_file = Path("/tmp/frank/voice_outbox.json")
-        import time as _time
-        self._last_voice_event_ts = _time.time()  # Skip stale events from before restart
-        self._voice_listening = False
-        self._pending_voice_session: Optional[str] = None
-        self._poll_voice_events()
 
         # FAS Popup dimming signal
         try:

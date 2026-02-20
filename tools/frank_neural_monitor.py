@@ -191,7 +191,7 @@ LOG_SOURCES = {
         "cmd": ["journalctl", "--user", "-f", "-n", "0", "--no-pager",
                 "-u", "frank*", "-u", "uolg*",
                 "-u", "aicore-core*", "-u", "aicore-router*",
-                "-u", "aicore-voice*", "-u", "aicore-desktopd*",
+                "-u", "aicore-desktopd*",
                 "-u", "aicore-modeld*", "-u", "aicore-llama*",
                 "-u", "aicore-qwen*"],
         "prefix": "[CORE]",

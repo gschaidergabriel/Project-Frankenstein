@@ -28,7 +28,7 @@ import time
 from overlay.constants import (
     LOG, COLORS, SESSION_ID, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_S,
     FRANK_IDENTITY,
-    FILE_READ_RE, WALLPAPER_RE, WALLPAPER_START_RE, WALLPAPER_STOP_RE,
+    FILE_READ_RE,
     STEAM_LIST_RE, STEAM_CLOSE_RE,
     APP_ALLOW_RE, APP_CLOSE_RE, APP_LIST_RE,
     SELF_AWARE_RE, SELF_AWARE_EXCLUDE_RE,
@@ -321,18 +321,6 @@ class CommandRouterMixin:
                 self._add_message("Frank", response)
                 return
 
-        # Wallpaper control commands
-        if WALLPAPER_RE.search(low):
-            self._add_message("Du", msg, is_user=True)
-            if WALLPAPER_START_RE.search(low):
-                ok, result = self._control_wallpaper("start")
-                self._add_message("Frank", result, is_system=True)
-                return
-            elif WALLPAPER_STOP_RE.search(low):
-                ok, result = self._control_wallpaper("stop")
-                self._add_message("Frank", result, is_system=True)
-                return
-
         # File read request detection (e.g., "lies ~/test.txt", "zeig mir /home/user/doc.pdf")
         file_read_match = FILE_READ_RE.search(msg)
         if file_read_match:
@@ -346,7 +334,7 @@ class CommandRouterMixin:
         # Must mention "datei", "file", or "drin/drinnen" to trigger - NOT just generic words
         # EXCEPTION: If user asks about Frank's OWN code files, let CODE_MODULE_RE handle it
         franks_code_keywords = ["app_registry", "chat_overlay", "toolboxd", "core_awareness",
-                                "steam_integration", "vision_module", "personality", "voice_daemon",
+                                "steam_integration", "vision_module", "personality",
                                 "systemdatei", "deinem code", "deine datei", "bei dir", "von dir"]
         is_asking_about_franks_code = any(k in low for k in franks_code_keywords)
 

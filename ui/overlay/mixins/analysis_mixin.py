@@ -14,7 +14,6 @@ from overlay.constants import LOG, FRANK_IDENTITY, IMAGE_EXTENSIONS, EXT_LANG, A
 from overlay.services.core_api import _core_chat
 from overlay.services.vision import _analyze_with_vcb, _analyze_image_with_vcb, _extract_pdf_text, _debug_log
 from overlay.services.toolbox import _take_screenshot, _read_file_via_toolbox, _is_path_forbidden
-from overlay.services.wallpaper import wp_screenshot, wp_file_read
 from overlay.file_utils import _fmt_bytes, _generate_file_abstract, _read_file_preview
 
 
@@ -46,7 +45,6 @@ class AnalysisMixin:
     def _do_screenshot_worker(self, user_query: str, voice: bool = False):
         """Take screenshot, analyze with VCB vision API, respond naturally."""
         _debug_log(f"Screenshot worker started for: {user_query} (voice={voice})")
-        wp_screenshot("desktop")  # Wallpaper event: screenshot
         self._ui_call(self._show_typing)
 
         # Take screenshot
@@ -312,7 +310,6 @@ Maximum 4-5 sentences, naturally phrased."""
     def _do_read_file_worker(self, path: str, user_query: str):
         """Read a file from the filesystem and provide analysis."""
         _debug_log(f"Read file worker started for: {path}")
-        wp_file_read(path, "fs")  # Wallpaper event: file read
         self._ui_call(self._show_typing)
 
         # Resolve and check path

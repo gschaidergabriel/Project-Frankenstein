@@ -1,11 +1,9 @@
 """
-VoiceMixin -- voice daemon integration and push-to-talk.
+VoiceMixin -- push-to-talk and TTS.
 
-Extracted from chat_overlay_monolith.py lines ~5300-5577 and ~6760-6795.
 Handles:
-  - Voice daemon event polling and dispatch
-  - Voice input processing (Option A: Overlay as Dispatcher)
-  - Voice response output via TTS outbox
+  - Voice input processing via push-to-talk
+  - Voice response output via TTS (Kokoro EN / Piper DE)
   - Push-to-Talk (PTT) press / release / result / insert-and-send
 """
 
@@ -20,7 +18,6 @@ import tkinter as tk
 from pathlib import Path
 from overlay.constants import (
     LOG, COLORS, DEFAULT_TIMEOUT_S,
-    WALLPAPER_RE, WALLPAPER_START_RE, WALLPAPER_STOP_RE,
     STEAM_LIST_RE, STEAM_CLOSE_RE, STEAM_LAUNCH_RE,
     ADI_HINTS_RE, DESKTOP_HINTS_RE, FS_HINTS_RE, FS_PATH_RE,
     SYS_HINTS_RE, SELF_AWARE_RE, SELF_AWARE_EXCLUDE_RE,
@@ -32,80 +29,6 @@ from overlay.http_helpers import _http_post_json
 
 
 class VoiceMixin:
-
-    def _poll_voice_events(self):
-        """Poll for voice events from the voice daemon."""
-        try:
-            if self._voice_event_file.exists():
-                try:
-                    event_data = json.loads(self._voice_event_file.read_text())
-                    event_ts = event_data.get("timestamp", 0)
-                    event_type = event_data.get("type", "")
-
-                    # Only process new events
-                    if event_ts > self._last_voice_event_ts:
-                        self._last_voice_event_ts = event_ts
-                        LOG.debug(f"Voice event received: {event_type}")
-                        self._handle_voice_event(event_data)
-                except (json.JSONDecodeError, IOError) as e:
-                    LOG.debug(f"Voice event parse error: {e}")
-        except Exception as e:
-            LOG.error(f"Voice event poll error: {e}")
-
-        # Poll every 50ms for faster response
-        self.after(50, self._poll_voice_events)
-
-    def _handle_voice_event(self, event: dict):
-        """Handle a voice event from the voice daemon."""
-        event_type = event.get("type", "")
-
-        if event_type == "voice_input":
-            # NEW: Voice-First Integration (Option A)
-            # Voice daemon sends recognized text for full Overlay processing
-            text = event.get("text", "")
-            session_id = event.get("session_id", "")
-            if text:
-                LOG.info(f"Voice input received: '{text[:50]}...' (session={session_id})")
-                self._pending_voice_session = session_id
-                self._hide_typing()
-                self._add_message("🎤 Du", text, is_user=True)
-                self._show_typing()
-                # Process through the SAME pipeline as typed input
-                self._process_voice_input(text)
-
-        elif event_type == "user_message":
-            # Legacy: User spoke via voice - show in chat (display only)
-            text = event.get("text", "")
-            if text:
-                self._hide_typing()
-                self._add_message("🎤 Du", text, is_user=True)
-                self._show_typing()
-
-        elif event_type == "frank_message":
-            # Legacy: Frank is responding via voice - show in chat
-            text = event.get("text", "")
-            if text:
-                self._hide_typing()
-                self._add_message("🔊 Frank", text, is_user=False)
-
-        elif event_type == "listening":
-            # Voice daemon is listening for user command
-            self._voice_listening = True
-            self._show_listening_indicator()
-
-        elif event_type == "processing":
-            # Voice daemon is processing - keep typing indicator
-            pass
-
-        elif event_type == "wake_word":
-            # Wake word detected - restore and focus the window
-            self._show_overlay()
-            self._voice_listening = True
-
-        elif event_type == "idle":
-            # Voice daemon is idle - hide typing indicator
-            self._voice_listening = False
-            self._hide_typing()
 
     def _process_voice_input(self, msg: str):
         """
@@ -135,17 +58,6 @@ class VoiceMixin:
             self._handle_attach(p)
             self._voice_respond("Processing file.")
             return
-
-        # Wallpaper control
-        if WALLPAPER_RE.search(low):
-            if WALLPAPER_START_RE.search(low):
-                ok, result = self._control_wallpaper("start")
-                self._voice_respond(result)
-                return
-            elif WALLPAPER_STOP_RE.search(low):
-                ok, result = self._control_wallpaper("stop")
-                self._voice_respond(result)
-                return
 
         # Steam: List games
         if STEAM_LIST_RE.search(low):
@@ -283,8 +195,6 @@ class VoiceMixin:
 
         # Speak the response via TTS
         self._tts_speak(text)
-
-        self._pending_voice_session = None
 
     # ---------- TTS Engine ----------
     _kokoro_instance = None  # Lazy-loaded singleton

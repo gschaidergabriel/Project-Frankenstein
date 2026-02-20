@@ -38,10 +38,6 @@ from overlay.context_builder import (
     _format_usb_context, _format_network_context,
     _format_driver_context, _format_hardware_deep_context,
 )
-from overlay.services.wallpaper import (
-    wp_chat_req, wp_chat_resp, wp_thinking_start,
-    wp_thinking_end, wp_inference_start, wp_inference_end,
-)
 from overlay.services.system_control import SYSTEM_CONTROL_AVAILABLE, sc_process
 
 # ── Consciousness Stream: Output-Feedback-Loop ──
@@ -256,7 +252,6 @@ class ChatMixin:
         LOG.debug(f"Chat worker received: {msg[:50]}...")
         if voice:
             self._thinking_cancelled = False  # Reset cancel flag for voice requests
-        wp_chat_req("ui")  # Wallpaper event: chat request
         self._ui_call(self._show_typing)
 
         # ── Language enforcement for 7B models ──
@@ -702,8 +697,6 @@ class ChatMixin:
             max_tokens = dynamic_max_tokens
 
         LOG.debug(f"Sending: task={task}, force={force or 'llama'}, text_len={len(text)}, tokens~{_estimate_tokens(text)}, max_response={max_tokens}")
-        wp_thinking_start("ui")
-        wp_inference_start("ui")
 
         # ── STREAMING PATH (UI chat only, not voice) ──
         if not voice:
@@ -718,7 +711,6 @@ class ChatMixin:
                     text, max_tokens=max_tokens,
                     force=force or "llama", on_token=_on_token,
                 )
-                wp_inference_end("ui")
 
                 reply = (res.get("text") or "").strip() or "(empty)"
                 model = res.get("model", "")
@@ -749,8 +741,6 @@ class ChatMixin:
                 # Finalize: replace streaming widget with proper MessageBubble
                 self._ui_call(lambda r=reply: self._finalize_streaming_message(r))
 
-                wp_thinking_end("ui")
-                wp_chat_resp("ui")
 
                 # ── E-PQ: Process USER input sentiment ──
                 try:
@@ -792,13 +782,11 @@ class ChatMixin:
                                              _sc["drift_warnings"])
                             except Exception:
                                 pass
-                        # Push mood to wallpaper for eye expressions
                         try:
                             if _EPQ_AVAILABLE:
                                 _mood_ctx = get_personality_context()
                                 if _mood_ctx and "mood_value" in _mood_ctx:
-                                    from live_wallpaper.wallpaper_events import event_mood_update
-                                    event_mood_update(_mood_ctx["mood_value"])
+                                    pass  # personality context logged
                         except Exception:
                             pass
                         # Record in consciousness daemon
@@ -821,7 +809,6 @@ class ChatMixin:
                 return
 
             except Exception as e:
-                wp_inference_end("ui")
                 LOG.warning(f"Streaming failed ({e}), falling back to blocking call")
                 # Clean up any partial streaming UI
                 self._ui_call(lambda: self._finalize_streaming_message(""))
@@ -832,10 +819,8 @@ class ChatMixin:
         try:
             res = _core_chat(text, max_tokens=max_tokens, timeout_s=timeout_s, task=task, force=force or "llama",
                              no_reflect=True)  # Overlay handles reflection itself, prevent double-reflection in core
-            wp_inference_end("ui")
             LOG.debug(f"Core response: ok={res.get('ok')}, model={res.get('model')}, text_preview={str(res.get('text', ''))[:100]}")
         except Exception as e:
-            wp_inference_end("ui")
             error_str = str(e).lower()
 
             # Try qwen fallback for context overflow — TRIM context first
@@ -850,24 +835,19 @@ class ChatMixin:
                         trimmed_text = trimmed_text[:max_chars] + "... [truncated]"
                     qwen_max = min(max_tokens, 1000)
                     LOG.info(f"Qwen retry: {_estimate_tokens(trimmed_text)} tokens (was {_estimate_tokens(text)})")
-                    wp_inference_start("ui")
                     res = _core_chat(trimmed_text, max_tokens=qwen_max, timeout_s=timeout_s, task=task, force="qwen")
-                    wp_inference_end("ui")
                     if isinstance(res, dict) and res.get("ok"):
                         qwen_success = True
                     else:
                         raise RuntimeError("Qwen fallback returned error")
                 except Exception as e2:
-                    wp_inference_end("ui")
                     LOG.error(f"Qwen fallback also failed: {e2!r}")
 
                 if not qwen_success:
-                    wp_thinking_end("ui")
                     self._ui_call(self._hide_typing)
                     self._ui_call(lambda: self._add_message("Frank", "The request was too long. Please shorten it.", is_system=True))
                     return
             else:
-                wp_thinking_end("ui")
                 LOG.error(f"Core exception: {e!r}")
                 self._ui_call(self._hide_typing)
                 self._ui_call(lambda: self._add_message("Frank", "Could not respond. Please try again.", is_system=True))
@@ -898,8 +878,6 @@ class ChatMixin:
         reply = (res.get("text") or "").strip() or "(empty)"
         LOG.info(f"Final reply (model={model}, voice={voice}): {reply[:120]}...")
 
-        wp_thinking_end("ui")
-        wp_chat_resp("ui")
 
         # ── E-PQ: Process USER input sentiment ──
         try:
@@ -930,13 +908,11 @@ class ChatMixin:
                             msg, reply, _analysis)
                     except Exception:
                         pass
-                # Push mood to wallpaper for eye expressions
                 try:
                     if _EPQ_AVAILABLE:
                         _mood_ctx = get_personality_context()
                         if _mood_ctx and "mood_value" in _mood_ctx:
-                            from live_wallpaper.wallpaper_events import event_mood_update
-                            event_mood_update(_mood_ctx["mood_value"])
+                            pass  # personality context logged
                 except Exception:
                     pass
                 # Auto-escalation: detect agentic action in parenthetical

@@ -1,4 +1,4 @@
-"""App registry workers – search, open, close, allow, list apps, wallpaper control."""
+"""App registry workers – search, open, close, allow, list apps."""
 from __future__ import annotations
 
 import re
@@ -6,11 +6,10 @@ import subprocess
 
 from overlay.constants import LOG
 from overlay.services.toolbox import _app_search, _app_open, _app_close, _app_allow, _app_list, _get_window_ids
-from overlay.services.wallpaper import wp_tool, wp_game_launch
 
 
 class AppWorkersMixin:
-    """App registry integration and wallpaper control workers."""
+    """App registry integration workers."""
 
     def _do_app_search_worker(self, query: str, user_query: str = ""):
         """Search for apps via app registry."""
@@ -56,11 +55,7 @@ class AppWorkersMixin:
                 self._ui_call(lambda m=msg: self._add_message("Frank", m, is_system=is_system))
 
         def _launch_steam_game(steam, game):
-            """Launch a Steam game with wallpaper effect and verification."""
-            try:
-                wp_game_launch(game.name)
-            except Exception:
-                pass
+            """Launch a Steam game and verification."""
             success, msg = steam.launch_game(game)
             self._ui_call(self._hide_typing)
             _reply(msg)
@@ -150,7 +145,7 @@ class AppWorkersMixin:
             self._ui_call(self._hide_typing)
 
             if open_result and open_result.get("ok"):
-                wp_tool(f"app_open:{app_name}")
+                pass  # app opened
                 _reply(f"Starting {app_name}...")
                 return
             else:
@@ -159,7 +154,7 @@ class AppWorkersMixin:
                     _app_allow(app_id)
                     retry = _app_open(app_id)
                     if retry and retry.get("ok"):
-                        wp_tool(f"app_open:{app_name}")
+                        pass  # app opened
                         _reply(f"Starting {app_name}...")
                         return
                 # App registry launch failed — fall through to Steam fallback
@@ -400,32 +395,3 @@ class AppWorkersMixin:
             error = result.get("error", "Unknown error") if result else "No response"
             self._ui_call(lambda e=error: self._add_message("Frank", f"App list failed: {e}", is_system=True))
 
-    # ---------- Wallpaper Control ----------
-    def _control_wallpaper(self, action: str) -> tuple:
-        """Control the live wallpaper (start/stop)."""
-        try:
-            import sys
-            try:
-                from config.paths import AICORE_ROOT as _AICORE_ROOT
-            except ImportError:
-                from pathlib import Path as _P
-                _AICORE_ROOT = _P(__file__).resolve().parents[3]
-            sys.path.insert(0, str(_AICORE_ROOT))
-            from live_wallpaper.wallpaper_control import start, stop, status
-
-            if action == "start":
-                ok, msg = start()
-                return ok, f"Wallpaper: {msg}"
-            elif action == "stop":
-                ok, msg = stop()
-                return ok, f"Wallpaper: {msg}"
-            elif action == "status":
-                s = status()
-                if s.get("running"):
-                    return True, f"Wallpaper running (PID {s.get('pid', '?')})"
-                return True, f"Wallpaper is off (systemd: {s.get('systemd', '?')})"
-            else:
-                return False, f"Unknown action: {action}"
-        except Exception as e:
-            LOG.error(f"Wallpaper control error: {e}")
-            return False, f"Error: {e}"

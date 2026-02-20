@@ -36,10 +36,6 @@ OVERLAY_CAPABILITIES = {
         "name": "Display Intelligence (ADI)",
         "description": "Multi-Monitor Profiles and Adaptive Layout Configuration",
     },
-    "wallpaper_control": {
-        "name": "Wallpaper Control",
-        "description": "Start/stop live wallpaper with event reactions",
-    },
     "network_intelligence": {
         "name": "Network Intelligence (Sentinel)",
         "description": "Device detection, port scanning, ARP spoofing detection, security analysis",

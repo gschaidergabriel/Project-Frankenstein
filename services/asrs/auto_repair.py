@@ -409,14 +409,6 @@ class RepairActionGenerator:
             top_proc = diagnosis.evidence.get("top_process", diagnosis.evidence)
             tp_pid = top_proc.get("pid", 0)
             tp_comm = top_proc.get("comm", "unknown")
-            # Prefer stopping the wallpaper service if it is the culprit
-            if "wallpaper" in tp_comm.lower():
-                return self._action(
-                    diagnosis, urgency,
-                    description_de="Stop frank-wallpaper service (thermal)",
-                    description_en="Stop frank-wallpaper service (thermal issue)",
-                    command="systemctl --user stop frank-wallpaper",
-                )
             if tp_pid:
                 return self._action(
                     diagnosis, urgency,

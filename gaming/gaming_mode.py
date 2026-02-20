@@ -444,38 +444,6 @@ def start_main_frank():
     LOG.error("All start attempts failed — relying on watchdog for recovery")
 
 
-def stop_wallpaper():
-    """Stop the Kinetic Synthetic live wallpaper to save GPU during gaming."""
-    LOG.info("Stopping live wallpaper...")
-    try:
-        result = subprocess.run(
-            ["systemctl", "--user", "stop", "frank-wallpaperd"],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            LOG.info("Live wallpaper stopped")
-        else:
-            LOG.warning(f"Could not stop wallpaper: {result.stderr}")
-    except Exception as e:
-        LOG.warning(f"Error stopping wallpaper: {e}")
-
-
-def start_wallpaper():
-    """Start the Kinetic Synthetic live wallpaper."""
-    LOG.info("Starting live wallpaper...")
-    try:
-        result = subprocess.run(
-            ["systemctl", "--user", "start", "frank-wallpaperd"],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            LOG.info("Live wallpaper started")
-        else:
-            LOG.warning(f"Could not start wallpaper: {result.stderr}")
-    except Exception as e:
-        LOG.warning(f"Error starting wallpaper: {e}")
-
-
 def stop_network_sentinel():
     """IMMEDIATELY stop network sentinel to prevent anti-cheat conflicts."""
     LOG.info("⚡ KILLING Network Sentinel (anti-cheat safety)...")
@@ -531,21 +499,7 @@ def enter_gaming_mode(state: GamingModeState, game: dict):
     # 3. Ensure lightweight LLM is ready for voice commands
     ensure_lightweight_llm()
 
-    # 4. Stop live wallpaper after 3 seconds (seamless transition)
-    # User won't notice because they're focused on the game loading
-    def delayed_wallpaper_stop():
-        # CRITICAL #3: Use shutdown event for clean exit
-        if state._shutdown_event.wait(timeout=3.0):
-            return  # Shutdown requested, don't stop wallpaper
-        if state.active:  # Only if still in gaming mode
-            stop_wallpaper()
-
-    # CRITICAL #3: Store thread reference for cleanup
-    wallpaper_thread = threading.Thread(target=delayed_wallpaper_stop, daemon=True, name="wallpaper_stop")
-    wallpaper_thread.start()
-    state._background_threads.append(wallpaper_thread)
-
-    LOG.info("Gaming mode activated! No overlay, voice-ready, network monitoring OFF. ✓")
+    LOG.info("Gaming mode activated! No overlay, network monitoring OFF. ✓")
 
 
 def exit_gaming_mode(state: GamingModeState):
@@ -565,14 +519,13 @@ def exit_gaming_mode(state: GamingModeState):
     def restore_all():
         threads = [
             threading.Thread(target=start_main_frank, daemon=True),
-            threading.Thread(target=start_wallpaper, daemon=True),
             threading.Thread(target=lambda: (restart_services(state), start_network_sentinel()), daemon=True),
         ]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=30)
-        LOG.info("Gaming mode deactivated! Frank + Wallpaper + LLM services restored.")
+        LOG.info("Gaming mode deactivated! Frank + LLM services restored.")
 
     # CRITICAL #3: Store thread reference for cleanup
     restore_thread = threading.Thread(target=restore_all, daemon=True, name="restore_all")

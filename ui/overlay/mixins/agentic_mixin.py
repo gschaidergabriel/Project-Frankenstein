@@ -102,7 +102,7 @@ class AgenticMixin:
         # Frank's own subsystem names (case-insensitive)
         _FRANK_MODULES = (
             r"titan|e-?pq|ego.?construct|consciousness|agentic|"
-            r"wallpaper|sentinel|genesis|asrs|akam|adi|bsn|vcb|"
+            r"sentinel|genesis|asrs|akam|adi|bsn|vcb|"
             r"world.?model|world.?experience|chat.?memory|"
             r"core.?awareness|personality|self.?knowledge|"
             r"voice.?mixin|chat.?mixin|command.?router|"

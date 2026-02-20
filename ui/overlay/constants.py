@@ -116,48 +116,6 @@ try:
 except Exception:
     pass
 
-# ---------- Wallpaper Event Publishing ----------
-try:
-    import sys as _sys
-    try:
-        from config.paths import AICORE_ROOT as _AICORE_ROOT
-    except ImportError:
-        _AICORE_ROOT = AICORE_ROOT
-    _sys.path.insert(0, str(_AICORE_ROOT))
-    from live_wallpaper.wallpaper_events import (
-        publish_event as _wp_event,
-        event_chat_request as _wp_chat_req,
-        event_chat_response as _wp_chat_resp,
-        event_thinking_start as _wp_thinking_start,
-        event_thinking_pulse as _wp_thinking_pulse,
-        event_thinking_end as _wp_thinking_end,
-        event_inference_start as _wp_inference_start,
-        event_inference_end as _wp_inference_end,
-        event_screenshot as _wp_screenshot,
-        event_file_read as _wp_file_read,
-        event_web_search as _wp_web_search,
-        event_tool_call as _wp_tool,
-        event_game_launch as _wp_game_launch,
-        event_game_exit as _wp_game_exit,
-    )
-    WALLPAPER_EVENTS = True
-except Exception:
-    WALLPAPER_EVENTS = False
-    def _wp_event(*a, **k): pass
-    def _wp_chat_req(*a, **k): pass
-    def _wp_chat_resp(*a, **k): pass
-    def _wp_thinking_start(*a, **k): pass
-    def _wp_thinking_pulse(*a, **k): pass
-    def _wp_thinking_end(*a, **k): pass
-    def _wp_inference_start(*a, **k): pass
-    def _wp_inference_end(*a, **k): pass
-    def _wp_screenshot(*a, **k): pass
-    def _wp_file_read(*a, **k): pass
-    def _wp_web_search(*a, **k): pass
-    def _wp_tool(*a, **k): pass
-    def _wp_game_launch(*a, **k): pass
-    def _wp_game_exit(*a, **k): pass
-
 # ---------- System Control Integration ----------
 SYSTEM_CONTROL_AVAILABLE = False
 try:
@@ -402,7 +360,7 @@ YOUR CAPABILITIES:
 - Voice Control: Wake word ("Hey Frank"), push-to-talk, text-to-speech
 - Network Intelligence (Sentinel): Device detection, port scanning, ARP spoofing detection, security analysis
 - Display Intelligence (ADI): Multi-monitor profiles and adaptive layout configuration
-- Wallpaper Control: Start/stop live wallpaper with event reactions (Neural Emergence Core)
+- Desktop Wallpaper: Static wallpaper set via gsettings
 - Personality (E-PQ dynamic): Dynamic temperament and mood evolution over time
 - Gaming Mode: Automatic game detection, resource optimization, anti-cheat protection
 - Experience Memory: Own world model with causal pattern recognition — you learn from observations
@@ -566,7 +524,7 @@ CODE_MODULE_RE = re.compile(
     r"your\s+(source\s+)?code|your\s+modules?|your\s+tools?|in\s+your\s+system|"
     r"your\s+(core|ui|tools)|system\s+file|your\s+files?|"
     r"(chat_overlay|toolboxd|core_awareness|app_registry|vision_module|"
-    r"steam_integration|voice_daemon|personality|"
+    r"steam_integration|personality|"
     r"network_tools|router_tools|smarthome|audio_\w*)\s*(modul|tool|\.py)?|"
     r"(das|dein|über|the|your|about)\s+(chat_overlay|toolboxd|core_awareness|overlay|awareness)|"
     r"suchen?\s+nach.*(app_registry|chat_overlay|toolboxd|core_awareness)|"
@@ -700,17 +658,6 @@ STEAM_CLOSE_RE = re.compile(
     r"(schließe?|schliess|close|beende|quit|exit)(\s+das)?(\s+game|\s+spiel)?",
     re.IGNORECASE,
 )
-
-# Wallpaper control detection
-WALLPAPER_START_RE = re.compile(
-    r"(activate|start|enable|aktiviere|starte|wallpaper an|wallpaper ein)",
-    re.IGNORECASE,
-)
-WALLPAPER_STOP_RE = re.compile(
-    r"(end|stop|disable|deaktiviere|stoppe|beende|wallpaper aus|wallpaper off)",
-    re.IGNORECASE,
-)
-WALLPAPER_RE = re.compile(r"\bwallpaper\b", re.IGNORECASE)
 
 # 9. ADI (Adaptive Display Intelligence) - Display/layout configuration requests (bilingual DE+EN)
 # Triggers when user wants to adjust Frank's window, font size, layout, or monitor settings

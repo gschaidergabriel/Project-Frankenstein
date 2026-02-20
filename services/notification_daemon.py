@@ -92,15 +92,6 @@ def _check_todos(minutes: int) -> List[dict]:
     return []
 
 
-def _publish_wallpaper_event(category: str, title: str):
-    """Publish wallpaper event for visual feedback."""
-    try:
-        from live_wallpaper.wallpaper_events import publish_event
-        publish_event("notification", f"reminder.{category}", "info",
-                      {"text": title})
-    except Exception:
-        pass
-
 
 # ── Notification Delivery ─────────────────────────────────────────
 
@@ -281,7 +272,7 @@ class NotificationDaemon:
                     "minutes_until": minutes_until,
                     "read": False,
                 })
-                _publish_wallpaper_event("calendar", title)
+                pass  # _publish_wallpaper_event("calendar", title)
 
                 self._state["notified_events"][dedup_key] = now_iso
                 self._state["notifications_this_hour"] = \
@@ -329,7 +320,7 @@ class NotificationDaemon:
                     "minutes_until": minutes_until,
                     "read": False,
                 })
-                _publish_wallpaper_event("todo", content[:40])
+                pass  # _publish_wallpaper_event("todo", content[:40])
 
                 self._state["notified_todos"][dedup_key] = now_iso
                 self._state["notifications_this_hour"] = \
@@ -352,10 +343,6 @@ class NotificationDaemon:
                     if notif.get("urgency") in ("normal", "critical"):
                         _send_desktop_notification(
                             notif["title"], notif["body"], notif["urgency"])
-
-                    _publish_wallpaper_event(
-                        notif.get("category", "proactive"),
-                        notif.get("title", ""))
 
                     self._state["notified_events"][nid] = now_iso
                     self._state["notifications_this_hour"] = \

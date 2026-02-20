@@ -492,6 +492,17 @@ class ChatMixin:
         except Exception as e:
             LOG.debug(f"Skill context injection skipped: {e}")
 
+        # User preferences injection (~50-100 chars)
+        try:
+            if hasattr(self, '_chat_memory_db'):
+                prefs = self._chat_memory_db.get_top_preferences(limit=5)
+                if prefs:
+                    pref_lines = [f"{p['key']}: {p['value']}" for p in prefs]
+                    ws_extra.append("[User preferences: " + "; ".join(pref_lines) + "]")
+                    LOG.debug(f"Injected {len(prefs)} user preferences")
+        except Exception as e:
+            LOG.debug(f"Preference injection skipped: {e}")
+
         # ── Consciousness Daemon: inject persistent state ──
         # NOTE: These are Frank's INNER experiences, not status reports.
         # They must be phrased as phenomenological context, never as data to recite.
@@ -545,6 +556,44 @@ class ChatMixin:
             except Exception as e:
                 LOG.debug("Consciousness context injection skipped: %s", e)
 
+        # ── Dynamic Context Budget ──
+        # Compute query embedding and allocate budget across channels
+        _query_vec = None
+        _ws_budget = None
+        _conv_budget = 2000  # default fallback
+        try:
+            from overlay.context_budget import allocate_budget, get_summary_cache
+            from services.embedding_service import get_embedding_service
+            _emb = get_embedding_service()
+            _query_vec = _emb.embed_text(msg)
+
+            # Estimate user message size
+            _user_tokens = _estimate_tokens(msg)
+            _overhead = 200  # lang prefix + reflection + wrappers
+            _remaining_chars = int((MAX_SAFE_TOKENS - _user_tokens - _overhead) * CHARS_PER_TOKEN)
+            _remaining_chars = max(500, _remaining_chars)
+
+            # Get summary vectors for channel relevance
+            _summary_cache = get_summary_cache()
+            _summary_vecs = _summary_cache.get_vecs()
+            _channels = {
+                "recent_conversation": {"summary_vec": _summary_vecs.get("recent_conversation")},
+                "semantic_matches": {"summary_vec": _summary_vecs.get("semantic_matches")},
+                "titan_memory": {"summary_vec": _summary_vecs.get("titan_memory")},
+                "ego_mood_identity": {"summary_vec": None},
+                "world_experience": {"summary_vec": _summary_vecs.get("world_experience")},
+                "news_akam": {"triggered": bool(ws_akam or ws_news)},
+            }
+            _all_budget = allocate_budget(_remaining_chars, _channels, _query_vec)
+            _ws_budget = _all_budget
+            _conv_budget = _all_budget.get("recent_conversation", 800) + _all_budget.get("semantic_matches", 600)
+            LOG.debug(f"Budget allocated: total={_remaining_chars}, conv={_conv_budget}, "
+                      f"titan={_all_budget.get('titan_memory', 0)}, "
+                      f"world={_all_budget.get('world_experience', 0)}, "
+                      f"news={_all_budget.get('news_akam', 0)}")
+        except Exception as _budget_err:
+            LOG.debug(f"Budget allocation skipped: {_budget_err}")
+
         # ── Build unified workspace broadcast ──
         workspace_block = build_workspace(
             msg=msg,
@@ -561,10 +610,11 @@ class ChatMixin:
             hw_detail=ws_hw_detail,
             perception_ctx=ws_perception,
             attention_detail=ws_attention_detail,
+            budget=_ws_budget,
         )
 
-        # Build conversation context for continuity
-        conv_ctx = self._build_conversation_context()
+        # Build conversation context for continuity (budget-aware)
+        conv_ctx = self._build_conversation_context(max_chars=_conv_budget)
         if conv_ctx:
             LOG.debug(f"Conversation context ({len(conv_ctx)} chars): {conv_ctx[:100]}...")
 

@@ -134,52 +134,127 @@ class PersistenceMixin:
             return False
 
     def _trigger_session_summary(self):
-        """Generate session summary via LLM after session ends."""
-        if not hasattr(self, '_chat_memory_db'):
-            return
-        try:
-            session = self._chat_memory_db.get_session_for_summarization()
-            if not session:
-                return
-
-            messages = self._chat_memory_db.get_session_messages(
-                session["session_id"], limit=30,
-            )
-            if len(messages) < 3:
-                return
-
-            conv_text = "\n".join(
-                f"{'User' if m['is_user'] else 'Frank'}: {m['text'][:200]}"
-                for m in messages[:20]
-            )
-
-            prompt = (
-                f"Fasse das folgende Gespraech in 2-3 Saetzen zusammen. "
-                f"Nenne die Hauptthemen und wichtige Fakten.\n\n"
-                f"{conv_text}\n\n"
-                f"Zusammenfassung (2-3 Saetze, Deutsch):"
-            )
-
-            from overlay.services.core_api import _core_chat
-            res = _core_chat(prompt, max_tokens=200, timeout_s=30,
-                             task="chat.fast", force="llama")
-            if res.get("ok") and res.get("text"):
-                summary = res["text"].strip()[:500]
-                self._chat_memory_db.store_session_summary(
-                    session["session_id"], summary,
-                )
-                LOG.info(f"Session summary generated: {summary[:80]}...")
-        except Exception as e:
-            LOG.warning(f"Session summary generation failed: {e}")
+        """Generate session summary (delegates to batch method)."""
+        self._batch_session_summaries(max_sessions=1)
 
     def _memory_maintenance_timer(self):
-        """Periodic memory maintenance: cleanup old messages, generate summaries."""
+        """Periodic memory maintenance: close idle sessions, generate summaries, cleanup."""
         try:
             if hasattr(self, '_chat_memory_db'):
+                # 1. Close idle sessions (>30 min without activity)
+                try:
+                    closed = self._chat_memory_db.close_idle_sessions(idle_minutes=30)
+                    if closed > 0:
+                        LOG.info(f"Memory maintenance: closed {closed} idle sessions")
+                except Exception as e:
+                    LOG.debug(f"Idle session close failed: {e}")
+
+                # 2. Batch summarize up to 3 sessions per cycle
+                self._batch_session_summaries(max_sessions=3)
+
+                # 3. Archive old messages
                 archived = self._chat_memory_db.cleanup_old_messages(retention_days=30)
                 if archived > 0:
                     LOG.info(f"Memory maintenance: archived {archived} old messages")
-                self._trigger_session_summary()
+
+                # 4. Memory consistency check (runs max 1x/day)
+                try:
+                    from services.memory_consistency import get_consistency_daemon
+                    cd = get_consistency_daemon()
+                    if cd.should_run():
+                        report = cd.run_nightly()
+                        LOG.info(f"Consistency check: {report.get('duration_ms', 0)}ms")
+                except Exception as e:
+                    LOG.debug(f"Consistency check skipped: {e}")
         except Exception as e:
             LOG.warning(f"Memory maintenance error: {e}")
         self.after(3600_000, self._memory_maintenance_timer)
+
+    def _batch_session_summaries(self, max_sessions: int = 3):
+        """Generate summaries for up to N sessions. Falls back to keyword extraction."""
+        if not hasattr(self, '_chat_memory_db'):
+            return
+
+        try:
+            sessions = self._chat_memory_db.get_sessions_for_summarization(limit=max_sessions)
+        except Exception:
+            sessions = []
+            session = self._chat_memory_db.get_session_for_summarization()
+            if session:
+                sessions = [session]
+
+        for session in sessions:
+            try:
+                messages = self._chat_memory_db.get_session_messages(
+                    session["session_id"], limit=30,
+                )
+                if len(messages) < 3:
+                    continue
+
+                conv_text = "\n".join(
+                    f"{'User' if m['is_user'] else 'Frank'}: {m['text'][:200]}"
+                    for m in messages[:20]
+                )
+
+                # Try LLM summarization
+                summary = None
+                try:
+                    prompt = (
+                        f"Fasse das folgende Gespraech in 2-3 Saetzen zusammen. "
+                        f"Nenne die Hauptthemen und wichtige Fakten.\n\n"
+                        f"{conv_text}\n\n"
+                        f"Zusammenfassung (2-3 Saetze, Deutsch):"
+                    )
+                    from overlay.services.core_api import _core_chat
+                    res = _core_chat(prompt, max_tokens=200, timeout_s=30,
+                                     task="chat.fast", force="llama")
+                    if res.get("ok") and res.get("text"):
+                        summary = res["text"].strip()[:500]
+                except Exception as e:
+                    LOG.debug(f"LLM summary failed, trying keyword fallback: {e}")
+
+                # Fallback: keyword-based summary
+                if not summary:
+                    summary = self._keyword_summary(messages)
+
+                if summary:
+                    self._chat_memory_db.store_session_summary(
+                        session["session_id"], summary,
+                    )
+                    LOG.info(f"Session {session['session_id']} summarized: {summary[:80]}...")
+
+            except Exception as e:
+                LOG.warning(f"Session summary failed for {session.get('session_id')}: {e}")
+
+    @staticmethod
+    def _keyword_summary(messages: list) -> str:
+        """Fallback: extract key topics from messages when LLM unavailable."""
+        import re
+        from collections import Counter
+
+        # Collect words from user messages (most indicative of topics)
+        words = []
+        for m in messages:
+            if m.get("is_user"):
+                text = m.get("text", "").lower()
+                # Remove short/common words
+                tokens = re.findall(r'\b[a-zäöüß]{4,}\b', text)
+                words.extend(tokens)
+
+        if not words:
+            return ""
+
+        # Filter stopwords
+        stopwords = {"dass", "wird", "habe", "haben", "eine", "einen", "einem", "einer",
+                     "nicht", "auch", "noch", "schon", "aber", "oder", "wenn", "dann",
+                     "this", "that", "with", "from", "they", "have", "been", "were",
+                     "what", "about", "your", "will", "would", "could", "should",
+                     "frank", "bitte", "danke", "kannst", "machen", "gerade"}
+        filtered = [w for w in words if w not in stopwords]
+
+        top = Counter(filtered).most_common(5)
+        if not top:
+            return ""
+
+        topics = ", ".join(w for w, _ in top)
+        return f"Themen: {topics} ({len(messages)} Nachrichten)"

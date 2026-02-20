@@ -206,8 +206,8 @@ class SQLiteStore:
         origin TEXT DEFAULT 'inference',
         created_at TEXT NOT NULL,
         PRIMARY KEY (src, dst, relation),
-        FOREIGN KEY (src) REFERENCES nodes(id),
-        FOREIGN KEY (dst) REFERENCES nodes(id)
+        FOREIGN KEY (src) REFERENCES nodes(id) ON DELETE CASCADE,
+        FOREIGN KEY (dst) REFERENCES nodes(id) ON DELETE CASCADE
     );
 
     -- Events table (append-only chat log)
@@ -266,6 +266,7 @@ class SQLiteStore:
             self._local.conn.row_factory = sqlite3.Row
             self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn.execute("PRAGMA foreign_keys=ON")
         return self._local.conn
 
     def _init_db(self):
@@ -530,16 +531,18 @@ class VectorStore:
         self._load_index()
 
     def _get_model(self):
-        """Lazy load embedding model."""
+        """Lazy load embedding model via shared EmbeddingService."""
         if self._model is None:
             try:
+                from services.embedding_service import get_embedding_service
+                self._model = get_embedding_service()
+                LOG.info("Using shared EmbeddingService for Titan vectors")
+            except ImportError:
+                # Fallback to direct model load
                 from sentence_transformers import SentenceTransformer
-                LOG.info(f"Loading embedding model: {self.model_name}")
+                LOG.info(f"Loading embedding model directly: {self.model_name}")
                 self._model = SentenceTransformer(self.model_name)
-                LOG.info("Embedding model loaded")
-            except Exception as e:
-                LOG.error(f"Failed to load embedding model: {e}")
-                raise
+                LOG.info("Embedding model loaded (standalone)")
         return self._model
 
     def _load_index(self):
@@ -572,6 +575,9 @@ class VectorStore:
     def embed(self, text: str) -> np.ndarray:
         """Generate embedding for text."""
         model = self._get_model()
+        # Works with both EmbeddingService (embed_text) and SentenceTransformer (encode)
+        if hasattr(model, 'embed_text'):
+            return model.embed_text(text)
         return model.encode(text, convert_to_numpy=True)
 
     def add(self, node_id: str, text: str):

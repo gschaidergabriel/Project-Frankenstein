@@ -41,21 +41,33 @@ def build_workspace(
     hw_detail: str = "",
     perception_ctx: str = "",
     attention_detail: str = "",
+    budget: Optional[Dict[str, int]] = None,
 ) -> str:
     """Build the unified [INNER_WORLD] workspace broadcast.
 
     Each parameter corresponds to a module's output. The function
     integrates them into a structured phenomenological frame.
 
+    Args:
+        budget: Optional dict mapping channel names to max chars.
+            Channels: ego_mood_identity, world_experience, news_akam, titan_memory.
+            If None, uses default max_len values.
+
     Returns empty string if no context is available.
     """
     lines: List[str] = []
+
+    # Extract channel budgets (fallback to defaults if not provided)
+    b_emi = budget.get("ego_mood_identity", 300) if budget else 300
+    b_world = budget.get("world_experience", 200) if budget else 200
+    b_news = budget.get("news_akam", 350) if budget else 350
+    b_titan = budget.get("titan_memory", 500) if budget else 500
 
     # --- Body ---
     # Merge ego_construct embodied description with hardware metrics
     body = _build_body(ego_ctx, hw_summary, hw_detail)
     if body:
-        lines.append("Body: " + body)
+        lines.append("Body: " + body[:b_emi])
 
     # --- Perception (RPT: recurrent perceptual feedback) ---
     if perception_ctx:
@@ -67,12 +79,14 @@ def build_workspace(
         lines.append("Mood: " + mood)
 
     # --- Memory ---
-    memory = _build_memory(world_ctx, news_ctx, akam_ctx)
+    memory = _build_memory(world_ctx, news_ctx, akam_ctx,
+                           max_world=b_world, max_news=min(150, b_news),
+                           max_akam=min(200, b_news))
     if memory:
         lines.append("Memory: " + memory)
 
     # --- Identity ---
-    ident = _clean_ctx(identity_ctx, max_len=180)
+    ident = _clean_ctx(identity_ctx, max_len=min(180, b_emi))
     if ident:
         lines.append("Identity: " + ident)
 
@@ -105,7 +119,7 @@ def build_workspace(
             # Memory and knowledge get more space than generic extras
             if part.startswith(("[Own Knowledge]", "[My Memory", "[I remember",
                                 "[Eigenes Wissen]", "[Mein Gedaechtnis", "[Ich erinnere")):
-                max_l = 500
+                max_l = min(500, b_titan)
             else:
                 max_l = 200
             clean = _clean_ctx(part, max_len=max_l)
@@ -171,22 +185,24 @@ def _build_mood(epq_ctx: Optional[Dict[str, Any]]) -> str:
     return f"I feel {mood}"
 
 
-def _build_memory(world_ctx: str, news_ctx: str, akam_ctx: str) -> str:
+def _build_memory(world_ctx: str, news_ctx: str, akam_ctx: str,
+                   max_world: int = 200, max_news: int = 150,
+                   max_akam: int = 200) -> str:
     """Combine experiential memory, news, and knowledge base."""
     parts: List[str] = []
 
     if world_ctx:
-        clean = _clean_ctx(world_ctx, max_len=200)
+        clean = _clean_ctx(world_ctx, max_len=max_world)
         if clean:
             parts.append(clean)
 
     if news_ctx:
-        clean = _clean_ctx(news_ctx, max_len=150)
+        clean = _clean_ctx(news_ctx, max_len=max_news)
         if clean:
             parts.append(clean)
 
     if akam_ctx:
-        clean = _clean_ctx(akam_ctx, max_len=200)
+        clean = _clean_ctx(akam_ctx, max_len=max_akam)
         if clean:
             parts.append(clean)
 

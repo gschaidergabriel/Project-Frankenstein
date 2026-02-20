@@ -18,7 +18,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -310,34 +310,36 @@ class Architect:
                 # Add to vector store
                 self.vectors.add(node_id, entity)
 
-        # Store memory chunk
+        # Store memory chunk (protected for 24h to survive first maintenance cycle)
         chunk_id = f"chunk_{event_id}"
         self.sqlite.add_node(Node(
             id=chunk_id,
             type="memory",
             label=text[:100],
             created_at=now,
-            protected=False,
+            protected=True,
             metadata={
                 "origin": origin,
-                "confidence": base_confidence,
+                "confidence": max(base_confidence, 0.8),
                 "full_text": text,
-                "event_id": event_id
+                "event_id": event_id,
+                "unprotect_after": (datetime.now() + timedelta(hours=24)).isoformat(),
             }
         ))
         self.sqlite.index_for_fts(chunk_id, text, {"origin": origin})
         self.vectors.add(chunk_id, text)
 
-        # Link entities to memory chunk
+        # Link entities to memory chunk (verify both nodes exist first)
         for entity in entities:
             entity_id = hashlib.sha256(entity.encode()).hexdigest()[:16]
-            self.graph.add_relation(
-                subject=chunk_id,
-                predicate="mentions",
-                obj=entity_id,
-                confidence=base_confidence,
-                origin=origin
-            )
+            if self.sqlite.get_node(entity_id) and self.sqlite.get_node(chunk_id):
+                self.graph.add_relation(
+                    subject=chunk_id,
+                    predicate="mentions",
+                    obj=entity_id,
+                    confidence=base_confidence,
+                    origin=origin
+                )
 
         LOG.debug(f"Ingested text: {len(claims)} claims, {len(entities)} entities")
 

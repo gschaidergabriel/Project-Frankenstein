@@ -103,6 +103,9 @@ class MaintenanceEngine:
 
         LOG.info("Starting maintenance cycle")
 
+        # 0. Unprotect nodes past their 24h protection window
+        self._unprotect_expired_nodes()
+
         # 1. Update confidence decay
         stats.confidence_updated = self._decay_confidence()
 
@@ -126,6 +129,28 @@ class MaintenanceEngine:
                  f"in {stats.duration_ms}ms")
 
         return stats
+
+    def _unprotect_expired_nodes(self):
+        """Remove protection from nodes past their 24h unprotect_after window."""
+        conn = self.sqlite._get_conn()
+        now = datetime.now().isoformat()
+        import json as _json
+        rows = conn.execute("""
+            SELECT id, metadata FROM nodes WHERE protected = 1
+        """).fetchall()
+        unprotected = 0
+        for row in rows:
+            try:
+                meta = _json.loads(row["metadata"] or "{}")
+                unprotect_after = meta.get("unprotect_after")
+                if unprotect_after and unprotect_after < now:
+                    conn.execute("UPDATE nodes SET protected = 0 WHERE id = ?", (row["id"],))
+                    unprotected += 1
+            except Exception:
+                pass
+        if unprotected:
+            conn.commit()
+            LOG.debug(f"Unprotected {unprotected} expired nodes")
 
     def _decay_confidence(self) -> int:
         """Apply time-based confidence decay to all nodes."""

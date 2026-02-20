@@ -1,9 +1,9 @@
 """
-Chat Memory DB — Persistent conversation memory with FTS5 search.
+Chat Memory DB — Persistent conversation memory with FTS5 + semantic search.
 
 Replaces the 20-message JSON file with a proper SQLite database.
-Stores ALL messages with full text, provides semantic search for
-smart LLM context building, and tracks sessions with summaries.
+Stores ALL messages with full text, provides hybrid FTS5 + vector
+search for smart LLM context building, and tracks sessions with summaries.
 
 Author: Projekt Frankenstein
 """
@@ -12,12 +12,15 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import struct
 import threading
 import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 
 LOG = logging.getLogger("chat_memory")
 
@@ -52,6 +55,34 @@ CREATE TABLE IF NOT EXISTS sessions (
     ended_at        TEXT,
     message_count   INTEGER DEFAULT 0,
     summary         TEXT DEFAULT ''
+);
+
+
+CREATE TABLE IF NOT EXISTS message_embeddings (
+    message_id  INTEGER PRIMARY KEY,
+    embedding   BLOB NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    key             TEXT NOT NULL,
+    value           TEXT NOT NULL,
+    confidence      REAL DEFAULT 0.6,
+    source          TEXT DEFAULT 'pattern',
+    created_at      TEXT NOT NULL,
+    last_confirmed  TEXT,
+    UNIQUE(key, value)
+);
+
+CREATE TABLE IF NOT EXISTS retrieval_metrics (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_hash      TEXT,
+    sources_used    TEXT,
+    chars_injected  INTEGER,
+    budget_chars    INTEGER,
+    latency_ms      INTEGER,
+    timestamp       REAL
 );
 """
 
@@ -138,7 +169,20 @@ class ChatMemoryDB:
                 (session_id,),
             )
             self._conn.commit()
-            return cur.lastrowid
+            msg_id = cur.lastrowid
+            # Inline embed (async-safe, ~20ms)
+            if not is_system and text and text != '[archived]':
+                try:
+                    self._store_embedding(msg_id, text)
+                except Exception:
+                    pass  # Backfill will catch it later
+            # Extract user preferences from user messages (~1ms, regex)
+            if is_user and text:
+                try:
+                    self._extract_and_store_preferences(text)
+                except Exception:
+                    pass
+            return msg_id
 
     def get_recent_messages(self, limit: int = 50) -> List[dict]:
         """Get the N most recent messages (including system) for UI display."""
@@ -199,9 +243,9 @@ class ChatMemoryDB:
                 parts.append(block)
                 budget -= len(block)
 
-        # 2) FTS keyword matches from older messages (up to 600 chars)
+        # 2) Hybrid FTS5 + vector search from older messages (up to 600 chars)
         if query and budget > 200:
-            relevant = self._search_relevant_history(query, limit=3, exclude_recent=10)
+            relevant = self._hybrid_search_history(query, limit=5, exclude_recent=10)
             if relevant:
                 lines = []
                 chars = 0
@@ -287,6 +331,195 @@ class ChatMemoryDB:
                 LOG.debug(f"FTS search error: {e}")
                 return []
 
+    # ── Embedding Helpers ────────────────────────────────────────
+
+    def _get_embedding_service(self):
+        """Lazy import to avoid circular deps and slow startup."""
+        if not hasattr(self, '_emb_service'):
+            try:
+                from services.embedding_service import get_embedding_service
+                self._emb_service = get_embedding_service()
+            except Exception as e:
+                LOG.warning(f"Embedding service unavailable: {e}")
+                self._emb_service = None
+        return self._emb_service
+
+    @staticmethod
+    def _pack_embedding(vec: np.ndarray) -> bytes:
+        """Pack float32 array to bytes for BLOB storage."""
+        return vec.astype(np.float32).tobytes()
+
+    @staticmethod
+    def _unpack_embedding(blob: bytes) -> np.ndarray:
+        """Unpack BLOB to float32 array."""
+        return np.frombuffer(blob, dtype=np.float32)
+
+    def _store_embedding(self, message_id: int, text: str):
+        """Embed text and store in message_embeddings table."""
+        emb = self._get_embedding_service()
+        if emb is None:
+            return
+        try:
+            vec = emb.embed_text(text)
+            blob = self._pack_embedding(vec)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO message_embeddings (message_id, embedding) VALUES (?, ?)",
+                (message_id, blob),
+            )
+            self._conn.commit()
+        except Exception as e:
+            LOG.debug(f"Embedding store failed for msg {message_id}: {e}")
+
+    def _hybrid_search_history(
+        self, query: str, limit: int = 5, exclude_recent: int = 10,
+    ) -> List[dict]:
+        """
+        Hybrid search: FTS5 keyword + vector cosine similarity + RRF fusion.
+
+        Falls back to FTS5-only if embedding service unavailable.
+        """
+        # FTS5 results (existing fast path)
+        fts_results = self._search_relevant_history(query, limit=limit * 2, exclude_recent=exclude_recent)
+        fts_ranked = {r["id"]: (rank, r) for rank, r in enumerate(fts_results)}
+
+        # Try vector search
+        emb = self._get_embedding_service()
+        if emb is None:
+            return fts_results[:limit]
+
+        try:
+            query_vec = emb.embed_text(query)
+        except Exception:
+            return fts_results[:limit]
+
+        # Load all embeddings (fast for <10k messages)
+        vec_ranked = {}
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT me.message_id, me.embedding, m.id, m.role, m.sender,
+                       m.text, m.is_user, m.timestamp
+                FROM message_embeddings me
+                JOIN messages m ON m.id = me.message_id
+                WHERE m.is_system = 0
+                  AND m.id NOT IN (
+                    SELECT id FROM messages WHERE is_system = 0
+                    ORDER BY timestamp DESC LIMIT ?
+                  )
+            """, (exclude_recent,)).fetchall()
+
+        if not rows:
+            return fts_results[:limit]
+
+        # Compute cosine similarities
+        ids = [r["message_id"] for r in rows]
+        vectors = np.array([self._unpack_embedding(r["embedding"]) for r in rows])
+        row_map = {r["message_id"]: dict(r) for r in rows}
+
+        norms = np.linalg.norm(vectors, axis=1) * np.linalg.norm(query_vec)
+        norms[norms == 0] = 1.0
+        similarities = np.dot(vectors, query_vec) / norms
+
+        # Top-20 by cosine
+        top_k = min(20, len(ids))
+        top_indices = np.argsort(similarities)[::-1][:top_k]
+        for rank, idx in enumerate(top_indices):
+            mid = ids[idx]
+            vec_ranked[mid] = (rank, row_map[mid])
+
+        # RRF fusion (k=60)
+        K = 60
+        all_ids = set(fts_ranked.keys()) | set(vec_ranked.keys())
+        fused = []
+        for mid in all_ids:
+            score = 0.0
+            if mid in fts_ranked:
+                score += 1.0 / (K + fts_ranked[mid][0])
+            if mid in vec_ranked:
+                score += 1.0 / (K + vec_ranked[mid][0])
+            # Get the row data from whichever source has it
+            row_data = fts_ranked.get(mid, (0, None))[1] or vec_ranked.get(mid, (0, None))[1]
+            if row_data:
+                fused.append((score, row_data))
+
+        fused.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in fused[:limit]]
+
+    def backfill_embeddings(self, batch_size: int = 64, max_seconds: float = 60.0):
+        """
+        Background backfill: embed all messages missing from message_embeddings.
+        Crash-safe via tracking last processed ID.
+        """
+        emb = self._get_embedding_service()
+        if emb is None:
+            return 0
+
+        state_file = self._path.parent / "backfill_state.json"
+        last_id = 0
+        if state_file.exists():
+            try:
+                last_id = json.loads(state_file.read_text()).get("last_message_id", 0)
+            except Exception:
+                pass
+
+        start = time.time()
+        total_done = 0
+
+        while time.time() - start < max_seconds:
+            with self._lock:
+                rows = self._conn.execute("""
+                    SELECT m.id, m.text FROM messages m
+                    LEFT JOIN message_embeddings me ON me.message_id = m.id
+                    WHERE me.message_id IS NULL
+                      AND m.is_system = 0
+                      AND m.text != '[archived]'
+                      AND m.id > ?
+                    ORDER BY m.id ASC
+                    LIMIT ?
+                """, (last_id, batch_size)).fetchall()
+
+            if not rows:
+                break
+
+            texts = [r["text"] for r in rows]
+            ids = [r["id"] for r in rows]
+
+            try:
+                vecs = emb.embed_batch(texts, batch_size=batch_size)
+            except Exception as e:
+                LOG.warning(f"Backfill batch embed failed: {e}")
+                break
+
+            with self._lock:
+                for i, msg_id in enumerate(ids):
+                    blob = self._pack_embedding(vecs[i])
+                    self._conn.execute(
+                        "INSERT OR REPLACE INTO message_embeddings (message_id, embedding) VALUES (?, ?)",
+                        (msg_id, blob),
+                    )
+                self._conn.commit()
+
+            last_id = ids[-1]
+            total_done += len(ids)
+
+            # Save progress
+            try:
+                state_file.write_text(json.dumps({"last_message_id": last_id}))
+            except Exception:
+                pass
+
+            if total_done % (batch_size * 5) == 0 and total_done > 0:
+                LOG.info(f"Embedding backfill: {total_done} messages processed")
+
+            time.sleep(0.5)
+
+        if total_done > 0:
+            LOG.info(f"Embedding backfill complete: {total_done} messages embedded")
+        return total_done
+
+    def get_recent_summaries(self, limit: int = 3) -> List[dict]:
+        """Public wrapper for _get_recent_summaries (used by ChannelSummaryCache)."""
+        return self._get_recent_summaries(limit)
+
     def _get_recent_summaries(self, limit: int = 3) -> List[dict]:
         """Get recent session summaries."""
         with self._lock:
@@ -310,6 +543,60 @@ class ChatMemoryDB:
             return f"{int(delta / 3600)} h ago"
         days = int(delta / 86400)
         return f"{days} day{'s' if days != 1 else ''} ago"
+
+    # ── User Preferences ─────────────────────────────────────────
+
+    def _extract_and_store_preferences(self, text: str):
+        """Extract preferences from user text and store them."""
+        try:
+            from services.preference_extractor import extract_preferences
+        except ImportError:
+            return
+        prefs = extract_preferences(text)
+        for key, value in prefs:
+            self._store_preference(key, value, confidence=0.6, source="pattern")
+
+    def _store_preference(self, key: str, value: str, confidence: float = 0.6,
+                          source: str = "pattern"):
+        """Store a user preference (upsert with higher confidence wins)."""
+        now = datetime.now().isoformat()
+        with self._lock:
+            existing = self._conn.execute(
+                "SELECT id, confidence FROM user_preferences WHERE key = ? AND value = ?",
+                (key, value),
+            ).fetchone()
+
+            if existing:
+                # Update only if new confidence is higher or to refresh last_confirmed
+                if confidence >= existing["confidence"]:
+                    self._conn.execute(
+                        "UPDATE user_preferences SET confidence = ?, last_confirmed = ?, source = ? WHERE id = ?",
+                        (confidence, now, source, existing["id"]),
+                    )
+                else:
+                    self._conn.execute(
+                        "UPDATE user_preferences SET last_confirmed = ? WHERE id = ?",
+                        (now, existing["id"]),
+                    )
+            else:
+                self._conn.execute(
+                    """INSERT INTO user_preferences (key, value, confidence, source, created_at, last_confirmed)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (key, value, confidence, source, now, now),
+                )
+            self._conn.commit()
+
+    def get_top_preferences(self, limit: int = 5) -> List[dict]:
+        """Get top user preferences by confidence for context injection."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT key, value, confidence, source
+                   FROM user_preferences
+                   ORDER BY confidence DESC, last_confirmed DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ── Session Management ────────────────────────────────────────
 
@@ -343,19 +630,54 @@ class ChatMemoryDB:
             )
             self._conn.commit()
 
-    def get_session_for_summarization(self) -> Optional[dict]:
-        """Get an ended session that needs summarization."""
+    def close_idle_sessions(self, idle_minutes: int = 30) -> int:
+        """Close sessions whose last message is older than idle_minutes.
+
+        Returns count of sessions closed.
+        """
+        cutoff = time.time() - (idle_minutes * 60)
+        closed = 0
         with self._lock:
-            row = self._conn.execute(
+            # Find open sessions with no recent messages
+            rows = self._conn.execute("""
+                SELECT s.session_id, MAX(m.timestamp) AS last_ts
+                FROM sessions s
+                JOIN messages m ON m.session_id = s.session_id
+                WHERE s.ended_at IS NULL
+                GROUP BY s.session_id
+                HAVING MAX(m.timestamp) < ?
+            """, (cutoff,)).fetchall()
+
+            for row in rows:
+                self._conn.execute(
+                    "UPDATE sessions SET ended_at = ? WHERE session_id = ?",
+                    (datetime.now().isoformat(), row["session_id"]),
+                )
+                closed += 1
+
+            if closed:
+                self._conn.commit()
+        return closed
+
+    def get_sessions_for_summarization(self, limit: int = 3) -> List[dict]:
+        """Get ended sessions that need summarization (batch)."""
+        with self._lock:
+            rows = self._conn.execute(
                 """SELECT session_id, started_at, ended_at, message_count
                    FROM sessions
                    WHERE ended_at IS NOT NULL
                      AND (summary = '' OR summary IS NULL)
                      AND message_count >= 3
                    ORDER BY ended_at DESC
-                   LIMIT 1""",
-            ).fetchone()
-        return dict(row) if row else None
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_session_for_summarization(self) -> Optional[dict]:
+        """Get an ended session that needs summarization."""
+        results = self.get_sessions_for_summarization(limit=1)
+        return results[0] if results else None
 
     # ── Migration ─────────────────────────────────────────────────
 
@@ -390,6 +712,71 @@ class ChatMemoryDB:
         self.end_session(session_id)
         LOG.info(f"Migrated {count} messages from JSON to SQLite")
         return count
+
+    # ── Retrieval Metrics ──────────────────────────────────────────
+
+    def record_retrieval_metric(self, query_hash: str, sources_used: dict,
+                                chars_injected: int, budget_chars: int,
+                                latency_ms: float):
+        """Record a retrieval metric for monitoring."""
+        try:
+            with self._lock:
+                self._conn.execute(
+                    """INSERT INTO retrieval_metrics
+                       (query_hash, sources_used, chars_injected, budget_chars, latency_ms, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (query_hash, json.dumps(sources_used), chars_injected,
+                     budget_chars, int(latency_ms), time.time()),
+                )
+                self._conn.commit()
+        except Exception as e:
+            LOG.debug(f"Metric recording failed: {e}")
+
+    def get_retrieval_stats(self, days: int = 7) -> dict:
+        """Get aggregated retrieval statistics for the last N days."""
+        cutoff = time.time() - (days * 86400)
+        with self._lock:
+            total = self._conn.execute(
+                "SELECT COUNT(*) FROM retrieval_metrics WHERE timestamp > ?",
+                (cutoff,),
+            ).fetchone()[0]
+
+            if total == 0:
+                return {"total_queries": 0, "avg_latency_ms": 0,
+                        "avg_chars": 0, "source_counts": {}}
+
+            avg_latency = self._conn.execute(
+                "SELECT AVG(latency_ms) FROM retrieval_metrics WHERE timestamp > ?",
+                (cutoff,),
+            ).fetchone()[0] or 0
+
+            avg_chars = self._conn.execute(
+                "SELECT AVG(chars_injected) FROM retrieval_metrics WHERE timestamp > ?",
+                (cutoff,),
+            ).fetchone()[0] or 0
+
+            # Aggregate source usage
+            rows = self._conn.execute(
+                "SELECT sources_used FROM retrieval_metrics WHERE timestamp > ?",
+                (cutoff,),
+            ).fetchall()
+
+        source_counts = {}
+        for row in rows:
+            try:
+                sources = json.loads(row["sources_used"])
+                for src, count in sources.items():
+                    source_counts[src] = source_counts.get(src, 0) + count
+            except Exception:
+                pass
+
+        return {
+            "total_queries": total,
+            "avg_latency_ms": round(avg_latency, 1),
+            "avg_chars_injected": round(avg_chars, 1),
+            "source_counts": source_counts,
+            "period_days": days,
+        }
 
     # ── Maintenance ───────────────────────────────────────────────
 

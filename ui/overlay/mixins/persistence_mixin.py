@@ -65,6 +65,12 @@ class PersistenceMixin:
                         text = msg.get("text", "")
                         is_user = bool(msg.get("is_user", False))
                         is_system = msg.get("role") == "system"
+                        # Truncate system messages (entity session summaries etc.)
+                        # to max 15 words for clean chat display
+                        if is_system and text:
+                            words = text.split()
+                            if len(words) > 15:
+                                text = " ".join(words[:15]) + " …"
                         if text:
                             on_retry = None
                             on_speak = None

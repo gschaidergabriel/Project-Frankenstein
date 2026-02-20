@@ -1066,12 +1066,15 @@ class MirrorAgent:
         # Write session summary to chat_memory for cross-session recall
         elapsed_min = int((time.time() - start_time) / 60)
         topics_str_chat = ", ".join(topics) if topics else "general"
+        _short = " ".join((summary or "").split()[:15])
+        if _short and not _short.endswith("."):
+            _short += " …"
         summary_msg = (
-            f"[Entity Session] Gespräch mit {MIRROR_NAME} (Philosophical Mirror), "
-            f"{elapsed_min} Minuten, {turn} Turns. "
-            f"Themen: {topics_str_chat}. "
-            f"Zusammenfassung: {summary}"
+            f"[Entity Session] {MIRROR_NAME} — {elapsed_min} min, "
+            f"{turn} Turns. Themen: {topics_str_chat}."
         )
+        if _short:
+            summary_msg += f" {_short}"
         _write_chat_message("system", MIRROR_NAME, summary_msg, self.session_id)
         _short_summary = " ".join((summary or "").split()[:15])
         if _short_summary and not _short_summary.endswith("."):

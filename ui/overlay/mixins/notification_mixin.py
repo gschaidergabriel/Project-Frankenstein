@@ -56,6 +56,12 @@ class NotificationMixin:
                 urgency = data.get("urgency", "normal")
                 body = data.get("body", data.get("title", "Erinnerung"))
 
+                # Truncate long notifications to max 15 words
+                # (entity agents already truncate, but daemon/proactive don't)
+                words = body.split()
+                if len(words) > 15:
+                    body = " ".join(words[:15]) + " …"
+
                 icon_map = {
                     "calendar": "\U0001F4C5",       # calendar
                     "todo": "\U0001F4CB",            # clipboard

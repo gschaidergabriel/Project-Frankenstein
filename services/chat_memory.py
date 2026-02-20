@@ -138,12 +138,13 @@ class ChatMemoryDB:
             except sqlite3.OperationalError:
                 pass  # already exists
         self._conn.commit()
-        # One-time float32 -> float16 migration
+        # Migrate any remaining float32 embeddings to float16
         try:
-            sample = self._conn.execute(
-                "SELECT embedding FROM message_embeddings LIMIT 1"
-            ).fetchone()
-            if sample and len(sample["embedding"]) == 384 * 4:
+            f32_count = self._conn.execute(
+                "SELECT COUNT(*) c FROM message_embeddings WHERE length(embedding) = ?",
+                (384 * 4,),
+            ).fetchone()["c"]
+            if f32_count > 0:
                 self.migrate_embeddings_to_float16()
         except Exception:
             pass

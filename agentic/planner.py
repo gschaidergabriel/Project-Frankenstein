@@ -186,8 +186,15 @@ class Planner:
             )
             steps.append(step)
 
-        # Calculate total risk
-        total_risk = max(s.estimated_risk for s in steps) if steps else 0.0
+        # Calculate compound risk: 1 - ∏(1 - risk_i)
+        # Accounts for cumulative risk of many medium-risk steps
+        if steps:
+            compound_survival = 1.0
+            for s in steps:
+                compound_survival *= (1.0 - s.estimated_risk)
+            total_risk = 1.0 - compound_survival
+        else:
+            total_risk = 0.0
 
         plan = Plan(
             goal=goal,
@@ -207,7 +214,9 @@ class Planner:
         """
         Create a new plan after a failure.
 
-        Considers what was already tried and what failed.
+        Uses context versioning: successful observations are passed cleanly,
+        failed attempt context is summarised with version tags so the new
+        plan starts with a clear signal while retaining failure history.
         """
         # Build context from execution history
         context_parts = [
@@ -222,17 +231,37 @@ class Planner:
             elif step.status == StepStatus.FAILED:
                 context_parts.append(f"✗ {step.description} - FAILED: {step.error}")
 
+        # Include successful (clean) context
+        successful_ctx = state.get_successful_context()
+        if successful_ctx:
+            context_parts.extend([
+                "",
+                "Successful observations so far:",
+                successful_ctx[:2000],
+            ])
+
+        # Include compact failed context summary
+        failed_summary = state.get_failed_context_summary()
+        if failed_summary:
+            context_parts.extend([
+                "",
+                f"Previous failed attempts (v1..v{state.context_version}):",
+                failed_summary[:1000],
+            ])
+
         context_parts.extend([
             "",
             f"Last error: {failure_reason}",
             "",
-            "Please create a new plan that works around the problem.",
+            "Please create a new plan that works around the problem. "
+            "Do NOT repeat approaches that already failed.",
         ])
 
         context = "\n".join(context_parts)
         plan, _ = self.create_plan(state.goal, context=context)
 
-        LOG.info(f"Replanned with {len(plan.steps)} new steps after failure")
+        LOG.info(f"Replanned with {len(plan.steps)} new steps after failure "
+                 f"(context_version={state.context_version})")
         return plan
 
     def analyze_complexity(self, goal: str) -> Dict[str, Any]:

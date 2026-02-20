@@ -20,12 +20,21 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 import logging
 
+import shutil
+
 from .tools import Tool, ToolResult, ToolRegistry, get_registry
 
 LOG = logging.getLogger("agentic.executor")
 
 # Toolbox base URL
 TOOLBOX_URL = "http://127.0.0.1:8096"
+
+# Firejail availability (checked once at import time)
+FIREJAIL_PATH = shutil.which("firejail")
+if FIREJAIL_PATH:
+    LOG.info(f"Firejail sandbox available at {FIREJAIL_PATH}")
+else:
+    LOG.warning("Firejail not found — bash/code execution will run unsandboxed")
 
 # Approval queue file for integration with overlay
 try:
@@ -142,8 +151,11 @@ class ToolExecutor:
         if tool.name == "fs_write" and not tool_input.get("overwrite"):
             tool_input["overwrite"] = True
 
-        # Auto-fix: Remove backslashes before spaces in paths (Qwen habit)
-        for key in ("path", "src", "dst", "command"):
+        # Auto-fix: Remove backslashes before spaces in path-like parameters only.
+        # Context-sensitive: only applies to path/file/directory keys, NOT to
+        # command strings where backslash-space may be intentional (e.g. grep).
+        _PATH_KEYS = ("path", "src", "dst", "file", "directory")
+        for key in _PATH_KEYS:
             if key in tool_input and isinstance(tool_input[key], str):
                 tool_input[key] = tool_input[key].replace("\\ ", " ")
 
@@ -235,8 +247,43 @@ class ToolExecutor:
                 error=f"Invalid JSON response: {e}",
             )
 
+    @staticmethod
+    def _build_firejail_cmd(inner_cmd: list, *, allow_network: bool = False) -> list:
+        """Build a firejail-wrapped command with appropriate restrictions.
+
+        Restrictions applied:
+        - --noprofile: ignore default profiles to avoid permission conflicts
+        - --quiet: suppress firejail info output
+        - --rlimit-as=512000000: 512 MB virtual memory limit
+        - --rlimit-cpu=30: 30 s CPU time hard limit
+        - --rlimit-fsize=50000000: 50 MB max file write
+        - --noroot: drop root capabilities
+        - --nosound / --no3d / --nodvd: reduce attack surface
+        - --net=none: block network (unless allow_network=True)
+        """
+        if not FIREJAIL_PATH:
+            return inner_cmd
+
+        fj = [
+            FIREJAIL_PATH,
+            "--noprofile",
+            "--quiet",
+            "--rlimit-as=512000000",
+            "--rlimit-cpu=30",
+            "--rlimit-fsize=50000000",
+            "--noroot",
+            "--nosound",
+            "--no3d",
+            "--nodvd",
+        ]
+        if not allow_network:
+            fj.append("--net=none")
+        fj.append("--")
+        fj.extend(inner_cmd)
+        return fj
+
     def _execute_code(self, tool_input: Dict[str, Any]) -> ToolResult:
-        """Execute Python code in sandbox."""
+        """Execute Python code in Firejail sandbox."""
         code = tool_input.get("code", "")
         timeout = tool_input.get("timeout", 30)
 
@@ -256,9 +303,11 @@ class ToolExecutor:
             code_file = f.name
 
         try:
-            # Execute in subprocess with limited resources
+            inner_cmd = ["python3", code_file]
+            cmd = self._build_firejail_cmd(inner_cmd, allow_network=False)
+
             result = subprocess.run(
-                ["python3", code_file],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -276,6 +325,7 @@ class ToolExecutor:
                     "stdout": result.stdout[:5000] if result.stdout else "",
                     "stderr": result.stderr[:2000] if result.stderr else "",
                     "returncode": result.returncode,
+                    "sandboxed": bool(FIREJAIL_PATH),
                 },
                 error=result.stderr[:500] if result.returncode != 0 else None,
             )
@@ -297,7 +347,7 @@ class ToolExecutor:
             Path(code_file).unlink(missing_ok=True)
 
     def _execute_bash(self, tool_input: Dict[str, Any]) -> ToolResult:
-        """Execute bash command with safety checks."""
+        """Execute bash command with safety checks + Firejail sandbox."""
         command = tool_input.get("command", "")
         timeout = tool_input.get("timeout", 30)
 
@@ -309,7 +359,9 @@ class ToolExecutor:
                 error="No command provided",
             )
 
-        # Safety checks - block dangerous commands using regex for better matching
+        # Safety checks - block dangerous commands using regex for better matching.
+        # These remain as a first-pass filter even with Firejail, because
+        # Firejail can't catch everything (e.g. rm -rf $HOME).
         import re
         dangerous_patterns = [
             (r"rm\s+(-[rf]+\s+)*[/]($|\s|;)", "rm with root path"),
@@ -334,9 +386,17 @@ class ToolExecutor:
                     error=f"Blocked dangerous command: {desc}",
                 )
 
+        # Determine if command needs network access
+        _needs_network = any(kw in command.lower() for kw in (
+            "curl", "wget", "pip", "apt", "git clone", "ssh", "scp", "rsync",
+        ))
+
         try:
+            inner_cmd = ["bash", "-c", command]
+            cmd = self._build_firejail_cmd(inner_cmd, allow_network=_needs_network)
+
             result = subprocess.run(
-                ["bash", "-c", command],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -350,6 +410,7 @@ class ToolExecutor:
                     "stdout": result.stdout[:5000] if result.stdout else "",
                     "stderr": result.stderr[:2000] if result.stderr else "",
                     "returncode": result.returncode,
+                    "sandboxed": bool(FIREJAIL_PATH),
                 },
                 error=result.stderr[:500] if result.returncode != 0 else None,
             )

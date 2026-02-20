@@ -6,10 +6,14 @@ Maintains agent state across multiple turns:
 - Execution history
 - Accumulated context
 - Error tracking for retry strategies
+- Dynamic context budgeting
+- EMA-based failure scoring
+- Auto-save on state mutations
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
 import threading
@@ -29,6 +33,25 @@ try:
     STATE_DB_PATH = get_db("agent_state")
 except ImportError:
     STATE_DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "agent_state.db"
+
+
+def auto_save(method):
+    """Decorator that auto-saves AgentState after mutation methods.
+
+    Only triggers if ``_auto_save_enabled`` is True on the instance
+    (set by AgentLoop after state creation to avoid saves during
+    deserialization or before the state is ready).
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        if getattr(self, '_auto_save_enabled', False):
+            try:
+                get_store().save(self)
+            except Exception as e:
+                LOG.warning(f"Auto-save after {method.__name__} failed: {e}")
+        return result
+    return wrapper
 
 
 class StepStatus(str, Enum):
@@ -149,6 +172,13 @@ class AgentState:
     successful_tool_calls: int = 0
     total_tokens_used: int = 0
 
+    # EMA-based failure tracking (last 12 outcomes, True=failure)
+    failure_history: List[bool] = field(default_factory=list)
+    _failure_history_max: int = 12
+
+    # Context versioning for replan isolation
+    context_version: int = 0
+
     # Metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -170,6 +200,8 @@ class AgentState:
             "total_tool_calls": self.total_tool_calls,
             "successful_tool_calls": self.successful_tool_calls,
             "total_tokens_used": self.total_tokens_used,
+            "failure_history": self.failure_history,
+            "context_version": self.context_version,
             "metadata": self.metadata,
         }
 
@@ -191,6 +223,8 @@ class AgentState:
             total_tool_calls=data.get("total_tool_calls", 0),
             successful_tool_calls=data.get("successful_tool_calls", 0),
             total_tokens_used=data.get("total_tokens_used", 0),
+            failure_history=data.get("failure_history", []),
+            context_version=data.get("context_version", 0),
             metadata=data.get("metadata", {}),
         )
         state.plan_steps = [
@@ -206,6 +240,7 @@ class AgentState:
             return self.plan_steps[self.current_step_index]
         return None
 
+    @auto_save
     def advance_to_next_step(self) -> Optional[ExecutionStep]:
         """Move to the next step and return it."""
         self.current_step_index += 1
@@ -228,6 +263,13 @@ class AgentState:
             for s in self.plan_steps
         )
 
+    def get_remaining_steps(self) -> int:
+        """Get count of pending/in-progress steps remaining."""
+        return sum(
+            1 for s in self.plan_steps
+            if s.status in (StepStatus.PENDING, StepStatus.IN_PROGRESS)
+        )
+
     def get_progress(self) -> Dict[str, Any]:
         """Get execution progress summary."""
         total = len(self.plan_steps)
@@ -245,6 +287,18 @@ class AgentState:
 
     # ============ Context Management ============
 
+    def get_dynamic_context_budget(self) -> int:
+        """Calculate dynamic context budget based on remaining steps.
+
+        Early steps get more context space; late steps don't starve.
+        Formula: max_context = 8000 - (remaining_steps × 400)
+        Minimum budget is 2000 chars to avoid starvation.
+        """
+        remaining = self.get_remaining_steps()
+        budget = self.context_max_chars - (remaining * 400)
+        return max(2000, budget)
+
+    @auto_save
     def add_context(self, content: str) -> None:
         """Add execution result to context."""
         self.context.append(content)
@@ -252,9 +306,10 @@ class AgentState:
         self.updated_at = time.time()
 
     def _trim_context(self) -> None:
-        """Trim context to stay within limits."""
+        """Trim context using dynamic budget based on remaining steps."""
+        budget = self.get_dynamic_context_budget()
         total_chars = sum(len(c) for c in self.context)
-        while total_chars > self.context_max_chars and len(self.context) > 1:
+        while total_chars > budget and len(self.context) > 1:
             removed = self.context.pop(0)
             total_chars -= len(removed)
 
@@ -264,8 +319,37 @@ class AgentState:
             return ""
         return "\n---\n".join(self.context)
 
+    def tag_failed_context(self) -> None:
+        """Tag current context entries as failed attempt for replan isolation.
+
+        Wraps remaining (untagged) context with a version marker so the
+        replanner can distinguish old failures from fresh observations.
+        """
+        self.context_version += 1
+        tag = f"[FAILED_ATTEMPT_v{self.context_version}]"
+        self.context = [
+            f"{tag} {entry}" if not entry.startswith("[FAILED_ATTEMPT_") else entry
+            for entry in self.context
+        ]
+        self.updated_at = time.time()
+
+    def get_successful_context(self) -> str:
+        """Get only context entries NOT tagged as failed attempts."""
+        clean = [c for c in self.context if not c.startswith("[FAILED_ATTEMPT_")]
+        return "\n---\n".join(clean) if clean else ""
+
+    def get_failed_context_summary(self) -> str:
+        """Get a compact summary of failed attempt context."""
+        failed = [c for c in self.context if c.startswith("[FAILED_ATTEMPT_")]
+        if not failed:
+            return ""
+        # Keep only first 500 chars per failed attempt to limit noise
+        summaries = [entry[:500] for entry in failed[-5:]]  # Last 5 entries max
+        return "\n".join(summaries)
+
     # ============ Message Management ============
 
+    @auto_save
     def add_message(self, role: str, content: str) -> None:
         """Add a message to the conversation."""
         self.messages.append({
@@ -282,37 +366,98 @@ class AgentState:
 
     # ============ Error Handling ============
 
+    @auto_save
     def record_failure(self) -> None:
         """Record a failure for retry strategy."""
         self.consecutive_failures += 1
+        self.failure_history.append(True)
+        if len(self.failure_history) > self._failure_history_max:
+            self.failure_history = self.failure_history[-self._failure_history_max:]
         self.updated_at = time.time()
 
+    @auto_save
     def record_success(self) -> None:
         """Record a success (resets consecutive failures)."""
         self.consecutive_failures = 0
         self.successful_tool_calls += 1
+        self.failure_history.append(False)
+        if len(self.failure_history) > self._failure_history_max:
+            self.failure_history = self.failure_history[-self._failure_history_max:]
         self.updated_at = time.time()
 
+    def compute_failure_score(self, max_consecutive: int = 8) -> float:
+        """Compute weighted failure score combining consecutive + ratio + EMA.
+
+        Formula:
+            score = 0.7 × (consecutive / max_consecutive)
+                  + 0.3 × (total_failures / total_calls)
+
+        EMA (α=0.3) is applied over the last 12 step outcomes to smooth
+        transient spikes.  Returns 0.0 if no tool calls have been made yet.
+        """
+        if self.total_tool_calls == 0:
+            return 0.0
+
+        # Normalized consecutive ratio (0-1)
+        consecutive_ratio = min(self.consecutive_failures / max(max_consecutive, 1), 1.0)
+
+        # Total failure ratio (0-1)
+        total_failures = self.total_tool_calls - self.successful_tool_calls
+        failure_ratio = total_failures / self.total_tool_calls
+
+        # Base score: weighted combination
+        base_score = 0.7 * consecutive_ratio + 0.3 * failure_ratio
+
+        # Apply EMA smoothing over failure_history if available
+        if self.failure_history:
+            alpha = 0.3
+            ema = float(self.failure_history[0])
+            for outcome in self.failure_history[1:]:
+                ema = alpha * float(outcome) + (1 - alpha) * ema
+            # Blend base score with EMA (50/50) for robustness
+            return 0.5 * base_score + 0.5 * ema
+
+        return base_score
+
     def should_abort(self, max_consecutive_failures: int = 5) -> bool:
-        """Check if agent should abort due to too many failures."""
+        """Check if agent should abort using EMA-weighted failure score.
+
+        Uses compute_failure_score() with threshold 0.55 instead of
+        simple consecutive-only checking.  Falls back to consecutive
+        check as safety net.
+        """
+        # EMA-weighted score: abort at >0.55
+        if self.compute_failure_score(max_consecutive_failures) > 0.55:
+            return True
+        # Safety net: still abort on raw consecutive failures
         return self.consecutive_failures >= max_consecutive_failures
 
     # ============ Plan Management ============
 
+    @auto_save
     def set_plan(self, steps: List[ExecutionStep]) -> None:
         """Set the execution plan."""
         self.plan_steps = steps
         self.current_step_index = 0
         self.updated_at = time.time()
 
+    @auto_save
     def replan(self, new_steps: List[ExecutionStep]) -> None:
-        """Replace remaining steps with new plan."""
+        """Replace remaining steps with new plan.
+
+        Tags failed context with version marker so the new plan starts
+        with clean signal while retaining failed history for reference.
+        """
+        # Tag current context as failed attempt before replanning
+        self.tag_failed_context()
+
         # Keep completed steps
         completed = [s for s in self.plan_steps if s.status == StepStatus.COMPLETED]
         self.plan_steps = completed + new_steps
         self.current_step_index = len(completed)
         self.updated_at = time.time()
 
+    @auto_save
     def mark_completed(self, final_response: str = "") -> None:
         """Mark the entire goal as completed."""
         self.status = "completed"
@@ -320,6 +465,7 @@ class AgentState:
         if final_response:
             self.metadata["final_response"] = final_response
 
+    @auto_save
     def mark_failed(self, reason: str = "") -> None:
         """Mark the entire goal as failed."""
         self.status = "failed"
@@ -327,6 +473,7 @@ class AgentState:
         if reason:
             self.metadata["failure_reason"] = reason
 
+    @auto_save
     def mark_cancelled(self) -> None:
         """Mark the goal as cancelled by user."""
         self.status = "cancelled"

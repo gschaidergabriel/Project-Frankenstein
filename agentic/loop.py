@@ -49,6 +49,7 @@ class AgentConfig:
     """Configuration for the agent loop."""
     max_iterations: int = 20  # Maximum think-act-observe cycles
     max_consecutive_failures: int = 8  # Qwen 7B has ~30% JSON parse rate, needs headroom
+    failure_score_abort_threshold: float = 0.55  # EMA-weighted failure score abort threshold
     thinking_timeout_s: float = 60.0
     execution_timeout_s: float = 120.0
     auto_approve_risk_threshold: float = 0.3
@@ -172,6 +173,10 @@ class AgentLoop:
         if initial_context:
             state.add_context(initial_context)
 
+        # Enable auto-save on state mutations (decorator triggers after
+        # each record_failure, record_success, add_context, etc.)
+        state._auto_save_enabled = True
+
         self._current_state = state
         self._replan_count = 0
 
@@ -231,8 +236,16 @@ class AgentLoop:
                 self._emit_event("failed", {"error": "Cancelled by user"})
                 return "Task cancelled.", state
 
-            # Check abort conditions
+            # Check abort conditions using EMA-weighted failure score
+            failure_score = state.compute_failure_score(self.config.max_consecutive_failures)
             if state.should_abort(self.config.max_consecutive_failures):
+                LOG.warning(
+                    f"Abort triggered: failure_score={failure_score:.3f} "
+                    f"(threshold={self.config.failure_score_abort_threshold}), "
+                    f"consecutive={state.consecutive_failures}, "
+                    f"total_fails={state.total_tool_calls - state.successful_tool_calls}/"
+                    f"{state.total_tool_calls}"
+                )
                 # Before aborting: if we have any successful reads, force a final_answer
                 if state.successful_tool_calls > 0:
                     state.add_context(
@@ -244,16 +257,18 @@ class AgentLoop:
                     if tool_call and tool_call.is_final_answer:
                         response = tool_call.action_input.get("response", "Analysis complete.")
                         state.mark_completed(response)
-                        self.store.save(state)
                         self._emit_event("completed", {"response": response})
                         return response, state
 
                 self._capture_visual_context(
-                    f"Agentic loop abort: {state.consecutive_failures} consecutive failures, goal: {state.goal[:80]}"
+                    f"Agentic loop abort: failure_score={failure_score:.3f}, "
+                    f"consecutive={state.consecutive_failures}, goal: {state.goal[:80]}"
                 )
-                state.mark_failed("Too many consecutive failures")
-                self.store.save(state)
-                return "Too many consecutive errors. Aborting.", state
+                state.mark_failed(
+                    f"Failure score {failure_score:.3f} exceeded threshold "
+                    f"(consecutive={state.consecutive_failures})"
+                )
+                return "Too many errors. Aborting.", state
 
             # THINK: Analyze state and decide action
             self._emit_event("thinking", {"iteration": iteration, "total": self.config.max_iterations})
@@ -284,11 +299,11 @@ class AgentLoop:
                         f"Read more source files with fs_read — check the main Python modules, "
                         f"not just __init__.py files."
                     )
-                    self.store.save(state)
+                    # auto_save handles persistence via add_context/record_failure
                     continue
                 response = tool_call.action_input.get("response", "Task completed.")
                 state.mark_completed(response)
-                self.store.save(state)
+                # auto_save handles persistence via mark_completed
                 self._emit_event("completed", {"response": response})
                 return response, state
 
@@ -297,6 +312,7 @@ class AgentLoop:
                 question = tool_call.action_input.get("question", "Can you explain that in more detail?")
                 state.add_message("assistant", question)
                 state.status = "waiting_input"
+                # add_message triggers auto_save; status change needs explicit save
                 self.store.save(state)
                 return question, state
 
@@ -339,7 +355,7 @@ class AgentLoop:
                     f"Available tools: fs_read (read files), fs_list (list directories), "
                     f"bash_execute (run commands like sqlite3), final_answer (report findings)."
                 )
-                self.store.save(state)
+                # auto_save handles persistence via record_failure + add_context
                 continue
             _prev_tool_calls.append(call_sig)
 
@@ -348,7 +364,7 @@ class AgentLoop:
             if validation_error:
                 state.record_failure()
                 state.add_context(f"Validation error: {validation_error}")
-                self.store.save(state)
+                # auto_save handles persistence via record_failure + add_context
                 continue
 
             # ACT: Execute the tool
@@ -398,11 +414,11 @@ class AgentLoop:
                 if self.config.enable_replanning and self._replan_count < self.config.max_replans:
                     self._replan(state, result.error or "Tool execution failed")
 
-            self.store.save(state)
+            # auto_save handles persistence via record_success/record_failure/add_context
 
         # Max iterations reached
         state.mark_failed("Maximum iterations reached")
-        self.store.save(state)
+        # mark_failed triggers auto_save
         return "Maximum number of steps reached. Please clarify your goal.", state
 
     def _think(self, state: AgentState) -> Tuple[str, Optional[ParsedToolCall]]:

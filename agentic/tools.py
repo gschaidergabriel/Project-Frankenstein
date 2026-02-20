@@ -564,6 +564,45 @@ class ToolRegistry:
             ],
         ))
 
+        # ============ ENTITY SESSION TOOLS ============
+
+        self.register(Tool(
+            name="entity_sessions",
+            description="List past sessions with Frank's entities (Kairos, Dr. Hibbert, Raven, Atlas, Echo). Use to recall what was discussed.",
+            category=ToolCategory.MEMORY,
+            risk_level=0.0,
+            endpoint="/entity/sessions",
+            parameters=[
+                ToolParameter("entity", "string", "Entity name filter: kairos, hibbert, raven, atlas, echo, or 'all'", required=False, default="all"),
+                ToolParameter("limit", "integer", "Max sessions to return", required=False, default=10),
+            ],
+        ))
+
+        self.register(Tool(
+            name="entity_session_read",
+            description="Read full transcript of a specific entity session by session_id. Includes summary, topics, observations, and conversation history.",
+            category=ToolCategory.MEMORY,
+            risk_level=0.0,
+            endpoint="/entity/session",
+            parameters=[
+                ToolParameter("session_id", "string", "Session ID (e.g. 'kairos_20260220_043716')", required=True),
+                ToolParameter("include_history", "boolean", "Include full conversation history", required=False, default=True),
+            ],
+        ))
+
+        self.register(Tool(
+            name="entity_sessions_search",
+            description="Search across all entity session logs for a keyword or topic. Searches summaries and conversation history.",
+            category=ToolCategory.MEMORY,
+            risk_level=0.0,
+            endpoint="/entity/search",
+            parameters=[
+                ToolParameter("query", "string", "Search term", required=True),
+                ToolParameter("entity", "string", "Entity filter (optional)", required=False, default="all"),
+                ToolParameter("limit", "integer", "Max results", required=False, default=5),
+            ],
+        ))
+
         # ============ CODE TOOLS ============
 
         self.register(Tool(

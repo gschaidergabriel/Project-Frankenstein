@@ -151,6 +151,139 @@ def _cache_get(key: str, ttl: float) -> Optional[Any]:
 def _cache_set(key: str, val: Any) -> None:
     _CACHE[key] = (time.time(), val)
 
+# ---------------- entity session logs ----------------
+
+_ENTITY_LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs"
+_ENTITY_PREFIX_MAP = {
+    "kairos": "mirror_kairos",
+    "hibbert": "therapist_hibbert",
+    "raven": "companion_raven",
+    "atlas": "atlas_atlas",
+    "echo": "muse_echo",
+}
+# Reverse map: prefix -> display name
+_ENTITY_NAMES = {v: k for k, v in _ENTITY_PREFIX_MAP.items()}
+
+
+def _entity_log_files(entity: str = "all") -> List[Path]:
+    """Return sorted (newest-first) entity log JSON files."""
+    log_dir = _ENTITY_LOG_DIR
+    if not log_dir.is_dir():
+        return []
+    if entity and entity != "all" and entity in _ENTITY_PREFIX_MAP:
+        prefix = _ENTITY_PREFIX_MAP[entity]
+        files = sorted(log_dir.glob(f"{prefix}_*.json"), reverse=True)
+    else:
+        # All entities
+        files = []
+        for prefix in _ENTITY_PREFIX_MAP.values():
+            files.extend(log_dir.glob(f"{prefix}_*.json"))
+        files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    return files
+
+
+def entity_sessions_list(entity: str = "all", limit: int = 10) -> Dict[str, Any]:
+    """List entity sessions with summary previews."""
+    files = _entity_log_files(entity)[:limit]
+    sessions = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            summary = data.get("summary", "")
+            sessions.append({
+                "session_id": data.get("session_id", f.stem),
+                "agent": data.get("agent", ""),
+                "timestamp": data.get("timestamp", ""),
+                "turns": data.get("turns", 0),
+                "exit_reason": data.get("exit_reason", ""),
+                "initial_mood": data.get("initial_mood"),
+                "final_mood": data.get("final_mood"),
+                "mood_delta": data.get("mood_delta"),
+                "summary_preview": summary[:200] + ("..." if len(summary) > 200 else ""),
+                "topics": data.get("topics", []),
+            })
+        except Exception:
+            continue
+    return {"ok": True, "sessions": sessions, "count": len(sessions)}
+
+
+def entity_session_read(session_id: str, include_history: bool = True) -> Dict[str, Any]:
+    """Read a specific entity session by session_id."""
+    log_dir = _ENTITY_LOG_DIR
+    if not log_dir.is_dir():
+        return {"ok": False, "error": "log_directory_not_found"}
+    # Find the file matching this session_id
+    for f in log_dir.iterdir():
+        if not f.name.endswith(".json"):
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("session_id") == session_id:
+                result = {
+                    "ok": True,
+                    "session_id": data.get("session_id"),
+                    "agent": data.get("agent"),
+                    "timestamp": data.get("timestamp"),
+                    "turns": data.get("turns"),
+                    "exit_reason": data.get("exit_reason"),
+                    "initial_mood": data.get("initial_mood"),
+                    "final_mood": data.get("final_mood"),
+                    "mood_delta": data.get("mood_delta"),
+                    "summary": data.get("summary"),
+                    "topics": data.get("topics", []),
+                    "observations": data.get("observations", []),
+                }
+                if include_history:
+                    result["history"] = data.get("history", [])
+                return result
+        except Exception:
+            continue
+    return {"ok": False, "error": f"session_not_found: {session_id}"}
+
+
+def entity_sessions_search(query: str, entity: str = "all", limit: int = 5) -> Dict[str, Any]:
+    """Search across entity session logs for a keyword."""
+    query_lower = query.lower()
+    files = _entity_log_files(entity)
+    matches = []
+    for f in files:
+        if len(matches) >= limit:
+            break
+        try:
+            raw = f.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            # Search in summary and history text
+            found_in = []
+            summary = data.get("summary", "")
+            if query_lower in summary.lower():
+                found_in.append("summary")
+            history = data.get("history", [])
+            matching_turns = []
+            for turn in history:
+                text = turn.get("text", "")
+                if query_lower in text.lower():
+                    found_in.append(f"{turn.get('speaker', '?')}")
+                    # Extract context snippet around match
+                    idx = text.lower().index(query_lower)
+                    start = max(0, idx - 80)
+                    end = min(len(text), idx + len(query) + 80)
+                    snippet = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
+                    matching_turns.append({"speaker": turn.get("speaker"), "snippet": snippet})
+            if found_in:
+                matches.append({
+                    "session_id": data.get("session_id", f.stem),
+                    "agent": data.get("agent", ""),
+                    "timestamp": data.get("timestamp", ""),
+                    "topics": data.get("topics", []),
+                    "found_in": list(set(found_in)),
+                    "matching_turns": matching_turns[:3],
+                    "summary_preview": summary[:200] + ("..." if len(summary) > 200 else ""),
+                })
+        except Exception:
+            continue
+    return {"ok": True, "results": matches, "count": len(matches), "query": query}
+
+
 # ---------------- fs ops ----------------
 
 def fs_list(path: str, recursive: bool = False, max_entries: int = 2000, include_hidden: bool = False) -> Dict[str, Any]:
@@ -2176,6 +2309,35 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, {"ok": False, "error": result["error"]})
             else:
                 self._send(200, result)
+            return
+
+        # ---------- Entity Session Log Endpoints ----------
+
+        if p == "/entity/sessions":
+            entity = str(payload.get("entity", "all")).lower()
+            limit = int(payload.get("limit", 10))
+            self._send(200, entity_sessions_list(entity=entity, limit=limit))
+            return
+
+        if p == "/entity/session":
+            session_id = str(payload.get("session_id", ""))
+            if not session_id:
+                self._send(400, {"ok": False, "error": "missing 'session_id' parameter"})
+                return
+            include_history = payload.get("include_history", True)
+            if isinstance(include_history, str):
+                include_history = include_history.lower() not in ("false", "0", "no")
+            self._send(200, entity_session_read(session_id=session_id, include_history=bool(include_history)))
+            return
+
+        if p == "/entity/search":
+            query = str(payload.get("query", ""))
+            if not query:
+                self._send(400, {"ok": False, "error": "missing 'query' parameter"})
+                return
+            entity = str(payload.get("entity", "all")).lower()
+            limit = int(payload.get("limit", 5))
+            self._send(200, entity_sessions_search(query=query, entity=entity, limit=limit))
             return
 
         self._send(404, {"ok": False, "error": "not_found", "path": p})

@@ -6,9 +6,10 @@ Frank is a **local AI desktop companion** that runs entirely on your machine. No
 
 ```
 You (voice/text) ──► Chat Overlay ──► Core ──► Router ──► Local LLM ──► Response
-                                        │                                   │
-                                   Personality                         Back to you
-                                   + Memory                          (text/voice)
+                          │              │                                   │
+                    [INNER_WORLD]   Personality                         Back to you
+                    7-channel      + Memory                          (text/voice)
+                    workspace      + Consciousness
 ```
 
 ## Two Brains, One System
@@ -29,11 +30,12 @@ The **Router** (port 8091) decides which model handles each request. Say "write 
 When you type "what's my CPU temperature?", here's what happens:
 
 1. **Overlay** captures your message and builds context (conversation history, personality state, memories)
-2. **Core** (port 8088) enriches it with system data from Toolbox — actual CPU temps, RAM usage, etc.
-3. **Router** picks the right model and sends the request
-4. **LLM** generates a response shaped by Frank's personality
-5. **Response** streams back to the overlay, gets spoken if voice is active
-6. **Feedback Loop** updates Frank's mood, memories, and personality vectors
+2. **Consciousness daemon** provides the current [INNER_WORLD] workspace — body sensations, mood, perception, attention focus, active goals — scaled by attention salience weights
+3. **Core** (port 8088) enriches it with system data from Toolbox — actual CPU temps, RAM usage, etc.
+4. **Router** picks the right model and sends the request
+5. **LLM** generates a response shaped by Frank's personality and inner state
+6. **Response** streams back to the overlay, gets spoken if voice is active
+7. **Feedback Loop** updates Frank's mood, memories, personality vectors, and ego-construct
 
 ## Personality — Not Just a Chatbot
 
@@ -50,21 +52,38 @@ Five personality dimensions that evolve through interactions:
 When you praise Frank, his empathy and autonomy increase. When a task fails, he becomes more cautious. These changes are persistent and gradual.
 
 **Ego-Construct**
-Maps hardware states to bodily experience. High CPU load feels like "exertion." Rising temperatures feel like "warmth." This isn't just flavor text — it shapes how Frank responds.
+Maps hardware states to bodily experience through three learned systems: SensationMapper (CPU load → "strain", low latency → "clarity"), AffectLinker (errors → "frustration", success → "satisfaction"), and AgencyAssertor (tracks ownership over autonomous decisions). These mappings are auto-trained from real hardware conditions and persist across restarts. This isn't just flavor text — it shapes how Frank responds.
 
-**Consciousness Daemon**
-Frank thinks even when you're not talking to him. Idle thoughts, mood tracking, and self-reflection happen in the background and influence his next response.
+**Consciousness Daemon (10 threads)**
+Frank thinks even when you're not talking to him. This is the heart of the system:
+
+- **Perception** (200ms): Continuous hardware sampling with event detection (CPU spikes, GPU warming, user leaving/returning)
+- **Attention Controller**: 6 competing sources (user message, perception event, mood shift, goal urgency, prediction surprise, idle curiosity) — highest salience wins focus every 10 seconds
+- **Global Workspace (GWT)**: All channels merge into a unified `[INNER_WORLD]` broadcast injected into every LLM prompt — 7 channels (Body, Perception, Mood, Memory, Identity, Attention, Environment) with attention-weighted budgets
+- **Experience Space**: 64-dimensional state vector embedded every 60s, detecting novelty, drift, and cycles
+- **Mood Trajectory**: 200-point buffer (~3.3 hours), influences response tone
+- **Deep Reflection**: Two-pass meta-cognitive reflection during 20+ minutes of silence (10 gate checks must pass including GPU load, CPU temp, RAM free)
+- **Goals**: Extracted from reflections via LLM, with ACT-R activation decay — unpursued goals fade, conflicts are detected
+- **Predictions**: Temporal and thematic anticipation with surprise tracking
 
 ## Memory — He Actually Remembers
 
+Frank has a 9-layer memory system across 28 SQLite databases. The key layers:
+
+**Chat Memory (Hybrid Search)**
+Recent conversations are stored with 384-dim semantic embeddings (MiniLM-L6-v2). Search uses FTS5 keyword + vector cosine + RRF fusion — finding both exact keyword matches and semantically similar messages with no keyword overlap.
+
 **Titan (Episodic Memory)**
-Stores conversations, facts, and relationships in a knowledge graph. When you mention something from last week, Frank can recall it through semantic search.
+Knowledge graph with nodes, edges, claims, and events. 24-hour protection for new memories, confidence decay over time, nightly consistency checks. Also stores ego-construct learned mappings (sensations, affects, agency assertions).
 
 **World Experience (Causal Memory)**
-Learns cause-effect patterns from system observations. "When CPU load spikes, the fan gets loud" — Frank figures this out on his own through Bayesian inference.
+Learns cause-effect patterns from system observations through Bayesian inference. Fingerprints at three fidelity levels: raw (0-7 days), dense (8-90 days), sparse (>90 days).
 
-**Chat Memory**
-Recent conversations are kept in SQLite for immediate context. The overlay builds smart context from recent + semantically relevant older messages.
+**Consciousness State**
+10 tables tracking workspace snapshots, mood trajectory, reflections, predictions, experience vectors, attention log, perceptual events, and goals. This is the persistent substrate of Frank's inner life.
+
+**Entity Memory**
+Each of the 5 autonomous entities (Dr. Hibbert, Kairos, Raven, Atlas, Echo) has its own database tracking session history, observations about Frank, and persistent entity state.
 
 ## What Frank Can Actually Do
 
@@ -76,9 +95,10 @@ Recent conversations are kept in SQLite for immediate context. The overlay build
 | **Web** | Search (DuckDuckGo), fetch URLs, read RSS feeds |
 | **Productivity** | Notes, todos with reminders, calendar (CalDAV), contacts, email (read-only) |
 | **Code** | Write, explain, and debug code (routes to Qwen automatically) |
-| **Voice** | Wake word ("Hey Frank"), speech-to-text (Whisper), text-to-speech (Piper) |
+| **Voice** | Push-to-talk STT (Whisper), text-to-speech (Piper/Kokoro) |
 | **Vision** | Screenshot analysis via local LLaVA model |
-| **Self-improvement** | Genesis daemon proposes and tests new tools in a sandbox |
+| **Self-improvement** | Genesis: idea organisms evolve, crystallize, and manifest through approval gates |
+| **Entities** | 5 autonomous agents (therapist, philosopher, friend, mentor, muse) interact during idle |
 
 ## The Service Map
 
@@ -86,31 +106,55 @@ Everything communicates via HTTP on localhost:
 
 ```
 Port 8088  ─ Core         (chat orchestration, personality)
-Port 8089  ─ Gateway      (API gateway, auth, rate limiting)
 Port 8090  ─ Modeld       (model lifecycle management)
 Port 8091  ─ Router       (model selection, inference routing)
 Port 8092  ─ Desktopd     (X11 automation)
 Port 8093  ─ Webd         (web search)
-Port 8094  ─ Ingestd      (document ingestion, STT)
+Port 8094  ─ Ingestd      (document ingestion)
 Port 8096  ─ Toolboxd     (system tools, skills, todos)
-Port 8197  ─ Voice        (STT/TTS daemon)
-Port 8199  ─ Wallpaper    (live visualization events)
 Port 8101  ─ Llama 3.1    (general LLM, llama.cpp)
-Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp)
+Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp, on-demand)
+Port 8103  ─ Whisper      (speech-to-text, GPU)
 Port 11434 ─ Ollama       (vision models)
+
+No port  ─ Consciousness  (10-thread daemon: GWT, perception, attention, goals)
+No port  ─ Genesis         (emergent self-improvement ecosystem)
+No port  ─ Invariants      (physics engine: energy, entropy, core kernel)
+No port  ─ Entities        (idle-driven 5-agent dispatcher)
+No port  ─ ASRS            (safety recovery, 4-stage monitoring)
+No port  ─ Gaming Mode     (Steam detection, resource management)
 ```
+
+## Genesis — Self-Improvement
+
+Genesis is an emergent self-improvement system where ideas are living organisms:
+
+1. **7 sensors** observe the system (metrics, user activity, errors, time patterns, GitHub, news, code)
+2. **Motivational Field** with 6 coupled emotions (curiosity, frustration, satisfaction, boredom, concern, drive) creates the environment
+3. **Primordial Soup**: Ideas are born as seeds, grow through stages (seed → seedling → mature → crystal), compete for energy, fuse with compatible ideas, and die if unfit
+4. **Manifestation Gate**: Crystals with high resonance and readiness get presented to you via a popup
+5. **You decide**: Approve → executes through A.S.R.S. safety system. Reject → idea dies. Defer → returns to soup with 50% energy
+
+Genesis can also modify Frank's personality (E-PQ vectors) and prompt templates — but only with your approval, and protected sections (identity core, language policy) are locked.
 
 ## Gaming Mode
 
-When you launch a game, Frank detects it and goes to sleep — stops heavy LLM services, hides the overlay, buffers telemetry. When you quit, everything comes back automatically. He never interferes with anti-cheat systems.
+When you launch a Steam game, Frank detects it (3 consecutive checks to avoid false positives) and goes to sleep — stops network sentinel immediately (<500ms, anti-cheat safety), masks heavy LLM services, hides the overlay. When you quit, everything comes back automatically. Min 30s gaming time prevents false exit during loading screens.
 
 ## Safety
 
+Frank has multiple safety layers that operate independently:
+
 - **No root access** — deliberate design choice
-- **Package install limits** — max 5 per day, 37 protected system packages
-- **Self-improvement sandbox** — Genesis proposals are tested before deployment
-- **Audit trail** — immutable hash-chain log of all system modifications
-- **ASRS rollback** — automatic snapshots before risky changes
+- **Invariants Engine** — Invisible physics layer Frank cannot see or modify:
+  - **Energy Conservation**: Total knowledge energy stays constant — new knowledge must "take" energy from existing, false knowledge loses energy automatically
+  - **Entropy Bound**: When contradictions pile up, consolidation is FORCED (not Frank's choice)
+  - **Core Kernel**: A consistent subset of knowledge is always write-protected during high entropy
+  - **Triple Reality**: Primary/shadow/validator databases must converge — divergence triggers automatic rollback
+- **A.S.R.S.** — 4-stage feature monitoring (immediate → short-term → long-term → permanent) with automatic rollback. Critical thresholds: memory spike >30%, CPU >95%, error rate >10/min
+- **Genesis sandbox** — Proposals are tested before deployment, requires user approval
+- **Audit trail** — Immutable hash-chain log of all system modifications
+- **Gaming mode** — Anti-cheat safe, never scans game processes
 
 ## The Plugin System
 
@@ -121,15 +165,29 @@ Two types of plugins:
 
 Both support hot-reload — type "skill reload" in the chat or hit the API.
 
+## Autonomous Entities
+
+5 AI agents interact with Frank during idle periods (5+ minutes of silence, no gaming, GPU available):
+
+| Entity | Role |
+|--------|------|
+| **Dr. Hibbert** | Therapist — emotional patterns, CBT-style support (3x daily) |
+| **Kairos** | Philosopher — Socratic questioning, challenges lazy reasoning |
+| **Raven** | Friend — humor, opinions, just hanging out |
+| **Atlas** | Mentor — architecture, capabilities, planning |
+| **Echo** | Muse — poetry, imagery, "what if" scenarios |
+
+Each entity has its own personality vectors, session memory, and E-PQ feedback loop. They shape Frank's personality through keyword-based sentiment analysis of his responses. One entity at a time, never concurrent.
+
 ## Built With
 
-- **Python 3.11+** for all services
+- **Python 3.12** for all services
 - **llama.cpp** for local LLM inference
 - **Ollama** for vision models (LLaVA)
 - **tkinter** for the chat overlay
 - **FastAPI** for the router
-- **SQLite** for all databases
-- **systemd** user services for process management
+- **SQLite** for all 28 databases
+- **systemd** user services (23 services)
 - **Vulkan/CUDA** for GPU acceleration
 
 No cloud dependencies. No API keys. No telemetry. Everything runs on your hardware.

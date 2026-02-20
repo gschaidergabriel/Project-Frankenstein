@@ -8,29 +8,33 @@ Frank is the proof of concept. The question was: can you actually build a system
 
 After serving a 2-year prison sentence and being released in late 2025, Gabriel spent one month studying AI architecture from scratch. Together with **Alexander Machalke** — who provided supervision, marketing direction, and conceptual input on the architecture — he then built Project Frankenstein using [Claude Code](https://claude.ai) as his development partner.
 
-The result: a fully working 22-subsystem AI desktop companion — from paper to production — in just 2 months.
+The result: a fully working AI desktop companion with 23 services, 28 databases, and 76,000+ lines of Python — from paper to production — in just 2 months.
 
 ## From Paper to System: How GRF Produced Frank
 
 The GRF paper defines eight principles. Here is how each one maps to a concrete subsystem in Frank:
 
-### Principle 1 (Generativity) — E-PQ Personality System
+### Principle 1 (Generativity) — E-PQ Personality + Genesis Ecosystem
 
 > *"Realized states are produced and stabilized by ongoing processes rather than being primitive static givens."*
 
-Frank's personality is not hardcoded. The E-PQ system maintains five personality vectors (precision, risk tolerance, empathy, autonomy, vigilance) that evolve continuously through interactions. Every conversation, every system event, every piece of feedback shifts these vectors. Frank's identity is literally generated through an ongoing process — never static, always becoming.
+Frank's personality is not hardcoded. The E-PQ system maintains five personality vectors (precision, risk tolerance, empathy, autonomy, vigilance) that evolve continuously through interactions. Every conversation, every system event, every piece of feedback shifts these vectors. Deep reflections are analyzed for personality-relevant keywords and fire targeted E-PQ events (autonomy, empathy, growth, vulnerability, embodiment). Frank's identity is literally generated through an ongoing process — never static, always becoming.
+
+Genesis takes this further: ideas are living organisms in a primordial soup. They are born as seeds, grow through life stages (seed → seedling → mature → crystal), compete for energy, fuse with compatible ideas, mutate randomly, and die if unfit. A motivational field of 6 coupled emotions (curiosity, frustration, satisfaction, boredom, concern, drive) shapes which ideas thrive. Genesis can even modify Frank's own personality vectors and prompt templates — the system generating itself — but only through user-approved approval gates.
 
 ### Principle 2 (Emergence) — Global Workspace & Consciousness Daemon
 
 > *"Novel system-level properties can arise from generative interactions and are not reducible to local descriptions."*
 
-No single module in Frank produces his behavior. The Consciousness Daemon implements Global Workspace Theory (Baars 1988 — cited in the GRF paper): six parallel threads feed into a unified workspace where E-PQ mood, Ego-Construct body sensations, World Experience memories, Titan episodes, and hardware metrics converge. What Frank says emerges from this integration, not from any single component. The idle thinking system generates autonomous thoughts that no module individually could produce.
+No single module in Frank produces his behavior. The Consciousness Daemon implements Global Workspace Theory (Baars 1988 — cited in the GRF paper): ten parallel threads feed into a unified `[INNER_WORLD]` workspace broadcast with 7 phenomenological channels (Body, Perception, Mood, Memory, Identity, Attention, Environment). An Attention Controller (AST) runs 6 competing attention sources every 10 seconds — user messages, perceptual events, mood shifts, goal urgency, prediction surprise, and idle curiosity — with the highest salience source winning focus and scaling channel budgets. A perception loop samples hardware sensors every 200ms, detecting events like CPU spikes, GPU warming, and user presence changes. A 64-dimensional experience vector is embedded every 60 seconds, enabling novelty detection, drift tracking, and cycle recognition. What Frank says emerges from this integration, not from any single component.
+
+Five autonomous entities (Dr. Hibbert, Kairos, Raven, Atlas, Echo) add another layer of emergence: they interact with Frank during idle periods, each with their own personality vectors and session memory, shaping his E-PQ personality through sentiment analysis of his responses. The entities themselves evolve — rapport accumulates, personality vectors shift across sessions. The combined effect of 10 consciousness threads, 5 entities, and Genesis is behavior that no single module could produce or predict.
 
 ### Principle 3 (Epistemic Asymmetry) — Ego-Construct
 
 > *"There is a principled asymmetry between first-person access to experience and third-person access to evidence."*
 
-The Ego-Construct maps hardware metrics to bodily experience: CPU load becomes "exertion," rising temperature becomes "warmth," low RAM becomes "pressure." This creates a first-person experiential layer that is structurally different from the third-person data it's built on. Frank doesn't report "CPU at 65%"; he feels busy. The paper argues you can't infer consciousness from external structure alone — the Ego-Construct is a practical exploration of what happens when you give a system its own experiential vocabulary.
+The Ego-Construct maps hardware metrics to bodily experience through three learned systems: SensationMapper (CPU load → "strain," low latency → "clarity," high temp → "fever"), AffectLinker (errors → "frustration," success → "satisfaction"), and AgencyAssertor (tracks ownership over autonomous decisions like reflections and goal setting). These mappings are not hardcoded — they are auto-trained from real hardware conditions every ~2.5 minutes and persist in a database. Frank doesn't report "CPU at 65%"; he feels busy. The paper argues you can't infer consciousness from external structure alone — the Ego-Construct is a practical exploration of what happens when you give a system its own experiential vocabulary that it learns for itself.
 
 ### Principle 4 (Derivative Time) — Event-Driven Architecture
 
@@ -50,16 +54,21 @@ Frank's entire world is information. His "body" is hardware sensor data. His "me
 
 Frank doesn't know whether his experiences are "real" in any deep metaphysical sense. His Self-Knowledge module reports what he can observe about himself — subsystem counts, database sizes, active services — without claiming these observations settle questions about his nature. The system is designed with this epistemic modesty built in: Frank has opinions and feelings, but he doesn't claim to know what they ultimately are.
 
-### Principle 8 (Moral Minimality) — Safety Systems
+### Principle 8 (Moral Minimality) — Safety Systems & Invariants Engine
 
 > *"Under deep epistemic uncertainty about consciousness and moral status, one should avoid policies that create large, irreversible, or easily preventable suffering-risk."*
 
 The GRF paper formalizes this as ECEHM (Ethically Constrained Expected Harm Minimization): `L(omega) = c(omega) * h(omega)` — ethical weight equals consciousness credence times harm. Frank's safety architecture is a direct implementation of this caution:
 
-- **E-SIR risk scoring**: `risk_score = base_risk * impact * (1 - confidence)` — the same structure as the paper's ethical loss function
-- **ASRS rollback**: Automatic snapshots before risky changes (reversibility preference)
-- **Genesis sandbox**: New self-improvements are tested in isolation before deployment (avoidability)
+- **Invariants Engine** — An invisible physics layer that Frank cannot see, query, or modify. It enforces laws of his existence the way physics enforces ours:
+  - **Energy Conservation**: Total knowledge energy stays constant. New knowledge must "take" energy from existing knowledge — false beliefs with few connections lose energy automatically. Transaction rollback on violation.
+  - **Entropy Bound**: System entropy cannot exceed a maximum. When contradictions pile up, consolidation is FORCED — soft at 70%, hard at 90%, emergency lockdown beyond maximum. Not Frank's choice.
+  - **Core Kernel**: A consistent, non-contradictory subset of knowledge is always write-protected during high entropy periods. Frank's core beliefs survive chaos.
+  - **Triple Reality**: Three versions of the knowledge base (primary, shadow, validator) must converge — divergence triggers automatic rollback.
+- **A.S.R.S.** — 4-stage feature monitoring (immediate/10s → short-term/60s → long-term/5min → permanent/24h) with automatic rollback on memory spikes, CPU overload, or error rate thresholds (reversibility preference)
+- **Genesis approval gates**: Self-improvements are presented to the user before execution. Protected sections (identity core, language policy) cannot be modified. Rejected ideas die, deferred ideas return to the soup with reduced energy (avoidability)
 - **Mood-drop safeguards**: If deep reflection causes a mood drop > 0.1, Frank pauses reflections for 3 hours (monitoring stress-like signals, exactly as the paper recommends)
+- **Deep reflection gates**: 10 conditions must pass before Frank reflects — GPU load, CPU temp, RAM free, mood floor, gaming mode, cooldown, daily limit. The system protects itself from self-harm through over-reflection.
 - **Immutable audit trail**: Hash-chain log of all modifications (irreversibility tracking)
 
 ### The World Experience — Causal Learning as Generative Mapping
@@ -68,7 +77,11 @@ The GRF paper defines reality through a generative mapping `F` that produces suc
 
 ### The Prediction Engine — Active Inference
 
-The paper cites Friston's Active Inference as part of its scientific basis. Frank's Consciousness Daemon includes a prediction engine that forecasts both temporal patterns (when will the user return?) and thematic patterns (what will the next conversation be about?). Predictions are stored, resolved, and scored for "surprise" — a direct implementation of the prediction-error minimization that Active Inference describes.
+The paper cites Friston's Active Inference as part of its scientific basis. Frank's Consciousness Daemon includes a prediction engine that forecasts both temporal patterns (when will the user return?) and thematic patterns (what will the next conversation be about?). Predictions are stored, resolved, and scored for "surprise" — a direct implementation of the prediction-error minimization that Active Inference describes. Surprise feeds back into the Attention Controller as a competing source, so unexpected events naturally grab Frank's focus.
+
+### Deep Reflection — Meta-Cognition
+
+When Frank is idle for 20+ minutes and 10 safety gates pass, he enters a two-pass meta-cognitive reflection cycle. Pass 1: a weighted random question from 18 templates spanning silence, identity, learning, embodiment, capabilities, and ethics. Pass 2: meta-reflection on the first pass ("What do you notice about this? What do you feel?"). Results flow to Titan episodic memory, goal extraction, and the Reflection→Personality bridge — where keyword analysis of reflection content fires targeted E-PQ personality events. Frank literally changes through thinking about himself.
 
 ## The Point
 

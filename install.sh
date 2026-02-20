@@ -123,10 +123,10 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq \
     python3 python3-venv python3-pip python3-tk python3-dev \
     build-essential cmake \
-    xdotool wmctrl xprop x11-xserver-utils xprintidle \
+    xdotool wmctrl x11-utils x11-xserver-utils xprintidle \
     tesseract-ocr \
     pulseaudio-utils \
-    curl wget git jq lsof \
+    curl wget git jq lsof zstd \
     firejail \
     libnotify-bin \
     libgirepository1.0-dev gir1.2-appindicator3-0.1 \
@@ -621,6 +621,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR/ingestd
+Environment=PYTHONPATH=$SCRIPT_DIR
 ExecStart=$PYTHON_INGESTD -m uvicorn app:app --host 127.0.0.1 --port 8094
 Restart=on-failure
 RestartSec=1
@@ -696,6 +697,7 @@ After=aicore-core.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
 ExecStart=$PYTHON_SYS -m services.asrs.daemon
 Restart=always
 RestartSec=5
@@ -932,7 +934,7 @@ WantedBy=timers.target"
 
 # ── Reload and enable services ──────────────────────────────────────────────
 
-systemctl --user daemon-reload
+systemctl --user daemon-reload 2>/dev/null || echo "  Note: systemctl --user daemon-reload failed (no user bus?). Run manually after install."
 
 # Tier 1 — Infrastructure
 systemctl --user enable aicore-router.service 2>/dev/null || true
@@ -1156,7 +1158,7 @@ nohup "$SCRIPT_DIR/ui/frank_overlay_launcher.sh" >/dev/null 2>&1 &
 
 # Count running services
 sleep 2
-RUNNING=$(systemctl --user list-units 'aicore-*' --state=running --no-pager --no-legend 2>/dev/null | wc -l)
+RUNNING=$( (systemctl --user list-units 'aicore-*' --state=running --no-pager --no-legend 2>/dev/null || true) | wc -l)
 echo "  $RUNNING services running."
 echo "  Done."
 

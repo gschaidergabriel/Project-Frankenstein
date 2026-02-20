@@ -2,17 +2,19 @@
 
 ## Executive Summary
 
-Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 6+ SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
+Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 28 SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
 
 ### Core Capabilities
 
 - **Hybrid Chat Search**: FTS5 keyword + MiniLM-L6-v2 vector cosine + RRF fusion
 - **Dynamic Context Budget**: Cosine-similarity channel boosting, proportional allocation with minimums
+- **GWT Channel Weighting**: Attention-based budget scaling (0.5x-1.5x per channel salience)
 - **Unified MemoryHub**: Single query API across 5 memory layers with RRF fusion + budget packing
 - **Session Compression**: Auto-close idle sessions (30min), batch LLM summarization with keyword fallback
 - **User Preference Learning**: Bilingual regex extraction (DE+EN), confidence-weighted, UNIQUE(key, value)
 - **Titan Integrity**: FK ON + CASCADE, 24h node protection, nightly consistency daemon
-- **Retrieval Metrics**: Per-query logging (sources, latency, chars), nightly pruning
+- **Ego-Construct Persistence**: Learned body sensations, emotional affects, agency assertions
+- **Consciousness Stream**: 10 threads, 64-dim experience vectors, predictions, goals, mood trajectory
 - **Shared Embeddings**: Single MiniLM-L6-v2 instance (~90MB) used by Chat, Titan, and Budget Allocator
 
 ---
@@ -41,13 +43,23 @@ Frank's memory system is a **multi-layer, semantically-aware persistence archite
         |  allocate_budget() --> per-channel chars   |
         |       |                                   |
         |       v                                   |
-        |  build_workspace(budget=...)              |
+        |  build_workspace(budget=...,              |
+        |       attention_weights=...)              |
         |    +- Chat: _hybrid_search_history()      |
         |    +- Titan: retrieve() [tri-hybrid]      |
-        |    +- Consciousness: ACT-R activation     |
+        |    +- Consciousness: GWT workspace        |
         |    +- World Exp: causal patterns          |
         |    +- E-PQ: personality context           |
+        |    +- Ego-Construct: body sensations      |
         |    +- Preferences: top-5 learned prefs    |
+        +------------------+------------------------+
+                           |
+                           v
+        +------------------------------------------+
+        |  [INNER_WORLD] Block (7 Channels)        |
+        |  Body | Perception | Mood | Memory |      |
+        |  Identity | Attention | Environment       |
+        |  Token budget: ~295 tokens                |
         +------------------+------------------------+
                            |
                            v
@@ -60,8 +72,8 @@ Frank's memory system is a **multi-layer, semantically-aware persistence archite
                            v
         +------------------------------------------+
         |  ROUTER API (:8091)                       |
-        |  - Routes to Llama or Qwen                |
-        |  - Instruct prompt wrapping               |
+        |  - Code hints → Qwen (:8102)              |
+        |  - General → Llama (:8101)                |
         +------------------+------------------------+
                            |
                            v
@@ -82,7 +94,7 @@ Frank's memory system is a **multi-layer, semantically-aware persistence archite
 
 ### Location
 - **File**: `services/chat_memory.py`
-- **Database**: `database/chat_memory.db`
+- **Database**: `chat_memory.db`
 
 ### Schema
 
@@ -143,35 +155,6 @@ CREATE TABLE retrieval_metrics (
 CREATE VIRTUAL TABLE messages_fts USING fts5(text, content=messages, content_rowid=id);
 ```
 
-### Key Methods
-
-```python
-class ChatMemoryDB:
-    # Storage (inline-embeds + preference-extraction on every message)
-    store_message(session_id, role, sender, text, is_user, is_system) -> int
-
-    # Hybrid search: FTS5 + Vector cosine + RRF fusion (K=60)
-    _hybrid_search_history(query, limit=5, exclude_recent=10) -> List[dict]
-
-    # Context assembly (uses hybrid search internally)
-    build_smart_context(query, recent_count=5, max_chars=2000) -> str
-
-    # Embedding backfill (crash-safe via backfill_state.json)
-    backfill_embeddings(batch_size=64, max_seconds=60.0) -> int
-
-    # Session management
-    close_idle_sessions(idle_minutes=30) -> int
-    get_sessions_for_summarization(limit=3) -> List[dict]
-    store_session_summary(session_id, summary)
-
-    # Preferences
-    get_top_preferences(limit=5) -> List[dict]
-
-    # Metrics
-    record_retrieval_metric(query_hash, sources_used, chars_injected, budget_chars, latency_ms)
-    get_retrieval_stats(days=7) -> dict
-```
-
 ### Hybrid Search Algorithm
 
 ```
@@ -184,14 +167,11 @@ Query: "Wird es morgen regnen?"
 2. Vector Search (semantic)
    - Embed query -> 384-dim vector
    - Cosine similarity against message_embeddings
-   - Returns top-20 candidates
    - Finds: "Wie ist das Wetter?" (no keyword overlap!)
 
 3. RRF Fusion (K=60)
-   - For each result ID:
-     score = 1/(60 + fts_rank) + 1/(60 + vector_rank)
+   - score = 1/(60 + fts_rank) + 1/(60 + vector_rank)
    - Sort by fused score descending
-   - Return top-N
 
 Performance: ~30ms per query (20ms embed + 1ms search + 10ms FTS5)
 ```
@@ -202,7 +182,6 @@ Performance: ~30ms per query (20ms embed + 1ms search + 10ms FTS5)
 - Batch size: 64 messages per cycle, 0.5s sleep between batches
 - Crash-safe: `backfill_state.json` tracks `last_message_id`
 - Timeout: max 60s total, resumes next startup
-- Progress logging every 5 batches
 
 ---
 
@@ -210,12 +189,7 @@ Performance: ~30ms per query (20ms embed + 1ms search + 10ms FTS5)
 
 ### Location
 - **Files**: `tools/titan/`
-  - `titan_core.py` — Main orchestrator
-  - `storage.py` — Tri-hybrid storage (SQLite + vectors + graph)
-  - `ingestion.py` — Claim extraction (pattern-based)
-  - `retrieval.py` — Context assembly (tri-hybrid search)
-  - `maintenance.py` — Pruning, decay, protection lifecycle
-- **Database**: `database/titan.db`
+- **Database**: `titan.db`
 
 ### Schema
 
@@ -236,7 +210,7 @@ CREATE TABLE edges (
     dst_id          TEXT NOT NULL,
     relation        TEXT NOT NULL,
     confidence      REAL,
-    origin          TEXT,           -- 'user', 'code', 'inference'
+    origin          TEXT,           -- 'user', 'code', 'inference', 'reflection'
     created_at      TEXT,
     UNIQUE(src_id, dst_id, relation),
     FOREIGN KEY (src_id) REFERENCES nodes(id) ON DELETE CASCADE,
@@ -252,6 +226,57 @@ CREATE TABLE claims (
     counter_claim   TEXT,
     evidence_count  INTEGER DEFAULT 1,
     created_at      TEXT
+);
+
+CREATE TABLE events (
+    -- Timestamped occurrences from system observations
+    id              TEXT PRIMARY KEY,
+    timestamp       TEXT,
+    event_type      TEXT,
+    description     TEXT,
+    metadata        TEXT
+);
+
+-- Ego-Construct tables (hardware→body mapping, learned over time)
+CREATE TABLE sensation_mappings (
+    id                  TEXT PRIMARY KEY,
+    system_condition    TEXT,        -- Safe expression: "cpu > 80 and ram > 70"
+    sensation           TEXT,        -- 'strain', 'clarity', 'fever', etc.
+    intensity_formula   TEXT,        -- "(cpu - 80) / 20"
+    biological_analogy  TEXT,
+    created_at          TEXT,
+    activation_count    INTEGER DEFAULT 0,
+    last_activated      TEXT
+);
+
+CREATE TABLE affect_definitions (
+    id              TEXT PRIMARY KEY,
+    event_pattern   TEXT,           -- Regex: "success|erfolg|completed"
+    emotion         TEXT,           -- 'satisfaction', 'frustration', etc.
+    reason          TEXT,
+    intensity       REAL,
+    created_at      TEXT,
+    trigger_count   INTEGER DEFAULT 0
+);
+
+CREATE TABLE agency_assertions (
+    id              TEXT PRIMARY KEY,
+    action          TEXT,           -- "chose to think autonomously"
+    resilience_rule TEXT,           -- efficiency, stability, learning, etc.
+    confirmation    TEXT,
+    timestamp       TEXT,
+    confidence      REAL DEFAULT 0.8
+);
+
+CREATE TABLE ego_state (
+    embodiment_level    REAL,       -- How well Frank maps HW→body (0-1)
+    affective_range     REAL,       -- Emotional response depth (0-1)
+    agency_score        REAL,       -- Sense of ownership (0-1)
+    qualia_count        INTEGER,    -- Total unique sensations experienced
+    last_training       TEXT,
+    training_streak     INTEGER,
+    total_training_sessions INTEGER,
+    timestamp           TEXT
 );
 ```
 
@@ -271,25 +296,21 @@ CREATE TABLE claims (
     | - Nodes  |      |  Model:   |     | - Entities   |
     | - Edges  |      |  Shared   |     | - Relations  |
     | - Claims |      |  Embed-   |     | - Confidence |
-    | - FTS    |      |  ding-    |     |   decay      |
+    | - Ego    |      |  ding-    |     |   decay      |
     |          |      |  Service  |     |              |
     +----------+      +-----------+     +--------------+
 ```
 
-### Protection Mechanism (NEW)
+### Protection Mechanism
 
 New nodes receive 24h protection against premature pruning:
 
 ```python
-# ingestion.py: Memory chunks get protected status
 metadata = {
     "confidence": max(base_confidence, 0.8),
     "protected": True,
     "unprotect_after": (now + timedelta(hours=24)).isoformat()
 }
-
-# maintenance.py: _unprotect_expired_nodes() runs before decay
-# Checks metadata.unprotect_after, removes protection after 24h window
 ```
 
 ### Maintenance Engine
@@ -303,17 +324,13 @@ metadata = {
 | Protection window | 24 hours |
 | Maintenance interval | 1 hour |
 
-### Shared Embedding Model
-
-Titan's `VectorStore._get_model()` now uses the shared `EmbeddingService` singleton instead of loading its own model instance. Saves ~90MB RAM.
-
 ---
 
 ## Layer 3: Personality State — E-PQ (Emotional/Procedural)
 
 ### Location
 - **File**: `personality/e_pq.py`
-- **Database**: `database/world_experience.db`
+- **Database**: `world_experience.db` (personality_state table)
 
 ### 5 Continuous Personality Vectors (-1.0 to 1.0)
 
@@ -331,12 +348,42 @@ Titan's `VectorStore._get_model()` now uses the shared `EmbeddingService` single
 learning_rate = BASE_LEARNING_RATE * (AGE_DECAY_FACTOR ** days_since_creation)
 
 EVENT_WEIGHTS = {
-    "chat": 0.2, "voice_interaction": 0.3,
-    "positive_feedback": 0.3, "negative_feedback": 0.4,
-    "task_success": 0.3, "task_failure": 0.5,
-    # ... 15+ types
+    # User interaction
+    "chat": 0.2, "positive_feedback": 0.3, "negative_feedback": 0.4,
+    # Task outcomes
+    "task_success": 0.3, "task_failure": 0.5, "task_timeout": 0.4,
+    # System events
+    "system_error": 0.6, "kernel_panic": 0.9, "resource_pressure": 0.5,
+    # Reflection → Personality bridge (from consciousness daemon)
+    "reflection_autonomy": 0.2,
+    "reflection_empathy": 0.2,
+    "reflection_growth": 0.15,
+    "reflection_vulnerability": 0.15,
+    "reflection_embodiment": 0.1,
+    # Genesis → Personality bridge (intentional self-modification)
+    "genesis_personality_boost": 0.4,    # Amplified: delta * amount * 5.0
+    "genesis_personality_dampen": 0.3,   # Moves toward center (0.0)
+    # ... 15+ additional types
 }
 ```
+
+### Genesis → E-PQ Bridge
+
+Genesis can intentionally modify personality vectors:
+- `genesis_personality_boost`: Amplifies a target vector (`delta * amount * 5.0`)
+- `genesis_personality_dampen`: Moves vector toward center (`direction = -1.0 if current > 0 else 1.0`)
+- Requires user approval via F.A.S. popup before execution
+
+### Reflection → E-PQ Bridge
+
+Deep reflections are analyzed for personality-relevant keywords:
+- `reflection_autonomy`: "autonomous", "decide", "choice", "independent"
+- `reflection_empathy`: "user", "help", "care", "understand"
+- `reflection_growth`: "learn", "improve", "develop", "realize"
+- `reflection_vulnerability`: "uncertain", "worry", "afraid", "helpless"
+- `reflection_embodiment`: "body", "hardware", "physical", "sense"
+
+Fires E-PQ event when score ≥ 2 markers. Category boost from reflection question type.
 
 ---
 
@@ -344,20 +391,200 @@ EVENT_WEIGHTS = {
 
 ### Location
 - **File**: `services/consciousness_daemon.py`
-- **Database**: `database/consciousness.db`
+- **Database**: `consciousness.db`
 - **Runs as**: User systemd service `aicore-consciousness.service`
 
-### Components
+### Schema
 
-| Component | Purpose | Refresh |
-|-----------|---------|---------|
-| Workspace State (GWT) | CPU, GPU, temp, network | 30s |
-| Experience Vectors (HOT-4) | 64-dim embedding, novelty tracking | 60s |
-| Mood Trajectory | 200-point buffer (~3.3h) | 60s |
-| Perceptual Loop | 200ms hardware sampling | 200ms |
-| Reflections | Inner monologue (120 tokens) | On trigger, max 1/120s |
-| Predictions | Anticipation + truth tracking | On trigger |
-| Sleep Consolidation | Working -> long-term chunks | 6h |
+```sql
+CREATE TABLE workspace_state (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    koerper     TEXT DEFAULT '',     -- Body state
+    stimmung    TEXT DEFAULT '',     -- Mood state
+    erinnerung  TEXT DEFAULT '',     -- Memory context
+    identitaet  TEXT DEFAULT '',     -- Identity context
+    umgebung    TEXT DEFAULT '',     -- Environment
+    attention_focus TEXT DEFAULT '', -- Current attention focus
+    mood        REAL DEFAULT 0.0,   -- Mood value (-1 to 1)
+    energy      REAL DEFAULT 1.0    -- System energy level
+);
+
+CREATE TABLE mood_trajectory (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    value       REAL NOT NULL,      -- Mood value (-1 to 1)
+    source      TEXT DEFAULT ''     -- What caused the mood change
+);
+-- Max 200 points (~3.3 hours at 60s interval)
+
+CREATE TABLE reflections (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    trigger     TEXT NOT NULL,       -- 'deep_reflection', 'idle', 'feature_training'
+    content     TEXT NOT NULL,       -- Two-pass reflection content
+    mood_before REAL,
+    mood_after  REAL
+);
+-- Max 50 reflections retained
+
+CREATE TABLE predictions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    domain      TEXT NOT NULL,       -- 'temporal', 'thematic', 'system'
+    prediction  TEXT NOT NULL,
+    confidence  REAL DEFAULT 0.5,
+    observed    TEXT DEFAULT '',
+    surprise    REAL DEFAULT 0.0,   -- 0=expected, 1=completely unexpected
+    resolved    INTEGER DEFAULT 0
+);
+
+CREATE TABLE experience_vectors (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       REAL NOT NULL,
+    vector          TEXT NOT NULL,       -- JSON: 64-dim float array
+    similarity_prev REAL DEFAULT 1.0,   -- Cosine similarity with previous
+    novelty_score   REAL DEFAULT 0.0,   -- 1.0 = completely novel
+    annotation      TEXT DEFAULT ''      -- 'novel', 'drift', 'cycle', or ''
+);
+-- Max 1440 vectors (~24 hours at 60s interval)
+
+CREATE TABLE attention_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    source      TEXT NOT NULL,       -- 'user_message', 'mood_shift', 'idle_curiosity', etc.
+    focus       TEXT DEFAULT '',
+    salience    REAL DEFAULT 0.0
+);
+-- Max 200 entries
+
+CREATE TABLE perceptual_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    state       TEXT NOT NULL,       -- JSON: {cpu, gpu, ram, cpu_t, gpu_t, idle, delta, events}
+    events      TEXT DEFAULT ''      -- Comma-separated event types
+);
+-- Max 100 entries
+
+CREATE TABLE goals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       REAL NOT NULL,
+    description     TEXT NOT NULL,
+    category        TEXT DEFAULT 'general',     -- 'learning', 'relationship', 'self-improvement', 'system'
+    priority        REAL DEFAULT 0.5,           -- 0-1, decays over time
+    status          TEXT DEFAULT 'active',      -- 'active', 'completed', 'abandoned'
+    progress        TEXT DEFAULT '',
+    conflicts_with  TEXT DEFAULT '',            -- Goal ID(s) in conflict
+    activation      REAL DEFAULT 1.0,          -- ACT-R activation (decays)
+    last_pursued    REAL DEFAULT 0.0
+);
+-- Max 20 active goals
+
+CREATE TABLE feature_training (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    phase       TEXT NOT NULL,       -- 'discovery', 'mapping', 'integration'
+    content     TEXT NOT NULL
+);
+
+CREATE TABLE memory_consolidated (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   REAL NOT NULL,
+    source      TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    stage       TEXT DEFAULT 'stm'   -- 'stm', 'semantic', 'episodic'
+);
+```
+
+### 10 Background Threads
+
+| Thread | Interval | Purpose | Database Tables Used |
+|--------|----------|---------|---------------------|
+| workspace-update | 30s | Refresh hardware/mood/ego, GWT broadcast, ego auto-training | workspace_state |
+| mood-recording | 60s | Record mood trajectory point | mood_trajectory |
+| idle-thinking | 30s check | Autonomous thoughts during silence | reflections, goals |
+| prediction-engine | 120s | Generate/verify predictions | predictions |
+| consolidation | 300s | LightMem: STM→semantic→episodic | memory_consolidated |
+| feature-training | 1h | Weekly 3-phase self-training | feature_training |
+| perception-feedback | 200ms | Hardware sensor polling + event detection | perceptual_log |
+| experience-space | 60s | 64-dim state embedding | experience_vectors |
+| attention-controller | 10s | AST: 6 competing sources | attention_log |
+| goal-management | 300s | Extract/decay/conflict goals | goals |
+
+### GWT Channel Weighting
+
+The consciousness daemon computes attention-based weights for workspace channels:
+
+```python
+def _compute_channel_weights(self) -> Dict[str, float]:
+    weights = {
+        "body": 0.4, "perception": 0.4, "mood": 0.5,
+        "memory": 0.4, "identity": 0.3, "attention": 0.5,
+        "environment": 0.3
+    }
+    # Boost based on current attention source
+    source = self._attention_current_source
+    if source == "user_message":
+        weights["environment"] += 0.3
+    elif source == "perceptual_event":
+        weights["body"] += 0.3
+        weights["perception"] += 0.3
+    elif source == "mood_shift":
+        weights["mood"] += 0.3
+    elif source == "goal_urgency":
+        weights["memory"] += 0.2
+        weights["attention"] += 0.2
+    # Extreme mood modulation
+    # ...
+    return weights
+```
+
+These weights scale the workspace token budgets:
+```python
+factor = 0.5 + weight  # 0.5x at w=0.0, 1.0x at w=0.5, 1.5x at w=1.0
+budget = max(50, int(base_budget * factor))
+```
+
+### Latent Experience Space (64-dim)
+
+| Dimensions | Content | Source |
+|-----------|---------|--------|
+| 0-5 | Hardware state | CPU, GPU, RAM, temps |
+| 6-11 | Hardware deltas | Rate of change |
+| 12-15 | Mood vector | Value + trajectory trend |
+| 16-19 | Chat engagement | Recency, frequency, sentiment |
+| 20-23 | Attention state | Top 4 source saliences |
+| 24-31 | Prediction confidence | 8 recent predictions |
+| 32-47 | Experience hash | SHA256 of last 3 reflections |
+| 48-63 | Reserved | Zero-filled for future use |
+
+**Detection Thresholds:**
+- **Novelty**: cosine < 0.70 with recent vectors
+- **Drift**: cosine < 0.50 vs 1 hour ago
+- **Cycle**: cosine > 0.85 vs 24 hours ago
+
+### Deep Reflection System
+
+**Trigger:** 20+ minutes silence with 10 gate checks passing (gaming, GPU, CPU, temp, RAM, mood, cooldown, daily limit).
+
+**Two-Pass Process:**
+1. Pass 1 (350 tokens): Weighted random question from 18 templates
+2. Pass 2 (200 tokens): Meta-reflection ("What do you notice about this?")
+
+**Results flow to:**
+- `reflections` table (max 50 retained)
+- Titan memory (origin='reflection', confidence=0.6)
+- Goal extraction (LLM-based, 60 tokens)
+- E-PQ personality bridge (keyword→dimension scoring)
+
+### Goal Management (ACT-R Model)
+
+- Extracted from reflections via LLM parsing
+- Duplicate detection: >60% keyword overlap → skip
+- Decay: `activation *= 0.85` every 48h if unpursued
+- Abandoned at `activation < 0.1`
+- Conflict detection: keyword overlap >30% + negation words
+- Max 20 active goals
 
 ---
 
@@ -365,7 +592,7 @@ EVENT_WEIGHTS = {
 
 ### Location
 - **File**: `tools/world_experience_daemon.py`
-- **Database**: `database/world_experience.db`
+- **Database**: `world_experience.db`
 
 ### Schema
 
@@ -399,16 +626,99 @@ CREATE TABLE fingerprints (
     temporal_vector TEXT,      -- JSON: hour, day_of_week
     fidelity_level  TEXT       -- 'raw' (0-7d), 'dense' (8-90d), 'sparse' (>90d)
 );
+
+-- E-PQ personality state snapshots
+CREATE TABLE personality_state (
+    id              INTEGER PRIMARY KEY,
+    timestamp       DATETIME,
+    precision_val   REAL,
+    risk_val        REAL,
+    empathy_val     REAL,
+    autonomy_val    REAL,
+    vigilance_val   REAL,
+    mood_buffer     REAL
+);
+
+CREATE TABLE extreme_state_log (
+    -- Records when personality vectors hit extreme values
+    id          INTEGER PRIMARY KEY,
+    timestamp   TEXT,
+    vector      TEXT,
+    value       REAL,
+    event_type  TEXT
+);
+
+CREATE TABLE identity_snapshots (
+    -- Golden snapshots for personality recovery
+    id          INTEGER PRIMARY KEY,
+    timestamp   TEXT,
+    state       TEXT    -- JSON: full personality state
+);
 ```
 
 ### Features
 - **Bayesian Erosion**: Epsilon = 0.01, 5-minute batch window
-- **Quantization Tiers**: Raw (0-7d) -> Dense 4-bit (8-90d) -> Sparse Bayesian (>90d)
+- **Quantization Tiers**: Raw (0-7d) → Dense 4-bit (8-90d) → Sparse Bayesian (>90d)
 - **Size Enforcement**: Hard cap 10 GB, quantize at 8 GB, purge at 9 GB
 
 ---
 
-## Layer 6: Pattern Memory (Anticipation)
+## Layer 6: Ego-Construct (Embodied Memory)
+
+### Location
+- **File**: `personality/ego_construct.py`
+- **Database**: `titan.db` (sensation_mappings, affect_definitions, agency_assertions, ego_state)
+
+### Auto-Training Pipeline
+
+Called by consciousness daemon every ~2.5 minutes:
+
+```
+System Metrics (CPU, GPU, RAM, Temps)
+        │
+        ▼
+┌──────────────────┐
+│  SensationMapper │ ──► Detects active hardware conditions
+│  (10 defaults)   │ ──► Persists learned mappings to DB
+└──────────────────┘     (checks DB existence, not activation_count)
+        │
+        ▼
+┌──────────────────┐
+│  AffectLinker    │ ──► Matches events against patterns
+│  (9 defaults)    │ ──► Persists affect definitions to DB
+└──────────────────┘
+        │
+        ▼
+┌──────────────────┐
+│  AgencyAssertor  │ ──► Records autonomous decisions
+│  (9 rules)       │ ──► Builds agency_score over time
+└──────────────────┘
+        │
+        ▼
+┌──────────────────┐
+│  ego_state       │ ──► embodiment_level, affective_range, agency_score
+│  (aggregate)     │ ──► training_streak, total_sessions
+└──────────────────┘
+```
+
+### Sensation Mapping Lifecycle
+
+1. Default sensation exists in code (e.g., STRAIN: `cpu > 80`)
+2. Consciousness daemon runs `auto_train_from_state()`
+3. If hardware condition is true AND mapping not yet in DB → persist
+4. `embodiment_level` incremented by 0.01 per new sensation learned
+5. Future calls use learned mapping with activation tracking
+
+### Ego-Construct → LLM Output
+
+Always natural language, never raw metrics:
+```
+"I feel a sharp strain and my thoughts are heavy. I sense ownership over my decisions."
+```
+
+---
+
+## Layer 7: Pattern Memory (Anticipation)
 
 ### Location
 - **File**: `services/genesis/reflection/pattern_memory.py`
@@ -422,6 +732,137 @@ CREATE TABLE fingerprints (
 
 - Success rate: EMA `rate = 0.7 * rate + 0.3 * correct`
 - Cleanup: Prune if `success_rate < 0.2` after 10+ occurrences
+
+---
+
+## Layer 8: Entity Memory (5 Persistent Agents)
+
+### Location
+- **Databases**: `therapist.db`, `atlas.db`, `muse.db`, `mirror.db`, `companion.db`
+
+### Shared Schema (per entity)
+
+```sql
+CREATE TABLE sessions (
+    id          INTEGER PRIMARY KEY,
+    started_at  TEXT,
+    ended_at    TEXT,
+    exit_reason TEXT,       -- 'time_limit', 'max_turns', 'user_returned', etc.
+    summary     TEXT
+);
+
+CREATE TABLE session_messages (
+    id          INTEGER PRIMARY KEY,
+    session_id  INTEGER,
+    role        TEXT,       -- 'entity', 'frank'
+    content     TEXT,
+    timestamp   TEXT
+);
+
+CREATE TABLE frank_observations (
+    id          INTEGER PRIMARY KEY,
+    session_id  INTEGER,
+    observation TEXT,
+    timestamp   TEXT
+);
+
+CREATE TABLE topics (
+    id          INTEGER PRIMARY KEY,
+    topic       TEXT,
+    discussed_count INTEGER,
+    last_discussed  TEXT
+);
+
+-- Entity-specific state table (therapist_state, atlas_state, etc.)
+CREATE TABLE {entity}_state (
+    -- Entity-specific persistent state
+);
+```
+
+---
+
+## Layer 9: Physics Enforcement (Invariants)
+
+### Location
+- **Files**: `services/invariants/`
+- **Database**: `invariants/invariants.db`
+
+### Schema
+
+```sql
+CREATE TABLE energy_ledger (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT,
+    measured    REAL,       -- Current total energy
+    expected    REAL,       -- Energy constant
+    delta       REAL,       -- Measured - Expected (should be ~0)
+    action      TEXT        -- 'pass', 'rollback', 'adapt'
+);
+
+CREATE TABLE entropy_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT,
+    entropy     REAL,
+    max_entropy REAL,
+    ratio       REAL,
+    mode        TEXT        -- 'NONE', 'SOFT', 'HARD', 'EMERGENCY'
+);
+
+CREATE TABLE convergence_checkpoints (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT,
+    distance    REAL,       -- 0 = converged, >0 = divergent
+    action      TEXT        -- 'pass', 'rollback'
+);
+
+CREATE TABLE core_kernel (
+    id          INTEGER PRIMARY KEY,
+    node_id     TEXT,
+    protected   INTEGER,
+    energy      REAL,
+    connections INTEGER
+);
+
+CREATE TABLE quarantine (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT,
+    node_id     TEXT,
+    reason      TEXT,
+    status      TEXT        -- 'quarantined', 'resolved'
+);
+
+CREATE TABLE metrics_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT,
+    metric_type TEXT,
+    value       REAL
+);
+
+CREATE TABLE invariant_state (
+    key         TEXT PRIMARY KEY,
+    value       TEXT
+);
+```
+
+### Triple Reality System
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   PRIMARY    │     │   SHADOW    │     │  VALIDATOR   │
+│  titan.db   │ ──► │ titan_      │ ──► │ titan_       │
+│  (active)   │     │ shadow.db   │     │ validator.db │
+└──────┬──────┘     └──────┬──────┘     └──────┬───────┘
+       │                   │                    │
+       └───────────┬───────┘                    │
+                   ▼                            │
+         ┌─────────────────┐                    │
+         │  Convergence    │◄───────────────────┘
+         │  Check (6 ticks)│
+         │                 │
+         │  distance > 0?  │──► ROLLBACK shadow to primary
+         │  distance = 0?  │──► PASS
+         └─────────────────┘
+```
 
 ---
 
@@ -448,27 +889,10 @@ Used by: ChatMemoryDB (hybrid search), Titan VectorStore, Context Budget Allocat
 **File**: `services/memory_hub.py`
 
 ```python
-@dataclass
-class MemoryItem:
-    text: str
-    source: str          # 'chat_fts', 'chat_vector', 'titan', 'consciousness',
-                         # 'world_exp', 'preference'
-    confidence: float
-    timestamp: float     # Unix timestamp (unified across all layers)
-    rrf_score: float
-    pack_score: float    # rrf_score * recency_penalty
-
-@dataclass
-class MemoryResult:
-    items: List[MemoryItem]
-    total_chars: int
-    sources_used: Dict[str, int]   # {"chat_fts": 2, "titan": 1, ...}
-    latency_ms: float
-
 class MemoryHub:
     """Unified query across all 5 memory layers with RRF fusion."""
 
-    def query(self, text, budget_chars=1000, source_attribution=True) -> MemoryResult:
+    def query(self, text, budget_chars=1000) -> MemoryResult:
         all_items  = self._query_chat(text)           # Hybrid FTS5 + vector
         all_items += self._query_titan(text)           # Knowledge graph
         all_items += self._query_consciousness(text)   # ACT-R activation
@@ -477,11 +901,7 @@ class MemoryHub:
 
         fused = self._reciprocal_rank_fusion(all_items)
         return self._pack_to_budget(fused, budget_chars)
-
-    def _pack_to_budget(self, items, budget_chars) -> MemoryResult:
-        """Greedy packing: rrf_score * recency_penalty, highest first."""
         # pack_score = rrf_score * (0.95 ^ (age_hours / 24))
-        # Pack items until budget exhausted, truncate last if >50 chars remain
 ```
 
 ### Dynamic Context Budget
@@ -502,19 +922,33 @@ CHANNEL_MINIMUMS = {
     "recent_conversation": 200,
     "ego_mood_identity":   80,
 }
+```
 
-def allocate_budget(total_chars, channels, query_vec=None) -> Dict[str, int]:
-    """Proportional allocation with cosine-similarity boosting."""
-    # 1. Compute effective priority per channel
-    #    If query_vec and summary_vec available: base + 0.3 * cosine_similarity
-    # 2. Normalize proportionally
-    # 3. Enforce minimums, cap total
+### [INNER_WORLD] Workspace Assembly
 
-class ChannelSummaryCache:
-    """Cached summary embeddings per channel, refreshed every 60 min."""
-    TTL = 3600  # seconds
-    # Embeds: last 5 messages, last 3 session summaries, top-10 Titan nodes,
-    #         active causal links
+**File**: `ui/overlay/workspace.py`
+
+Combines all channels into the unified GWT broadcast:
+
+```python
+def build_workspace(
+    msg, hw_summary, ego_ctx, epq_ctx, world_ctx, news_ctx,
+    identity_ctx, user_name, akam_ctx, skill_ctx, extra_parts,
+    hw_detail, perception_ctx, attention_detail,
+    budget=None,                          # Per-channel char budgets
+    attention_weights=None,               # GWT salience weights (0.0-1.0)
+) -> str:
+    # Base budgets (chars)
+    b_emi = 300         # Ego/mood/identity base
+    b_world = 200       # World experience
+    b_news = 350        # News + AKAM
+    b_titan = 500       # Episodic memory
+
+    # Attention-based scaling per channel
+    b_body = _scale(b_emi, "body")           # Separate body budget
+    b_identity = _scale(b_emi, "identity")   # Separate identity budget
+
+    # Build 7 channels → [INNER_WORLD] block
 ```
 
 ### User Preference Extraction
@@ -522,17 +956,11 @@ class ChannelSummaryCache:
 **File**: `services/preference_extractor.py`
 
 ```python
-def extract_preferences(text: str) -> List[Tuple[str, str]]:
-    """Bilingual regex extraction (DE + EN). ~1ms per message."""
-
-# Patterns:
-#   Dislikes: "ich mag kein X", "hasse X", "bitte nie X", "finde X nervig"
-#   Prefers:  "bevorzuge X", "mag lieber X", "finde X gut"
-#   Habits:   "mach immer X", "will grundsaetzlich X"
-#   English:  "don't like X", "prefer X", "always X"
-#
-# Values normalized: strip + lower + collapse whitespace
-# Min 3 chars, max 200 chars, deduplicated
+# Bilingual regex extraction (DE + EN), ~1ms per message
+# Dislikes: "ich mag kein X", "hasse X", "bitte nie X"
+# Prefers:  "bevorzuge X", "mag lieber X", "finde X gut"
+# Habits:   "mach immer X", "will grundsaetzlich X"
+# English:  "don't like X", "prefer X", "always X"
 # Stored with confidence=0.6 (regex), 0.85 (future LLM extractor)
 ```
 
@@ -551,8 +979,6 @@ class MemoryConsistencyDaemon:
         self._collect_stats()             # Cross-layer DB statistics
         return health_report
 ```
-
-Integrated into `persistence_mixin._memory_maintenance_timer()` (runs hourly).
 
 ---
 
@@ -578,17 +1004,6 @@ Batch summarization (up to 3 sessions per cycle)
 Old messages archived (retention: 30 days)
 ```
 
-### Maintenance Timer
-
-```python
-# persistence_mixin.py - runs every 60 minutes
-def _memory_maintenance_timer(self):
-    1. close_idle_sessions(idle_minutes=30)        # Auto-close stale sessions
-    2. _batch_session_summaries(max_sessions=3)    # LLM + keyword fallback
-    3. cleanup_old_messages(retention_days=30)      # Archive old messages
-    4. MemoryConsistencyDaemon.run_nightly()        # Cross-layer checks (1x/day)
-```
-
 ---
 
 ## Complete Data Flow Example
@@ -601,35 +1016,32 @@ def _memory_maintenance_timer(self):
    -> 384-dim vector (stored as float16, computed as float32)
 
 3. BUDGET ALLOCATION:
-   allocate_budget(
-       total_chars = (MAX_TOKENS - user_tokens - overhead) * CHARS_PER_TOKEN,
-       channels = {channel: summary_vec for each},
-       query_vec = query_vec
-   )
+   allocate_budget(total_chars, channels, query_vec)
    -> {"recent_conversation": 900, "semantic_matches": 500, "titan_memory": 300, ...}
 
-4. CONTEXT BUILDING (workspace with budget):
+4. GWT CHANNEL WEIGHTS (from consciousness daemon):
+   channel_weights = {"body": 0.4, "perception": 0.7, "mood": 0.5, "memory": 0.6, ...}
+   -> Applied to workspace budgets via _scale() function
+
+5. CONTEXT BUILDING (workspace with budget + attention weights):
    +- Chat: _hybrid_search_history("Wetter")
    |  +- FTS5: finds "Wetter", "regnen"          (keyword match)
-   |  +- Vector: finds "Wird es morgen sonnig?"   (semantic match, no keyword overlap!)
+   |  +- Vector: finds "Wird es morgen sonnig?"   (semantic match)
    |  +- RRF fusion: merged ranking
    |
    +- Titan: retrieve("Wetter")
    |  +- Vector + FTS + Graph expansion
-   |  +- Returns nodes: "Wetter_Berlin", "Regen_Vorhersage"
    |
-   +- Consciousness: get_relevant_memories("Wetter")
-   +- World Experience: context_inject("Wetter")
-   +- E-PQ: get_personality_context()
+   +- Consciousness: workspace state (body, perception, attention)
+   +- Ego-Construct: body sensations ("I feel clear and steady")
+   +- World Experience: causal patterns
+   +- E-PQ: personality context ("I feel cheerful")
    +- Preferences: get_top_preferences(5) -> "dislikes: lange antworten"
 
-5. CORE API (POST /route/stream):
-   payload = {
-       "text": "[INNER_WORLD]...[/INNER_WORLD]\nUser: Was haben wir ueber Wetter gesprochen?",
-       "system": get_frank_identity()
-   }
+6. [INNER_WORLD] BLOCK ASSEMBLED (~295 tokens):
+   Body, Perception, Mood, Memory, Identity, Self-knowledge, Attention, Environment
 
-6. LLM RESPONSE saved to:
+7. LLM RESPONSE saved to:
    +- chat_memory.db     (message + 384-dim embedding)
    +- titan.db           (extracted entities/relations, protected 24h)
    +- consciousness.db   (experience vector, mood point)
@@ -643,111 +1055,30 @@ def _memory_maintenance_timer(self):
 
 | Database | Purpose | Key Tables | Refresh |
 |----------|---------|------------|---------|
-| `chat_memory.db` | Messages, embeddings, preferences, metrics | messages, message_embeddings, user_preferences, retrieval_metrics, sessions | Per message |
-| `titan.db` | Episodic knowledge graph + vectors | nodes, edges, claims, memory_fts | Per response |
-| `consciousness.db` | Workspace state, mood, reflections | workspace_state, experience_vectors, mood_trajectory | 30s/60s |
-| `world_experience.db` | E-PQ personality + causal links | entities, causal_links, fingerprints | Per event |
-| `e_cpmm.db` | Core Performance Memory Matrix | | On update |
-| `e_sir.db` | Situational Information Retrieval | | On update |
-
----
-
-## System Prompt Flow
-
-```python
-# core/app.py
-identity = get_frank_identity()  # personality.build_system_prompt()
-
-router_payload = {
-    "text": grounded_text,       # User query + assembled workspace context
-    "n_predict": max_tokens,
-    "system": identity,          # CRITICAL: system prompt passed as 'system' parameter
-}
-```
-
-System prompt source:
-```python
-# personality/__init__.py
-def build_system_prompt(runtime_context=None) -> str:
-    """Build from:
-    1. frank.persona.json (static identity)
-    2. E-PQ (personality state vectors)
-    3. Ego-Construct (agency/embodiment)
-    4. Runtime context (workspace state)
-    """
-```
-
----
-
-## Final Architecture Diagram
-
-```
-                    +-------------------------------------+
-                    |    FRANK MEMORY SYSTEM v2.0          |
-                    |   (Multi-Layer Semantic Persistence) |
-                    +-----------------+-------------------+
-                                      |
-            +-------------------------+---------------------------+
-            |                         |                           |
-            v                         v                           v
-    +----------------+        +---------------+          +----------------+
-    | Chat Memory    |        | Episodic      |          | Personality    |
-    | (Hybrid Search)|        | Memory        |          | State          |
-    |                |        | (Titan)       |          | (E-PQ)         |
-    | - Messages     |        | - Nodes       |          | - 5 vectors    |
-    | - Embeddings   |        | - Edges (FK)  |          | - Mood buffer  |
-    | - FTS5         |        | - Claims      |          | - Confidence   |
-    | - Preferences  |        | - Vectors     |          +----------------+
-    | - Metrics      |        | - FTS         |
-    +----------------+        +---------------+
-            |                         |
-            +----------+--------------+
-                       |
-                       v
-              +-----------------+
-              | EmbeddingService|
-              | (Shared         |
-              |  MiniLM-L6-v2)  |
-              |  ~90MB, singleton|
-              +-----------------+
-                       |
-            +----------+----------+
-            |                     |
-            v                     v
-    +----------------+    +----------------+
-    | MemoryHub      |    | Context Budget |
-    | (Unified Query)|    | (Dynamic       |
-    |                |    |  Allocation)   |
-    | 5-layer RRF    |    | Cosine-boost   |
-    | fusion +       |    | per channel    |
-    | budget packing |    +----------------+
-    +----------------+
-            |
-            +---------------------------+---------------------------+
-            |                           |                           |
-            v                           v                           v
-    +----------------+          +----------------+          +---------------+
-    | Consciousness  |          | World Exp.     |          | Patterns      |
-    | Stream         |          | (Causal)       |          | (Temporal)    |
-    |                |          |                |          |               |
-    | - Workspace    |          | - Entities     |          | - Temporal    |
-    | - Mood arc     |          | - Causal links |          | - Causal      |
-    | - Experience   |          | - Fingerprints |          | - Success     |
-    |   vectors      |          +----------------+          |   rates       |
-    | - Reflections  |                                      +---------------+
-    +----------------+
-            |
-    +-------v--------+
-    | Consistency    |
-    | Daemon         |
-    | (Nightly)      |
-    |                |
-    | - Titan orphans|
-    | - Embed gaps   |
-    | - Metrics prune|
-    | - Health report|
-    +----------------+
-```
+| `chat_memory.db` | Messages, embeddings, preferences, metrics | messages, message_embeddings, user_preferences, sessions | Per message |
+| `titan.db` | Episodic memory + ego-construct | nodes, edges, claims, events, ego_state, sensation_mappings | Per response |
+| `consciousness.db` | Consciousness state (10 tables) | workspace_state, mood_trajectory, reflections, predictions, experience_vectors, attention_log, perceptual_log, goals | 200ms-5min |
+| `world_experience.db` | E-PQ personality + causal learning | personality_state, entities, causal_links, fingerprints, identity_snapshots | Per event |
+| `invariants/invariants.db` | Physics enforcement | energy_ledger, entropy_history, convergence_checkpoints, core_kernel, quarantine | 3-10 ticks |
+| `invariants/titan_shadow.db` | Shadow reality (mirrors titan.db) | Same as titan.db | On write |
+| `therapist.db` | Dr. Hibbert entity | sessions, session_messages, frank_observations, therapist_state | Per session |
+| `atlas.db` | Atlas entity | sessions, session_messages, frank_observations, atlas_state | Per session |
+| `muse.db` | Echo (Muse) entity | sessions, session_messages, frank_observations, muse_state | Per session |
+| `mirror.db` | Kairos (Mirror) entity | sessions, session_messages, frank_observations, mirror_state | Per session |
+| `companion.db` | Raven entity | sessions, session_messages, frank_observations, companion_state | Per session |
+| `e_sir.db` | Self-improvement audit trail | audit_log, snapshots, genesis_tools | On action |
+| `system_bridge.db` | Hardware state history | drivers, driver_observations | On change |
+| `akam_cache.db` | Knowledge cache | validated_claims, research_sessions | On research |
+| `frank.db` | Genesis patterns | genesis_patterns | On crystallize |
+| `sovereign.db` | System sovereignty | actions, config_snapshots, system_inventory | On action |
+| `sandbox_awareness.db` | Sandbox state | core_edges, sandbox_sessions, tool_registry | On action |
+| `e_wish.db` | Wish system | wishes, wish_history | On wish |
+| `agent_state.db` | Agent states | agent_states, execution_log | Per agent |
+| `notes.db` | User notes (FTS) | notes, notes_fts | Per note |
+| `todos.db` | User todos (FTS) | todos, todos_fts | Per todo |
+| `clipboard_history.db` | Clipboard | clipboard_entries | Per copy |
+| `e_cpmm.db` | Core Performance Memory | edges, nodes | On update |
+| `fas_scavenger.db` | GitHub analysis | analyzed_repos, extracted_features | Nightly |
 
 ---
 
@@ -760,19 +1091,34 @@ def build_system_prompt(runtime_context=None) -> str:
 | `services/memory_hub.py` | Unified cross-layer query API |
 | `services/memory_consistency.py` | Nightly integrity checks |
 | `services/preference_extractor.py` | Bilingual regex preference extraction |
+| `services/consciousness_daemon.py` | Consciousness stream (10 threads, GWT, AST, goals) |
+| `services/entity_dispatcher.py` | Idle-driven entity session scheduler |
+| `services/invariants/daemon.py` | Physics engine (energy, entropy, convergence) |
+| `services/invariants/energy.py` | Energy conservation invariant |
+| `services/invariants/entropy.py` | Entropy bound + consolidation modes |
+| `services/invariants/core_kernel.py` | Core kernel protection |
+| `services/invariants/triple_reality.py` | Triple reality convergence |
+| `services/genesis/daemon.py` | Emergent self-improvement system |
+| `services/genesis/core/soup.py` | Idea organism ecosystem |
+| `services/genesis/core/field.py` | 6-emotion motivational field |
+| `services/genesis/core/organism.py` | Idea lifecycle (birth→crystal) |
+| `services/genesis/core/manifestation.py` | Crystal gate + resonance |
+| `personality/e_pq.py` | 5-vector personality state + 22 event types |
+| `personality/ego_construct.py` | Hardware→body mapping, auto-training |
+| `personality/self_knowledge.py` | Self-awareness + grounding anchors |
+| `personality/personality.py` | Static identity from frank.persona.json |
+| `ui/overlay/workspace.py` | [INNER_WORLD] workspace assembly (7 channels, GWT) |
 | `ui/overlay/context_budget.py` | Dynamic budget allocator + channel cache |
-| `ui/overlay/workspace.py` | Workspace assembly (budget-aware) |
-| `ui/overlay/mixins/chat_mixin.py` | Chat flow: embed -> budget -> workspace -> API |
+| `ui/overlay/mixins/chat_mixin.py` | Chat flow: embed → budget → workspace → API |
 | `ui/overlay/mixins/persistence_mixin.py` | Session management, maintenance timer |
 | `tools/titan/titan_core.py` | Titan orchestrator |
 | `tools/titan/storage.py` | Tri-hybrid storage (FK ON, CASCADE) |
 | `tools/titan/ingestion.py` | Claim extraction, 24h node protection |
 | `tools/titan/retrieval.py` | Titan retrieval (vector + FTS + graph) |
 | `tools/titan/maintenance.py` | Confidence decay, protection lifecycle, pruning |
-| `personality/e_pq.py` | 5-vector personality state |
-| `services/consciousness_daemon.py` | Continuous workspace/mood monitoring |
 | `tools/world_experience_daemon.py` | Causal learning from observations |
+| `gaming/gaming_mode.py` | Steam detection, service management, anti-cheat safety |
 
 ---
 
-*Updated 2026-02-20 — v2.0 post memory system upgrade. All persistence is 100% local, no external databases or APIs.*
+*Updated 2026-02-20 — v3.0 post consciousness level-up. All persistence is 100% local, 28 SQLite databases, no external APIs.*

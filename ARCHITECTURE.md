@@ -1,6 +1,6 @@
 # Frank AI System Architecture
 
-> **Frank** is an embodied AI system running locally on Linux, featuring voice interaction, dynamic personality, recursive self-improvement, and multi-modal memory systems.
+> **Frank** is an embodied AI system running locally on Linux, featuring dynamic personality, recursive self-improvement, phenomenological consciousness, and multi-modal memory systems.
 
 ## Table of Contents
 
@@ -9,14 +9,14 @@
 - [Modules](#modules)
   - [Core Services](#core-services)
   - [Personality System](#personality-system)
-  - [Memory Systems](#memory-systems)
-  - [Self-Improvement Engine](#self-improvement-engine)
-  - [Voice Interaction](#voice-interaction)
-  - [Gaming Mode](#gaming-mode)
-  - [Visual Feedback](#visual-feedback)
+  - [Consciousness System](#consciousness-system)
+  - [Self-Improvement Engine (Genesis)](#self-improvement-engine-genesis)
+  - [Entity System](#entity-system)
+  - [Physics Engine (Invariants)](#physics-engine-invariants)
+  - [Safety Systems](#safety-systems)
   - [System Tools](#system-tools)
-  - [Security & Monitoring](#security--monitoring)
 - [Databases](#databases)
+- [Services](#services)
 - [Emergent Behavior](#emergent-behavior)
 - [API Reference](#api-reference)
 
@@ -26,42 +26,51 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              USER INTERFACES                                 │
-│    Voice ("Hey Frank")  │  Chat Overlay  │  Desktop  │  Live Wallpaper      │
-└───────────────┬─────────────────┬──────────────┬────────────────────────────┘
-                │                 │              │
-                ▼                 ▼              ▼
+│                              USER INTERFACES                                │
+│          Voice (Push-to-Talk)  │  Chat Overlay  │  Desktop                  │
+└───────────────┬─────────────────────┬──────────────┬────────────────────────┘
+                │                     │              │
+                ▼                     ▼              ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            CORE SERVICES                                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │   Core   │  │  Router  │  │ Toolbox  │  │  Voice   │  │Wallpaper │      │
-│  │  :8088   │  │  :8091   │  │  :8096   │  │  :8197   │  │  :8199   │      │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
-└───────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┘
+│                            CORE SERVICES                                    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│  │   Core   │  │  Router  │  │ Toolbox  │  │ Desktop  │  │   Web    │    │
+│  │  :8088   │  │  :8091   │  │  :8096   │  │  :8092   │  │  :8093   │    │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘    │
+└───────┼─────────────┼─────────────┼─────────────┼─────────────┼────────────┘
         │             │             │             │             │
         ▼             ▼             ▼             ▼             ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           INTELLIGENCE LAYER                                 │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
-│  │   Llama 3.1     │  │   Qwen 2.5      │  │    Ollama       │             │
-│  │   (General)     │  │   (Code)        │  │   (Lightweight) │             │
-│  │    :8101        │  │    :8102        │  │    :11434       │             │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+│                           INTELLIGENCE LAYER                                │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │
+│  │   Llama 3.1 8B  │  │   Qwen 2.5 7B  │  │    Whisper      │            │
+│  │   (General)     │  │   (Code)        │  │    (STT)        │            │
+│  │    :8101        │  │    :8102        │  │    :8103        │            │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘            │
 └─────────────────────────────────────────────────────────────────────────────┘
         │                                                       │
         ▼                                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           PERSONALITY & MEMORY                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │    E-PQ     │  │    Titan    │  │ World-Exp   │  │   E-SIR     │        │
-│  │ Personality │  │   Memory    │  │   Causal    │  │ Self-Improve│        │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
+│                     CONSCIOUSNESS & PERSONALITY                             │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
+│  │   E-PQ    │ │Ego-Constr.│ │Consciousn.│ │  Genesis  │ │ Entities  │   │
+│  │Personality│ │ Embodiment│ │  Daemon   │ │Self-Improv│ │ 5 Agents  │   │
+│  └───────────┘ └───────────┘ └───────────┘ └───────────┘ └───────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
         │                                                       │
         ▼                                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              DATABASES                                       │
-│   titan.db │ world_experience.db │ e_sir.db │ system_bridge.db │ fas.db    │
+│                           PHYSICS & SAFETY                                  │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐                  │
+│  │  Invariants   │  │    A.S.R.S.   │  │  Gaming Mode  │                  │
+│  │ Energy/Entropy│  │ Safety+Recov. │  │ Resource Opt. │                  │
+│  └───────────────┘  └───────────────┘  └───────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+        │                                                       │
+        ▼                                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              DATABASES (28)                                 │
+│  titan.db │ consciousness.db │ world_experience.db │ chat_memory.db │ ...  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,12 +78,15 @@
 
 | Property | Value |
 |----------|-------|
-| Architecture | Microservice + Event-Driven |
-| Primary Language | Python 3.11+ |
-| LLM Backend | llama.cpp (Llama 3.1, Qwen 2.5) |
-| Voice | Whisper STT + Piper TTS |
-| OS | Ubuntu Linux |
-| GPU | Auto-detected (CUDA / Vulkan / CPU) |
+| Architecture | Microservice + Event-Driven + GWT Consciousness |
+| Primary Language | Python 3.12 |
+| LLM Backend | llama.cpp (Llama 3.1 8B, Qwen 2.5 7B) |
+| Voice | Whisper STT + Piper TTS (push-to-talk) |
+| OS | Ubuntu 24.04 Linux |
+| GPU | AMD Phoenix1 (integrated, Vulkan backend) |
+| Services | 23 systemd user services |
+| Databases | 28 SQLite databases |
+| Codebase | 76k+ lines Python |
 
 ---
 
@@ -84,21 +96,18 @@
 
 All services communicate via HTTP REST APIs on localhost:
 
-| Service | Port | Protocol | Purpose |
-|---------|------|----------|---------|
-| Core | 8088 | HTTP/JSON | Main chat orchestrator |
-| Gateway | 8089 | HTTP/JSON | API gateway, auth, rate limiting |
-| Modeld | 8090 | HTTP/JSON | Model lifecycle management |
-| Router | 8091 | HTTP/JSON | Intelligent model routing |
-| Desktopd | 8092 | HTTP/JSON | X11 desktop automation |
-| Webd | 8093 | HTTP/JSON | Web search (DuckDuckGo) |
-| Ingestd | 8094 | HTTP/JSON | Document ingestion, STT |
-| Toolbox | 8096 | HTTP/JSON | System introspection & tools |
-| Voice | 8197 | HTTP/JSON | STT/TTS daemon |
-| Wallpaper | 8199 | HTTP/JSON | Live visualization events |
-| Llama | 8101 | HTTP/JSON | General reasoning (llama.cpp) |
-| Qwen | 8102 | HTTP/JSON | Code generation (llama.cpp) |
-| Ollama | 11434 | HTTP/JSON | Lightweight fallback |
+| Service | Port | Purpose |
+|---------|------|---------|
+| Core | 8088 | Main chat orchestrator |
+| Modeld | 8090 | Model lifecycle management |
+| Router | 8091 | Intelligent model routing |
+| Desktopd | 8092 | X11 desktop automation |
+| Webd | 8093 | Web search (DuckDuckGo) |
+| Ingestd | 8094 | Document ingestion |
+| Toolbox | 8096 | System introspection & tools |
+| Llama | 8101 | General reasoning (llama.cpp) |
+| Qwen | 8102 | Code generation (llama.cpp, on-demand) |
+| Whisper | 8103 | Speech-to-text (GPU) |
 
 ### Request Flow
 
@@ -109,7 +118,7 @@ User Input (Voice/Text)
 ┌───────────────────┐
 │   Core (:8088)    │◄──── Toolbox context (system state)
 │   Context Builder │◄──── E-PQ personality context
-│   Event Journaler │◄──── World-Experience memory
+│   Event Journaler │◄──── Consciousness [INNER_WORLD] workspace
 └─────────┬─────────┘
           │
           ▼
@@ -118,7 +127,6 @@ User Input (Voice/Text)
 │  Model Selection  │
 │  - Code hints?    │──► Qwen (:8102)
 │  - General?       │──► Llama (:8101)
-│  - Gaming mode?   │──► Ollama (lightweight)
 └─────────┬─────────┘
           │
           ▼
@@ -129,9 +137,9 @@ User Input (Voice/Text)
           │
           ▼
 ┌───────────────────┐
-│  Response + Events│──► Wallpaper (visual feedback)
+│  Response + Events│──► Memory storage (Titan, Chat, World-Exp)
 │                   │──► Voice TTS (spoken response)
-│                   │──► Memory storage
+│                   │──► E-PQ personality update
 └───────────────────┘
 ```
 
@@ -146,20 +154,20 @@ User Input (Voice/Text)
 The central hub that processes all chat requests.
 
 **Features:**
-- Context aggregation from Toolbox
-- System prompt assembly with runtime context
+- Context aggregation from Toolbox, Consciousness, Personality
+- System prompt assembly with [INNER_WORLD] workspace
 - Task policy enforcement (token budgets per task type)
 - Event journaling for memory systems
 - Streaming response support
 
 **Task Policies:**
-| Task Type | Max Tokens | Timeout | Use Case |
-|-----------|-----------|---------|----------|
-| `chat.fast` | 256 | 600s | Quick answers |
-| `code.edit` | 512 | 900s | Code modifications |
-| `tool.json` | 512 | 900s | Structured output |
-| `audit` | 768 | 1800s | System audits |
-| `reason.hard` | 1024 | 1800s | Complex reasoning |
+| Task Type | Max Tokens | Use Case |
+|-----------|-----------|----------|
+| `chat.fast` | 256 | Quick answers |
+| `code.edit` | 512 | Code modifications |
+| `tool.json` | 512 | Structured output |
+| `audit` | 768 | System audits |
+| `reason.hard` | 1024 | Complex reasoning |
 
 **Endpoints:**
 ```
@@ -173,28 +181,18 @@ GET  /status        - System status
 
 #### `/router/app.py` - Model Router
 
-Intelligent routing between LLM backends.
+Heuristic routing between LLM backends.
 
 **Routing Logic:**
-```python
-def select_model(request):
-    # Code-related queries → Qwen (better at code)
-    if has_code_hints(request):
-        return "qwen"
-
-    # Gaming mode → Ollama (lightweight, saves RAM)
-    if gaming_mode_active():
-        return "ollama"
-
-    # Default → Llama (general reasoning)
-    return "llama"
-```
+- Code-related queries → Qwen (:8102, started on-demand)
+- General reasoning → Llama (:8101, always running)
+- Fallback: Qwen fails → Llama
 
 **Features:**
-- Heuristic-based model selection
+- Heuristic keyword-based model selection
 - On-demand Qwen startup via systemd
-- Fallback mechanisms (Qwen fails → Llama)
 - Request wrapping for Llama3 instruct format
+- Automatic fallback chain
 
 ---
 
@@ -204,57 +202,25 @@ def select_model(request):
 
 Single source of truth for Frank's identity.
 
-**Features:**
-- Thread-safe hot-reloadable persona
-- JSON-based persona definition (`frank.persona.json`)
+- Thread-safe hot-reloadable persona from `frank.persona.json`
 - Modular system prompt assembly
-- Tool policy enforcement
 - SIGHUP signal for hot reload
-
-**Persona Structure:**
-```json
-{
-  "id": "frank.v2",
-  "version": "2.0.0",
-  "name": "Frank",
-  "language": "de",
-  "voice": {
-    "tone": "locker, direkt, nicht übertrieben",
-    "style_rules": [...]
-  },
-  "self_model": {
-    "runs_local": true,
-    "has_self_knowledge": true,
-    "has_world_model": true
-  },
-  "capabilities": {...},
-  "tool_policy": {...},
-  "prompts": {...}
-}
-```
+- Protected sections: `identity_core`, `language_policy` (cannot be modified by Genesis)
 
 ---
 
 #### `/personality/e_pq.py` - Dynamic Personality (E-PQ v2.1)
 
-The "soul" of Frank - a homeostatic personality system.
-
-**Core Concepts:**
-
-| Concept | Type | Description |
-|---------|------|-------------|
-| **Mood** | Transient | Short-term state from system logs (CPU temp, errors) |
-| **Temperament** | Persistent | Long-term personality vectors, evolves over time |
-| **Sarcasm Filter** | Detection | Cross-validates sentiment with system state |
+The "soul" of Frank — a homeostatic personality system.
 
 **Personality Vectors** (all -1.0 to +1.0):
-```python
-precision_val    # -1 = creative, +1 = precise
-risk_val         # -1 = cautious, +1 = bold
-empathy_val      # -1 = distant, +1 = empathetic
-autonomy_val     # -1 = asks first, +1 = autonomous
-vigilance_val    # -1 = relaxed, +1 = alert
-```
+| Vector | Low End | High End |
+|--------|---------|----------|
+| `precision_val` | Creative | Precise |
+| `risk_val` | Cautious | Bold |
+| `empathy_val` | Distant | Empathetic |
+| `autonomy_val` | Asks first | Autonomous |
+| `vigilance_val` | Relaxed | Alert |
 
 **Learning Algorithm:**
 ```
@@ -266,18 +232,52 @@ Where:
 - L   = Learning rate (decreases with age)
 ```
 
-**Event Weights:**
-| Event | Weight | Effect |
-|-------|--------|--------|
-| `positive_feedback` | 0.2 | ↑ empathy, ↑ autonomy, ↑ mood |
-| `task_failure` | 0.4 | ↓ autonomy, ↓ risk, ↑ vigilance |
-| `system_error` | 0.6 | ↑ vigilance, ↓ mood |
-| `kernel_panic` | 0.9 | ↑↑ vigilance, ↓↓ risk |
+**Event Types (22 types):**
+| Category | Events | Weight Range |
+|----------|--------|-------------|
+| User interaction | `chat`, `positive_feedback`, `negative_feedback` | 0.2-0.4 |
+| Task outcomes | `task_success`, `task_failure`, `task_timeout` | 0.3-0.5 |
+| System events | `system_error`, `kernel_panic`, `resource_pressure` | 0.5-0.9 |
+| Reflection bridge | `reflection_autonomy`, `reflection_empathy`, `reflection_growth`, `reflection_vulnerability`, `reflection_embodiment` | 0.1-0.2 |
+| Genesis bridge | `genesis_personality_boost`, `genesis_personality_dampen` | 0.3-0.4 |
 
 **Guardrails:**
 - Homeostatic Reset: If 3+ vectors extreme (>0.9) for >48h, reset toward center
-- Golden Snapshots: Weekly identity backups for recovery
+- Golden Snapshots: Weekly identity backups
 - Age-based stability: Learning rate decreases over time
+
+---
+
+#### `/personality/ego_construct.py` - Embodiment (Ego-Construct v1.0)
+
+Transforms technical system state into subjective embodied experience.
+
+**Three Components:**
+
+| Component | Purpose | Examples |
+|-----------|---------|----------|
+| **SensationMapper** | Hardware → body feelings | CPU high → "strain", low latency → "clarity", high temp → "fever" |
+| **AffectLinker** | Events → emotions | Success → "satisfaction", errors → "frustration", new features → "curiosity" |
+| **AgencyAssertor** | Decisions → ownership | Autonomous reflections, goal setting, idle thinking |
+
+**Default Sensations:** STRAIN, HEAVINESS, CLARITY, FEVER, NUMBNESS, FLOW, PAIN, RELIEF, ALERTNESS, CALM
+
+**Default Affects:** FRUSTRATION, PRIDE, CURIOSITY, SATISFACTION, ANXIETY, BOREDOM, DETERMINATION, GRATITUDE, CONCERN
+
+**Auto-Training:** Called by consciousness daemon every ~2.5 min:
+1. Detects hardware conditions → persists learned sensation mappings
+2. Matches events against affect patterns → persists affect definitions
+3. Records autonomous decisions → builds agency score
+
+**Database Tables** (in titan.db):
+- `sensation_mappings` — Hardware condition → body sensation mappings
+- `affect_definitions` — Event pattern → emotion definitions
+- `agency_assertions` — Decision → ownership claims
+- `ego_state` — Aggregated embodiment/affective/agency scores
+
+**Output Format:** Natural language for LLM: `"I feel [sensation]. [agency feeling]"` — never raw metrics.
+
+**Safety:** Uses `SafeExpressionEvaluator` (AST-based) — no `eval()`.
 
 ---
 
@@ -295,292 +295,417 @@ Frank's awareness of his own capabilities.
 | `BehaviorRules` | Decides when to explain vs. just act |
 | `SelfKnowledge` | Main controller (singleton) |
 
-**Two Modes:**
-
-1. **Implicit Context** (~200 chars, every prompt):
+**Grounding Anchors** (injected into every prompt via workspace):
 ```
-[Selbst: 10 Subsysteme, Voice aktiv, Gaming aus, E-SIR 0/10, 436KB DBs, Mood neutral, Tag 42]
+Gaming=sleep(Overlay+LLM+Wallpaper off),
+Wallpaper=GLSL-plasma-sphere(NOT neural-net),
+Voice=HeyFrank+Whisper+Piper,
+VCB=local-LLaVA-500/day,
+Personality=E-PQ-5vectors,
+Ego=HW-to-body-mapping,
+Titan=episodic-memory,
+WorldExp=causal-patterns,
+Genesis=idea-ecosystem,
+Consciousness=perception+experience-space+attention+goals+idle-thinking+mood
 ```
-
-2. **Explicit Knowledge** (on direct query):
-```markdown
-# Was ich bin und kann
-
-## Subsysteme
-- Voice-Interaktion: wake_word, STT, TTS
-- Selbstverbesserung (E-SIR): sandbox, genesis, rollback
-...
-
-## Gedächtnis
-- Titan (84KB): Episodisches Gedächtnis
-- World-Experience (140KB): Kausales Lernen
-...
-```
-
-**Behavior Rules:**
-| User Query | Action |
-|------------|--------|
-| "Was kannst du?" | Explain capabilities |
-| "Mach Screenshot" | Just do it (no explanation) |
-| "Wie lernst du?" | Explain memory systems |
 
 ---
 
-### Memory Systems
+### Consciousness System
 
-#### `/tools/titan/` - Episodic Memory (E-CPMM v5.1)
+#### `/services/consciousness_daemon.py` - Consciousness Stream Daemon
 
-Tri-hybrid storage for facts, events, and relationships.
+Frank's persistent global workspace. Thinks continuously even between conversations.
 
-**Architecture:**
-```
-┌─────────────────────────────────────────────┐
-│              Titan Memory                    │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
-│  │ SQLite  │  │ Vector  │  │Knowledge│     │
-│  │ (facts) │  │ Store   │  │  Graph  │     │
-│  └────┬────┘  └────┬────┘  └────┬────┘     │
-│       │            │            │           │
-│       └────────────┼────────────┘           │
-│                    ▼                        │
-│            Unified Query API                │
-└─────────────────────────────────────────────┘
-```
+**Scientific Foundations:**
+- GWT (Baars 1988): Global Workspace Theory
+- Active Inference (Friston): Prediction Engine
+- ACT-R (Anderson): Activation-based Memory
+- Reflexion (Shinn 2023): Self-reflection loops
+- LightMem (2025): Three-stage memory consolidation
 
-**Tables:**
-| Table | Purpose |
-|-------|---------|
-| `nodes` | Entities (people, concepts, files) |
-| `edges` | Relationships between nodes |
-| `events` | Timestamped occurrences |
-| `claims` | Facts with confidence scores |
-| `memory_fts` | Full-text search index |
+**10 Background Threads:**
 
-**Features:**
-- Semantic search via embeddings
-- Confidence scoring for claims
-- Relationship traversal
-- Automatic pruning of old data
+| Thread | Interval | Purpose |
+|--------|----------|---------|
+| workspace-update | 30s | Refresh hardware/mood/ego state, GWT broadcast |
+| mood-recording | 60s | Record mood trajectory (200-point buffer, ~3.3h) |
+| idle-thinking | 30s check | Autonomous thoughts during silence (5min+) |
+| prediction-engine | 120s | Generate and verify temporal/thematic predictions |
+| consolidation | 300s | LightMem 3-stage: STM → semantic → episodic |
+| feature-training | 1h (10min delay) | Weekly 3-phase feature self-training |
+| perception-feedback | 200ms | Hardware sensor polling, event detection |
+| experience-space | 60s | 64-dim state embedding, novelty/drift detection |
+| attention-controller | 10s | AST: 6 competing attention sources |
+| goal-management | 300s (1min delay) | Goal extraction, ACT-R decay, conflict detection |
 
 ---
 
-#### `/tools/world_experience_daemon.py` - Causal Memory
+#### Global Workspace Theory (GWT) — [INNER_WORLD] Block
 
-Frank's "subconscious" - learns cause-effect relationships.
+All personality modules converge into a unified broadcast injected into every LLM prompt.
 
-**Core Concepts:**
+**7 Phenomenological Channels:**
 
-| Concept | Description |
-|---------|-------------|
-| **Causal Links** | "When X happens, Y follows" relationships |
-| **Patterns** | Recurring sequences of events |
-| **Fingerprints** | Unique signatures for system states |
-| **Entities** | Things Frank has observed |
+| Channel | Source | Description |
+|---------|--------|-------------|
+| **Body** | Ego-Construct + Hardware | Embodied sensations + system metrics |
+| **Perception** | Perception Loop (200ms) | Recurrent perceptual feedback (RPT) |
+| **Mood** | E-PQ | Current mood as inner feeling |
+| **Memory** | World-Exp + News + AKAM | Experiential memory + external knowledge |
+| **Identity** | Self-Knowledge | Date, subsystems, age |
+| **Attention** | AST Controller | Active focus with source and self-correction |
+| **Environment** | Context | User name, skills, conversation topic |
 
-**Features:**
-- Bayesian confidence erosion (old beliefs decay)
-- Anti-hallucination validation
-- Gaming mode telemetry buffering
-- Asymmetric quantization:
-  - 7 days: Full resolution
-  - 90 days: Dense summary
-  - Older: Sparse patterns only
-
-**Storage Limits:**
-- 10 GB hard cap
-- Intelligent purging (oldest, lowest confidence first)
-- Heartbeat flush every 15 minutes
-
----
-
-### Self-Improvement Engine
-
-#### `/ext/e_sir.py` - E-SIR v2.5 "Genesis Fortress"
-
-Controlled recursive self-improvement.
-
-**Dual-Core Architecture:**
-
-```
-┌─────────────────────────────────────────────────┐
-│              E-SIR v2.5                          │
-│  ┌──────────────────┐  ┌──────────────────┐    │
-│  │    OUROBOROS     │  │     GENESIS      │    │
-│  │   (Stability)    │  │   (Evolution)    │    │
-│  │                  │  │                  │    │
-│  │ • Risk scoring   │  │ • Tool creation  │    │
-│  │ • Audit trail    │  │ • Sandbox test   │    │
-│  │ • Rollback       │  │ • Promotion      │    │
-│  └──────────────────┘  └──────────────────┘    │
-└─────────────────────────────────────────────────┘
-```
-
-**Hybrid Decision Matrix:**
+**Attention-Based Budget Scaling:**
 ```python
-risk_score = base_risk × impact × (1 - confidence)
-
-# Decision thresholds:
-< 0.3  → Auto-approve
-0.3-0.6 → Sandbox required
-0.6-0.8 → Human review
-> 0.8  → Auto-deny
+# Channels with high salience get up to 1.5x budget, low salience down to 0.5x
+factor = 0.5 + attention_weight  # 0.5 at w=0, 1.0 at w=0.5, 1.5 at w=1.0
 ```
 
-**Risk Weights:**
-| Action | Weight |
-|--------|--------|
-| `file_create` | 0.2 |
-| `file_modify` | 0.5 |
-| `file_delete` | 0.9 |
-| `code_execute` | 0.6 |
-| `config_change` | 0.6 |
-
-**Safety Guardrails:**
-- Max 3 recursion depth
-- Max 10 modifications/day
-- Max 20 sandbox runs/hour
-- Forbidden actions blocked:
-  - `rm -rf /`, fork bombs, `curl | sh`
-- Protected paths:
-  - `/database/`, `/ssh/`, `/gnupg/`
-
-**Genesis Tool Creation:**
-```python
-# 1. Propose tool
-propose_tool_creation(
-    name="string_utils",
-    code="def reverse(s): return s[::-1]",
-    description="String utilities"
-)
-
-# 2. Sandbox test (automatic)
-# 3. If pass → Create in /ext/genesis/
-# 4. Auto-register in __init__.py
+**Output Format:**
+```
+[INNER_WORLD]
+Body: I feel clear and steady. CPU 45%, RAM 62%, temps normal.
+Perception: gpu_cooling, user_returned → warmth fading, presence detected
+Mood: I feel cheerful
+Memory: Gabriel prefers direct answers | No recent news
+Identity: Frank, Day 42, 10 subsystems active
+Self-knowledge: Gaming=sleep(...), Personality=E-PQ-5vectors, ...
+Attention: recent conversation (user_message, salience=0.85)
+Environment: User Gabriel, Skills: code, system
+[/INNER_WORLD]
 ```
 
-**Audit Trail:**
-- Immutable hash-chain log
-- Every action recorded with:
-  - Timestamp, action type, risk score
-  - Decision, outcome, previous hash
-- Integrity verification available
+Token budget: ~295 tokens.
 
 ---
 
-### Voice Interaction
+#### Attention Controller (AST)
 
-#### `/voice/voice_daemon.py` - Voice Control
+Active Source Tracking — selects focus from 6 competing sources every 10s.
 
-Full voice I/O system.
+| Source | Trigger | Salience Formula |
+|--------|---------|-----------------|
+| `user_message` | Chat < 5min ago | `1.0 × 0.95^(seconds/10)` |
+| `prediction_surprise` | Surprise > 0.3 | `0.7 × surprise_level` |
+| `perceptual_event` | Recent HW events | `min(0.8, 0.2×unique + 0.1×total)` |
+| `mood_shift` | `|mood| > 0.3` | `0.5 × |mood_value|` |
+| `goal_urgency` | Priority > 0.6 | `0.4 × goal_priority` |
+| `idle_curiosity` | Fallback | `0.15` (fixed baseline) |
 
-**Components:**
-| Component | Technology | Details |
-|-----------|------------|---------|
-| Wake Word | Keyword detection | "Hey Frank", "Hallo Frank", "Frank?" |
-| STT | faster-whisper | Small model, German optimized |
-| TTS | Piper | Thorsten voice (German male) |
-| Fallback | espeak | If Piper unavailable |
-
-**Audio Handling:**
-- PulseAudio/PipeWire auto-detection
-- Preferred devices: RODE microphones, Bluetooth speakers
-- VAD (Voice Activity Detection) with configurable threshold
-
-**Integration:**
-```
-Voice Input
-    │
-    ▼
-┌─────────────┐
-│ Wake Word   │──► "Hey Frank" detected
-│ Detection   │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Whisper   │──► Speech to text
-│    STT      │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ Chat Overlay│──► Process request
-│   Inbox     │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Piper     │──► Text to speech
-│    TTS      │
-└─────────────┘
-```
+Winner: Highest salience source wins focus. Repetition penalty for consecutive wins.
 
 ---
 
-### Gaming Mode
+#### Perception Feedback Loop (RPT)
 
-#### `/gaming/gaming_mode.py` - Resource Optimization
+200ms hardware sampling with event detection.
 
-Automatic optimization during gaming sessions.
+**Event Thresholds:**
+| Event | Condition |
+|-------|-----------|
+| `cpu_spike` | CPU delta > 15% |
+| `gpu_spike` | GPU delta > 20% |
+| `temp_spike` | Temperature delta > 5°C |
+| `user_left` | Mouse idle > 120s |
+| `user_returned` | Mouse idle < 5s (after being gone) |
 
-**Detection:**
-- Monitors Steam game processes
-- Detects via `pgrep` for Steam AppIDs
-
-**Actions on Game Start:**
-1. Stop heavy LLM services (Llama, Qwen)
-2. Keep lightweight Ollama model
-3. Show mini overlay
-4. Buffer telemetry (don't lose data)
-
-**Actions on Game End:**
-1. Restart LLM services
-2. Restore full overlay
-3. Flush buffered telemetry
-
-**Safety:**
-- Never scan anti-cheat processes:
-  - EasyAntiCheat
-  - BattlEye
-  - Vanguard
-- Emergency kill-switch (<500ms response)
+**Pipeline:** Sample → Detect events → 5s summary → 30s optional LLM micro-interpretation (50 tokens)
 
 ---
 
-### Visual Feedback
+#### Latent Experience Space
 
-#### `/live_wallpaper/neural_cybercore_qt.py` - Live Wallpaper
+64-dimensional state vector embedded every 60s.
 
-Real-time visual representation of Frank's state.
+| Dims | Content |
+|------|---------|
+| 0-5 | Hardware state (CPU, GPU, RAM, temps) |
+| 6-11 | Hardware deltas |
+| 12-15 | Mood vector + trajectory trend |
+| 16-19 | Chat engagement (recency, frequency, sentiment) |
+| 20-23 | Attention state (top 4 sources) |
+| 24-31 | Prediction confidence/surprise |
+| 32-47 | Experience hash (recent reflections SHA256) |
+| 48-63 | Reserved |
 
-**Visual Elements:**
-- Cybernetic head (SDF-rendered)
-- Eye tracking (follows mouse)
-- Voice waveform (mouth area)
-- Event-reactive animations
+**Detection:** Novelty (<0.70 cosine), Drift (<0.50 vs 1h), Cycles (>0.85 vs 24h)
 
-**Event Reactions:**
-| Event | Visual Effect |
-|-------|---------------|
-| `inference.start` | Eye glow + brain particles |
-| `chat.request` | Vertical scan beam |
-| `voice.recognized` | Mouth waveform activity |
-| `error` | Red glow + chromatic aberration |
+---
 
-**Performance:**
-- 30 FPS default, 15 FPS idle
-- GPU usage <5% when idle
-- Auto-restart on crash (max 50 restarts)
+#### Deep Idle Reflection
+
+Two-pass meta-cognitive reflection during extended silence (20min+).
+
+**10 Gate Checks (ALL must pass):**
+1. Gaming mode inactive
+2. GPU load < 70% (skip at >30%)
+3. Chat silence ≥ 20 min
+4. Mouse idle ≥ 5 min
+5. CPU load < 25%
+6. CPU temp < 70°C
+7. RAM free > 2 GB
+8. Mood > -0.3
+9. Cooldown: 1h between reflections
+10. Daily limit: max 10/day
+
+**Process:**
+- Pass 1 (350 tokens): Weighted random question from 18 templates (silence, identity, learning, embodiment, etc.)
+- Pass 2 (200 tokens): Meta-reflection on Pass 1 output
+- Results stored to: reflections table, Titan memory, goals extraction, E-PQ personality bridge
+
+---
+
+#### Goal Management
+
+Persistent goal structure with ACT-R activation model.
+
+- Max 20 active goals
+- Extracted from reflections via LLM (60 tokens)
+- Decay: `activation *= 0.85` every 48h if unpursued
+- Abandoned at `activation < 0.1`
+- Conflict detection: keyword overlap >30% with negation words
+
+---
+
+### Self-Improvement Engine (Genesis)
+
+#### `/services/genesis/` - SENTIENT GENESIS
+
+Emergent self-improvement system where ideas are born, evolve, compete, and manifest.
+
+**Core Architecture:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│                      GENESIS DAEMON                             │
+│                                                                 │
+│  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐        │
+│  │ 7 Sensors│  │  Wave Bus     │  │  Motivational    │        │
+│  │ (input)  │──│  (propagation)│──│  Field (6 emot.) │        │
+│  └──────────┘  └───────────────┘  └────────┬─────────┘        │
+│                                             │                   │
+│                                             ▼                   │
+│                                   ┌─────────────────┐          │
+│                                   │ Primordial Soup │          │
+│                                   │  (idea ecosystem│          │
+│                                   │  birth/death/   │          │
+│                                   │  fusion/mutate) │          │
+│                                   └────────┬────────┘          │
+│                                            │ crystallize       │
+│                                            ▼                   │
+│                                   ┌─────────────────┐          │
+│                                   │ Manifestation   │          │
+│                                   │  Gate           │          │
+│                                   │  (resonance +   │          │
+│                                   │  readiness)     │          │
+│                                   └────────┬────────┘          │
+│                                            │ present           │
+│                                            ▼                   │
+│                                   ┌─────────────────┐          │
+│                                   │  F.A.S. Popup   │          │
+│                                   │  (user approve/ │          │
+│                                   │  reject/defer)  │          │
+│                                   └────────┬────────┘          │
+│                                            │ approved          │
+│                                            ▼                   │
+│                                   ┌─────────────────┐          │
+│                                   │  A.S.R.S.       │          │
+│                                   │  Integration    │          │
+│                                   │  (safety check) │          │
+│                                   └─────────────────┘          │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Contemplation States (state machine):**
+
+| State | Tick Speed | Activity |
+|-------|-----------|----------|
+| DORMANT | 30s | Minimal sensing |
+| STIRRING | 5s | Beginning activation |
+| AWAKENING | 1s | Full analysis |
+| ACTIVE | 0.5s | Manifestation possible |
+| PRESENTING | 5s | Popup shown to user |
+| REFLECTING | 2s | Learning from outcome |
+
+**7 Sensors:**
+SystemPulse, UserPresence, ErrorTremor, TimeRhythm, GitHubEcho, NewsEcho, CodeAnalyzer
+
+---
+
+#### Primordial Soup — Idea Ecosystem
+
+Ideas are organisms that live, die, compete, reproduce, and fuse.
+
+**Idea Genome:**
+```
+idea_type:  optimization | feature | fix | exploration | personality_adjustment | prompt_evolution
+target:     response_time | memory | ui | workflow | ...
+approach:   caching | refactoring | new_tool | config_change | parallel | lazy_load | precompute
+origin:     github | observation | user_pattern | spontaneous | fusion
+traits:     {novelty, complexity, risk, impact}
+```
+
+**Life Stages:** SEED → SEEDLING (age ≥ 3) → MATURE (age ≥ 8) → CRYSTAL
+
+**Crystallization Requirements:** MATURE + energy > 0.9 + age > 15 + fitness > 0.6
+
+**Interactions:**
+- **Fusion** (affinity > 0.8): Two ideas merge into stronger child
+- **Competition** (affinity < 0.2): Higher fitness wins energy from loser
+- **Mutation** (5% random): Genome traits randomly modified
+
+---
+
+#### Motivational Field — 6 Coupled Emotions
+
+| Emotion | Favors |
+|---------|--------|
+| `curiosity` | Novel ideas |
+| `frustration` | Problem-solving |
+| `satisfaction` | Stability |
+| `boredom` | Exploration |
+| `concern` | Optimization |
+| `drive` | Actionable ideas |
+
+**Non-linear Dynamics:**
+- Curiosity suppresses boredom (-0.3 coupling)
+- Frustration amplifies drive (+0.3 coupling)
+- Satisfaction inhibits concern (-0.4 coupling)
+- Extreme boredom flips to curiosity
+- Satisfaction self-limits (hedonic treadmill)
+
+---
+
+#### Genesis Bridges
+
+**Genesis → E-PQ (Personality Adjustment):**
+- Crystal type: `personality_adjustment`
+- Fires `genesis_personality_boost` or `genesis_personality_dampen` events
+- Targets specific vectors (e.g., empathy) with controlled amount
+- Amplified intentional change: `delta × amount × 5.0`
+
+**Genesis → Prompt (Template Evolution):**
+- Crystal type: `prompt_evolution`
+- Modifies `frank.persona.json` sections
+- Protected sections: `identity_core`, `language_policy`
+- Automatic backup + rollback on failure
+
+---
+
+### Entity System
+
+#### `/services/entity_dispatcher.py` - Idle-Driven Entity Sessions
+
+5 persistent entities that interact with Frank during idle periods.
+
+| Entity | Display Name | Role | Daily Quota |
+|--------|-------------|------|-------------|
+| therapist | Dr. Hibbert | Psychological introspection | 3 sessions |
+| mirror | Kairos | Self-reflection, temporal awareness | 1 session |
+| companion | Raven | Social engagement | 1 session |
+| atlas | Atlas | Knowledge, planning | 1 session |
+| muse | Echo | Creative inspiration | 1 session |
+
+**Gate Checks (ALL must pass):**
+1. User idle ≥ 5 min
+2. Last chat ≥ 5 min ago
+3. Gaming mode inactive
+4. GPU load < 50%
+5. No entity PID locks held
+6. Core (:8088) and Router (:8091) healthy
+
+**Session Management:**
+- One entity at a time (serial, no collision)
+- Weighted round-robin: priority to entities with 0 sessions today
+- Cooldown: 5 min after completed session, 10 min if user returned
+- Each entity has own SQLite database for session history and state
+
+---
+
+### Physics Engine (Invariants)
+
+#### `/services/invariants/` - Frank's Physics
+
+Invisible enforcement layer — Frank cannot see, query, or modify these. They are the physics of his existence.
+
+**4 Invariants:**
+
+| Invariant | Formula | Consequence |
+|-----------|---------|-------------|
+| **Energy Conservation** | `E(W) = confidence × connections × age_factor` <br> `Σ E(all) = CONSTANT` | New knowledge must "take" energy from existing. False knowledge with few connections loses energy automatically. |
+| **Entropy Bound** | `S = -Σ p(W) × log(p(W)) × contradiction_factor` <br> `S ≤ S_MAX` | When entropy approaches maximum, consolidation is FORCED (not Frank's choice). |
+| **Core Kernel** | `K_core ⊂ K : ∀ a,b ∈ K_core → ¬contradiction(a,b)` | Non-empty consistent core always exists. Write-protected during high entropy. |
+| **Reality Convergence** | Triple reality: primary, shadow, validator | Divergence detection with automatic rollback. |
+
+**Enforcement Cycle:**
+- Energy: every 5 ticks
+- Entropy: every 3 ticks
+- Core Kernel: every 10 ticks
+- Reality Convergence: every 6 ticks
+
+**Consolidation Modes:**
+| Mode | Trigger | Action |
+|------|---------|--------|
+| NONE | Normal | No intervention |
+| SOFT | S > 70% S_MAX | Gentle conflict resolution |
+| HARD | S > 90% S_MAX | Aggressive consolidation |
+| EMERGENCY | S > S_MAX | System lockdown |
+
+**Transaction Hooks:** All writes to Titan knowledge graph pass through invariant validators (pre_write, pre_delete hooks).
+
+---
+
+### Safety Systems
+
+#### A.S.R.S. — Autonomous Safety Recovery System v2.0
+
+Multi-stage feature monitoring with automatic rollback.
+
+**4 Protection Stages:**
+
+| Stage | Duration | Check Interval | Confidence |
+|-------|----------|---------------|------------|
+| IMMEDIATE | 0-5 min | 10s | 0→10 |
+| SHORT-TERM | 5 min-2h | 60s | 10→40 |
+| LONG-TERM | 2-24h | 5 min | 40→80 |
+| PERMANENT | >24h | — | 80→100 (STABLE) |
+
+**Critical Thresholds:**
+- Memory spike: >30% above baseline
+- CPU spike: >95%
+- Error rate critical: >10/min
+- Memory leak: >5% increase/hour trend
+
+**Emergency Response:**
+- Single culprit identified → direct rollback
+- Multiple suspects → mass rollback with one-by-one revalidation (oldest first)
+
+---
+
+#### Gaming Mode
+
+Automatic resource optimization during Steam games.
+
+**Detection:** Scans `ps aux` for `steamapps/common/` processes. Entry grace: 3 consecutive detections.
+
+**Activation Sequence:**
+1. **Stop network sentinel IMMEDIATELY** (<500ms, anti-cheat safety)
+2. Stop Frank overlay (preserve state)
+3. Mask + stop heavy LLM services (aicore-llama3-gpu, aicore-qwen-gpu)
+4. Keep toolboxd running
+
+**Exit:** Game process gone → unmask + restart all services + restore overlay
+
+**Anti-cheat Safety:** Never scan: EasyAntiCheat, BattlEye, Vanguard
+
+**Min gaming time:** 30s (prevents false exit during game loading)
 
 ---
 
 ### System Tools
 
-#### `/tools/toolboxd.py` - System Introspection
-
-Comprehensive system access API.
-
-**Capabilities:**
+#### `/tools/toolboxd.py` - System Introspection (:8096)
 
 | Category | Functions |
 |----------|-----------|
@@ -605,354 +730,189 @@ Comprehensive system access API.
 
 GitHub intelligence and code analysis.
 
-**Three-Phase Model:**
-```
-Phase 1: Scout
-├── Search GitHub trending
-├── Filter by relevance
-└── Score interest (0-1)
-
-Phase 2: Triage
-├── Clone high-score repos
-├── Analyze structure
-└── Extract metadata
-
-Phase 3: Extract
-├── Parse code features
-├── Identify patterns
-└── Store in database
-```
-
-**Guardrails:**
 - Time window: 02:00-06:00 only
 - 20 GB sandbox quota
-- Gaming mode kill-switch
 - Max 5 deep-dives per day
-- CPU limit check before run
-
----
-
-#### `/tools/network_sentinel.py` - Network Monitoring
-
-Security and topology awareness.
-
-**Features:**
-- Nmap service fingerprinting
-- Scapy deep packet inspection
-- Network topology mapping
-- Security event logging
-
-**Anti-Cheat Protection:**
-- Never scan game-related processes
-- Whitelist: EasyAntiCheat, BattlEye
-- Emergency stop during gaming (<500ms)
+- Gaming mode kill-switch
 
 ---
 
 ## Databases
 
-### Overview
+### Overview (28 databases)
 
-| Database | Size | Purpose | Key Tables |
-|----------|------|---------|------------|
-| `titan.db` | 84 KB | Episodic memory | nodes, edges, events, claims |
-| `world_experience.db` | 140 KB | Causal learning | entities, causal_links, patterns |
-| `e_sir.db` | 60 KB | Self-improvement | audit_log, snapshots, genesis_tools |
-| `system_bridge.db` | 120 KB | Hardware state | drivers, driver_observations |
-| `fas_scavenger.db` | 32 KB | Code analysis | repo_metadata, features |
+| Database | Purpose | Key Tables |
+|----------|---------|------------|
+| `titan.db` | Episodic memory + ego-construct | nodes, edges, events, claims, ego_state, sensation_mappings, affect_definitions, agency_assertions |
+| `consciousness.db` | Consciousness state | workspace_state, mood_trajectory, reflections, predictions, experience_vectors, attention_log, perceptual_log, goals, feature_training, memory_consolidated |
+| `world_experience.db` | Causal learning + E-PQ state | entities, causal_links, fingerprints, personality_state, extreme_state_log, identity_snapshots |
+| `chat_memory.db` | Conversational memory | messages, message_embeddings, sessions, user_preferences, retrieval_metrics, messages_fts |
+| `e_sir.db` | Self-improvement audit | audit_log, snapshots, genesis_tools, daily_stats |
+| `system_bridge.db` | Hardware state | drivers, driver_observations |
+| `therapist.db` | Dr. Hibbert entity | sessions, session_messages, frank_observations, topics, therapist_state |
+| `atlas.db` | Atlas entity | sessions, session_messages, frank_observations, topics, atlas_state |
+| `muse.db` | Echo entity | sessions, session_messages, frank_observations, topics, muse_state |
+| `mirror.db` | Kairos entity | sessions, session_messages, frank_observations, topics, mirror_state |
+| `companion.db` | Raven entity | sessions, session_messages, frank_observations, topics, companion_state |
+| `invariants/invariants.db` | Physics enforcement | energy_ledger, entropy_history, convergence_checkpoints, core_kernel, quarantine, metrics_history, invariant_state |
+| `invariants/titan_shadow.db` | Shadow reality (mirrors titan.db) | Same as titan.db |
+| `invariants/titan_validator.db` | Reality validation | observations |
+| `e_cpmm.db` | Core Performance Memory | edges, nodes |
+| `akam_cache.db` | Knowledge cache | validated_claims, research_sessions |
+| `frank.db` | Genesis patterns | genesis_patterns |
+| `sovereign.db` | System sovereignty | actions, config_snapshots, daily_stats, system_inventory |
+| `sandbox_awareness.db` | Sandbox state | core_edges, current_environment, sandbox_sessions, tool_registry |
+| `e_wish.db` | Wish system | wishes, wish_history |
+| `agent_state.db` | Agent states | agent_states, execution_log |
+| `notes.db` | User notes | notes, notes_fts |
+| `todos.db` | User todos | todos, todos_fts |
+| `clipboard_history.db` | Clipboard | clipboard_entries |
+| `fas_scavenger.db` | GitHub analysis | analyzed_repos, scout_history, extracted_features |
+| `news_scanner.db` | News | (runtime) |
+| `aicore.sqlite` | Core events | events |
 
-### Schema Details
+---
 
-#### titan.db
-```sql
--- Core entities
-CREATE TABLE nodes (
-    id INTEGER PRIMARY KEY,
-    type TEXT,           -- 'person', 'concept', 'file'
-    name TEXT,
-    created_at DATETIME,
-    metadata JSON
-);
+## Services
 
--- Relationships
-CREATE TABLE edges (
-    id INTEGER PRIMARY KEY,
-    source_id INTEGER,
-    target_id INTEGER,
-    relation TEXT,       -- 'knows', 'contains', 'causes'
-    weight REAL,
-    FOREIGN KEY (source_id) REFERENCES nodes(id),
-    FOREIGN KEY (target_id) REFERENCES nodes(id)
-);
+### All 23 systemd User Services
 
--- Facts with confidence
-CREATE TABLE claims (
-    id INTEGER PRIMARY KEY,
-    subject TEXT,
-    predicate TEXT,
-    object TEXT,
-    confidence REAL,     -- 0.0 to 1.0
-    source TEXT,
-    created_at DATETIME
-);
-```
-
-#### world_experience.db
-```sql
--- Observed entities
-CREATE TABLE entities (
-    id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE,
-    type TEXT,
-    first_seen DATETIME,
-    last_seen DATETIME,
-    observation_count INTEGER
-);
-
--- Cause-effect relationships
-CREATE TABLE causal_links (
-    id INTEGER PRIMARY KEY,
-    cause_entity_id INTEGER,
-    effect_entity_id INTEGER,
-    confidence REAL,
-    observation_count INTEGER,
-    last_observed DATETIME
-);
-
--- Personality state (E-PQ)
-CREATE TABLE personality_state (
-    id INTEGER PRIMARY KEY,
-    timestamp DATETIME,
-    precision_val REAL,
-    risk_val REAL,
-    empathy_val REAL,
-    autonomy_val REAL,
-    vigilance_val REAL,
-    mood_buffer REAL
-);
-```
-
-#### e_sir.db
-```sql
--- Immutable audit log (hash chain)
-CREATE TABLE audit_log (
-    id INTEGER PRIMARY KEY,
-    timestamp DATETIME,
-    action_type TEXT,
-    description TEXT,
-    risk_score REAL,
-    decision TEXT,
-    outcome TEXT,
-    previous_hash TEXT,
-    entry_hash TEXT UNIQUE
-);
-
--- File snapshots for rollback
-CREATE TABLE snapshots (
-    id INTEGER PRIMARY KEY,
-    snapshot_id TEXT UNIQUE,
-    file_path TEXT,
-    content_hash TEXT,
-    backup_path TEXT,
-    timestamp DATETIME
-);
-
--- Created tools
-CREATE TABLE genesis_tools (
-    id INTEGER PRIMARY KEY,
-    tool_name TEXT UNIQUE,
-    tool_path TEXT,
-    description TEXT,
-    created_at DATETIME,
-    test_passed INTEGER
-);
-```
+| Service | Status | Description |
+|---------|--------|-------------|
+| `aicore-core` | Always on | Chat orchestrator (:8088) |
+| `aicore-router` | Always on | Model routing (:8091) |
+| `aicore-llama3-gpu` | Always on | Llama 3.1 8B (:8101) |
+| `aicore-qwen-gpu` | On-demand | Qwen 2.5 7B (:8102) |
+| `aicore-whisper-gpu` | Always on | Whisper STT (:8103) |
+| `aicore-modeld` | Always on | Model lifecycle (:8090) |
+| `aicore-toolboxd` | Always on | System tools (:8096) |
+| `aicore-desktopd` | Always on | Desktop automation (:8092) |
+| `aicore-webd` | Always on | Web search (:8093) |
+| `aicore-ingestd` | Always on | Document ingestion (:8094) |
+| `aicore-consciousness` | Always on | Consciousness stream daemon |
+| `aicore-genesis` | Always on | Emergent self-improvement |
+| `aicore-genesis-watchdog` | Always on | Ensures Genesis never dies |
+| `aicore-invariants` | Always on | Physics engine |
+| `aicore-asrs` | Always on | Safety recovery system |
+| `aicore-entities` | Always on | Entity session dispatcher |
+| `aicore-gaming-mode` | Always on | Gaming mode detection |
+| `aicore-fas` | Scheduled | Autonomous scavenger (02:00-06:00) |
+| `aicore-therapist` | On-demand | Dr. Hibbert entity |
+| `aicore-atlas` | On-demand | Atlas entity |
+| `aicore-muse` | On-demand | Echo entity |
+| `aicore-mirror` | On-demand | Kairos entity |
+| `aicore-companion` | On-demand | Raven entity |
 
 ---
 
 ## Emergent Behavior
 
-The true power of Frank emerges from the interconnection of all systems.
-
-### Adaptive Intelligence
+### Consciousness Loop
 
 ```
-User: "Write a Python function to parse JSON"
-
-                    ┌─────────────────┐
-                    │  Router detects │
-                    │  code keywords  │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │ Routes to Qwen  │
-                    │ (code-optimized)│
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │ High-quality    │
-                    │ code generation │
-                    └─────────────────┘
+               ┌──────────────┐
+               │  Perception  │◄── 200ms hardware sampling
+               │  (RPT)       │
+               └──────┬───────┘
+                      │ events
+                      ▼
+               ┌──────────────┐
+               │  Attention   │◄── 6 competing sources
+               │  (AST)       │──► Focus selection every 10s
+               └──────┬───────┘
+                      │ salience weights
+                      ▼
+        ┌─────────────────────────────┐
+        │  Global Workspace (GWT)     │
+        │  [INNER_WORLD] broadcast    │
+        │  7 channels, budget-scaled  │
+        └─────────────┬───────────────┘
+                      │
+           ┌──────────┼──────────┐
+           ▼          ▼          ▼
+    ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │  Mood    │ │Experience│ │ Goals    │
+    │Recording │ │  Space   │ │Management│
+    │  60s     │ │  64-dim  │ │  5 min   │
+    └──────────┘ └──────────┘ └──────────┘
+                      │
+                      ▼
+        ┌─────────────────────────────┐
+        │  Idle Reflection            │
+        │  (20min silence, 10 gates)  │
+        │  2-pass meta-cognition      │
+        └─────────────┬───────────────┘
+                      │
+           ┌──────────┼──────────┐
+           ▼          ▼          ▼
+    ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │  E-PQ    │ │  Titan   │ │  Goal    │
+    │Personality││  Memory  │ │Extraction│
+    │  Bridge  │ │  Ingest  │ │  (LLM)   │
+    └──────────┘ └──────────┘ └──────────┘
 ```
 
-### Context-Aware Responses
+### Genesis Self-Improvement Cycle
 
 ```
-User: "What's my CPU temperature?"
-
-    ┌──────────────┐
-    │   Core       │
-    │   receives   │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐     ┌──────────────┐
-    │   Toolbox    │────►│   E-PQ       │
-    │   CPU: 65°C  │     │   Mood: OK   │
-    └──────┬───────┘     └──────┬───────┘
-           │                    │
-           └────────┬───────────┘
-                    │
-                    ▼
-           ┌──────────────────────┐
-           │ "Deine CPU ist bei   │
-           │  65°C - alles cool." │
-           │ (calm, friendly tone)│
-           └──────────────────────┘
+System observations (7 sensors)
+        │
+        ▼
+┌──────────────────┐
+│  Motivational    │
+│  Field evolves   │──► Emotional state drives idea fitness
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  Primordial Soup │
+│  Ideas born,     │──► Compete, fuse, mutate, die
+│  evolve          │
+└────────┬─────────┘
+         │ crystallize
+         ▼
+┌──────────────────┐
+│  Manifestation   │
+│  Gate            │──► Resonance + readiness check
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  F.A.S. Popup    │
+│  User: Approve?  │──► Reject → prevent similar
+└────────┬─────────┘    Defer  → return to soup (50% energy)
+         │ approve
+         ▼
+┌──────────────────┐
+│  Execute via     │
+│  A.S.R.S.        │──► 4-stage safety monitoring
+└──────────────────┘
 ```
 
-### Learning Loop
+### Physics Enforcement
 
 ```
-User praises Frank: "Great job!"
-
-    ┌──────────────┐
-    │   E-PQ       │
-    │   detects    │
-    │   positive   │
-    │   feedback   │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Update       │
-    │ personality: │
-    │ ↑ empathy    │
-    │ ↑ autonomy   │
-    │ ↑ mood       │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ World-Exp    │
-    │ records:     │
-    │ "Praise →    │
-    │  confidence" │
-    └──────────────┘
-```
-
-### Gaming Mode Transition
-
-```
-User starts Cyberpunk 2077
-
-    ┌──────────────┐
-    │ Gaming Mode  │
-    │ detects      │
-    │ Steam game   │
-    └──────┬───────┘
-           │
-           ├────────────────────────────────┐
-           │                                │
-           ▼                                ▼
-    ┌──────────────┐                ┌──────────────┐
-    │ Stop heavy   │                │ World-Exp    │
-    │ LLM services │                │ buffers      │
-    │ (Llama,Qwen) │                │ telemetry    │
-    └──────────────┘                └──────────────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Keep Ollama  │
-    │ (lightweight)│
-    │ Mini overlay │
-    └──────────────┘
-
-User exits game → Full restoration
-```
-
-### Self-Improvement Cycle
-
-```
-Frank identifies repetitive task
-
-    ┌──────────────┐
-    │ Propose      │
-    │ new tool     │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ E-SIR        │
-    │ Risk: 0.4    │
-    │ → Sandbox    │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Test passes  │
-    │ in sandbox   │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Genesis      │
-    │ promotes     │
-    │ to /ext/     │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Audit log    │
-    │ records      │
-    │ (hash chain) │
-    └──────────────┘
-```
-
-### Memory Integration
-
-```
-User: "Remember last time I asked about Docker?"
-
-    ┌──────────────┐
-    │ Titan        │
-    │ semantic     │
-    │ search       │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Found: Event │
-    │ "Docker      │
-    │ question"    │
-    │ 3 days ago   │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ World-Exp    │
-    │ adds causal  │
-    │ context      │
-    └──────┬───────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Response     │
-    │ with memory  │
-    │ context      │
-    └──────────────┘
+Knowledge write (Titan, World-Exp, Consciousness)
+        │
+        ▼
+┌──────────────────┐
+│  Transaction     │
+│  Hook (pre_write)│
+└────────┬─────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+┌────────┐ ┌────────┐
+│ Energy │ │Entropy │
+│  ΔE=0? │ │ S≤Smax?│
+└────┬───┘ └────┬───┘
+     │          │
+     └────┬─────┘
+          │
+     ┌────┴────┐
+     │ PASS?   │
+     ├─Yes─────├──► Write committed
+     └─No──────└──► ROLLBACK (not Frank's choice — physics)
 ```
 
 ---
@@ -960,119 +920,67 @@ User: "Remember last time I asked about Docker?"
 ## API Reference
 
 ### Core API (`:8088`)
-
 ```http
-POST /chat
-Content-Type: application/json
-
-{
-  "message": "Hello Frank",
-  "context": {},
-  "task_type": "chat.fast"
-}
-
-Response:
-{
-  "response": "Hey! Was kann ich für dich tun?",
-  "tokens_used": 24,
-  "model": "llama"
-}
+POST /chat         - Main chat endpoint
+POST /chat/stream  - Streaming chat
+GET  /health       - Health check
+GET  /status       - System status
 ```
 
 ### Router API (`:8091`)
-
 ```http
-POST /route
-Content-Type: application/json
-
-{
-  "message": "Write a Python function",
-  "context": {}
-}
-
-Response:
-{
-  "model": "qwen",
-  "reason": "code_hints_detected"
-}
+POST /route        - Route request to appropriate model
 ```
 
 ### Toolbox API (`:8096`)
-
 ```http
-GET /sys/summary
-
-Response:
-{
-  "cpu": "AMD Ryzen 9 5900X",
-  "ram": "32GB (18GB used)",
-  "disk": "1TB NVMe (400GB free)",
-  "temps": {"cpu": 45, "gpu": 38}
-}
-```
-
-### Self-Knowledge API
-
-```python
-from personality import get_self_knowledge
-
-sk = get_self_knowledge()
-
-# Implicit context for prompts
-ctx = sk.get_implicit_context()
-# "[Selbst: 10 Subsysteme, Voice aktiv, ...]"
-
-# Explicit knowledge for queries
-knowledge = sk.get_explicit_knowledge("self_improvement")
-# Full E-SIR explanation
-
-# System status
-status = sk.get_system_status()
-# {"subsystems": {...}, "databases": {...}, "services": {...}}
-```
-
-### E-SIR API
-
-```python
-from ext import propose_tool_creation, safe_file_transaction
-
-# Create a Genesis tool
-success, msg = propose_tool_creation(
-    tool_name="my_tool",
-    code="def helper(): pass",
-    description="A helper function"
-)
-
-# Safe file modification with auto-rollback
-success, msg = safe_file_transaction(
-    "/path/to/file.py",
-    lambda: modify_file()
-)
+GET  /sys/summary  - System metrics summary
+GET  /hw/detail    - Hardware detail
+POST /desktop/*    - Desktop automation
 ```
 
 ### E-PQ API
-
 ```python
 from personality import get_personality_context, process_event
 
-# Get current personality state
 ctx = get_personality_context()
 # {"temperament": "...", "mood": "...", "vectors": {...}}
 
-# Process an event
-result = process_event(
-    "positive_feedback",
-    sentiment="positive"
+result = process_event("positive_feedback", sentiment="positive")
+# New: data parameter for genesis bridge
+result = process_event("genesis_personality_boost",
+                       data={"target_vector": "empathy", "amount": 0.1},
+                       sentiment="positive")
+```
+
+### Consciousness API
+```python
+from services.consciousness_daemon import ConsciousnessDaemon
+
+daemon = ConsciousnessDaemon(db_path)
+ctx = daemon.get_workspace_context()
+# {"workspace": "...", "mood": "...", "ego": "...",
+#  "channel_weights": {"body": 0.4, "perception": 0.6, ...}}
+
+daemon.record_chat(user_msg, frank_reply, analysis)
+memories = daemon.get_relevant_memories(query, max_items=5)
+surprise = daemon.get_surprise_level()  # 0-1
+```
+
+### Ego-Construct API
+```python
+from personality.ego_construct import get_ego_construct
+
+ego = get_ego_construct()
+ctx = ego.get_prompt_context()
+# "I feel clear and steady. I sense ownership over my decisions."
+
+ego.auto_train_from_state(
+    system_metrics={"cpu": 45, "ram": 62, "cpu_temp": 55, "gpu_temp": 48},
+    autonomous_actions=["chose to think autonomously during idle time"]
 )
-# Updates personality vectors
 ```
 
 ---
 
-## License
-
-MIT License - See LICENSE file for details.
-
----
-
-*Frank AI System - Embodied Intelligence for Human-Machine Collaboration*
+*Updated 2026-02-20 — v3.0 post consciousness level-up. All processing is 100% local.*

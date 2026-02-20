@@ -2,15 +2,18 @@
 
 ## Executive Summary
 
-Frank's memory system is **layered and distributed** across multiple SQLite databases and Python services, implementing a sophisticated multi-tier approach combining:
-- **Chat Memory** (ephemeral conversation history with FTS5 semantic search)
-- **Episodic Memory** (Titan: knowledge graph + vector embeddings)
-- **Personality/Procedural Memory** (E-PQ: emotional state evolution)
-- **Consciousness Stream** (continuous workspace monitoring + mood tracking)
-- **World Experience** (causal learning from system observations)
-- **Pattern Memory** (temporal/causal anticipation)
+Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 6+ SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
 
-**No external databases or vector stores** — everything is local SQLite + in-process Python objects.
+### Core Capabilities
+
+- **Hybrid Chat Search**: FTS5 keyword + MiniLM-L6-v2 vector cosine + RRF fusion
+- **Dynamic Context Budget**: Cosine-similarity channel boosting, proportional allocation with minimums
+- **Unified MemoryHub**: Single query API across 5 memory layers with RRF fusion + budget packing
+- **Session Compression**: Auto-close idle sessions (30min), batch LLM summarization with keyword fallback
+- **User Preference Learning**: Bilingual regex extraction (DE+EN), confidence-weighted, UNIQUE(key, value)
+- **Titan Integrity**: FK ON + CASCADE, 24h node protection, nightly consistency daemon
+- **Retrieval Metrics**: Per-query logging (sources, latency, chars), nightly pruning
+- **Shared Embeddings**: Single MiniLM-L6-v2 instance (~90MB) used by Chat, Titan, and Budget Allocator
 
 ---
 
@@ -18,81 +21,77 @@ Frank's memory system is **layered and distributed** across multiple SQLite data
 
 ```
                     USER INPUT
-                        │
-                        ▼
-        ┌───────────────────────────────────┐
-        │   OVERLAY UI (chat_mixin.py)      │
-        │   - Receives user message         │
-        │   - Builds context from history   │
-        │   - Personality injection         │
-        └─────────────┬─────────────────────┘
-                      │
-                      ▼
-        ┌──────────────────────────────────────┐
-        │  Context Building Layer               │
-        │  - ChatMemoryDB.build_smart_context() │
-        │  - Titan episodic retrieval           │
-        │  - E-PQ personality context          │
-        │  - Consciousness workspace state     │
-        │  - World Experience causal knowledge │
-        └─────────────┬──────────────────────────┘
-                      │
-                      ▼
-        ┌──────────────────────────────────┐
-        │  CORE API (core/app.py :8088)    │
-        │  - Routes to Router API          │
-        │  - Enrichment (hardware, Darknet)│
-        │  - Output-Feedback-Loop          │
-        └─────────────┬────────────────────┘
-                      │
-                      ▼
-        ┌──────────────────────────────────┐
-        │  ROUTER API (:8091)              │
-        │  - Routes to Llama or Qwen       │
-        │  - Instruct prompt wrapping      │
-        │  - Memory pressure control       │
-        └─────────────┬────────────────────┘
-                      │
-                      ▼
-        ┌──────────────────────────────────┐
-        │  LLM Inference                   │
-        │  - Llama 3 Instruct              │
-        │  - Qwen 2.5 Instruct (ChatML)    │
-        └─────────────┬────────────────────┘
-                      │
-                      ▼
-        ┌─────────────────────────────────────┐
-        │  Output Processing                  │
-        │  - Save to chat_memory.db           │
-        │  - Titan ingestion (episodic)       │
-        │  - Consciousness daemon recording   │
-        │  - E-PQ self-feedback loop          │
-        │  - World Experience causal update   │
-        └─────────────┬───────────────────────┘
-                      │
-                      ▼
-        ┌──────────────────────────────────┐
-        │  UI Display (overlay)            │
-        │  - Message bubbles               │
-        │  - Wallpaper events              │
-        └──────────────────────────────────┘
+                        |
+                        v
+        +---------------------------------------+
+        |   OVERLAY UI (chat_mixin.py)          |
+        |   - Receives user message             |
+        |   - Embeds query (MiniLM-L6-v2)       |
+        |   - Dynamic budget allocation         |
+        |   - Preference injection              |
+        +------------------+--------------------+
+                           |
+                           v
+        +------------------------------------------+
+        |  Context Building Layer                   |
+        |                                           |
+        |  EmbeddingService  --> query_vec (384d)   |
+        |       |                                   |
+        |       v                                   |
+        |  allocate_budget() --> per-channel chars   |
+        |       |                                   |
+        |       v                                   |
+        |  build_workspace(budget=...)              |
+        |    +- Chat: _hybrid_search_history()      |
+        |    +- Titan: retrieve() [tri-hybrid]      |
+        |    +- Consciousness: ACT-R activation     |
+        |    +- World Exp: causal patterns          |
+        |    +- E-PQ: personality context           |
+        |    +- Preferences: top-5 learned prefs    |
+        +------------------+------------------------+
+                           |
+                           v
+        +------------------------------------------+
+        |  CORE API (core/app.py :8088)             |
+        |  - Routes to Router API                   |
+        |  - system = get_frank_identity()          |
+        +------------------+------------------------+
+                           |
+                           v
+        +------------------------------------------+
+        |  ROUTER API (:8091)                       |
+        |  - Routes to Llama or Qwen                |
+        |  - Instruct prompt wrapping               |
+        +------------------+------------------------+
+                           |
+                           v
+        +------------------------------------------+
+        |  LLM RESPONSE --> saved to:               |
+        |    +- chat_memory.db (message + embedding)|
+        |    +- titan.db (entities, relations)       |
+        |    +- consciousness.db (experience vec)    |
+        |    +- world_experience.db (E-PQ update)    |
+        |    +- user_preferences (regex extraction)  |
+        |    +- retrieval_metrics (query stats)       |
+        +-------------------------------------------+
 ```
 
 ---
 
-## Layer 1: Chat Memory (Conversational)
+## Layer 1: Chat Memory (Conversational + Semantic)
 
 ### Location
 - **File**: `services/chat_memory.py`
-- **Database**: `database/chat_memory.db` (376 KB)
+- **Database**: `database/chat_memory.db`
 
 ### Schema
+
 ```sql
 -- Main message store
 CREATE TABLE messages (
     id          INTEGER PRIMARY KEY,
     session_id  TEXT NOT NULL,
-    role        TEXT NOT NULL,       -- 'user', 'frank', etc.
+    role        TEXT NOT NULL,       -- 'user', 'frank', 'system'
     sender      TEXT NOT NULL,       -- 'Du', 'Frank'
     text        TEXT NOT NULL,
     is_user     INTEGER NOT NULL,
@@ -101,7 +100,7 @@ CREATE TABLE messages (
     created_at  TEXT NOT NULL
 );
 
--- Session tracking
+-- Session tracking with auto-summarization
 CREATE TABLE sessions (
     session_id      TEXT PRIMARY KEY,
     started_at      TEXT NOT NULL,
@@ -110,51 +109,100 @@ CREATE TABLE sessions (
     summary         TEXT DEFAULT ''
 );
 
--- Full-text search (FTS5)
-CREATE VIRTUAL TABLE messages_fts
-    USING fts5(text, content=messages, content_rowid=id);
+-- Semantic embeddings (MiniLM-L6-v2, 384-dim float32)
+CREATE TABLE message_embeddings (
+    message_id  INTEGER PRIMARY KEY,
+    embedding   BLOB NOT NULL,       -- 384 x float32 = 1536 bytes
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+-- Learned user preferences
+CREATE TABLE user_preferences (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    key             TEXT NOT NULL,       -- 'dislikes', 'prefers', 'habit'
+    value           TEXT NOT NULL,       -- normalized: strip + lower + collapse whitespace
+    confidence      REAL DEFAULT 0.7,
+    source          TEXT,                -- 'pattern' or 'llm_extract'
+    created_at      TEXT NOT NULL,
+    last_confirmed  TEXT,
+    UNIQUE(key, value)
+);
+
+-- Query performance tracking
+CREATE TABLE retrieval_metrics (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_hash      TEXT,
+    sources_used    TEXT,               -- JSON: {"chat_fts": 2, "titan": 1}
+    chars_injected  INTEGER,
+    budget_chars    INTEGER,
+    latency_ms      INTEGER,
+    timestamp       REAL
+);
+
+-- Full-text search (keyword matching)
+CREATE VIRTUAL TABLE messages_fts USING fts5(text, content=messages, content_rowid=id);
 ```
 
 ### Key Methods
 
 ```python
 class ChatMemoryDB:
-    # Storage
+    # Storage (inline-embeds + preference-extraction on every message)
     store_message(session_id, role, sender, text, is_user, is_system) -> int
 
-    # Retrieval
-    get_recent_messages(limit: int = 50) -> List[dict]
-    get_session_messages(session_id, limit=100) -> List[dict]
+    # Hybrid search: FTS5 + Vector cosine + RRF fusion (K=60)
+    _hybrid_search_history(query, limit=5, exclude_recent=10) -> List[dict]
 
-    # Context building (for LLM prompt injection)
-    build_smart_context(query: str, recent_count: int = 5, max_chars: int = 2000) -> str
+    # Context assembly (uses hybrid search internally)
+    build_smart_context(query, recent_count=5, max_chars=2000) -> str
 
-    # Search
-    _search_relevant_history(query: str, limit=3, exclude_recent=10) -> List[dict]
+    # Embedding backfill (crash-safe via backfill_state.json)
+    backfill_embeddings(batch_size=64, max_seconds=60.0) -> int
 
     # Session management
-    start_session(session_id)
-    end_session(session_id)
+    close_idle_sessions(idle_minutes=30) -> int
+    get_sessions_for_summarization(limit=3) -> List[dict]
     store_session_summary(session_id, summary)
 
-    # Maintenance
-    cleanup_old_messages(retention_days: int = 30) -> int
-    get_stats() -> dict
+    # Preferences
+    get_top_preferences(limit=5) -> List[dict]
+
+    # Metrics
+    record_retrieval_metric(query_hash, sources_used, chars_injected, budget_chars, latency_ms)
+    get_retrieval_stats(days=7) -> dict
 ```
 
-### Context Building Strategy
+### Hybrid Search Algorithm
 
-When building context for LLM inference:
-1. **Recent messages** (5 last, up to 800 chars) — Direct context
-2. **Relevant history** (FTS5 match, up to 600 chars) — Semantic search of older messages
-3. **Session summaries** (up to 3 recent, up to 400 chars) — Long-term memory
+```
+Query: "Wird es morgen regnen?"
 
-**Total budget**: ~2000 chars of history injected per query
+1. FTS5 Search (keyword)
+   - Matches: "regnen", "morgen", "Wetter"
+   - Returns ranked results by BM25 score
 
-### Integration Points
+2. Vector Search (semantic)
+   - Embed query -> 384-dim vector
+   - Cosine similarity against message_embeddings
+   - Returns top-20 candidates
+   - Finds: "Wie ist das Wetter?" (no keyword overlap!)
 
-- **Chat UI** (`overlay/mixins/chat_mixin.py`): Calls `build_smart_context()` before sending to core API
-- **Agents** (`ext/atlas_agent.py`, `therapist_agent.py`, etc.): Direct DB access for conversation state
+3. RRF Fusion (K=60)
+   - For each result ID:
+     score = 1/(60 + fts_rank) + 1/(60 + vector_rank)
+   - Sort by fused score descending
+   - Return top-N
+
+Performance: ~30ms per query (20ms embed + 1ms search + 10ms FTS5)
+```
+
+### Embedding Backfill
+
+- Runs on startup in background thread (non-blocking)
+- Batch size: 64 messages per cycle, 0.5s sleep between batches
+- Crash-safe: `backfill_state.json` tracks `last_message_id`
+- Timeout: max 60s total, resumes next startup
+- Progress logging every 5 batches
 
 ---
 
@@ -164,40 +212,23 @@ When building context for LLM inference:
 - **Files**: `tools/titan/`
   - `titan_core.py` — Main orchestrator
   - `storage.py` — Tri-hybrid storage (SQLite + vectors + graph)
-  - `ingestion.py` — Text extraction (Architect)
-  - `retrieval.py` — Context assembly (Retriever)
-  - `maintenance.py` — Pruning & cleanup
-- **Database**: `database/titan.db` (1.9 MB)
+  - `ingestion.py` — Claim extraction (pattern-based)
+  - `retrieval.py` — Context assembly (tri-hybrid search)
+  - `maintenance.py` — Pruning, decay, protection lifecycle
+- **Database**: `database/titan.db`
 
-### Architecture: Tri-Hybrid Storage
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    TITAN CORE                           │
-│  (Orchestrator: ingest → architect → storage)           │
-└────────┬─────────────────┬──────────────┬───────────────┘
-         │                 │              │
-         ▼                 ▼              ▼
-    ┌────────┐        ┌─────────┐    ┌──────────────┐
-    │ SQLite │        │ Vectors │    │ Knowledge    │
-    │ Ledger │        │ Store   │    │ Graph        │
-    │        │        │ (in-mem)│    │              │
-    │- Nodes │        │ Model:  │    │ - Entities   │
-    │- Edges │        │ MiniLM  │    │ - Relations  │
-    │- Claims│        │ -L6-v2  │    │ - Confidence │
-    └────────┘        └─────────┘    └──────────────┘
-```
-
-### SQLite Schema
+### Schema
 
 ```sql
+PRAGMA foreign_keys = ON;   -- Prevents orphaned edges
+
 CREATE TABLE nodes (
     id              TEXT PRIMARY KEY,
     type            TEXT,           -- 'entity', 'concept', 'event', 'claim', 'code'
     label           TEXT,
     created_at      TEXT,
     protected       BOOLEAN DEFAULT FALSE,
-    metadata        TEXT            -- JSON
+    metadata        TEXT            -- JSON: {confidence, unprotect_after, ...}
 );
 
 CREATE TABLE edges (
@@ -207,7 +238,9 @@ CREATE TABLE edges (
     confidence      REAL,
     origin          TEXT,           -- 'user', 'code', 'inference'
     created_at      TEXT,
-    UNIQUE(src_id, dst_id, relation)
+    UNIQUE(src_id, dst_id, relation),
+    FOREIGN KEY (src_id) REFERENCES nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (dst_id) REFERENCES nodes(id) ON DELETE CASCADE
 );
 
 CREATE TABLE claims (
@@ -222,22 +255,57 @@ CREATE TABLE claims (
 );
 ```
 
-### Retrieval Strategy
+### Architecture: Tri-Hybrid Storage
+
+```
++-----------------------------------------------------------+
+|                    TITAN CORE                               |
+|  (Orchestrator: ingest -> architect -> storage)            |
++---------+-----------------+-----------------+--------------+
+          |                 |                 |
+          v                 v                 v
+    +----------+      +-----------+     +--------------+
+    |  SQLite  |      |  Vectors  |     |  Knowledge   |
+    |  Ledger  |      |  Store    |     |  Graph       |
+    |          |      |  (in-mem) |     |              |
+    | - Nodes  |      |  Model:   |     | - Entities   |
+    | - Edges  |      |  Shared   |     | - Relations  |
+    | - Claims |      |  Embed-   |     | - Confidence |
+    | - FTS    |      |  ding-    |     |   decay      |
+    |          |      |  Service  |     |              |
+    +----------+      +-----------+     +--------------+
+```
+
+### Protection Mechanism (NEW)
+
+New nodes receive 24h protection against premature pruning:
 
 ```python
-Retriever (retrieval.py):
-  input: query_text, limit=5
+# ingestion.py: Memory chunks get protected status
+metadata = {
+    "confidence": max(base_confidence, 0.8),
+    "protected": True,
+    "unprotect_after": (now + timedelta(hours=24)).isoformat()
+}
 
-  ├─ Vector search: Cosine similarity against all node embeddings
-  ├─ FTS search: SQLite full-text match on claim_text
-  ├─ Graph expansion: Follow 1-hop relations from matched nodes
-  └─ Confidence decay: score = base_confidence * 2^(-age_days/7)
-
-  Uses RRF (Reciprocal Rank Fusion) to combine signals:
-    final_score = 1/(k + vector_rank) + 1/(k + fts_rank) + 1/(k + graph_rank)
-
-  Filter: Only include items where effective_confidence > 0.15
+# maintenance.py: _unprotect_expired_nodes() runs before decay
+# Checks metadata.unprotect_after, removes protection after 24h window
 ```
+
+### Maintenance Engine
+
+| Parameter | Value |
+|-----------|-------|
+| Confidence decay half-life | 7 days |
+| Prune threshold | confidence < 0.2 AND age > 7 days |
+| Max nodes (soft) | 10,000 |
+| Max nodes (hard) | 50,000 |
+| Protection window | 24 hours |
+| Maintenance interval | 1 hour |
+
+### Shared Embedding Model
+
+Titan's `VectorStore._get_model()` now uses the shared `EmbeddingService` singleton instead of loading its own model instance. Saves ~90MB RAM.
 
 ---
 
@@ -245,7 +313,7 @@ Retriever (retrieval.py):
 
 ### Location
 - **File**: `personality/e_pq.py`
-- **Database**: `database/world_experience.db` (294 KB)
+- **Database**: `database/world_experience.db`
 
 ### 5 Continuous Personality Vectors (-1.0 to 1.0)
 
@@ -257,67 +325,39 @@ Retriever (retrieval.py):
 | `autonomy_val` | Dependent | Independent |
 | `vigilance_val` | Relaxed | Anxious |
 
-Plus transient mood buffer and confidence anchor.
-
 ### Update Mechanism
 
 ```python
-# Adaptive learning rate (decays with age)
 learning_rate = BASE_LEARNING_RATE * (AGE_DECAY_FACTOR ** days_since_creation)
 
-# Event-weighted update
 EVENT_WEIGHTS = {
-    "chat": 0.2,
-    "voice_interaction": 0.3,
-    "positive_feedback": 0.3,
-    "negative_feedback": 0.4,
-    "task_success": 0.3,
-    "task_failure": 0.5,
-    "self_confident": 0.15,
-    "self_uncertain": 0.1,
-    "self_creative": 0.2,
-    "self_empathetic": 0.15,
-    # ... 15+ types total
+    "chat": 0.2, "voice_interaction": 0.3,
+    "positive_feedback": 0.3, "negative_feedback": 0.4,
+    "task_success": 0.3, "task_failure": 0.5,
+    # ... 15+ types
 }
 ```
-
-### Integration
-
-- **Core API**: Calls `_fb_process_event()` in output-feedback-loop
-- **Response analyzer**: Detects personality indicators in Frank's own responses
-- **Chat mixin**: Injects E-PQ context via `get_personality_context()`
 
 ---
 
 ## Layer 4: Consciousness Stream (Continuous Monitoring)
 
 ### Location
-- **File**: `services/consciousness_daemon.py` (27.7 KB)
-- **Database**: `database/consciousness.db` (496 KB)
+- **File**: `services/consciousness_daemon.py`
+- **Database**: `database/consciousness.db`
 - **Runs as**: User systemd service `aicore-consciousness.service`
 
-### Tables
+### Components
 
-| Table | Purpose | Refresh Rate |
-|-------|---------|-------------|
-| `workspace_state` | Current workspace snapshot | 30s |
-| `experience_vectors` | HOT-4 consciousness embedding (64-dim) | 60s |
-| `mood_trajectory` | Mood x confidence over time | 60s |
-| `reflections` | Inner monologue | On trigger |
-| `goals` | Active goals/intentions | On change |
-| `predictions` | Anticipations + validation | On trigger |
-| `perceptual_log` | 200ms sensor ticks | 200ms |
-| `memory_consolidated` | Working → long-term chunks | 6h |
-
-### Key Components
-
-1. **Workspace State (GWT)**: CPU, GPU, temperature, mouse idle, network — refreshes every 30s
-2. **Experience Vectors (HOT-4)**: 64-dim embedding, novelty/drift tracking, `similarity = exp(-age_days/30)`
-3. **Mood Trajectory**: 200-point buffer (~3.3 hours), samples from E-PQ mood buffer
-4. **Perceptual Loop**: 200ms hardware sampling, event detection (CPU delta > 15%, GPU > 20%, Temp > 5C)
-5. **Reflection / Inner Monologue**: Triggered by deep questions, 120-token internal thought, max 1 per 120s
-6. **Prediction Engine**: Records anticipations + truth values, learns from success/failure
-7. **Sleep Consolidation**: Every 6h, summarizes recent experience vectors → long-term
+| Component | Purpose | Refresh |
+|-----------|---------|---------|
+| Workspace State (GWT) | CPU, GPU, temp, network | 30s |
+| Experience Vectors (HOT-4) | 64-dim embedding, novelty tracking | 60s |
+| Mood Trajectory | 200-point buffer (~3.3h) | 60s |
+| Perceptual Loop | 200ms hardware sampling | 200ms |
+| Reflections | Inner monologue (120 tokens) | On trigger, max 1/120s |
+| Predictions | Anticipation + truth tracking | On trigger |
+| Sleep Consolidation | Working -> long-term chunks | 6h |
 
 ---
 
@@ -325,13 +365,7 @@ EVENT_WEIGHTS = {
 
 ### Location
 - **File**: `tools/world_experience_daemon.py`
-- **Database**: `database/world_experience.db` (294 KB)
-
-### Concept
-
-Learns **causal relationships** from system observations:
-- "When CPU spikes, GPU often follows"
-- "RAM pressure → UI lag"
+- **Database**: `database/world_experience.db`
 
 ### Schema
 
@@ -368,11 +402,9 @@ CREATE TABLE fingerprints (
 ```
 
 ### Features
-
 - **Bayesian Erosion**: Epsilon = 0.01, 5-minute batch window
-- **Quantization Tiers**: Raw (0-7d) → Dense 4-bit (8-90d) → Sparse Bayesian (>90d)
+- **Quantization Tiers**: Raw (0-7d) -> Dense 4-bit (8-90d) -> Sparse Bayesian (>90d)
 - **Size Enforcement**: Hard cap 10 GB, quantize at 8 GB, purge at 9 GB
-- **Gaming Telemetry**: 1 GB RAM ring-buffer at 5 Hz during gaming sessions
 
 ---
 
@@ -383,69 +415,240 @@ CREATE TABLE fingerprints (
 
 ### Pattern Types
 
+| Type | Trigger | Minimum Observations |
+|------|---------|---------------------|
+| Temporal | Frequency > 30% at hour | 5 |
+| Causal | Sequence within 5 min | 3 |
+
+- Success rate: EMA `rate = 0.7 * rate + 0.3 * correct`
+- Cleanup: Prune if `success_rate < 0.2` after 10+ occurrences
+
+---
+
+## Cross-Layer Services
+
+### Shared Embedding Service
+
+**File**: `services/embedding_service.py`
+
 ```python
-Pattern:
-  - pattern_type: 'temporal' | 'causal' | 'behavioral'
-  - conditions: Dict      # When does it apply?
-  - prediction: str       # What does it predict?
-  - confidence: float     # 0-1
-  - success_rate: float   # How often correct?
-  - occurrences: int      # Times observed
+class EmbeddingService:
+    """Singleton, thread-safe MiniLM-L6-v2 wrapper. ~90MB RAM, lazy-loaded."""
+
+    embed_text(text: str) -> np.ndarray          # 384-dim
+    embed_batch(texts: list, batch_size=64) -> np.ndarray
+    cosine_similarity(vec_a, vec_b) -> float
+    cosine_search(query_vec, vectors, ids, top_k=10) -> List[Tuple[str, float]]
 ```
 
-- **Temporal**: Group by hour, trigger if frequency > 30% and count >= 5
-- **Causal**: Sequences within 5 minutes, trigger if count >= 3
-- **Success rate**: EMA `rate = 0.7 * rate + 0.3 * correct`
-- **Cleanup**: Prune if `success_rate < 0.2` after 10+ occurrences
+Used by: ChatMemoryDB (hybrid search), Titan VectorStore, Context Budget Allocator
+
+### Unified Memory Hub
+
+**File**: `services/memory_hub.py`
+
+```python
+@dataclass
+class MemoryItem:
+    text: str
+    source: str          # 'chat_fts', 'chat_vector', 'titan', 'consciousness',
+                         # 'world_exp', 'preference'
+    confidence: float
+    timestamp: float     # Unix timestamp (unified across all layers)
+    rrf_score: float
+    pack_score: float    # rrf_score * recency_penalty
+
+@dataclass
+class MemoryResult:
+    items: List[MemoryItem]
+    total_chars: int
+    sources_used: Dict[str, int]   # {"chat_fts": 2, "titan": 1, ...}
+    latency_ms: float
+
+class MemoryHub:
+    """Unified query across all 5 memory layers with RRF fusion."""
+
+    def query(self, text, budget_chars=1000, source_attribution=True) -> MemoryResult:
+        all_items  = self._query_chat(text)           # Hybrid FTS5 + vector
+        all_items += self._query_titan(text)           # Knowledge graph
+        all_items += self._query_consciousness(text)   # ACT-R activation
+        all_items += self._query_world_exp(text)       # Causal patterns
+        all_items += self._query_preferences(text)     # Learned user prefs
+
+        fused = self._reciprocal_rank_fusion(all_items)
+        return self._pack_to_budget(fused, budget_chars)
+
+    def _pack_to_budget(self, items, budget_chars) -> MemoryResult:
+        """Greedy packing: rrf_score * recency_penalty, highest first."""
+        # pack_score = rrf_score * (0.95 ^ (age_hours / 24))
+        # Pack items until budget exhausted, truncate last if >50 chars remain
+```
+
+### Dynamic Context Budget
+
+**File**: `ui/overlay/context_budget.py`
+
+```python
+CHANNEL_PRIORITIES = {
+    "recent_conversation": 0.9,    # Always important
+    "semantic_matches":    0.7,    # +0.3 * cosine(query, history_summary)
+    "titan_memory":        0.4,    # +0.3 * cosine(query, titan_summary)
+    "ego_mood_identity":   0.3,    # Fixed (personality always relevant)
+    "world_experience":    0.2,    # +0.3 * cosine(query, world_summary)
+    "news_akam":           0.0,    # +0.8 when triggered
+}
+
+CHANNEL_MINIMUMS = {
+    "recent_conversation": 200,
+    "ego_mood_identity":   80,
+}
+
+def allocate_budget(total_chars, channels, query_vec=None) -> Dict[str, int]:
+    """Proportional allocation with cosine-similarity boosting."""
+    # 1. Compute effective priority per channel
+    #    If query_vec and summary_vec available: base + 0.3 * cosine_similarity
+    # 2. Normalize proportionally
+    # 3. Enforce minimums, cap total
+
+class ChannelSummaryCache:
+    """Cached summary embeddings per channel, refreshed every 60 min."""
+    TTL = 3600  # seconds
+    # Embeds: last 5 messages, last 3 session summaries, top-10 Titan nodes,
+    #         active causal links
+```
+
+### User Preference Extraction
+
+**File**: `services/preference_extractor.py`
+
+```python
+def extract_preferences(text: str) -> List[Tuple[str, str]]:
+    """Bilingual regex extraction (DE + EN). ~1ms per message."""
+
+# Patterns:
+#   Dislikes: "ich mag kein X", "hasse X", "bitte nie X", "finde X nervig"
+#   Prefers:  "bevorzuge X", "mag lieber X", "finde X gut"
+#   Habits:   "mach immer X", "will grundsaetzlich X"
+#   English:  "don't like X", "prefer X", "always X"
+#
+# Values normalized: strip + lower + collapse whitespace
+# Min 3 chars, max 200 chars, deduplicated
+# Stored with confidence=0.6 (regex), 0.85 (future LLM extractor)
+```
+
+### Memory Consistency Daemon
+
+**File**: `services/memory_consistency.py`
+
+```python
+class MemoryConsistencyDaemon:
+    """Nightly cross-layer integrity checks (max 1x per 24h)."""
+
+    def run_nightly(self) -> dict:
+        self._check_titan_orphans()       # DELETE edges without nodes
+        self._check_embedding_gaps()      # Backfill missing embeddings
+        self._prune_old_metrics()         # Remove retrieval_metrics > 30 days
+        self._collect_stats()             # Cross-layer DB statistics
+        return health_report
+```
+
+Integrated into `persistence_mixin._memory_maintenance_timer()` (runs hourly).
+
+---
+
+## Session Management
+
+### Lifecycle
+
+```
+Session Start (boot_id based)
+     |
+     v
+Messages stored (inline embed + preference extract)
+     |
+     v
+Idle > 30 min  -->  close_idle_sessions()  -->  Session ended
+     |
+     v
+Batch summarization (up to 3 sessions per cycle)
+  +- LLM summarization (primary, ~30s timeout)
+  +- Keyword extraction (fallback if LLM fails)
+     |
+     v
+Old messages archived (retention: 30 days)
+```
+
+### Maintenance Timer
+
+```python
+# persistence_mixin.py - runs every 60 minutes
+def _memory_maintenance_timer(self):
+    1. close_idle_sessions(idle_minutes=30)        # Auto-close stale sessions
+    2. _batch_session_summaries(max_sessions=3)    # LLM + keyword fallback
+    3. cleanup_old_messages(retention_days=30)      # Archive old messages
+    4. MemoryConsistencyDaemon.run_nightly()        # Cross-layer checks (1x/day)
+```
 
 ---
 
 ## Complete Data Flow Example
 
 ```
-1. USER INPUT: "What were we talking about yesterday?"
+1. USER INPUT: "Was haben wir ueber Wetter gesprochen?"
 
-2. CONTEXT BUILDING:
-   ├─ ChatMemoryDB.build_smart_context("yesterday conversation")
-   │  ├─ Get recent 5 messages (800 chars)
-   │  ├─ FTS5 search for "conversation" (600 chars)
-   │  └─ Include session summaries (400 chars)
-   │
-   ├─ Titan.retrieve("yesterday conversation")
-   │  ├─ Vector search + FTS on claims + Graph expansion
-   │  └─ Return top 5 nodes (confidence > 0.15)
-   │
-   ├─ E-PQ.get_personality_context()
-   └─ Consciousness.get_workspace_state()
+2. EMBEDDING:
+   query_vec = EmbeddingService.embed_text("Was haben wir ueber Wetter gesprochen?")
+   -> 384-dim float32 vector
 
-3. CORE API (POST /chat):
+3. BUDGET ALLOCATION:
+   allocate_budget(
+       total_chars = (MAX_TOKENS - user_tokens - overhead) * CHARS_PER_TOKEN,
+       channels = {channel: summary_vec for each},
+       query_vec = query_vec
+   )
+   -> {"recent_conversation": 900, "semantic_matches": 500, "titan_memory": 300, ...}
+
+4. CONTEXT BUILDING (workspace with budget):
+   +- Chat: _hybrid_search_history("Wetter")
+   |  +- FTS5: finds "Wetter", "regnen"          (keyword match)
+   |  +- Vector: finds "Wird es morgen sonnig?"   (semantic match, no keyword overlap!)
+   |  +- RRF fusion: merged ranking
+   |
+   +- Titan: retrieve("Wetter")
+   |  +- Vector + FTS + Graph expansion
+   |  +- Returns nodes: "Wetter_Berlin", "Regen_Vorhersage"
+   |
+   +- Consciousness: get_relevant_memories("Wetter")
+   +- World Experience: context_inject("Wetter")
+   +- E-PQ: get_personality_context()
+   +- Preferences: get_top_preferences(5) -> "dislikes: lange antworten"
+
+5. CORE API (POST /route/stream):
    payload = {
-       "text": "[context]\nUser: What were we talking about yesterday?",
+       "text": "[INNER_WORLD]...[/INNER_WORLD]\nUser: Was haben wir ueber Wetter gesprochen?",
        "system": get_frank_identity()
    }
 
-4. ROUTER routes to Llama/Qwen, wraps in instruct format
-
-5. LLM RESPONSE → saved to:
-   ├─ chat_memory.db (message row)
-   ├─ titan.db (entities, relations, embeddings)
-   ├─ world_experience.db (E-PQ personality update)
-   ├─ consciousness.db (experience vector, mood point)
-   └─ journal/{date}.jsonl (raw event log)
+6. LLM RESPONSE saved to:
+   +- chat_memory.db     (message + 384-dim embedding)
+   +- titan.db           (extracted entities/relations, protected 24h)
+   +- consciousness.db   (experience vector, mood point)
+   +- world_experience.db (E-PQ personality update)
+   +- retrieval_metrics  (query stats: sources, latency, chars)
 ```
 
 ---
 
 ## Database Summary
 
-| Database | Size | Purpose | Refresh |
-|----------|------|---------|---------|
-| `chat_memory.db` | 376 KB | Messages + FTS5 search | Per message |
-| `consciousness.db` | 496 KB | Workspace, mood, reflections | 30s/60s |
-| `world_experience.db` | 294 KB | E-PQ personality + causal links | Per event |
-| `titan.db` | 1.9 MB | Episodic knowledge graph + vectors | Per response |
-| `notes.db` | 28 KB | User notes | On edit |
-| `todos.db` | 28 KB | Task list | On edit |
+| Database | Purpose | Key Tables | Refresh |
+|----------|---------|------------|---------|
+| `chat_memory.db` | Messages, embeddings, preferences, metrics | messages, message_embeddings, user_preferences, retrieval_metrics, sessions | Per message |
+| `titan.db` | Episodic knowledge graph + vectors | nodes, edges, claims, memory_fts | Per response |
+| `consciousness.db` | Workspace state, mood, reflections | workspace_state, experience_vectors, mood_trajectory | 30s/60s |
+| `world_experience.db` | E-PQ personality + causal links | entities, causal_links, fingerprints | Per event |
+| `e_cpmm.db` | Core Performance Memory Matrix | | On update |
+| `e_sir.db` | Situational Information Retrieval | | On update |
 
 ---
 
@@ -456,9 +659,9 @@ Pattern:
 identity = get_frank_identity()  # personality.build_system_prompt()
 
 router_payload = {
-    "text": grounded_text,       # User query + assembled context
+    "text": grounded_text,       # User query + assembled workspace context
     "n_predict": max_tokens,
-    "system": identity,          # CRITICAL: system prompt passed here
+    "system": identity,          # CRITICAL: system prompt passed as 'system' parameter
 }
 ```
 
@@ -468,114 +671,108 @@ System prompt source:
 def build_system_prompt(runtime_context=None) -> str:
     """Build from:
     1. frank.persona.json (static identity)
-    2. E-PQ (personality state)
+    2. E-PQ (personality state vectors)
     3. Ego-Construct (agency/embodiment)
-    4. Runtime context (current workspace state)
+    4. Runtime context (workspace state)
     """
 ```
-
----
-
-## What Exists vs What's Missing
-
-### Implemented
-
-| Layer | Component | Status |
-|-------|-----------|--------|
-| Chat Memory | FTS5, sessions, smart context | Complete |
-| Episodic Memory | Titan knowledge graph + vectors | Complete |
-| Personality | E-PQ 5-vector + mood + confidence | Complete |
-| Consciousness | Workspace, HOT-4, mood arc, reflections | Complete |
-| World Experience | Causal graph + Bayesian erosion | Complete |
-| Pattern Memory | Temporal/causal anticipation | Complete |
-
-### Missing / Needs Work
-
-1. **Vector Embeddings for Chat** — Messages are plaintext, FTS5 is keyword-based not semantic
-2. **Unified Cross-Layer Search** — Each layer operates independently, no unified query API
-3. **Session Summarization** — No automatic compression of old chat sessions
-4. **Dynamic Token Budget** — Fixed ~2000 char context, no priority ranking
-5. **Long-term Chat Decay** — Titan/E-PQ have decay, but chat messages are equally weighted
-6. **User Preferences Memory** — No dedicated store for learning user corrections/preferences
-
----
-
-## Recommendations
-
-### 1. Unified Memory Bridge
-
-```python
-# services/memory_bridge.py
-class MemoryBridge:
-    def query_context(self, query, max_tokens=2000,
-                      recency_weight=0.6, relevance_weight=0.4) -> str:
-        """Retrieve & rank context from ALL layers."""
-
-    def consolidate_session(self, session_id, summary) -> None:
-        """Compress old session into summary + key entities."""
-```
-
-### 2. Semantic Chat History
-
-```sql
-ALTER TABLE messages ADD COLUMN embedding BLOB;  -- MiniLM-L6-v2 (384-dim)
-```
-
-### 3. Session Summarization Daemon
-
-Daily cron: pull old sessions → LLM summarize → store summary → archive messages
-
-### 4. Attention-Weighted Context Selection
-
-Score each memory fragment by `recency * 0.6 + relevance * 0.3 + importance * 0.1`, pack until token budget exhausted.
 
 ---
 
 ## Final Architecture Diagram
 
 ```
-                    ┌─────────────────────────────────┐
-                    │   FRANK MEMORY SYSTEM v1.0      │
-                    │     (Multi-Layer Persistence)   │
-                    └────────────┬────────────────────┘
-                                 │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-        ▼                        ▼                        ▼
-    ┌────────────┐          ┌──────────┐          ┌──────────────┐
-    │Chat Memory │          │Episodic  │          │Personality   │
-    │(FTS5)      │          │Memory    │          │State         │
-    │            │          │(Titan)   │          │(E-PQ)        │
-    │- Messages  │          │- Nodes   │          │- 5 vectors   │
-    │- Sessions  │          │- Edges   │          │- Mood buffer │
-    │- Summaries │          │- Claims  │          │- Confidence  │
-    │ 376 KB     │          │- Vectors │          │ 294 KB       │
-    └────────────┘          │ 1.9 MB   │          └──────────────┘
-                            └──────────┘
-                                 │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-        ▼                        ▼                        ▼
-    ┌──────────────┐        ┌──────────────┐      ┌─────────────┐
-    │Consciousness │        │World Exp.    │      │Patterns     │
-    │Stream        │        │(Causal)      │      │(Temporal)   │
-    │              │        │              │      │             │
-    │- Workspace   │        │- Entities    │      │- Temporal   │
-    │- Mood arc    │        │- Relations   │      │- Causal     │
-    │- Experience  │        │- Fingerprints│      │- Success    │
-    │  vectors     │        │ 294 KB       │      │  rates      │
-    │- Reflections │        └──────────────┘      └─────────────┘
-    │ 496 KB       │
-    └──────────────┘
-                    │
-             ┌──────▼───────┐
-             │ Output-      │
-             │ Feedback-    │
-             │ Loop         │
-             │ (background) │
-             └──────────────┘
+                    +-------------------------------------+
+                    |    FRANK MEMORY SYSTEM v2.0          |
+                    |   (Multi-Layer Semantic Persistence) |
+                    +-----------------+-------------------+
+                                      |
+            +-------------------------+---------------------------+
+            |                         |                           |
+            v                         v                           v
+    +----------------+        +---------------+          +----------------+
+    | Chat Memory    |        | Episodic      |          | Personality    |
+    | (Hybrid Search)|        | Memory        |          | State          |
+    |                |        | (Titan)       |          | (E-PQ)         |
+    | - Messages     |        | - Nodes       |          | - 5 vectors    |
+    | - Embeddings   |        | - Edges (FK)  |          | - Mood buffer  |
+    | - FTS5         |        | - Claims      |          | - Confidence   |
+    | - Preferences  |        | - Vectors     |          +----------------+
+    | - Metrics      |        | - FTS         |
+    +----------------+        +---------------+
+            |                         |
+            +----------+--------------+
+                       |
+                       v
+              +-----------------+
+              | EmbeddingService|
+              | (Shared         |
+              |  MiniLM-L6-v2)  |
+              |  ~90MB, singleton|
+              +-----------------+
+                       |
+            +----------+----------+
+            |                     |
+            v                     v
+    +----------------+    +----------------+
+    | MemoryHub      |    | Context Budget |
+    | (Unified Query)|    | (Dynamic       |
+    |                |    |  Allocation)   |
+    | 5-layer RRF    |    | Cosine-boost   |
+    | fusion +       |    | per channel    |
+    | budget packing |    +----------------+
+    +----------------+
+            |
+            +---------------------------+---------------------------+
+            |                           |                           |
+            v                           v                           v
+    +----------------+          +----------------+          +---------------+
+    | Consciousness  |          | World Exp.     |          | Patterns      |
+    | Stream         |          | (Causal)       |          | (Temporal)    |
+    |                |          |                |          |               |
+    | - Workspace    |          | - Entities     |          | - Temporal    |
+    | - Mood arc     |          | - Causal links |          | - Causal      |
+    | - Experience   |          | - Fingerprints |          | - Success     |
+    |   vectors      |          +----------------+          |   rates       |
+    | - Reflections  |                                      +---------------+
+    +----------------+
+            |
+    +-------v--------+
+    | Consistency    |
+    | Daemon         |
+    | (Nightly)      |
+    |                |
+    | - Titan orphans|
+    | - Embed gaps   |
+    | - Metrics prune|
+    | - Health report|
+    +----------------+
 ```
 
 ---
 
-*Generated 2026-02-20 — All persistence is 100% local, no external databases or APIs.*
+## File Index
+
+| File | Purpose |
+|------|---------|
+| `services/chat_memory.py` | Chat persistence, hybrid search, preferences, metrics |
+| `services/embedding_service.py` | Shared MiniLM-L6-v2 singleton |
+| `services/memory_hub.py` | Unified cross-layer query API |
+| `services/memory_consistency.py` | Nightly integrity checks |
+| `services/preference_extractor.py` | Bilingual regex preference extraction |
+| `ui/overlay/context_budget.py` | Dynamic budget allocator + channel cache |
+| `ui/overlay/workspace.py` | Workspace assembly (budget-aware) |
+| `ui/overlay/mixins/chat_mixin.py` | Chat flow: embed -> budget -> workspace -> API |
+| `ui/overlay/mixins/persistence_mixin.py` | Session management, maintenance timer |
+| `tools/titan/titan_core.py` | Titan orchestrator |
+| `tools/titan/storage.py` | Tri-hybrid storage (FK ON, CASCADE) |
+| `tools/titan/ingestion.py` | Claim extraction, 24h node protection |
+| `tools/titan/retrieval.py` | Titan retrieval (vector + FTS + graph) |
+| `tools/titan/maintenance.py` | Confidence decay, protection lifecycle, pruning |
+| `personality/e_pq.py` | 5-vector personality state |
+| `services/consciousness_daemon.py` | Continuous workspace/mood monitoring |
+| `tools/world_experience_daemon.py` | Causal learning from observations |
+
+---
+
+*Updated 2026-02-20 — v2.0 post memory system upgrade. All persistence is 100% local, no external databases or APIs.*

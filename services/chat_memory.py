@@ -239,7 +239,7 @@ class ChatMemoryDB:
             lines = []
             chars = 0
             for m in recent:
-                role = "User" if m["is_user"] else "Frank"
+                role = "User" if m["is_user"] else (m.get("sender") or "Frank")
                 text = m["text"]
                 if len(text) > 200:
                     text = text[:200] + "..."
@@ -261,7 +261,7 @@ class ChatMemoryDB:
                 chars = 0
                 for m in relevant:
                     age = self._format_age(m["timestamp"])
-                    role = "User" if m["is_user"] else "Frank"
+                    role = "User" if m["is_user"] else (m.get("sender") or "Frank")
                     text = m["text"]
                     if len(text) > 150:
                         text = text[:150] + "..."

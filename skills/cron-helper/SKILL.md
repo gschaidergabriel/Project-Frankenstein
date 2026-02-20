@@ -2,7 +2,7 @@
 name: cron-helper
 description: Cron-Jobs und systemd Timer — Erstellen, Erklaeren, Debuggen von geplanten Aufgaben
 version: 1.0
-keywords: [cron, crontab, cronjob, timer, systemd timer, zeitplan, schedule, geplante aufgabe, alle 5 minuten, taeglich, woechentlich, monatlich, at, scheduled task, oncalendar]
+keywords: [cron, crontab, cronjob, systemd timer, zeitplan, schedule, geplante aufgabe, alle 5 minuten, taeglich, woechentlich, monatlich, scheduled task, oncalendar]
 user-invocable: true
 timeout_s: 25
 risk_level: 0.0

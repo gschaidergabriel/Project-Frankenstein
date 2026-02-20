@@ -195,11 +195,19 @@ class LoadedSkill:
         self.instructions = instructions  # SKILL.md body for openclaw
 
         # Build keyword regex from keywords list
+        # Use word boundaries for short keywords (<5 chars) to prevent
+        # false positives (e.g. "at" matching inside "atlas")
         keywords = meta.get("keywords", [])
         if keywords:
-            escaped = [re.escape(kw) for kw in keywords]
+            parts = []
+            for kw in keywords:
+                escaped = re.escape(kw)
+                if len(kw) < 5:
+                    parts.append(r"\b" + escaped + r"\b")
+                else:
+                    parts.append(escaped)
             self.keyword_re = re.compile(
-                r"(?:" + "|".join(escaped) + r")", re.IGNORECASE
+                r"(?:" + "|".join(parts) + r")", re.IGNORECASE
             )
         else:
             self.keyword_re = None

@@ -1017,8 +1017,20 @@ DESKTOP
 # Update icon cache
 gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
-# Pin to GNOME dock
+# ── GNOME desktop configuration ──
 if command -v gsettings &>/dev/null; then
+    echo "  Configuring GNOME desktop..."
+
+    # Dark mode
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+
+    # Dock: left side, extended, fixed icon size
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'LEFT' 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock extend-height true 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock icon-size-fixed true 2>/dev/null || true
+
+    # Pin Frank & Writer to dock
     CURRENT_FAVS=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "[]")
     NEEDS_UPDATE=false
 

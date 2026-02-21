@@ -57,7 +57,7 @@ def _on_esc(key):
             _EMERGENCY_STOP = True
             print("\n⚠️  ESC - NOTFALL-STOPP!")
             return False
-    except:
+    except Exception:
         pass
 
 
@@ -140,7 +140,7 @@ Antworte NUR mit dem JSON, kein anderer Text!"""
         try:
             r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
             return r.status_code == 200
-        except:
+        except Exception:
             return False
 
     def log(self, msg: str, level: str = "INFO"):
@@ -188,7 +188,7 @@ Antworte NUR mit dem JSON, kein anderer Text!"""
                 subprocess.run(["wmctrl", "-ia", self.frank_window["wid"]], timeout=3)
                 time.sleep(0.3)
                 return True
-            except:
+            except Exception:
                 pass
         return False
 
@@ -200,7 +200,7 @@ Antworte NUR mit dem JSON, kein anderer Text!"""
                 capture_output=True, text=True, timeout=3
             )
             return "frank" in result.stdout.strip().lower()
-        except:
+        except Exception:
             return False
 
     def take_screenshot(self) -> Optional[Image.Image]:

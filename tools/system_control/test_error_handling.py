@@ -654,7 +654,7 @@ class TestErrorLogging(unittest.TestCase):
                 # Should log the error
                 try:
                     scanner.scan()
-                except:
+                except Exception:
                     pass
 
         # Verify error was logged

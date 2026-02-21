@@ -814,7 +814,7 @@ def get_system_status() -> Dict[str, Any]:
     try:
         result = http_post(f"{TOOLBOX_URL}/system/summary", {}, timeout=10)
         return result if result.get("ok") else {}
-    except:
+    except Exception:
         return {}
 
 
@@ -892,7 +892,7 @@ def load_state() -> Optional[TrainingState]:
             with open(STATE_FILE) as f:
                 data = json.load(f)
                 return TrainingState(**data)
-        except:
+        except Exception:
             pass
     return None
 

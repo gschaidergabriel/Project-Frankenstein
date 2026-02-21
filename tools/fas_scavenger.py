@@ -205,7 +205,7 @@ class QuotaWarden:
                     try:
                         meta = json.loads(meta_file.read_text())
                         interest_score = meta.get("interest_score", 0.0)
-                    except:
+                    except Exception:
                         pass
 
                 repos.append({
@@ -247,7 +247,7 @@ class SafetyGuard:
             if GAMING_STATE_FILE.exists():
                 data = json.loads(GAMING_STATE_FILE.read_text())
                 return data.get("active", False)
-        except:
+        except Exception:
             pass
         return False
 
@@ -264,7 +264,7 @@ class SafetyGuard:
                     load = float(f.read().split()[0])
                     # Estimate percent (rough)
                     return min(100, load * 10)
-            except:
+            except Exception:
                 return 50.0  # Assume moderate load if can't detect
 
     @staticmethod
@@ -626,7 +626,7 @@ class GitHubScout:
             else:
                 STASIS_FILE.unlink()
                 return False
-        except:
+        except Exception:
             return False
 
     def search_repos(self, topic: str, max_results: int = 10) -> List[RepoMetadata]:
@@ -673,7 +673,7 @@ class GitHubScout:
             import base64
             try:
                 return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
-            except:
+            except Exception:
                 pass
         return ""
 
@@ -688,7 +688,7 @@ class GitHubScout:
                 import base64
                 try:
                     return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
-                except:
+                except Exception:
                     pass
         return ""
 
@@ -994,7 +994,7 @@ class FeatureSandbox:
             try:
                 if test_dir.exists():
                     shutil.rmtree(test_dir)
-            except:
+            except Exception:
                 pass
 
         return result
@@ -1556,7 +1556,7 @@ class FAS:
                     try:
                         shutil.rmtree(repo_dir)
                         LOG.info(f"Cleaned up {repo.full_name} after analysis")
-                    except:
+                    except Exception:
                         pass
 
         # Log scout history

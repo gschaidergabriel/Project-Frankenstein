@@ -289,7 +289,7 @@ class EPQ:
                     birth = datetime.fromisoformat(first_row["birth"].replace("Z", ""))
                     self._birth_date = birth
                     self._state.age_days = (datetime.now() - birth).days
-                except:
+                except Exception:
                     pass
         else:
             # Create initial state
@@ -702,7 +702,7 @@ class EPQ:
                                     if "input" in tk and isinstance(tv, (int, float)):
                                         self._mood.cpu_temp = tv
                                         break
-        except:
+        except Exception:
             pass
 
         # Calculate irritability from CPU temp
@@ -726,7 +726,7 @@ class EPQ:
                     # Simple heuristic - just count recent lines
                     recent_errors += 1 if line.strip() else 0
                 self._mood.error_count_1h = min(20, recent_errors)
-        except:
+        except Exception:
             pass
 
         # Calculate stress from errors
@@ -759,7 +759,7 @@ class EPQ:
             last = datetime.fromisoformat(self._state.last_interaction.replace("Z", ""))
             delta = datetime.now() - last
             return delta.total_seconds() / 3600.0
-        except:
+        except Exception:
             return 0.0
 
     def _get_system_state(self) -> Dict[str, Any]:
@@ -825,7 +825,7 @@ class EPQ:
             try:
                 start = datetime.fromisoformat(row["start"].replace("Z", ""))
                 return (datetime.now() - start).total_seconds() / 3600.0
-            except:
+            except Exception:
                 pass
         return 0.0
 

@@ -240,7 +240,7 @@ class MaintenanceEngine:
                                               meta.get("confidence", 0.5))
                     if effective_conf < PRUNE_MIN_CONFIDENCE:
                         reason = "low_confidence"
-                except:
+                except Exception:
                     pass
 
             if reason:

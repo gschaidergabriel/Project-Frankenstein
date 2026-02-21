@@ -128,7 +128,7 @@ class Titan:
         try:
             self.vectors.save()
             LOG.info("Titan shutdown complete")
-        except:
+        except Exception:
             pass
 
     # =========================================================================
@@ -270,14 +270,14 @@ class Titan:
             # Test SQLite
             self.sqlite.get_stats()
             sqlite_ok = True
-        except:
+        except Exception:
             sqlite_ok = False
 
         try:
             # Test vectors (lazy load)
             _ = self.vectors._get_model()
             vectors_ok = True
-        except:
+        except Exception:
             vectors_ok = False
 
         return {

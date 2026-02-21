@@ -75,7 +75,7 @@ class UITestRunnerGUI:
             try:
                 with open(CONFIG_FILE) as f:
                     return {**default, **json.load(f)}
-            except:
+            except Exception:
                 pass
         return default
 

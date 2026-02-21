@@ -301,7 +301,7 @@ def get_system_metrics() -> Dict:
             idle = int(parts[4])
             total = sum(int(p) for p in parts[1:])
             metrics["cpu"] = 100 - (idle * 100 / total) if total > 0 else 30
-    except:
+    except Exception:
         pass
 
     try:
@@ -311,7 +311,7 @@ def get_system_metrics() -> Dict:
             mem_total = int(lines[0].split()[1])
             mem_available = int(lines[2].split()[1])
             metrics["ram"] = 100 - (mem_available * 100 / mem_total) if mem_total > 0 else 50
-    except:
+    except Exception:
         pass
 
     try:
@@ -328,7 +328,7 @@ def get_system_metrics() -> Dict:
                         if isinstance(val, dict) and "temp1_input" in val:
                             metrics["cpu_temp"] = val["temp1_input"]
                             break
-    except:
+    except Exception:
         pass
 
     return metrics

@@ -294,7 +294,7 @@ class RollbackExecutor:
             for pycache in pycache_dirs[:10]:  # Limit to prevent long operation
                 try:
                     shutil.rmtree(pycache)
-                except:
+                except Exception:
                     pass
 
             LOG.info("Cleared caches")
@@ -331,7 +331,7 @@ class RollbackExecutor:
                     capture_output=True, timeout=30
                 )
                 LOG.info(f"Stopped non-essential service: {service}")
-            except:
+            except Exception:
                 pass
 
     def _verify_health(self, baseline: Baseline) -> bool:
@@ -348,7 +348,7 @@ class RollbackExecutor:
                 if result.stdout.strip() != "active":
                     LOG.warning(f"Service {service} not active after rollback")
                     return False
-            except:
+            except Exception:
                 return False
 
         # Check critical endpoints
@@ -363,7 +363,7 @@ class RollbackExecutor:
                 sock.settimeout(5.0)
                 sock.connect((host, port))
                 sock.close()
-            except:
+            except Exception:
                 LOG.warning(f"Endpoint {host}:{port} not reachable after rollback")
                 return False
 

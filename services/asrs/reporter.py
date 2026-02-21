@@ -236,7 +236,7 @@ class ErrorReporter:
         try:
             integrated_dt = datetime.fromisoformat(integrated_at)
             duration_sec = (now - integrated_dt).total_seconds()
-        except:
+        except Exception:
             duration_sec = 0
 
         # Get current system state
@@ -299,7 +299,7 @@ class ErrorReporter:
                 used = total - available
                 state['memory_mb'] = round(used / 1024, 1)
                 state['memory_percent'] = round((used / total) * 100, 1)
-        except:
+        except Exception:
             pass
 
         # CPU
@@ -310,7 +310,7 @@ class ErrorReporter:
                 cpu_count = os.cpu_count() or 1
                 state['cpu_percent'] = round((load / cpu_count) * 100, 1)
                 state['load_average'] = load
-        except:
+        except Exception:
             pass
 
         # Recent errors
@@ -323,7 +323,7 @@ class ErrorReporter:
             errors = [l for l in result.stdout.strip().split('\n') if l]
             state['error_count'] = len(errors)
             state['recent_errors'] = errors[:10]
-        except:
+        except Exception:
             state['error_count'] = 0
             state['recent_errors'] = []
 
@@ -336,7 +336,7 @@ class ErrorReporter:
                     capture_output=True, text=True, timeout=5
                 )
                 state['service_states'][service] = result.stdout.strip()
-            except:
+            except Exception:
                 state['service_states'][service] = "unknown"
 
         # Crashed services
@@ -553,7 +553,7 @@ class ErrorReporter:
                     "severity": data.get("severity"),
                     "probable_cause": data.get("probable_cause"),
                 })
-            except:
+            except Exception:
                 pass
 
         return reports

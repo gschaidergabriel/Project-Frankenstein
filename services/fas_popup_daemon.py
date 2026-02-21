@@ -225,10 +225,10 @@ class FASPopupDaemon:
             try:
                 self._popup_process.terminate()
                 self._popup_process.wait(timeout=5)
-            except:
+            except Exception:
                 try:
                     self._popup_process.kill()
-                except:
+                except Exception:
                     pass
             self._popup_process = None
             LOG.info("Popup closed")
@@ -238,7 +238,7 @@ class FASPopupDaemon:
         try:
             if self.socket_path.exists():
                 self.socket_path.unlink()
-        except:
+        except Exception:
             pass
 
     def _notify_systemd(self, message: str):

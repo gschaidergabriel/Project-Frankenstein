@@ -108,7 +108,7 @@ def get_config():
             with open(user_config) as f:
                 overrides = json.load(f)
                 config.update(overrides)
-        except:
+        except Exception:
             pass
 
     return config

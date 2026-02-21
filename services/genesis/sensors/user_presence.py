@@ -150,7 +150,7 @@ class UserPresence(BaseSensor):
                 try:
                     stat = os.stat(dev)
                     newest = max(newest, stat.st_atime)
-                except:
+                except Exception:
                     continue
             if newest > 0:
                 return datetime.now().timestamp() - newest

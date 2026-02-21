@@ -165,7 +165,7 @@ class GitHubEcho(BaseSensor):
                 try:
                     created = datetime.fromisoformat(created_str)
                     age_days = (now - created).days
-                except:
+                except Exception:
                     age_days = 0
 
                 features.append({

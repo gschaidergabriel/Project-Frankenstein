@@ -36,7 +36,7 @@ def _esc_handler(key):
             _STOP_REQUESTED = True
             print("\n\n⚠️  ESC gedrückt - Test wird abgebrochen...")
             return False
-    except:
+    except Exception:
         pass
 
 # Paths

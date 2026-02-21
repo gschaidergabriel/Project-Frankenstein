@@ -44,7 +44,7 @@ def _on_key_press(key):
             _EMERGENCY_STOP = True
             print("\n⚠️  ESC gedrückt - NOTFALL-STOPP!")
             return False  # Listener beenden
-    except:
+    except Exception:
         pass
 
 def reset_emergency_stop():

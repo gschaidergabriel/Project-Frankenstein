@@ -263,13 +263,13 @@ class HubDatabase:
             if data.get(field):
                 try:
                     data[field] = json.loads(data[field])
-                except:
+                except Exception:
                     data[field] = []
 
         if data.get("source_data"):
             try:
                 data["source_data"] = json.loads(data["source_data"])
-            except:
+            except Exception:
                 data["source_data"] = {}
 
         # Convert boolean fields

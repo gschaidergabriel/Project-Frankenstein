@@ -465,7 +465,7 @@ class DesignAnalyzer:
             # Hex-Code
             try:
                 draw.text((x + 5, palette_y + 47), color.hex, fill=(205, 214, 244))
-            except:
+            except Exception:
                 pass
 
         # Score in Ecke

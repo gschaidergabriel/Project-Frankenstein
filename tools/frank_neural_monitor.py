@@ -297,7 +297,7 @@ def get_display_edid(display_name: str) -> str:
                     break
 
         return "".join(edid_lines)
-    except:
+    except Exception:
         return ""
 
 

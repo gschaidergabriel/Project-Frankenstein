@@ -650,7 +650,7 @@ def analyze_response(response: str) -> Dict[str, Any]:
         if conf_match:
             try:
                 analysis["confidence"] = float(conf_match.group(1))
-            except:
+            except Exception:
                 pass
 
     # Check for risk mentions
@@ -661,7 +661,7 @@ def analyze_response(response: str) -> Dict[str, Any]:
         if risk_match:
             try:
                 analysis["risk"] = float(risk_match.group(1))
-            except:
+            except Exception:
                 pass
 
     # Check for proposal indicators

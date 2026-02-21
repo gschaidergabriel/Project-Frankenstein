@@ -159,7 +159,7 @@ class ProposalRanker:
             # Linear decay over 168 hours (1 week)
             recency = max(0, 1 - (age_hours / 168))
             return recency
-        except:
+        except Exception:
             return 0.5
 
     def _calculate_multiplier(self, proposal: UnifiedProposal) -> float:

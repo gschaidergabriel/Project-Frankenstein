@@ -53,7 +53,7 @@ def is_available() -> bool:
     try:
         _get_sentinel()
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -124,7 +124,7 @@ def is_gaming() -> bool:
     """Check if gaming mode is active."""
     try:
         return _get_sentinel().is_gaming()
-    except:
+    except Exception:
         return False
 
 
@@ -187,7 +187,7 @@ def get_security_alerts(hours: int = 24) -> List[Dict]:
                 ts = datetime.fromisoformat(e.get("timestamp", ""))
                 if ts > cutoff and e.get("severity") in ("alert", "critical"):
                     recent.append(e)
-            except:
+            except Exception:
                 pass
 
         return recent

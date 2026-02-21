@@ -233,7 +233,7 @@ class GamingModeGuard:
                             self._gaming_start_time = time.time()
                         self._notify_callbacks(new_state)
                     return self._is_gaming
-                except:
+                except Exception:
                     pass
             return self._is_gaming
 
@@ -254,7 +254,7 @@ class GamingModeGuard:
                 for ac in ANTICHEAT_WHITELIST:
                     if ac in line_lower:
                         return True
-        except:
+        except Exception:
             pass
         return False
 
@@ -327,7 +327,7 @@ class NetworkScanner:
                 # Assume /24 subnet
                 parts = gateway.split('.')
                 return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
-        except:
+        except Exception:
             pass
         return None
 
@@ -341,7 +341,7 @@ class NetworkScanner:
             match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', result.stdout)
             if match:
                 return match.group(1)
-        except:
+        except Exception:
             pass
         return None
 
@@ -531,7 +531,7 @@ class PacketAnalyzer:
                 for ac in ANTICHEAT_WHITELIST:
                     if ac in cmdline_lower:
                         return False
-            except:
+            except Exception:
                 pass
 
         return True
@@ -719,7 +719,7 @@ class ProcessShield:
                 if re.search(pattern, cmdline):
                     return False
 
-        except:
+        except Exception:
             return False
 
         return True

@@ -259,7 +259,7 @@ class TrainingLauncher:
             self.daemon_process.terminate()
             try:
                 self.daemon_process.wait(timeout=10)
-            except:
+            except Exception:
                 self.daemon_process.kill()
 
     def start(self):
@@ -345,7 +345,7 @@ class TrainingLauncher:
                 for line in f:
                     try:
                         all_proposals.append(json.loads(line.strip()))
-                    except:
+                    except Exception:
                         pass
 
         # Get unique proposals (last entry for each ID) for analysis
@@ -913,7 +913,7 @@ class TrainingLauncher:
                             'wmctrl', '-r', ':ACTIVE:', '-e', f'0,{x},{y},{width},{height}'
                         ], capture_output=True, timeout=5)
                         print(f"[Launcher] Positioned window at ({x},{y}) size {width}x{height}")
-                    except:
+                    except Exception:
                         # Try xdotool as fallback
                         try:
                             # Get window ID
@@ -929,7 +929,7 @@ class TrainingLauncher:
                                 subprocess.run([
                                     'xdotool', 'windowsize', wid, str(width), str(height)
                                 ], timeout=5)
-                        except:
+                        except Exception:
                             pass
 
                     return

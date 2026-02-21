@@ -435,7 +435,7 @@ def test_response_time(engine: "UITestEngine") -> "TestResult":
     start = time.time()
     try:
         subprocess.run(["wmctrl", "-ia", window["wid"]], timeout=3)
-    except:
+    except Exception:
         pass
     focus_time = time.time() - start
 

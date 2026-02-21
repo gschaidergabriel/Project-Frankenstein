@@ -807,9 +807,9 @@ class SystemBridge:
                 for param in sys_path.iterdir():
                     try:
                         result["parameters"][param.name] = param.read_text().strip()
-                    except:
+                    except Exception:
                         result["parameters"][param.name] = "(not readable)"
-            except:
+            except Exception:
                 pass
 
         return result

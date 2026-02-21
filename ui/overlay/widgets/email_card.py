@@ -87,7 +87,8 @@ class EmailCard(tk.Frame):
             badge.pack(side="left", padx=(0, 6))
 
         sender_text = format_sender(email_data.sender)
-        sender_fg = COLORS["link"] if not email_data.read else "#777788"
+        self._sender_fg = COLORS["link"] if not email_data.read else "#777788"
+        sender_fg = self._sender_fg
         self.sender_label = tk.Label(
             header, text=sender_text,
             bg=self._normal_bg, fg=sender_fg,
@@ -161,7 +162,7 @@ class EmailCard(tk.Frame):
 
     def _on_leave(self, event):
         self._update_colors(self._normal_bg, self._border_color)
-        self.sender_label.configure(fg=COLORS["link"])
+        self.sender_label.configure(fg=self._sender_fg)
 
     def _on_click(self, event):
         if self.on_click:

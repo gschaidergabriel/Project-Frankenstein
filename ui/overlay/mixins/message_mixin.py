@@ -964,9 +964,12 @@ class MessageMixin:
         open_btn.bind("<Enter>", lambda e: open_btn.configure(bg="#282840"))
         open_btn.bind("<Leave>", lambda e: open_btn.configure(bg="#1a1a3e"))
 
+        # Force scroll to bottom with delay so layout is finalized
         self.messages_frame.update_idletasks()
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
-        self._smart_scroll()
+        self.chat_canvas.yview_moveto(1.0)
+        # Extra delayed scroll to ensure layout is fully resolved
+        self.after(50, lambda: self.chat_canvas.yview_moveto(1.0))
 
     # ── Undo-delete notification ──
 

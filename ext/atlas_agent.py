@@ -480,11 +480,15 @@ def _call_llm(url: str, payload: dict, timeout: int = RESPONSE_TIMEOUT,
             LOG.error("LLM call failed (%s): %s", url, e)
             return None
         except urllib.error.URLError as e:
-            LOG.error("LLM call failed (%s): %s", url, e)
-            return None
+            LOG.warning("LLM connection error (%s): %s (attempt %d/%d)",
+                        url, e, attempt + 1, retries)
+            time.sleep(15)
+            continue
         except Exception as e:
-            LOG.error("LLM call error (%s): %s", url, e)
-            return None
+            LOG.warning("LLM call error (%s): %s (attempt %d/%d)",
+                        url, e, attempt + 1, retries)
+            time.sleep(10)
+            continue
 
     LOG.error("All %d attempts failed for %s", retries, url)
     return None
@@ -1150,9 +1154,12 @@ class AtlasAgent:
         # Write session summary to chat_memory for cross-session recall
         elapsed_min = int((time.time() - start_time) / 60)
         topics_str_chat = ", ".join(topics) if topics else "general"
-        _short = " ".join((summary or "").split()[:15])
-        if _short and not _short.endswith("."):
-            _short += " …"
+        _has_summary = summary and "without summary" not in summary.lower()
+        _short = ""
+        if _has_summary:
+            _short = " ".join(summary.split()[:15])
+            if not _short.endswith("."):
+                _short += " …"
         summary_msg = (
             f"[Entity Session] {ATLAS_NAME} — {elapsed_min} min, "
             f"{turn} Turns. Themen: {topics_str_chat}."
@@ -1160,13 +1167,9 @@ class AtlasAgent:
         if _short:
             summary_msg += f" {_short}"
         _write_chat_message("system", ATLAS_NAME, summary_msg, self.session_id)
-        _short_summary = " ".join((summary or "").split()[:15])
-        if _short_summary and not _short_summary.endswith("."):
-            _short_summary += "."
-        _notif_body = f"Architecture session with Frank — {elapsed_min} minutes."
-        if _short_summary:
-            _notif_body += f"\n{_short_summary}"
-        _write_overlay_notification(ATLAS_NAME, _notif_body, self.session_id)
+        if _has_summary:
+            _notif_body = f"Architecture session with Frank — {elapsed_min} minutes.\n{_short}"
+            _write_overlay_notification(ATLAS_NAME, _notif_body, self.session_id)
 
         LOG.info("\n" + "=" * 60)
         LOG.info("%s SESSION COMPLETE", ATLAS_NAME.upper())

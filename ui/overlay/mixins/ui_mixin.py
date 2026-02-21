@@ -116,7 +116,7 @@ class UiMixin:
 
         # Chat area with scrollbar
         chat_container = tk.Frame(main, bg=COLORS["bg_chat"])
-        chat_container.pack(fill="both", expand=True, padx=10, pady=5)
+        chat_container.pack(fill="both", expand=True, padx=8, pady=3)
 
         # Canvas for scrolling
         self.chat_canvas = tk.Canvas(
@@ -167,33 +167,33 @@ class UiMixin:
 
         # Input area
         input_area = tk.Frame(main, bg=COLORS["bg_main"])
-        input_area.pack(fill="x", padx=15, pady=10)
+        input_area.pack(fill="x", padx=10, pady=6)
 
         # Attach button (visible border with + symbol)
         self.attach_btn = ModernButton(
             input_area,
             text="+",
             command=self._on_attach,
-            width=40,
-            height=40,
+            width=34,
+            height=34,
             bg=COLORS["accent"],  # Magenta border - visible!
             hover_bg=COLORS["accent_hover"],
             corner_radius=0
         )
-        self.attach_btn.pack(side="left", padx=(0, 8))
+        self.attach_btn.pack(side="left", padx=(0, 6))
 
         # Push-to-Talk microphone button (visible border)
         self.ptt_btn = ModernButton(
             input_area,
             text="MIC",  # Text instead of emoji for better visibility
             command=lambda: None,  # We use bind for press/release
-            width=40,
-            height=40,
+            width=34,
+            height=34,
             bg=COLORS["neon_cyan"],  # Cyan border - visible!
             hover_bg="#ff4444",  # Red when hovering (recording indicator)
             corner_radius=0
         )
-        self.ptt_btn.pack(side="left", padx=(0, 8))
+        self.ptt_btn.pack(side="left", padx=(0, 6))
 
         # PTT bindings (press and hold)
         self.ptt_btn.bind("<ButtonPress-1>", self._on_ptt_press)
@@ -205,7 +205,7 @@ class UiMixin:
 
         # Entry (ChatGPT-style growing text input)
         self.entry = ModernEntry(input_area)
-        self.entry.pack(side="left", fill="both", expand=True, padx=(0, 8))
+        self.entry.pack(side="left", fill="both", expand=True, padx=(0, 6))
         # NOTE: Don't auto-focus - wait for user to click on overlay
         # This prevents stealing focus from other applications
 
@@ -214,8 +214,8 @@ class UiMixin:
             input_area,
             text="\u25b6",
             command=self._on_send,
-            width=40,
-            height=40,
+            width=34,
+            height=34,
             bg=COLORS["neon_cyan"],
             hover_bg=COLORS["accent"],
             corner_radius=0
@@ -223,42 +223,38 @@ class UiMixin:
         self.send_btn.pack(side="right")
 
         # ═══════════════════════════════════════════════════════════════
-        # STATUS BAR (bottom, two rows: services + hardware stats)
+        # STATUS BAR (bottom, single compact row: dots + hw stats)
         # ═══════════════════════════════════════════════════════════════
         self._status_bar = tk.Frame(main, bg=COLORS["bg_deep"])
         self._status_bar.pack(side="bottom", fill="x")
 
-        # Row 1: Service health dots
-        svc_row = tk.Frame(self._status_bar, bg=COLORS["bg_deep"])
-        svc_row.pack(fill="x", padx=4, pady=(2, 0))
+        # Single row: service dots (left) + hardware stats (right)
+        status_row = tk.Frame(self._status_bar, bg=COLORS["bg_deep"])
+        status_row.pack(fill="x", padx=3, pady=2)
 
         self._svc_dots = {}
         for svc_name in ("Core", "LLM", "Tools", "Voice"):
             dot = tk.Label(
-                svc_row, text="\u25cf",
-                font=("Consolas", 7),
+                status_row, text="\u25cf",
+                font=("Consolas", 6),
                 fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
             )
-            dot.pack(side="left", padx=2)
+            dot.pack(side="left", padx=1)
             name_lbl = tk.Label(
-                svc_row, text=svc_name,
-                font=("Consolas", 7),
+                status_row, text=svc_name,
+                font=("Consolas", 6),
                 fg=COLORS["text_muted"], bg=COLORS["bg_deep"],
             )
-            name_lbl.pack(side="left", padx=(0, 6))
+            name_lbl.pack(side="left", padx=(0, 4))
             self._svc_dots[svc_name] = dot
 
-        # Row 2: Hardware stats (own line)
-        hw_row = tk.Frame(self._status_bar, bg=COLORS["bg_deep"])
-        hw_row.pack(fill="x", padx=4, pady=(0, 2))
-
         self._hw_stats_label = tk.Label(
-            hw_row, text="",
-            font=("Consolas", 7),
+            status_row, text="",
+            font=("Consolas", 6),
             fg=COLORS["neon_green"], bg=COLORS["bg_deep"],
-            anchor="w",
+            anchor="e",
         )
-        self._hw_stats_label.pack(side="left", padx=2)
+        self._hw_stats_label.pack(side="right", padx=1)
 
         # Start health polling after UI is up
         self.after(5000, self._poll_service_health)
@@ -298,6 +294,9 @@ class UiMixin:
                 self.chat_canvas.yview_scroll(1, "units")
             else:
                 self.chat_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            # If streaming is active, mark that user took manual scroll control
+            if getattr(self, '_stream_text', None) is not None:
+                self._stream_user_scrolled = True
         except Exception:
             pass  # Canvas may be temporarily unavailable during widget rebuild
 
@@ -485,7 +484,6 @@ class UiMixin:
                 "Core":  "http://127.0.0.1:8088/health",
                 "LLM":   "http://127.0.0.1:8101/health",
                 "Tools": "http://127.0.0.1:8096/health",
-                "Voice": "http://127.0.0.1:8197/health",
             }
             results = {}
             for name, url in checks.items():
@@ -495,6 +493,15 @@ class UiMixin:
                         results[name] = resp.status == 200
                 except Exception:
                     results[name] = False
+
+            # Voice: check Whisper server (PTT backend) via TCP connect
+            import socket
+            try:
+                s = socket.create_connection(("127.0.0.1", 8103), timeout=2)
+                s.close()
+                results["Voice"] = True
+            except Exception:
+                results["Voice"] = False
 
             # Update UI on main thread
             def _update():

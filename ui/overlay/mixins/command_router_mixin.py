@@ -57,6 +57,7 @@ from overlay.constants import (
     DARKNET_RE,
     USB_EJECT_RE, USB_MOUNT_RE, USB_UNMOUNT_RE, USB_STORAGE_RE,
     PACKAGE_LIST_RE,
+    FILE_SEARCH_RE, FILE_SEARCH_ALT_RE,
 )
 from overlay.file_utils import _maybe_path, _detect_ingest_base
 from overlay.services.system_control import SYSTEM_CONTROL_AVAILABLE, sc_process, sc_has_pending
@@ -441,6 +442,18 @@ class CommandRouterMixin:
                 self._add_message("Frank", f"Darknet search: {q}", is_system=True)
                 self._io_q.put(("darknet_search", {"query": q, "limit": 8}))
             return
+
+        # Local file search — "search on the system for X", "find file X",
+        # "look on the PC for X", "such auf dem computer nach X"
+        # Must come BEFORE web search to intercept system/PC/file keywords
+        _fs_match = FILE_SEARCH_RE.search(low) or FILE_SEARCH_ALT_RE.search(low)
+        if _fs_match:
+            q = _fs_match.group(_fs_match.lastindex).strip().strip("\"'")
+            if q:
+                self._add_message("Du", msg, is_user=True)
+                self._add_message("Frank", f"Searching system for: {q}", is_system=True)
+                self._io_q.put(("file_search", {"query": q}))
+                return
 
         # Search (web) — typo-tolerant: "search X", "serch for X",
         # "search in the web for X", "suche nach X", "such mal X"

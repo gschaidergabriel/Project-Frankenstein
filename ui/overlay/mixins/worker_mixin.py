@@ -12,7 +12,7 @@ import traceback
 from overlay.constants import LOG, TOOLS_CONTEXT_TTL_S
 from overlay.file_utils import _extract_context_line
 from overlay.services.toolbox import _tools_call
-from overlay.services.search import _open_url, _open_url_tor
+from overlay.services.search import _open_url, _open_url_tor, _open_file_in_manager
 
 
 class WorkerMixin:
@@ -49,7 +49,13 @@ class WorkerMixin:
                 elif kind == "darknet_open":
                     _open_url_tor(str(arg))
                 elif kind == "open":
-                    _open_url(str(arg))
+                    url_str = str(arg)
+                    if url_str.startswith("file://"):
+                        _open_file_in_manager(url_str)
+                    else:
+                        _open_url(url_str)
+                elif kind == "file_search":
+                    self._do_file_search_worker(**arg)
                 elif kind == "ingest":
                     self._do_ingest_worker(**arg)
                 elif kind == "fs_list":

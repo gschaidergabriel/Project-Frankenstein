@@ -48,7 +48,7 @@ class PersistenceMixin:
         # Try SQLite first
         if hasattr(self, '_chat_memory_db'):
             try:
-                messages = self._chat_memory_db.get_recent_messages(limit=10)
+                messages = self._chat_memory_db.get_recent_messages(limit=30)
                 if messages:
                     # Populate in-memory ring buffer for LLM context (skip system msgs)
                     self._chat_history = [

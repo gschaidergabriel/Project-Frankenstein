@@ -420,6 +420,7 @@ class MessageMixin:
 
     def _start_streaming_message(self):
         """Create a live-updating message bubble for streaming LLM responses."""
+        self._stream_user_scrolled = False  # Track if user manually scrolled
         # Container frame (same layout as MessageBubble)
         self._stream_frame = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
         self._stream_frame.pack(fill="x", padx=8, pady=4)
@@ -476,15 +477,20 @@ class MessageMixin:
                         self._stream_text.configure(height=max(1, h))
                 except (tk.TclError, Exception):
                     pass
-                # Update scroll region and scroll to bottom
+                # Update scroll region
                 self.messages_frame.update_idletasks()
                 self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
-                self.chat_canvas.yview_moveto(1.0)
+                # Only auto-scroll if user hasn't manually scrolled away
+                if not getattr(self, '_stream_user_scrolled', False):
+                    self.chat_canvas.yview_moveto(1.0)
         except tk.TclError:
             pass  # Widget destroyed
 
     def _finalize_streaming_message(self, full_text: str):
         """Finalize streaming: destroy live bubble, create proper MessageBubble."""
+        # Capture scroll intent before destroying stream frame
+        _was_user_scrolled = getattr(self, '_stream_user_scrolled', False)
+
         # Remove the streaming frame
         if hasattr(self, '_stream_frame') and self._stream_frame:
             try:
@@ -494,6 +500,9 @@ class MessageMixin:
             self._stream_frame = None
             self._stream_text = None
             self._stream_accumulated = ""
+
+        # Reset stream scroll flag
+        self._stream_user_scrolled = False
 
         # Create a proper MessageBubble with the full text (supports selection, links, etc.)
         if full_text.strip():
@@ -537,7 +546,9 @@ class MessageMixin:
 
             self.messages_frame.update_idletasks()
             self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
-            self._smart_scroll()
+            # Only scroll to bottom if user didn't manually scroll away
+            if not _was_user_scrolled:
+                self.chat_canvas.yview_moveto(1.0)
             self.update_idletasks()
 
     # ---------- Search Results ----------

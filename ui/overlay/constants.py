@@ -725,7 +725,27 @@ FILE_READ_RE = re.compile(
     re.IGNORECASE,
 )
 
-URL_REGEX = re.compile(r'(https?://[^\s<>"{}|\\^`\[\]]+)')
+# Local file search — "search on the system for X", "find on the PC X", "such auf dem computer nach X"
+FILE_SEARCH_RE = re.compile(
+    r"(?:se[ae]?r?ch|search|find|look|such\w*|finde?)\s+"
+    r"(?:(?:on|in|auf|im|am)\s+)?"
+    r"(?:(?:the|my|dem|meinem?|diesem?)\s+)?"
+    r"(?:system|computer|pc|rechner|festplatte|disk|platte|local|lokal)\s+"
+    r"(?:for|nach|fuer|für|for)?\s*"
+    r"(.+)",
+    re.IGNORECASE,
+)
+# "find file X", "search files for X", "such die datei X"
+FILE_SEARCH_ALT_RE = re.compile(
+    r"(?:se[ae]?r?ch|search|find|look\s+for|such\w*|finde?)\s+"
+    r"(?:(?:the|a|die|eine?n?)\s+)?"
+    r"(?:file|datei)s?\s+"
+    r"(?:named?\s+|called?\s+|namens?\s+)?"
+    r"(.+)",
+    re.IGNORECASE,
+)
+
+URL_REGEX = re.compile(r'((?:https?|file)://[^\s<>"{}|\\^`\[\]]+)')
 
 # URL Fetch - Direct webpage content extraction
 URL_FETCH_RE = re.compile(

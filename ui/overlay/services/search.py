@@ -27,6 +27,43 @@ def _open_url(url: str) -> None:
             pass
 
 
+def _open_file_in_manager(file_url: str) -> None:
+    """Open the system file manager with the file highlighted.
+
+    Uses D-Bus org.freedesktop.FileManager1.ShowItems for proper file
+    selection/highlighting. Falls back to xdg-open on the parent directory.
+    """
+    from pathlib import Path as _P
+    path = file_url.replace("file://", "", 1)
+    try:
+        # D-Bus ShowItems: opens file manager with the file selected
+        subprocess.Popen(
+            [
+                "dbus-send", "--session", "--print-reply",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+                f"array:string:file://{path}",
+                "string:",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        LOG.info("File manager: ShowItems %s", path[:80])
+    except Exception:
+        # Fallback: open the parent directory
+        try:
+            parent = str(_P(path).parent)
+            subprocess.Popen(
+                ["xdg-open", parent],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
+
 _TOR_OPEN_SCRIPT = str(
     __import__("pathlib").Path(__file__).with_name("tor_open_url.sh")
 )

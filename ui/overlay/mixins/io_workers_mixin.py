@@ -113,6 +113,60 @@ class IOWorkersMixin:
             error = result.get("error", "Unknown error") if result else "No response"
             self._ui_call(lambda a=action_desc, e=error: self._add_message("Frank", f"Error during {a}: {e}", is_system=True))
 
+    # ---------- Local File Search ----------
+
+    def _do_file_search_worker(self, query: str):
+        """Fast local file search using find. Results have clickable file:// links."""
+        import subprocess
+        self._ui_call(self._show_typing)
+
+        home = str(Path.home())
+        search_paths = [home, "/tmp", "/opt"]
+        # Only include paths that exist
+        search_paths = [p for p in search_paths if Path(p).is_dir()]
+
+        cmd = [
+            "find", *search_paths,
+            "-maxdepth", "8",
+            "-iname", f"*{query}*",
+            "-not", "-path", "*/.*",
+            "-not", "-path", "*/snap/*",
+            "-not", "-path", "*/__pycache__/*",
+            "-not", "-path", "*/node_modules/*",
+            "-not", "-path", "*/venv/*",
+            "-not", "-path", "*/.venv/*",
+        ]
+
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=10,
+                stderr=subprocess.DEVNULL,
+            )
+            raw = proc.stdout.strip()
+            results = [line for line in raw.split("\n") if line][:20]
+        except subprocess.TimeoutExpired:
+            results = []
+            self._ui_call(self._hide_typing)
+            self._ui_call(lambda q=query: self._add_message(
+                "Frank", f"Search timed out for \"{q}\". Try a more specific name.",
+                is_system=True))
+            return
+        except Exception as e:
+            LOG.error(f"File search error: {e}")
+            results = []
+
+        self._ui_call(self._hide_typing)
+
+        if results:
+            lines = [f"Found {len(results)} file(s) matching \"{query}\":\n"]
+            for fpath in results:
+                lines.append(f"  file://{fpath}")
+            text = "\n".join(lines)
+        else:
+            text = f"No files found matching \"{query}\"."
+
+        self._ui_call(lambda t=text: self._add_message("Frank", t))
+
     # ---------- Steam Integration ----------
     def _do_steam_list_worker(self, voice: bool = False):
         """List installed Steam games."""

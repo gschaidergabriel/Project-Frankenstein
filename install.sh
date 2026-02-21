@@ -122,7 +122,7 @@ sudo apt-get update -qq
 # Core system packages
 sudo apt-get install -y -qq \
     python3 python3-venv python3-pip python3-tk python3-dev \
-    build-essential cmake \
+    build-essential cmake pkg-config meson \
     xdotool wmctrl x11-utils x11-xserver-utils xprintidle \
     tesseract-ocr \
     pulseaudio-utils \
@@ -130,6 +130,7 @@ sudo apt-get install -y -qq \
     firejail \
     libnotify-bin \
     libgirepository1.0-dev gir1.2-appindicator3-0.1 \
+    libdbus-1-dev libglib2.0-dev \
     2>/dev/null
 
 # GTK / GObject (for Writer + tray icon)

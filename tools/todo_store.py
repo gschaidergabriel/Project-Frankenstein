@@ -8,7 +8,7 @@ SQLite-backed task storage with FTS5 full-text search.
 Supports status tracking (pending/completed) and optional due dates.
 Stdlib only – no external dependencies.
 
-Database: /home/ai-core-node/aicore/database/todos.db
+Database: <AICORE_BASE>/database/todos.db
 """
 
 from __future__ import annotations

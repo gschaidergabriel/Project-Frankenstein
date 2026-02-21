@@ -7,7 +7,7 @@ AES-128-CBC + HMAC-SHA256 via Fernet.
 Master password → PBKDF2 (600k iterations) → Fernet key.
 Salt stored in DB _meta table, session key in memory only.
 
-Database: /home/ai-core-node/aicore/database/passwords.db
+Database: <AICORE_BASE>/database/passwords.db
 """
 
 import base64

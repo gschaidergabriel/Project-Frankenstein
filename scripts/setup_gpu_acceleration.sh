@@ -18,8 +18,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-LLAMA_DIR="/home/ai-core-node/aicore/opt/llama.cpp"
-BACKUP_DIR="/home/ai-core-node/aicore/opt/llama.cpp.backup.$(date +%Y%m%d_%H%M%S)"
+AICORE_BASE="${AICORE_BASE:-$HOME/aicore}"
+LLAMA_DIR="${AICORE_BASE}/opt/llama.cpp"
+BACKUP_DIR="${AICORE_BASE}/opt/llama.cpp.backup.$(date +%Y%m%d_%H%M%S)"
 
 # Step 1: Install dependencies
 echo -e "${YELLOW}[1/6] Installing Vulkan development packages...${NC}"
@@ -135,12 +136,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ai-core-node/aicore/opt/llama.cpp
+WorkingDirectory=${AICORE_BASE}/opt/llama.cpp
 Environment="GGML_VULKAN_DEVICE=0"
-ExecStart=/home/ai-core-node/aicore/opt/llama.cpp/build/bin/llama-server \
+ExecStart=${AICORE_BASE}/opt/llama.cpp/build/bin/llama-server \
     --host 127.0.0.1 \
     --port 8101 \
-    --model /home/ai-core-node/aicore/var/lib/aicore/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
+    --model ${AICORE_BASE}/var/lib/aicore/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
     --ctx-size 4096 \
     --n-gpu-layers 20 \
     --parallel 2 \
@@ -162,12 +163,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ai-core-node/aicore/opt/llama.cpp
+WorkingDirectory=${AICORE_BASE}/opt/llama.cpp
 Environment="GGML_VULKAN_DEVICE=0"
-ExecStart=/home/ai-core-node/aicore/opt/llama.cpp/build/bin/llama-server \
+ExecStart=${AICORE_BASE}/opt/llama.cpp/build/bin/llama-server \
     --host 127.0.0.1 \
     --port 8102 \
-    --model /home/ai-core-node/aicore/var/lib/aicore/models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf \
+    --model ${AICORE_BASE}/var/lib/aicore/models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf \
     --ctx-size 4096 \
     --n-gpu-layers 20 \
     --parallel 2 \
@@ -189,11 +190,11 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ai-core-node/aicore/opt/llama.cpp
-ExecStart=/home/ai-core-node/aicore/opt/llama.cpp/build/bin/llama-server \
+WorkingDirectory=${AICORE_BASE}/opt/llama.cpp
+ExecStart=${AICORE_BASE}/opt/llama.cpp/build/bin/llama-server \
     --host 127.0.0.1 \
     --port 8101 \
-    --model /home/ai-core-node/aicore/var/lib/aicore/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
+    --model ${AICORE_BASE}/var/lib/aicore/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
     --ctx-size 4096 \
     --parallel 2 \
     --threads 12 \
@@ -212,11 +213,11 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ai-core-node/aicore/opt/llama.cpp
-ExecStart=/home/ai-core-node/aicore/opt/llama.cpp/build/bin/llama-server \
+WorkingDirectory=${AICORE_BASE}/opt/llama.cpp
+ExecStart=${AICORE_BASE}/opt/llama.cpp/build/bin/llama-server \
     --host 127.0.0.1 \
     --port 8102 \
-    --model /home/ai-core-node/aicore/var/lib/aicore/models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf \
+    --model ${AICORE_BASE}/var/lib/aicore/models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf \
     --ctx-size 4096 \
     --parallel 2 \
     --threads 12 \

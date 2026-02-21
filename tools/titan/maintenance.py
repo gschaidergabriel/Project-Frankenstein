@@ -15,7 +15,7 @@ Pruning rules (from spec):
 - confidence<0.2
 - age>7 days
 
-Database: /home/ai-core-node/aicore/database/titan.db
+Database: <AICORE_BASE>/database/titan.db
 """
 
 import logging

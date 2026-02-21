@@ -8,7 +8,7 @@ Components:
 2. Vector Store (Semantic Field) - Meaning search
 3. Knowledge Graph (Structure) - Explicit relations
 
-Database: /home/ai-core-node/aicore/database/titan.db
+Database: <AICORE_BASE>/database/titan.db
 """
 
 import hashlib

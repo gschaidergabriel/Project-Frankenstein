@@ -4,7 +4,7 @@ URL="$1"
 [ -z "$URL" ] && exit 1
 
 export DISPLAY="${DISPLAY:-:0}"
-TB_DIR="/home/ai-core-node/.local/share/torbrowser/tbb/x86_64/tor-browser/Browser"
+TB_DIR="${TOR_BROWSER_DIR:-$HOME/.local/share/torbrowser/tbb/x86_64/tor-browser/Browser}"
 
 # Check if Tor Browser window exists
 TB_WID=$(xdotool search --name "Tor Browser" 2>/dev/null | head -1)

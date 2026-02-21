@@ -4,12 +4,12 @@
 Core-Awareness Module for Frank
 
 Gives Frank self-understanding of his own codebase:
-- Indexes and analyzes all modules in /home/ai-core-node/aicore
+- Indexes and analyzes all modules in <AICORE_BASE>
 - Detects changes via file hashing
 - Stores abstracted understanding in system_core.json
 - Runs autonomously to keep knowledge up-to-date
 
-Database location: /home/ai-core-node/aicore/database/system_core.json
+Database location: <AICORE_BASE>/database/system_core.json
 """
 
 import ast

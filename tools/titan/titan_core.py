@@ -14,7 +14,7 @@ Key principles:
 - Counter-hypotheses for inferences
 - Controlled forgetting
 
-Database: /home/ai-core-node/aicore/database/titan.db
+Database: <AICORE_BASE>/database/titan.db
 """
 
 import atexit

@@ -202,7 +202,7 @@ def get_active_window() -> Optional[str]:
         result = subprocess.run(
             ["xdotool", "getactivewindow", "getwindowname"],
             capture_output=True, text=True, timeout=3,
-            env={**os.environ, "DISPLAY": ":0"}
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
         )
         if result.returncode == 0:
             return result.stdout.strip()[:50]

@@ -10,7 +10,7 @@ Epistemological distinction:
 - A claim is something asserted to be true
 - All ingested content is treated as claims with confidence levels
 
-Database: /home/ai-core-node/aicore/database/titan.db
+Database: <AICORE_BASE>/database/titan.db
 """
 
 import hashlib

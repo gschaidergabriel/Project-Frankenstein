@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 """
 Frank Component Detector - Erkennt Franks eigene UI-Komponenten auf dem Desktop.
 
@@ -89,7 +90,7 @@ def _get_monitors() -> List[MonitorLayout]:
         result = subprocess.run(
             ["xrandr", "--query"],
             capture_output=True, text=True, timeout=5,
-            env={"DISPLAY": ":0", "PATH": "/usr/bin:/bin"}
+            env={"DISPLAY": os.environ.get("DISPLAY", ":0"), "PATH": "/usr/bin:/bin"}
         )
         if result.returncode != 0:
             return monitors
@@ -157,7 +158,7 @@ def _get_windows() -> List[dict]:
         result = subprocess.run(
             ["wmctrl", "-l", "-G"],
             capture_output=True, text=True, timeout=5,
-            env={"DISPLAY": ":0", "PATH": "/usr/bin:/bin"}
+            env={"DISPLAY": os.environ.get("DISPLAY", ":0"), "PATH": "/usr/bin:/bin"}
         )
         if result.returncode != 0:
             return windows

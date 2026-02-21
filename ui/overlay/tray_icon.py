@@ -61,7 +61,7 @@ def start_tray_icon() -> bool:
         return False
 
     try:
-        env = {**os.environ, "DISPLAY": ":0"}
+        env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
         _proc = subprocess.Popen(
             [_SYSTEM_PYTHON, str(_INDICATOR_SCRIPT)],
             env=env,

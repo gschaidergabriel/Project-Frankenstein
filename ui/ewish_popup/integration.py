@@ -175,7 +175,7 @@ class EWishIntegration:
             # Start popup in background
             env = {
                 **dict(__import__('os').environ),
-                "DISPLAY": ":0",
+                "DISPLAY": os.environ.get("DISPLAY", ":0"),
                 "PYTHONPATH": str(AICORE_ROOT),
             }
 

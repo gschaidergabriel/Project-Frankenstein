@@ -895,7 +895,7 @@ class TrainingLauncher:
 
                     # Launch editor
                     env = os.environ.copy()
-                    env['DISPLAY'] = ':0'
+                    env['DISPLAY'] = os.environ.get('DISPLAY', ':0')
                     subprocess.Popen(
                         [editor, str(report_file)],
                         env=env,

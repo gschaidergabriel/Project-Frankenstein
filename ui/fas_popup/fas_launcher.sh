@@ -2,11 +2,13 @@
 # F.A.S. Popup Launcher
 # Startet das Feature Approval System Popup manuell
 
-cd /home/ai-core-node/aicore/opt/aicore
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$SCRIPT_DIR"
 
 # Aktiviere Python-Umgebung falls vorhanden
-if [ -f "/home/ai-core-node/aicore/venv/bin/activate" ]; then
-    source /home/ai-core-node/aicore/venv/bin/activate
+VENV_DIR="${AICORE_BASE:-$HOME/aicore}/venv"
+if [ -f "$VENV_DIR/bin/activate" ]; then
+    source "$VENV_DIR/bin/activate"
 fi
 
 # Starte F.A.S. Popup im manuellen Modus

@@ -24,8 +24,8 @@ Key Subsystems:
   7. Confidence Reporting & Mut-Parameter
   8. Heartbeat Flush (15-minute checkpoints for crash resilience)
 
-Database: /home/ai-core-node/aicore/database/world_experience.db
-Anatomy: /home/ai-core-node/aicore/database/system_core.json
+Database: <AICORE_BASE>/database/world_experience.db
+Anatomy: <AICORE_BASE>/database/system_core.json
 """
 
 import collections

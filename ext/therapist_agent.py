@@ -519,7 +519,7 @@ def _get_xprintidle_s() -> float:
         result = subprocess.run(
             ["xprintidle"],
             capture_output=True, text=True, timeout=2,
-            env={**os.environ, "DISPLAY": ":0"},
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
         )
         if result.returncode == 0:
             return int(result.stdout.strip()) / 1000.0

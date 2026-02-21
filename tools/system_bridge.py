@@ -15,7 +15,7 @@ Categories:
   - usb*:    USB drivers (usbhid, usb_storage, etc.)
   - net*:    Network drivers (r8169, iwlwifi, etc.)
 
-Database: /home/ai-core-node/aicore/database/system_bridge.db
+Database: <AICORE_BASE>/database/system_bridge.db
 """
 
 import json

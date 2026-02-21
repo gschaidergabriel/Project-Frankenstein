@@ -107,7 +107,7 @@ def _send_desktop_notification(title: str, body: str, urgency: str = "normal"):
             "--expire-time=10000",
             title, body,
         ]
-        env = {**os.environ, "DISPLAY": ":0"}
+        env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
         subprocess.run(cmd, env=env, timeout=5, capture_output=True)
         LOG.info(f"Desktop notification sent: {title}")
     except Exception as e:

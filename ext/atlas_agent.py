@@ -127,7 +127,7 @@ Rapport is monotonically non-decreasing.
 - Genesis daemon for self-improvement proposals (quality-gated)
 
 ## Key Paths
-- Source: /home/ai-core-node/aicore/opt/aicore/
+- Source: <AICORE_ROOT>/
 - Data: ~/.local/share/frank/
 - Models: ~/aicore/var/lib/aicore/models/
 - Entity DBs: ~/.local/share/frank/db/{therapist,mirror,companion,atlas,muse}.db
@@ -637,7 +637,7 @@ def _get_xprintidle_s() -> float:
         result = subprocess.run(
             ["xprintidle"],
             capture_output=True, text=True, timeout=2,
-            env={**os.environ, "DISPLAY": ":0"},
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
         )
         if result.returncode == 0:
             return int(result.stdout.strip()) / 1000.0

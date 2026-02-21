@@ -35,7 +35,7 @@ class AnalysisMixin:
             adi_script = AICORE_ROOT / "ui" / "adi_popup" / "main_window.py"
             subprocess.Popen(
                 [sys.executable, str(adi_script), "--reopen"],
-                env={**os.environ, "DISPLAY": ":0"},
+                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
                 start_new_session=True,
             )
         except Exception as e:

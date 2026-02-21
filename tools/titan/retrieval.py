@@ -11,7 +11,7 @@ Retrieves and ranks relevant context using:
 Core principle: Context assembly only includes items where
 confidence × recency > threshold
 
-Database: /home/ai-core-node/aicore/database/titan.db
+Database: <AICORE_BASE>/database/titan.db
 """
 
 import logging

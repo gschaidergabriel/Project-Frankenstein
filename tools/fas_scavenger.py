@@ -24,10 +24,10 @@ Hard-Coded Guardrails:
 - Confidence Threshold: 75% minimum für Proposals
 - User Approval Required: Keine Integration ohne Zustimmung
 
-Database: /home/ai-core-node/aicore/database/fas_scavenger.db
-Sandbox: /home/ai-core-node/aicore/github/
-Feature Tests: /home/ai-core-node/aicore/sandbox/feature_tests/
-Integrated Tools: /home/ai-core-node/aicore/opt/aicore/tools/discovered/
+Database: <AICORE_BASE>/database/fas_scavenger.db
+Sandbox: <AICORE_BASE>/github/
+Feature Tests: <AICORE_BASE>/sandbox/feature_tests/
+Integrated Tools: <AICORE_ROOT>/tools/discovered/
 
 CLI Commands:
   status    - Show current F.A.S. status

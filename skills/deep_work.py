@@ -128,7 +128,7 @@ def _notify(title: str, body: str, urgency: str = "normal"):
     # Desktop
     try:
         import os
-        env = {**os.environ, "DISPLAY": ":0"}
+        env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
         subprocess.run(
             ["notify-send", "--app-name=Frank", f"--urgency={urgency}",
              "--icon=appointment-soon", "--expire-time=10000", title, body],

@@ -416,7 +416,7 @@ def start_main_frank():
     _clear_all_start_blockers()
     try:
         env = os.environ.copy()
-        env["DISPLAY"] = ":0"
+        env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
         env["PYTHONUNBUFFERED"] = "1"
         stderr_file = open(FRANK_STDERR_LOG, "a")
         stderr_file.write(f"\n--- Frank Popen start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")

@@ -7,7 +7,7 @@ SQLite-backed, max 50 entries, auto-prune oldest.
 Duplicate detection via SHA-256 hash (re-surfaces existing entry).
 Simple LIKE search (no FTS5 needed for 50 entries).
 
-Database: /home/ai-core-node/aicore/database/clipboard_history.db
+Database: <AICORE_BASE>/database/clipboard_history.db
 """
 from __future__ import annotations
 

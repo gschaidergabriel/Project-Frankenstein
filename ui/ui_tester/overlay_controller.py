@@ -126,7 +126,7 @@ class OverlayController:
             subprocess.run(
                 ["scrot", str(screenshot_path)],
                 timeout=10,
-                env={**os.environ, "DISPLAY": ":0"}
+                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
             )
             LOG.debug(f"Screenshot saved: {screenshot_path}")
             return screenshot_path
@@ -207,7 +207,7 @@ class OverlayController:
             subprocess.run(
                 ["xdotool", "type", "--clearmodifiers", text],
                 timeout=30,
-                env={**os.environ, "DISPLAY": ":0"}
+                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
             )
             LOG.debug(f"Typed: {text[:50]}...")
             return True

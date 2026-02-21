@@ -227,7 +227,7 @@ class StartPopup(Gtk.ApplicationWindow):
             sys.executable,
             str(TESTER_DIR / "results_popup.py"),
             "--duration", str(minutes)
-        ], env={**os.environ, "DISPLAY": ":0"})
+        ], env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")})
 
         # Quit the start app
         self.app.quit()

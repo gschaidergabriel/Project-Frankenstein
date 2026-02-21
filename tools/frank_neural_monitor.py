@@ -14,7 +14,7 @@ Features:
 - Aggregates all Frank subsystems
 - Fullscreen on the mini display
 
-Database: /home/ai-core-node/aicore/database/
+Database: <AICORE_BASE>/database/
 """
 
 import gi

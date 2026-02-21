@@ -7,7 +7,7 @@ notes_store.py – Persistent notes/memos for Frank.
 SQLite-backed note storage with FTS5 full-text search.
 Stdlib only – no external dependencies.
 
-Database: /home/ai-core-node/aicore/database/notes.db
+Database: <AICORE_BASE>/database/notes.db
 """
 
 from __future__ import annotations

@@ -408,22 +408,104 @@ class EmailPopup(tk.Toplevel):
     # ── Read view actions ──────────────────────────────────────────
 
     def _on_reply(self):
-        """Request AI-generated reply, then switch to compose mode."""
+        """Show reply intent prompt, then generate AI reply."""
+        self._build_reply_intent_view()
+
+    def _build_reply_intent_view(self):
+        """Ask the user what they want to reply before generating."""
+        self._clear_content()
         ed = self._email_data
-        reply_to = ed.sender
+
+        outer = tk.Frame(self, bg=COLORS["neon_cyan"], padx=2, pady=2)
+        outer.pack(fill="both", expand=True)
+        main = tk.Frame(outer, bg=COLORS["bg_main"])
+        main.pack(fill="both", expand=True)
+
+        self._build_titlebar(main, "REPLY // Was willst du antworten?")
+
+        # Show original email context (compact)
+        ctx = tk.Frame(main, bg=COLORS["bg_elevated"], padx=16, pady=8)
+        ctx.pack(fill="x")
+        from overlay.widgets.email_card import format_sender
+        sender_short = format_sender(ed.sender)
+        subj_short = (ed.subject or "(kein Betreff)")[:60]
+        tk.Label(ctx, text=f"An: {sender_short}", bg=COLORS["bg_elevated"],
+                 fg=COLORS["text_muted"], font=_FONT_SMALL, anchor="w").pack(anchor="w")
+        tk.Label(ctx, text=f"Re: {subj_short}", bg=COLORS["bg_elevated"],
+                 fg=COLORS["text_muted"], font=_FONT_SMALL, anchor="w").pack(anchor="w")
+
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
+
+        # Instruction
+        tk.Label(main, text="Beschreib kurz was Frank antworten soll:",
+                 bg=COLORS["bg_main"], fg=COLORS["text_primary"],
+                 font=_FONT, anchor="w", padx=16, pady=(12, 4)).pack(fill="x")
+
+        # User intent text area
+        intent_frame = tk.Frame(main, bg=COLORS["bg_main"], padx=16)
+        intent_frame.pack(fill="both", expand=True, pady=(0, 8))
+
+        self._intent_text = tk.Text(
+            intent_frame, bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
+            font=_FONT_BODY, wrap="word", borderwidth=1, relief="solid",
+            highlightthickness=1, highlightcolor=COLORS["neon_cyan"],
+            insertbackground=COLORS["neon_cyan"], height=5,
+            padx=12, pady=8,
+        )
+        self._intent_text.pack(fill="both", expand=True)
+        self._intent_text.focus_set()
+
+        # Bind Enter to generate (Shift+Enter for newline)
+        self._intent_text.bind("<Return>", self._on_intent_enter)
+
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
+
+        # Buttons
+        actions = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=8)
+        actions.pack(fill="x")
+
+        self._make_button(actions, "GENERATE REPLY", "#006400",
+                          command=self._on_generate_reply).pack(side="left", padx=(0, 6))
+        self._make_button(actions, "BACK", COLORS.get("neon_cyan", "#00fff9"),
+                          fg_color=COLORS["bg_main"],
+                          command=self._build_read_view).pack(side="left")
+
+        # Status
+        self._status_label = tk.Label(
+            main, text="Enter = Generate  |  Shift+Enter = Neue Zeile",
+            bg=COLORS["bg_main"], fg=COLORS["text_muted"],
+            font=_FONT_SMALL, anchor="w", padx=12
+        )
+        self._status_label.pack(fill="x")
+
+    def _on_intent_enter(self, event):
+        """Enter generates reply, Shift+Enter inserts newline."""
+        if event.state & 0x1:  # Shift held
+            return  # let default handler insert newline
+        self._on_generate_reply()
+        return "break"
+
+    def _on_generate_reply(self):
+        """Send user intent + original email to LLM for reply generation."""
+        intent = self._intent_text.get("1.0", "end-1c").strip()
+        if not intent:
+            self._show_status("Bitte beschreib was du antworten willst.", COLORS["error"])
+            return
+
+        ed = self._email_data
         subject = ed.subject or ""
         if not subject.lower().startswith("re:"):
             subject = f"Re: {subject}"
         body = self._full_body or ed.snippet or ""
 
-        # Dispatch to IO thread — worker will call fill_compose when done
         self._show_status("Generating reply...", COLORS["neon_cyan"])
         self._dispatch(
             "email_reply_draft",
             sender=ed.sender, subject=ed.subject,
-            body=body, reply_to=reply_to,
+            body=body, reply_to=ed.sender,
             reply_subject=subject,
             msg_id=ed.msg_id,
+            user_intent=intent,
         )
 
     def _on_compose_new(self):

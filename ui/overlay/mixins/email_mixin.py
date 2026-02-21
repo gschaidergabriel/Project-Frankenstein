@@ -623,34 +623,33 @@ class EmailMixin:
 
     def _do_email_reply_draft_worker(self, sender: str = "", subject: str = "",
                                      body: str = "", reply_to: str = "",
-                                     reply_subject: str = "", msg_id: str = "", **kwargs):
-        """Generate AI reply draft via LLM and fill compose view (IO thread)."""
+                                     reply_subject: str = "", msg_id: str = "",
+                                     user_intent: str = "", **kwargs):
+        """Generate AI reply draft via LLM based on user intent (IO thread)."""
         from overlay.constants import FRANK_IDENTITY
         from overlay.services.core_api import _core_chat
 
-        # Build prompt for reply generation
         body_snippet = body[:1500] if body else "(empty)"
         prompt = (
             f"[Identity: {FRANK_IDENTITY}]\n\n"
-            f"Write a brief, friendly reply to this email.\n\n"
+            f"Write an email reply based on the user's instructions.\n\n"
+            f"ORIGINAL EMAIL:\n"
             f"From: {sender}\n"
             f"Subject: {subject}\n"
             f"Body:\n{body_snippet}\n\n"
-            f"Write ONLY the reply text (no greeting header like 'Subject:' or 'To:').\n"
-            f"Keep it concise (2-5 sentences). Match the language of the original email.\n"
-            f"Do NOT include email headers or metadata in your response."
+            f"USER WANTS TO REPLY WITH:\n{user_intent}\n\n"
+            f"Write ONLY the reply text. No email headers (no 'Subject:', 'To:', etc.).\n"
+            f"Match the language of the original email.\n"
+            f"Be concise but complete. Follow the user's instructions precisely."
         )
 
         ai_draft = ""
         try:
-            res = _core_chat(prompt, max_tokens=400, timeout_s=60, task="chat.fast", force="llama")
+            res = _core_chat(prompt, max_tokens=600, timeout_s=60, task="chat.fast", force="llama")
             if res and res.get("ok"):
                 ai_draft = (res.get("text") or "").strip()
         except Exception as e:
             LOG.warning(f"AI reply draft failed: {e}")
-
-        if not ai_draft:
-            ai_draft = ""
 
         # Fill the popup compose view on main thread
         def _fill():

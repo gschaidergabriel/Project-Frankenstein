@@ -338,7 +338,10 @@ class MessageBubble(tk.Frame):
                     text_widget.after_cancel(_tid)
                 except (ValueError, tk.TclError):
                     pass
-            text_widget._resize_after = text_widget.after(30, _remeasure_height)
+            # 150ms debounce: during window resize many Configure events fire
+            # in quick succession. Wait for them to settle before the expensive
+            # displaylines recalculation.
+            text_widget._resize_after = text_widget.after(150, _remeasure_height)
 
         text_widget.bind("<Configure>", _on_width_change)
 

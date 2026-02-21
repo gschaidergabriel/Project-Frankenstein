@@ -281,10 +281,14 @@ class UiMixin:
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
 
     def _on_canvas_configure(self, event):
-        # Skip width updates during active edge-resize to prevent
-        # message bubbles from re-laying out and blanking the chat.
+        # During active resize: throttle canvas window width updates to ~12fps
+        # so bubbles resize incrementally (no black gap, no avalanche at end).
         if getattr(self, '_resize_edge', None):
-            return
+            import time as _t
+            now = _t.time()
+            if now - getattr(self, '_last_canvas_resize', 0) < 0.08:
+                return
+            self._last_canvas_resize = now
         self.chat_canvas.itemconfig(self.canvas_window, width=event.width)
 
     def _on_mousewheel(self, event):
@@ -306,6 +310,7 @@ class UiMixin:
         self._resize_start_x = 0
         self._resize_start_width = 0
         self._last_strut_update = 0.0
+        self._last_canvas_resize = 0.0
 
         self.bind("<Motion>", self._on_motion_resize_cursor)
         self.bind("<ButtonPress-1>", self._on_resize_start, add="+")
@@ -362,17 +367,26 @@ class UiMixin:
         if self._resize_edge == "e":
             if hasattr(self, '_update_strut'):
                 self._update_strut()
-            # Now apply the deferred canvas window width update
+            # Final canvas window width sync (throttle may have skipped the last frame)
             try:
                 cw = self.chat_canvas.winfo_width()
                 self.chat_canvas.itemconfig(self.canvas_window, width=cw)
-                self.update_idletasks()
-                self.chat_canvas.configure(
-                    scrollregion=self.chat_canvas.bbox("all"))
-                self._smart_scroll()
+                # Let the event loop handle remeasurement naturally — no
+                # update_idletasks() here to avoid a synchronous avalanche
+                # of displaylines recalculations across all bubbles.
+                self.after(150, self._finalize_resize_layout)
             except Exception:
                 pass
         self._resize_edge = None
+
+    def _finalize_resize_layout(self):
+        """Deferred scrollregion update after resize settles."""
+        try:
+            self.chat_canvas.configure(
+                scrollregion=self.chat_canvas.bbox("all"))
+            self._smart_scroll()
+        except Exception:
+            pass
 
     # ---- Key bindings ----
 

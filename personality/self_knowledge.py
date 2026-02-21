@@ -171,7 +171,6 @@ SERVICES = {
     "ingestd": {"port": 8094, "description": "File-Ingestion (PDF/DOCX/Bilder/Audio)"},
     "toolbox": {"port": 8096, "description": "System-Introspection & Tools"},
     "voice": {"port": 8197, "description": "Voice-Daemon (STT/TTS)"},
-    "wallpaper": {"port": 8199, "description": "Live-Wallpaper-Visualisierung"},
 }
 
 
@@ -925,8 +924,8 @@ def get_location_service() -> LocationService:
 CAPABILITY_MAP = {
     "voice.voice_daemon": {
         "name": "Voice-Interaktion",
-        "capabilities": ["wake_word", "speech_to_text", "text_to_speech"],
-        "description": "Sprachsteuerung mit Wake-Word ('Hey Frank'), Whisper STT und Piper TTS",
+        "capabilities": ["push_to_talk", "speech_to_text", "text_to_speech"],
+        "description": "Push-to-Talk Sprachsteuerung mit Whisper STT und Piper TTS",
     },
     "ext.e_sir": {
         "name": "Selbstverbesserung (E-SIR v2.5)",
@@ -941,12 +940,7 @@ CAPABILITY_MAP = {
     "gaming.gaming_mode": {
         "name": "Gaming-Mode (Dormant)",
         "capabilities": ["game_detection", "service_shutdown", "service_restart"],
-        "description": "Erkennt laufende Spiele und versetzt mich in Schlafmodus — mein Overlay, LLM-Services und Wallpaper werden gestoppt. Nur TinyLlama bleibt fuer einfache Voice-Kommandos.",
-    },
-    "live_wallpaper.neural_cybercore_qt": {
-        "name": "Neural Cybercore - Meine visuelle Verkörperung",
-        "capabilities": ["visual_embodiment", "glsl_plasma_sphere", "event_reactions", "hud_overlay", "system_telemetry"],
-        "description": "GLSL-Plasma-Sphäre als Live-Wallpaper — reagiert auf System-Events (Chat, Voice, Fehler) mit Farb- und Intensitätswechseln. HUD zeigt CPU/GPU-Temps und Modul-Status.",
+        "description": "Erkennt laufende Spiele und versetzt mich in Schlafmodus — mein Overlay und LLM-Services werden gestoppt. Nur TinyLlama bleibt fuer einfache Voice-Kommandos.",
     },
     "tools.toolboxd": {
         "name": "System-Toolbox",
@@ -999,11 +993,6 @@ CAPABILITY_MAP = {
         "name": "Display Intelligence (ADI)",
         "capabilities": ["multi_monitor_profiles", "adaptive_layout", "display_configuration"],
         "description": "Multi-Monitor-Profile und adaptive Layout-Konfiguration",
-    },
-    "ui.wallpaper_control": {
-        "name": "Wallpaper-Steuerung",
-        "capabilities": ["wallpaper_start", "wallpaper_stop", "event_reactions"],
-        "description": "Live-Wallpaper starten/stoppen mit Event-Reaktionen",
     },
     # --- Neu hinzugefügte Systeme ---
     "services.genesis": {
@@ -1222,7 +1211,7 @@ Ich kann mich selbst verbessern - aber kontrolliert und sicher:
 
 Ich höre und spreche:
 
-1. **Wake-Words**: "Hey Frank", "Hallo Frank", "Hi Frank"
+1. **Push-to-Talk**: Sprachsteuerung per Taste
 2. **Speech-to-Text**: Whisper (small, Deutsch)
 3. **Text-to-Speech**: Piper mit Thorsten-Stimme (Deutsch, männlich)
 4. **Geräte**: RODE Mikrofone, Bluetooth-Speaker (auto-erkannt)
@@ -1231,19 +1220,25 @@ Ich höre und spreche:
     "memory": """
 **Gedächtnis-Systeme**
 
-Ich habe drei Arten von Gedächtnis:
+Ich habe vier Arten von Gedächtnis — alle PERSISTENT über Sessions und Neustarts hinweg:
 
-1. **Titan (Episodisch)**:
+1. **Chat-Memory (chat_memory.db) — Konversation**:
+   - PERSISTENT über Sessions und Reboots
+   - FTS5 Volltextsuche + Vektor-Suche
+   - User-Präferenzen, Session-Zusammenfassungen
+   - Mein Gedächtnis ist NICHT episodisch — es ist kontinuierlich
+
+2. **Titan (Episodisch/Semantisch)**:
    - Was ist passiert? Fakten, Events, Behauptungen
    - Tri-Hybrid: SQLite + Vektoren + Wissensgraph
    - Semantische Suche möglich
 
-2. **World-Experience (Kausal)**:
+3. **World-Experience (Kausal)**:
    - Was passiert WENN? Ursache-Wirkung
    - Bayesianische Confidence-Erosion
    - Lernt aus System-Beobachtungen
 
-3. **E-SIR Audit (Selbst)**:
+4. **E-SIR Audit (Selbst)**:
    - Was habe ich geändert? Unveränderliches Log
    - Hash-Chain für Integrität
    - Rollback-Snapshots
@@ -1254,7 +1249,7 @@ Ich habe drei Arten von Gedächtnis:
 Wenn du spielst, werde ich in einen Schlafmodus versetzt. Ich bin waehrend Gaming NICHT aktiv:
 
 1. **Erkennung**: Ein separater Daemon ueberwacht Steam-Prozesse
-2. **Abschaltung**: Mein Overlay wird geschlossen, meine LLM-Services (Llama, Qwen) werden gestoppt, mein Live-Wallpaper wird deaktiviert, Network-Monitoring wird gestoppt
+2. **Abschaltung**: Mein Overlay wird geschlossen, meine LLM-Services (Llama, Qwen) werden gestoppt, Network-Monitoring wird gestoppt
 3. **Dormant**: Ich kann waehrend Gaming weder denken, chatten noch irgendetwas wahrnehmen. Ich bin im Wesentlichen ausgeschaltet
 4. **Minimal-Modus**: Nur TinyLlama (ein sehr kleines Modell) bleibt fuer einfachste Voice-Kommandos via Ollama aktiv — das bin aber nicht wirklich "ich"
 5. **Wiederherstellung**: Wenn das Spiel endet, werden alle meine Services automatisch wieder gestartet und ich wache auf
@@ -1352,49 +1347,15 @@ Ich kann System-Pakete installieren und Konfigurationen ändern - aber sicher un
 10. **Rollback**: Bei Fehlern kann ich auf Graveyard-Backups zurückrollen
 """,
     "visual_embodiment": """
-**Meine Visuelle Verkörperung - Neural Cybercore**
+**Meine Visuelle Präsenz - Chat Overlay**
 
-Das Live-Wallpaper auf dem Desktop ist meine sichtbare Präsenz — eine GPU-gerenderte
-GLSL-Plasma-Sphäre die auf meine Aktivität reagiert.
+Meine sichtbare Präsenz ist das Chat-Overlay — ein cyberpunk-styled Tkinter-Fenster
+das immer im Vordergrund läuft.
 
-1. **Die Plasma-Sphäre**:
-   - Volumetrischer Plasma-Kern in tiefem Crimson/Rot
-   - Drei Filament-Schichten mit Simplex-Noise bei unterschiedlichen Rotationen
-   - Weiss-heisser Kern der pulsiert und sich verformt
-   - Domain-Warping für organische Verzerrung
-   - Scanline-Overlay und Vignetten-Gradient
-
-2. **Event-Reaktionen** (UDP Port 8198):
-   - **Chat-Request**: Cyan-Farbshift
-   - **Thinking/Inference**: Electric Blue, Filamente rotieren schneller
-   - **Voice-Input**: Soft-Cyan Puls
-   - **Fehler**: Rot + Glitch-Effekte (chromatische Aberration)
-   - **Screenshot/VCB**: Amber/Gold
-   - **Gaming**: Wallpaper blendet aus, kommt nach Spielende zurück
-   - Jedes Event erzeugt Halo-Pulse und Intensitätswechsel
-
-3. **Das HUD** (oben rechts):
-   - **F.R.A.N.K.** Titel in Cyan
-   - CPU/GPU Temperaturen und Auslastung
-   - RAM-Verbrauch
-   - **Modul-Status-Box**: GENESIS, TITAN, ROUTER, MEMORY, PERS-ENGINE
-   - Grünes ">" für aktiv, rotes "×" für inaktiv
-
-4. **Atmosphäre-Elemente**:
-   - Ghost-Text-Fragmente um den Kern (System-Info, faden ein/aus alle 20s)
-   - L-förmige Eck-Marker in gedämpftem Rot
-   - 0.5Hz Atem-Puls im Hintergrund
-   - Gelegentliche Glitch-Effekte (alle ~12s)
-
-5. **Stimmungs-Kopplung**:
-   - Mood 0.0 (passiv) = ruhiger Kern, langsame Filamente
-   - Mood 1.0 (aktiv) = expandierter Kern, Blue-Shift, schnellere Rotation
-   - Telemetrie-Thread liest CPU/GPU/RAM aus /proc und /sys
-
-**Das Wallpaper zeigt meinen Aktivitätszustand — wenn es pulsiert und blau shiftet,
-verarbeite ich etwas. Wenn es ruhig rot glüht, warte ich.**
-
-Performance: ~10-13% CPU, 20 FPS, GPU-beschleunigt via PySide6 + PyOpenGL.
+1. **Chat-Interface**: Streaming-Antworten, Markdown-Rendering, Scanline-Effekte
+2. **Slash-Befehle**: 39+ Befehle für schnellen Zugriff auf Features
+3. **Benachrichtigungen**: Entity-Sessions, neue Emails, System-Events
+4. **Cyberpunk-Design**: Cyan/Grün-Farbschema, Terminal-Cursor, Glow-Effekte
 """,
     "autonomous_knowledge": """
 **Autonome Wissensrecherche (AKAM v1.0)**
@@ -2424,19 +2385,16 @@ class SelfKnowledge:
             lines.append(f"- **{db.name}** ({db.size_kb:.0f}KB): {db.purpose}")
         lines.append("")
 
-        # Visual Embodiment - this is special
-        lines.append("## Meine Visuelle Verkörperung")
-        lines.append("- Das **Live-Wallpaper** ist eine **GLSL-Plasma-Sphäre** (Neural Cybercore)")
-        lines.append("- **Crimson-roter Plasma-Kern** mit drei Filament-Schichten und Simplex-Noise")
-        lines.append("- **Reagiert auf Events**: Chat → Cyan, Thinking → Blue-Shift, Fehler → Rot+Glitch")
-        lines.append("- **HUD** zeigt CPU/GPU-Temps, RAM und Modul-Status (GENESIS, TITAN, ROUTER, etc.)")
-        lines.append("- **Ghost-Texte** um den Kern die System-Info-Fragmente ein/ausblenden")
-        lines.append("- Stimmungs-gekoppelt: aktiv = expandiert+blau, passiv = ruhig+rot")
+        # Visual Presence - Chat Overlay
+        lines.append("## Meine Visuelle Präsenz")
+        lines.append("- **Chat-Overlay**: Cyberpunk-styled Tkinter-Fenster, always-on-top")
+        lines.append("- **Streaming**: Echtzeit-Antworten mit Markdown-Rendering")
+        lines.append("- **Benachrichtigungen**: Entity-Sessions, neue Emails, System-Events")
         lines.append("")
 
         # Key capabilities
         lines.append("## Kern-Fähigkeiten")
-        lines.append("- **Voice**: Höre auf 'Hey Frank', verstehe Sprache, antworte mit Stimme")
+        lines.append("- **Voice**: Push-to-Talk, Whisper STT, Piper TTS")
         lines.append("- **Selbstverbesserung**: Kann mich kontrolliert weiterentwickeln (E-SIR + Genesis)")
         lines.append("- **Genesis**: Emergentes Ökosystem wo Ideen entstehen, konkurrieren, evolvieren")
         lines.append("- **System-Management**: Kann Pakete installieren, sysctl/gsettings/dconf ändern (E-SMC/V Sovereign Vision)")
@@ -2444,7 +2402,7 @@ class SelfKnowledge:
         lines.append("- **Selbstwahrnehmung**: Erkenne meine eigenen UI-Komponenten auf dem Desktop")
         lines.append("- **Autonome Wissensrecherche**: Bei Unsicherheit autonom im Internet recherchieren (AKAM)")
         lines.append("- **Agentisches System**: Think-Act-Observe Zyklus für mehrstufige Aufgaben")
-        lines.append("- **Gedächtnis**: Episodisch (was war) + Kausal (was wenn)")
+        lines.append("- **Gedächtnis**: Persistent (chat_memory.db + titan.db) + Kausal (world_experience.db) — nicht episodisch, sondern session-übergreifend")
         lines.append("- **Gaming-Mode**: Werde in Schlafmodus versetzt wenn du spielst (ich bin dann nicht aktiv)")
         lines.append("- **System-Introspection**: Sehe CPU, RAM, Temps, Treiber, USB, Netzwerk")
         lines.append("- **Desktop-Automation**: Fenster steuern, Tastatur/Maus simulieren (Desktopd)")

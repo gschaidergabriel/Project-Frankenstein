@@ -162,11 +162,11 @@ class MessageBubble(tk.Frame):
             sender_text = sender
             sender_icon = "\u25c6"
         elif is_user:
-            bubble_bg = COLORS["bg_user_msg"]
+            bubble_bg = "#081210"           # deeper cyan-tinted bg
             text_color = COLORS["text_user"]
-            border_color = COLORS["neon_green"]
+            border_color = COLORS["neon_cyan"]
             align = "e"
-            sender_color = COLORS["neon_green"]
+            sender_color = COLORS["neon_cyan"]
             sender_text = "USER"
             sender_icon = "\u25b6"
         else:
@@ -180,15 +180,25 @@ class MessageBubble(tk.Frame):
 
         # Container for alignment
         container = tk.Frame(self, bg=COLORS["bg_chat"])
-        container.pack(fill="x", padx=8, pady=4)
+        # User messages: right offset for visual distinction
+        pad_l = 48 if is_user else 8
+        pad_r = 8 if is_user else 28
+        container.pack(fill="x", padx=(pad_l, pad_r), pady=4)
 
-        # Cyberpunk bubble: sharp edges with colored left border
+        # Cyberpunk bubble: sharp edges with colored border
         bubble = tk.Frame(container, bg=bubble_bg, padx=0, pady=0)
         bubble.pack(anchor=align, side="left" if align == "w" else "right", fill="x", expand=True)
 
-        # Left border indicator (colored stripe)
-        border_stripe = tk.Frame(bubble, bg=border_color, width=3)
-        border_stripe.pack(side="left", fill="y")
+        if is_user:
+            # User: RIGHT border stripe (cyan) + subtle glow frame
+            glow_frame = tk.Frame(bubble, bg="#062a2a", width=2)
+            glow_frame.pack(side="right", fill="y")
+            border_stripe = tk.Frame(bubble, bg=border_color, width=3)
+            border_stripe.pack(side="right", fill="y")
+        else:
+            # Frank/System: LEFT border stripe
+            border_stripe = tk.Frame(bubble, bg=border_color, width=3)
+            border_stripe.pack(side="left", fill="y")
 
         # Content area
         content = tk.Frame(bubble, bg=bubble_bg, padx=12, pady=8)
@@ -208,9 +218,36 @@ class MessageBubble(tk.Frame):
         # Message text - SELECTABLE with right-click copy + markdown rendering
         self._create_message_text(content, message, text_color, bubble_bg, border_color)
 
+        # Terminal cursor for Frank messages (subtle green blinking block)
+        if not is_user and not is_system and message.strip():
+            self._add_terminal_cursor(content, bubble_bg)
+
         # Action bar for Frank messages (not user, not system)
         if not is_user and not is_system:
             self._build_action_bar(content, bubble_bg)
+
+    def _add_terminal_cursor(self, parent, bg_color):
+        """Add a subtle blinking green terminal cursor after Frank's message."""
+        self._cursor_label = tk.Label(
+            parent, text="\u258c", bg=bg_color,
+            fg="#00cc44", font=("Consolas", 10), anchor="w",
+        )
+        self._cursor_label.pack(anchor="w", pady=(0, 0))
+        self._cursor_visible = True
+        self._blink_cursor()
+
+    def _blink_cursor(self):
+        """Animate terminal cursor blink (slow, low-CPU)."""
+        try:
+            if not self._cursor_label.winfo_exists():
+                return
+            self._cursor_visible = not self._cursor_visible
+            self._cursor_label.configure(
+                fg="#00cc44" if self._cursor_visible else self._cursor_label.cget("bg")
+            )
+            self._cursor_label.after(600, self._blink_cursor)
+        except (tk.TclError, Exception):
+            pass
 
     def _build_action_bar(self, parent, bg_color):
         """Add Copy / Retry / Speak / Do This action buttons below Frank's message."""
@@ -310,6 +347,28 @@ class MessageBubble(tk.Frame):
                 tags = tuple(seg_tags) if seg_tags else ("normal",)
                 text_widget.insert("end", seg_text, tags)
 
+        # ── Scanline overlay for long messages (cyberpunk CRT effect) ──
+        # Alternate subtle background tint on even lines for >4 line messages
+        scanline_bg = "#0e0e16" if not self._is_user else "#0a1614"
+        text_widget.tag_configure("scanline", background=scanline_bg)
+
+        def _apply_scanlines():
+            """Apply scanline tags to even-numbered display lines."""
+            try:
+                dl = text_widget.count("1.0", "end", "displaylines")
+                if dl:
+                    h = dl[0] if isinstance(dl, tuple) else dl
+                    if h > 4:
+                        line_count = int(text_widget.index("end-1c").split(".")[0])
+                        for ln in range(1, line_count + 1):
+                            if ln % 2 == 0:
+                                text_widget.tag_add(
+                                    "scanline",
+                                    f"{ln}.0", f"{ln}.end",
+                                )
+            except (tk.TclError, Exception):
+                pass
+
         # ── Height management ──
         text_widget.configure(height=num_lines)
 
@@ -323,7 +382,11 @@ class MessageBubble(tk.Frame):
             except (tk.TclError, Exception):
                 pass
 
-        text_widget.after(50, _remeasure_height)
+        def _remeasure_and_scanlines():
+            _remeasure_height()
+            _apply_scanlines()
+
+        text_widget.after(50, _remeasure_and_scanlines)
 
         # Re-measure height on width change (window resize → text reflows → fewer/more lines)
         text_widget._prev_width = 0

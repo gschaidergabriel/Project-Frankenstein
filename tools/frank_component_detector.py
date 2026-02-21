@@ -15,7 +15,7 @@ Usage:
     #     "other_windows": [...],
     #     "monitor_count": 1,
     #     "monitors": [...],
-    #     "summary": "Dein Chat-Overlay und Live-Wallpaper sind sichtbar..."
+    #     "summary": "Dein Chat-Overlay ist sichtbar..."
     # }
 """
 
@@ -35,12 +35,6 @@ FRANK_SIGNATURES = [
         "title_patterns": [r"F\.R\.A\.N\.K\.", r"^Frank$", r"Frank Chat"],
         "name": "Chat-Overlay",
         "description": "Franks Chat-Fenster fuer Benutzer-Interaktion",
-    },
-    {
-        "process_patterns": ["neural_cybercore_qt.py", "frank_wallpaperd.py", "nec_core.py"],
-        "title_patterns": [r"FRANK NEURAL CORE", r"Neural.*Core", r"NEC"],
-        "name": "Live-Wallpaper (Neural Emergence Core)",
-        "description": "Franks visuelle Verkoerperung - zeigt sein neurales Netz und Denkmuster",
     },
     {
         "process_patterns": ["adi_popup", "main_window.py"],

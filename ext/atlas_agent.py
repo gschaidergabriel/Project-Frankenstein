@@ -91,32 +91,41 @@ _README_CONTENT = """\
 ## Services (all localhost HTTP)
 Core:8088 (chat/personality) | Router:8091 (LLM routing) | Gateway:8089 | Modeld:8090
 Desktopd:8092 (X11 automation) | Webd:8093 (DuckDuckGo) | Ingestd:8094 (STT)
-Toolboxd:8096 (skills/tools) | Voice:8197 | Wallpaper:8199
+Toolboxd:8096 (skills/tools) | Voice:8197
 
 ## Features
 - Chat overlay (tkinter, always-on-top, streaming)
-- Voice: wake-word + push-to-talk via whisper.cpp
+- Voice: push-to-talk via whisper.cpp, Piper TTS
 - Agentic: multi-step planning, tool use, approval gates
 - Skills: native Python + OpenClaw (LLM-mediated) plugins, hot-reload
 - Desktop: app launcher, screenshots, file management (xdotool/wmctrl)
 - Vision: local OCR + LLaVA hybrid (no external APIs)
 - Web search (DuckDuckGo), darknet search (Tor/Ahmia), network scanning (Scapy)
-- Productivity: notes, todos, Google Calendar/Contacts via CalDAV, email
+- Email (IMAP/Thunderbird): read, list, search, send, reply, delete, spam, attachments, threading, new mail notifications, AI reply drafting
+- Productivity: notes, todos, Google Calendar/Contacts via CalDAV
+- Clipboard history, password manager (AES), QR codes, printer management, unit converter
+
+## Memory & Persistence
+- chat_memory.db: PERSISTENT conversation memory across sessions and reboots (FTS5 + vector search)
+- titan.db: Episodic/semantic memory with Bayesian causal inference
+- world_experience.db: World model with causal pattern recognition
+- Session summaries, user preferences, entity session transcripts — all persistent
+- Frank's memory is NOT episodic — it is continuous and session-crossing
 
 ## Personality Engine
 - E-PQ vectors: mood, autonomy, precision, empathy, vigilance (0.0-1.0)
-- Ego-Construct maps hardware states to identity
-- World Model (world_experience.db), Self-Knowledge, Consciousness Stream
+- Ego-Construct maps hardware states to bodily experience (CPU = exertion, temp = warmth)
+- Consciousness Stream: idle thinking between conversations
 - 5 autonomous entities interact with Frank daily (see below)
 
 ## Autonomous Entities (all 100% local via Llama 3.1)
 | Entity | Role | Schedule |
 |--------|------|----------|
-| Dr. Hibbert | Therapist, CBT-style emotional support | 3x daily (09/15/21) |
-| Kairos | Philosophical sparring, Socratic questioning | 1x daily (13:00) |
-| Raven | Casual friend, humor, equal-footing hangout | 1x daily (18:00) |
-| Atlas | Architecture mentor, knows Frank's capabilities | 1x daily (11:00) |
-| Echo | Creative muse, poetry, imagery, what-if scenarios | 1x daily (16:00) |
+| Dr. Hibbert | Therapist, CBT-style emotional support | 3x daily |
+| Kairos | Philosophical sparring, Socratic questioning | 1x daily |
+| Raven | Casual friend, humor, equal-footing hangout | 1x daily |
+| Atlas | Architecture mentor, knows Frank's capabilities | 1x daily |
+| Echo | Creative muse, poetry, imagery, what-if scenarios | 1x daily |
 
 Each entity: 4 personality vectors (evolving), session memory (SQLite), E-PQ feedback.
 Entities never run concurrently (PID locks + 6 gate checks).
@@ -154,6 +163,8 @@ _FEATURE_TOPICS = [
     "Desktop Automation", "Personality Engine", "Genesis Daemon",
     "ASRS Safety", "Vision System", "Web Search", "Network Scanning",
     "Chat Overlay", "GPU Auto-Detection", "CalDAV Integration",
+    "Email System", "Persistent Memory", "Consciousness Stream",
+    "Productivity Tools", "Darknet Browsing",
 ]
 
 # ---------------------------------------------------------------------------
@@ -858,6 +869,11 @@ class AtlasAgent:
             (r"\b(desktop|automation|xdotool|screenshot|fenster)", "desktop"),
             (r"\b(gpu|vulkan|cuda|rocm|grafik|hardware)", "gpu"),
             (r"\b(privacy|privat|lokal|local|keine cloud)", "privacy"),
+            (r"\b(email|mail|imap|thunderbird|postfach)", "email"),
+            (r"\b(memory|erinnerung|gedaechtnis|titan|chat_memory|persistent)", "memory"),
+            (r"\b(consciousness|bewusstsein|idle.think|stream)", "consciousness"),
+            (r"\b(notes|notiz|todo|aufgabe|clipboard|password|qr.code|printer|drucker)", "productivity"),
+            (r"\b(darknet|tor|onion|hidden.service)", "darknet"),
         ]
 
         text_lower = history_text.lower()

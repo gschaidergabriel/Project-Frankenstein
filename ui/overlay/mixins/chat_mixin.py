@@ -432,8 +432,8 @@ class ChatMixin:
             # When user asks about a specific capability, inject FACTS about it
             _TOPIC_KEYWORDS = {
                 "gaming": ["gaming", "spiel", "zocke", "steam", "game mode", "spielst du"],
-                "voice": ["voice", "stimme", "wake word", "sprich", "sprachsteuerung", "mikrofon"],
-                "visual_embodiment": ["wallpaper", "live wallpaper", "nec", "cybercore", "desktop hintergrund", "plasma"],
+                "voice": ["voice", "stimme", "sprich", "sprachsteuerung", "mikrofon", "push to talk"],
+                "visual_embodiment": ["overlay", "chat fenster", "chat overlay", "desktop hintergrund"],
                 "vcb_vision": ["screenshot", "vcb", "sehen", "siehst du", "visual", "bildschirm sehen"],
                 "personality": ["persönlichkeit", "e-pq", "stimmung", "temperament", "persoenlichkeit"],
                 "self_improvement": ["e-sir", "selbstverbesserung", "genesis tool", "verbessern"],

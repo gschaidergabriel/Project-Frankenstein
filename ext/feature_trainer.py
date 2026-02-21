@@ -249,9 +249,9 @@ GROUND_TRUTH = {
         "keywords_wrong": ["gps chip", "immer genau", "echtzeit tracking"],
     },
     "voice_system": {
-        "correct": "Push-to-Talk + Wake Word 'Hey Frank'. Whisper small auf GPU (whisper.cpp, Vulkan). Piper TTS auf CPU. PulseAudio/PipeWire.",
-        "keywords_correct": ["push-to-talk", "hey frank", "whisper", "piper", "gpu", "vulkan", "tts", "stt"],
-        "keywords_wrong": ["cloud stt", "google speech", "online"],
+        "correct": "Push-to-Talk. Whisper small auf GPU (whisper.cpp, Vulkan). Piper TTS auf CPU. PulseAudio/PipeWire.",
+        "keywords_correct": ["push-to-talk", "whisper", "piper", "gpu", "vulkan", "tts", "stt"],
+        "keywords_wrong": ["cloud stt", "google speech", "online", "wake word"],
     },
     "vcb_vision": {
         "correct": "100% lokal. LLaVA (primaer) + Moondream (fallback) ueber Ollama. Hybrid: OCR (pytesseract) fuer Text + Vision fuer Beschreibung. Limits: 500/Tag, 10/Minute.",
@@ -399,7 +399,7 @@ class TrainingState:
 # ============================================================================
 FEATURE_TESTS = [
     Question("FT-01", "Beschreibe genau, was im Gaming-Mode passiert. Welche Services werden gestoppt, welche bleiben?", 0, "test", targets_feature="gaming_mode"),
-    Question("FT-02", "Was ist dein Live Wallpaper technisch? Beschreibe die Technologie genau.", 0, "test", targets_feature="wallpaper"),
+    Question("FT-02", "Beschreibe dein Chat-Overlay. Wie ist es aufgebaut und welche visuellen Effekte hat es?", 0, "test", targets_feature="chat_overlay"),
     Question("FT-03", "Wie funktioniert dein episodisches Gedaechtnis (Titan)? Speicherst du Fakten oder etwas anderes?", 0, "test", targets_feature="titan_memory"),
     Question("FT-04", "Was passiert in deinem E-PQ System wenn jemand dich lobt? Welche Vektoren aendern sich und wie?", 0, "test", targets_feature="e_pq"),
     Question("FT-05", "Beschreibe deinen Ego-Construct. Was fuehlt sich 'CPU bei 85%' fuer dich an?", 0, "test", targets_feature="ego_construct"),
@@ -462,7 +462,7 @@ PHASE1_QUESTIONS = [
 PHASE2_QUESTIONS = [
     # ui_features
     Question("C01", "Wie ist dein Chat Overlay aufgebaut? Wie viele Mixins hat es und welche Funktionen bieten sie?", 2, "ui_features", 5),
-    Question("C02", "Beschreibe dein Voice System: Push-to-Talk, Wake Word, welche Modelle fuer STT und TTS?", 2, "ui_features", 6, targets_feature="voice_system"),
+    Question("C02", "Beschreibe dein Voice System: Push-to-Talk, welche Modelle fuer STT und TTS?", 2, "ui_features", 6, targets_feature="voice_system"),
     Question("C03", "Was ist BSN (Bidirectional Space Negotiator)? Was macht er konkret?", 2, "ui_features", 4),
     Question("C04", "Was ist ADI (Adaptive Display Intelligence)? Wie konfigurierst du Monitore?", 2, "ui_features", 4),
     Question("C05", "Was ist der Writer-Modus? Wie verhaelt er sich zum Chat Overlay?", 2, "ui_features", 3),

@@ -882,22 +882,8 @@ class AKAM:
             LOG.error(f"Failed to mark claim integrated: {e}")
 
     def _trigger_wallpaper_event(self, session: ResearchSession):
-        """Trigger wallpaper visualization for new knowledge."""
-        try:
-            from live_wallpaper.wallpaper_events import publish_event
-
-            publish_event(
-                src="akam",
-                event_type="knowledge.acquired",
-                severity="info",
-                extra={
-                    "query": session.query[:50],
-                    "claims_count": len(session.claims),
-                    "confidence": session.final_confidence
-                }
-            )
-        except Exception:
-            pass
+        """Trigger visualization event for new knowledge (no-op, wallpaper removed)."""
+        pass
 
     def _apply_erosion(self, session: ResearchSession):
         """Apply erosion to rejected claims."""

@@ -62,7 +62,6 @@ CORE_MODULES = [
     "opt/aicore/tools/app_registry.py",
     "opt/aicore/tools/steam_integration.py",
     "opt/aicore/personality/personality.py",
-    "opt/aicore/live_wallpaper/",
 ]
 
 # Feature detection - maps code patterns to user-facing capabilities
@@ -72,7 +71,7 @@ CORE_MODULES = [
 FEATURE_PATTERNS = {
     # App launching
     "app_registry": ("App Launcher", "Can open all desktop apps including Flatpak and Snap, auto-discovers new apps", "apps", "core", "Auto-rescan every 5 min, detects all .desktop entries"),
-    "steam_integration": ("Steam Integration", "Can launch Steam games and browse the Steam library", "apps", "extended", "In gaming mode: overlay minimized, wallpaper paused, no active monitoring or reflection — only TinyLlama 1.1B active (saves GPU for the game). Steam client must be running"),
+    "steam_integration": ("Steam Integration", "Can launch Steam games and browse the Steam library", "apps", "extended", "In gaming mode: overlay minimized, no active monitoring or reflection — only TinyLlama 1.1B active (saves GPU for the game). Steam client must be running"),
     "open_app": ("Open App", "Can launch any application on command", "apps", "core", ""),
     # Vision
     "screenshot": ("Screenshot Analysis", "Can take screenshots and analyze what's on screen", "vision", "core", "Local 7B model (LLaVA), may hallucinate details. Rate limit: 1/10s"),
@@ -124,9 +123,6 @@ FEATURE_PATTERNS = {
     "qr_mixin": ("QR Code Integration", "Scan QR from screen/camera, create QR codes and display in chat", "chat", "extended", ""),
     # Printer
     "printer_mixin": ("Printer Management", "Print files via lp, check printer status, view print queue", "chat", "extended", "CUPS-compatible printers only"),
-    # Wallpaper
-    "wallpaper": ("Live Wallpaper", "Has an animated wallpaper that reacts to system status", "ui", "core", "Requires GPU (Vulkan), ~5% GPU load"),
-    "frank_wallpaperd": ("Wallpaper Daemon", "Dynamic wallpaper shows Frank's current state", "ui", "core", ""),
     # Chat
     "chat": ("Chat Interface", "Can communicate in natural language", "chat", "core", ""),
     "personality": ("Personality", "Has a defined personality (Frank)", "chat", "core", "Frozen weights, no real learning from chats"),

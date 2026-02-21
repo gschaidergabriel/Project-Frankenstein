@@ -486,7 +486,7 @@ def validate_code_quality(code: str) -> Tuple[bool, str]:
         "ollama", "httpx", "aiohttp", "aiofiles",
         # project-internal
         "overlay", "tools", "agentic", "intelligence", "services",
-        "ext", "ui", "live_wallpaper",
+        "ext", "ui",
     }
 
     HALLUCINATED_MODULES = {

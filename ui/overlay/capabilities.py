@@ -42,7 +42,7 @@ OVERLAY_CAPABILITIES = {
     },
     "voice_control": {
         "name": "Voice Control",
-        "description": "Wake word (Hey Frank), Push-to-Talk, Text-to-Speech (Thorsten voice)",
+        "description": "Push-to-Talk, Whisper STT, Piper TTS (Thorsten voice)",
     },
     "gaming_mode": {
         "name": "Gaming Mode",

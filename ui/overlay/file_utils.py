@@ -41,8 +41,8 @@ def _suggest_features_for_content(content: str, file_type: str) -> List[str]:
     content_lower = content.lower()
 
     # Content-based feature suggestions
-    if any(w in content_lower for w in ["wallpaper", "hintergrund", "desktop", "animation"]):
-        suggestions.append("My **Live Wallpaper** could be extended with these concepts")
+    if any(w in content_lower for w in ["hintergrund", "desktop", "animation", "theme"]):
+        suggestions.append("My **Desktop Automation** could help with this")
     if any(w in content_lower for w in ["app", "programm", "software", "anwendung", "launcher"]):
         suggestions.append("My **App Launcher** could integrate these apps")
     if any(w in content_lower for w in ["smart", "home", "licht", "lampe", "steckdose", "sensor"]):

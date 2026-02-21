@@ -972,23 +972,8 @@ class RealWorldPerturbation:
 
     @staticmethod
     def trigger_wallpaper_event(event_type: str = "training.pulse") -> bool:
-        """Send event to live wallpaper."""
-        try:
-            payload = json.dumps({
-                "source": "consciousness_training",
-                "type": event_type,
-                "level": "info"
-            }).encode()
-            req = urllib.request.Request(
-                "http://127.0.0.1:8199/pulse",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            urllib.request.urlopen(req, timeout=5)
-            return True
-        except Exception:
-            return False
+        """No-op — live wallpaper was removed."""
+        return False
 
 
 # ============================================================================

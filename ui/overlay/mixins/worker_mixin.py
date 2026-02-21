@@ -138,6 +138,16 @@ class WorkerMixin:
                     self._do_email_spam_worker(**arg)
                 elif kind == "email_general":
                     self._do_email_general_worker(**arg)
+                elif kind == "email_popup":
+                    self._do_email_popup_worker(**arg)
+                elif kind == "email_send":
+                    self._do_email_send_worker(**arg)
+                elif kind == "email_draft":
+                    self._do_email_draft_worker(**arg)
+                elif kind == "email_toggle_read":
+                    self._do_email_toggle_read_worker(**arg)
+                elif kind == "email_compose":
+                    self._do_email_compose_worker(**arg)
                 # Calendar operations
                 elif kind == "calendar_today":
                     self._do_calendar_today_worker(**arg)

@@ -832,7 +832,7 @@ class MessageMixin:
             card = EmailCard(
                 scrollable_frame,
                 email_data=email_data,
-                on_click=lambda ed=email_data: self._show_email_in_chat(ed),
+                on_click=lambda ed=email_data: self._io_q.put(("email_popup", {"email_data": ed})),
             )
             card.pack(fill="x", pady=1)
 

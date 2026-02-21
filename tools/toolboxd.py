@@ -2111,6 +2111,47 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **result})
             return
 
+        if p == "/email/send":
+            from email_reader import send_email
+            to = str(payload.get("to", ""))
+            subject = str(payload.get("subject", ""))
+            body = str(payload.get("body", ""))
+            attachments = payload.get("attachments")  # list of file paths or None
+            in_reply_to = payload.get("in_reply_to")
+            references = payload.get("references")
+            result = send_email(to=to, subject=subject, body=body,
+                                attachments=attachments, in_reply_to=in_reply_to,
+                                references=references)
+            if "error" in result:
+                self._send(500, {"ok": False, "error": result["error"]})
+            else:
+                self._send(200, {"ok": True, **result})
+            return
+
+        if p == "/email/draft":
+            from email_reader import save_draft
+            to = str(payload.get("to", ""))
+            subject = str(payload.get("subject", ""))
+            body = str(payload.get("body", ""))
+            result = save_draft(to=to, subject=subject, body=body)
+            if "error" in result:
+                self._send(500, {"ok": False, "error": result["error"]})
+            else:
+                self._send(200, {"ok": True, **result})
+            return
+
+        if p == "/email/toggle_read":
+            from email_reader import toggle_read_status
+            folder = str(payload.get("folder", "INBOX"))
+            msg_id = payload.get("id") or payload.get("msg_id")
+            mark_read = bool(payload.get("mark_read", True))
+            result = toggle_read_status(folder=folder, msg_id=msg_id, mark_read=mark_read)
+            if "error" in result:
+                self._send(500, {"ok": False, "error": result["error"]})
+            else:
+                self._send(200, {"ok": True, **result})
+            return
+
         # ── Calendar endpoints ────────────────────────────────────
 
         if p == "/calendar/today":

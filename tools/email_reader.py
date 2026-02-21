@@ -881,6 +881,250 @@ def move_to_spam(
         return {"error": f"Connection error: {e}"}
 
 
+# ── SMTP send email ───────────────────────────────────────────────
+
+def send_email(
+    to: str,
+    subject: str,
+    body: str,
+    attachments: Optional[List[str]] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
+    profile: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Send an email via Gmail SMTP using OAuth2 (same token as IMAP).
+
+    Args:
+        to: Recipient email address
+        subject: Email subject
+        body: Plain text body
+        attachments: List of file paths to attach
+        in_reply_to: Message-ID header for threading (reply)
+        references: References header for threading (reply)
+        profile: Thunderbird profile path
+
+    Returns:
+        {"ok": True, "message_id": "..."} or {"error": "..."}
+    """
+    import smtplib
+    import base64
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    creds = _get_imap_credentials(profile)
+    if not creds:
+        return {"error": "SMTP credentials not found. Check Thunderbird profile."}
+
+    user = creds["user"]
+    access_token = creds["access_token"]
+
+    # Build MIME message
+    msg = MIMEMultipart()
+    msg["From"] = user
+    msg["To"] = to
+    msg["Subject"] = subject
+
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+        msg["References"] = references or in_reply_to
+
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    # Attachments
+    if attachments:
+        for filepath in attachments:
+            p = Path(filepath)
+            if not p.exists():
+                LOG.warning(f"Attachment not found: {filepath}")
+                continue
+            try:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(p.read_bytes())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f'attachment; filename="{p.name}"')
+                msg.attach(part)
+            except Exception as e:
+                LOG.warning(f"Failed to attach {filepath}: {e}")
+
+    # Send via SMTP with XOAUTH2
+    try:
+        smtp = smtplib.SMTP("smtp.gmail.com", 587)
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.ehlo()
+
+        # XOAUTH2 auth string (same format as IMAP)
+        auth_string = f"user={user}\x01auth=Bearer {access_token}\x01\x01"
+        smtp.docmd("AUTH", "XOAUTH2 " + base64.b64encode(auth_string.encode()).decode())
+
+        smtp.sendmail(user, [to], msg.as_string())
+        smtp.quit()
+
+        message_id = msg.get("Message-ID", "")
+        LOG.info(f"Email sent to {to}: {subject[:50]}")
+        return {"ok": True, "message_id": message_id}
+
+    except smtplib.SMTPAuthenticationError as e:
+        LOG.warning(f"SMTP auth failed, falling back to Thunderbird compose: {e}")
+        return _thunderbird_compose_fallback(to, subject, body)
+    except Exception as e:
+        LOG.warning(f"SMTP send failed, falling back to Thunderbird compose: {e}")
+        return _thunderbird_compose_fallback(to, subject, body)
+
+
+def _thunderbird_compose_fallback(to: str, subject: str, body: str) -> Dict[str, Any]:
+    """Open Thunderbird compose window as fallback when SMTP fails."""
+    import subprocess
+    import urllib.parse
+
+    mailto = f"mailto:{urllib.parse.quote(to)}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body[:2000])}"
+    try:
+        subprocess.Popen(["thunderbird", "-compose", mailto],
+                         start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        try:
+            subprocess.Popen(["snap", "run", "thunderbird", "-compose", mailto],
+                             start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            return {"error": "SMTP failed and Thunderbird not found."}
+
+    return {"ok": True, "fallback": "thunderbird", "message": "Opened in Thunderbird compose."}
+
+
+# ── IMAP save draft ──────────────────────────────────────────────
+
+def save_draft(
+    to: str = "",
+    subject: str = "",
+    body: str = "",
+    profile: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Save an email draft to Gmail Drafts folder via IMAP APPEND.
+
+    Returns:
+        {"ok": True} or {"error": "..."}
+    """
+    import imaplib
+    from email.mime.text import MIMEText
+
+    creds = _get_imap_credentials(profile)
+    if not creds:
+        return {"error": "IMAP credentials not found."}
+
+    # Build draft message
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["From"] = creds["user"]
+    if to:
+        msg["To"] = to
+    if subject:
+        msg["Subject"] = subject
+
+    drafts_folder = "[Gmail]/Entw&APw-rfe"
+
+    try:
+        imap = imaplib.IMAP4_SSL(creds["host"])
+
+        if creds.get("auth_method") == "xoauth2":
+            auth_string = f"user={creds['user']}\x01auth=Bearer {creds['access_token']}\x01\x01"
+            imap.authenticate("XOAUTH2", lambda _: auth_string.encode())
+        else:
+            imap.login(creds["user"], creds["password"])
+
+        import time as _time
+        date_str = imaplib.Time2Internaldate(_time.time())
+        status, _ = imap.append(drafts_folder, "\\Draft", date_str, msg.as_bytes())
+        imap.logout()
+
+        if status != "OK":
+            return {"error": f"IMAP APPEND failed: {status}"}
+
+        LOG.info(f"Draft saved: {subject[:50]}")
+        return {"ok": True}
+
+    except imaplib.IMAP4.error as e:
+        return {"error": f"IMAP error: {e}"}
+    except Exception as e:
+        return {"error": f"Draft save error: {e}"}
+
+
+# ── IMAP toggle read/unread ─────────────────────────────────────
+
+def toggle_read_status(
+    folder: str = "INBOX",
+    msg_id: Optional[str] = None,
+    mark_read: bool = True,
+    profile: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Toggle the read/unread status of an email via IMAP \\Seen flag.
+
+    Args:
+        folder: IMAP folder
+        msg_id: Message-ID header
+        mark_read: True = mark as read, False = mark as unread
+
+    Returns:
+        {"ok": True, "read": bool} or {"error": "..."}
+    """
+    import imaplib
+
+    if not msg_id:
+        return {"error": "msg_id is required"}
+
+    creds = _get_imap_credentials(profile)
+    if not creds:
+        return {"error": "IMAP credentials not found."}
+
+    imap_folder = _resolve_imap_folder(folder)
+
+    try:
+        imap = imaplib.IMAP4_SSL(creds["host"])
+
+        if creds.get("auth_method") == "xoauth2":
+            auth_string = f"user={creds['user']}\x01auth=Bearer {creds['access_token']}\x01\x01"
+            imap.authenticate("XOAUTH2", lambda _: auth_string.encode())
+        else:
+            imap.login(creds["user"], creds["password"])
+
+        status, data = imap.select(imap_folder)
+        if status != "OK":
+            imap.logout()
+            return {"error": f"Folder '{folder}' not found"}
+
+        # Search by Message-ID
+        mid = msg_id.strip("<>")
+        status, msg_ids = imap.search(None, f'HEADER Message-ID "<{mid}>"')
+
+        if status != "OK" or not msg_ids[0]:
+            imap.close()
+            imap.logout()
+            return {"error": "Email not found"}
+
+        target_id = msg_ids[0].split()[0]
+
+        if mark_read:
+            imap.store(target_id, "+FLAGS", "\\Seen")
+        else:
+            imap.store(target_id, "-FLAGS", "\\Seen")
+
+        imap.close()
+        imap.logout()
+
+        LOG.info(f"Email {msg_id[:30]} marked as {'read' if mark_read else 'unread'}")
+        return {"ok": True, "read": mark_read}
+
+    except imaplib.IMAP4.error as e:
+        return {"error": f"IMAP error: {e}"}
+    except Exception as e:
+        return {"error": f"Connection error: {e}"}
+
+
 # ── CLI test ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

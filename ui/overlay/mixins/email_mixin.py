@@ -498,6 +498,129 @@ class EmailMixin:
             self._ui_call(self._hide_typing)
             self._ui_call(lambda err=e: self._add_message("Frank", f"Delete failed: {err}", is_system=True))
 
+    # ── Email Popup workers ──────────────────────────────────────────
+
+    _email_popup = None  # singleton reference
+
+    def _on_email_popup_destroyed(self):
+        self._email_popup = None
+
+    def _open_email_popup(self, email_data, full_body: str = ""):
+        """Open email popup window (MUST run on main thread)."""
+        if self._email_popup is not None:
+            try:
+                self._email_popup.destroy()
+            except Exception:
+                pass
+            self._email_popup = None
+
+        from overlay.widgets.email_popup import EmailPopup
+        self._email_popup = EmailPopup(
+            self,
+            email_data=email_data,
+            full_body=full_body,
+            on_destroy=self._on_email_popup_destroyed,
+            on_action=lambda action, **kw: self._io_q.put((action, kw)),
+        )
+
+    def _open_compose_popup(self):
+        """Open a blank compose popup (MUST run on main thread)."""
+        if self._email_popup is not None:
+            try:
+                self._email_popup.destroy()
+            except Exception:
+                pass
+            self._email_popup = None
+
+        from overlay.widgets.email_popup import EmailPopup
+        self._email_popup = EmailPopup(
+            self,
+            email_data=None,
+            on_destroy=self._on_email_popup_destroyed,
+            on_action=lambda action, **kw: self._io_q.put((action, kw)),
+        )
+
+    def _do_email_popup_worker(self, email_data=None, **kwargs):
+        """Fetch full email body and open popup (IO thread)."""
+        if email_data is None:
+            return
+
+        self._ui_call(self._show_typing)
+        full_body = ""
+        try:
+            payload = {"folder": email_data.folder}
+            if email_data.msg_id:
+                payload["id"] = email_data.msg_id
+            elif email_data.idx is not None:
+                payload["idx"] = email_data.idx
+
+            result = _toolbox_call("/email/read", payload, timeout_s=15.0)
+            if result and result.get("ok"):
+                em = result.get("email", {})
+                full_body = em.get("body", "") or email_data.snippet or ""
+        except Exception as e:
+            LOG.warning(f"Email popup fetch error: {e}")
+            full_body = email_data.snippet or "(Could not load email body)"
+
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda ed=email_data, fb=full_body: self._open_email_popup(ed, fb))
+
+    def _do_email_send_worker(self, to: str = "", subject: str = "", body: str = "",
+                              attachments=None, in_reply_to: str = None,
+                              references: str = None, **kwargs):
+        """Send email via toolbox (IO thread)."""
+        try:
+            payload = {"to": to, "subject": subject, "body": body}
+            if attachments:
+                payload["attachments"] = attachments
+            if in_reply_to:
+                payload["in_reply_to"] = in_reply_to
+                payload["references"] = references
+
+            result = _toolbox_call("/email/send", payload, timeout_s=30.0)
+            if result and result.get("ok"):
+                fallback = result.get("fallback")
+                if fallback == "thunderbird":
+                    self._ui_call(lambda: self._add_message(
+                        "Frank", "SMTP failed — opened in Thunderbird compose.", is_system=True))
+                else:
+                    self._ui_call(lambda: self._add_message(
+                        "Frank", f"Email sent to {to}.", is_system=True))
+            else:
+                error = (result or {}).get("error", "Send failed")
+                self._ui_call(lambda e=error: self._add_message("Frank", f"Send error: {e}", is_system=True))
+        except Exception as e:
+            self._ui_call(lambda err=e: self._add_message("Frank", f"Send failed: {err}", is_system=True))
+
+    def _do_email_draft_worker(self, to: str = "", subject: str = "", body: str = "", **kwargs):
+        """Save draft via toolbox (IO thread)."""
+        try:
+            result = _toolbox_call("/email/draft", {"to": to, "subject": subject, "body": body}, timeout_s=15.0)
+            if result and result.get("ok"):
+                self._ui_call(lambda: self._add_message("Frank", "Draft saved.", is_system=True))
+            else:
+                error = (result or {}).get("error", "Draft save failed")
+                self._ui_call(lambda e=error: self._add_message("Frank", f"Draft error: {e}", is_system=True))
+        except Exception as e:
+            self._ui_call(lambda err=e: self._add_message("Frank", f"Draft save failed: {err}", is_system=True))
+
+    def _do_email_toggle_read_worker(self, folder: str = "INBOX", msg_id: str = None,
+                                     mark_read: bool = True, **kwargs):
+        """Toggle read/unread via toolbox (IO thread)."""
+        try:
+            result = _toolbox_call("/email/toggle_read",
+                                   {"folder": folder, "msg_id": msg_id, "mark_read": mark_read},
+                                   timeout_s=15.0)
+            if not result or not result.get("ok"):
+                error = (result or {}).get("error", "Toggle failed")
+                self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
+        except Exception as e:
+            self._ui_call(lambda err=e: self._add_message("Frank", f"Toggle read failed: {err}", is_system=True))
+
+    def _do_email_compose_worker(self, **kwargs):
+        """Open a blank compose popup (IO thread dispatches to main thread)."""
+        self._ui_call(self._open_compose_popup)
+
     def _do_email_general_worker(self, user_msg: str = "", voice: bool = False):
         """Handle general email-related queries via LLM with email context."""
         self._ui_call(self._show_typing)

@@ -529,10 +529,13 @@ class VoiceMixin:
         self.after(0, lambda t=text: self._ptt_process(t))
 
     def _ptt_process(self, text: str):
-        """Show transcribed text in chat and process through voice pipeline."""
+        """Route transcribed voice text through the full command router.
+
+        This ensures ALL features (file search, web search, emails, calendar,
+        todos, notes, system control, etc.) work identically via PTT as they
+        do when typed. The command router handles display and dispatch.
+        """
         LOG.info(f"PTT: Processing voice input: '{text}'")
         self._thinking_cancelled = False  # Reset cancel flag for new request
-        self._add_message("Du", text, is_user=True)
-        self._show_typing()
-        # Process through voice pipeline (responds in chat + TTS)
-        self._process_voice_input(text)
+        # Route through the full command dispatcher — same as typed input
+        self._route_message(text)

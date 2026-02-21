@@ -63,6 +63,7 @@ COMMANDS: List[Command] = [
     Command("/play",      "Play",            "Launch a game",                  "launch {game}",        icon="G", category="apps"),
 
     # ── Files & Data ──
+    Command("/find",      "Find file",       "Search local files",             "search on the system for {query}", icon="F", category="files"),
     Command("/file",      "Attach file",     "Open file picker",               None,                   icon="+", category="files", action="file_dialog"),
     Command("/ls",        "List dir",        "Browse a directory",             "ls {path}",            icon="D", category="files"),
     Command("/clipboard", "Clipboard",       "Clipboard history",              "clipboard list",       icon="C", category="files"),

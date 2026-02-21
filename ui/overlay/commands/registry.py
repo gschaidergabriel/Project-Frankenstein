@@ -36,7 +36,7 @@ COMMANDS: List[Command] = [
     Command("/emails",    "Emails",          "List recent emails",             "list emails",          icon="E", category="comm"),
     Command("/email",     "Read email",      "Read specific email",            "read email {query}",   icon="E", category="comm"),
     Command("/calendar",  "Calendar",        "Today's appointments",           "appointments today",   icon="C", category="comm"),
-    Command("/week",      "This week",       "This week's schedule",           "appointments this week", icon="W", category="comm"),
+    Command("/week",      "This week",       "This week's schedule",           "show this week",       icon="W", category="comm"),
     Command("/contacts",  "Contacts",        "List contacts",                  "list contacts",        icon="P", category="comm"),
 
     # ── Tasks & Notes ──
@@ -49,11 +49,11 @@ COMMANDS: List[Command] = [
 
     # ── System ──
     Command("/screenshot","Screenshot",      "Analyze the screen",             "screenshot",           icon="X", category="system"),
-    Command("/system",    "System",          "System health status",           "system status",        icon="G", category="system"),
+    Command("/system",    "System",          "System health status",           "health",               icon="G", category="system"),
     Command("/usb",       "USB",             "List USB devices",               "usb devices",          icon="U", category="system"),
-    Command("/print",     "Printer",         "Printer status",                 "print status",         icon="P", category="system"),
-    Command("/qr",        "QR Code",         "Scan or generate QR code",       "qr scan",              icon="Q", category="system"),
-    Command("/network",   "Network",         "Network information",            "network info",         icon="W", category="system"),
+    Command("/print",     "Printer",         "Printer status",                 "printer status",       icon="P", category="system"),
+    Command("/qr",        "QR Code",         "Scan or generate QR code",       "scan qr code",         icon="Q", category="system"),
+    Command("/network",   "Network",         "Network information",            "wifi info",            icon="W", category="system"),
     Command("/llm",       "LLM",             "Restart the LLM server",         "restart llm",          icon="L", category="system"),
 
     # ── Apps & Games ──
@@ -65,9 +65,9 @@ COMMANDS: List[Command] = [
     # ── Files & Data ──
     Command("/find",      "Find file",       "Search local files",             "search on the system for {query}", icon="F", category="files"),
     Command("/file",      "Attach file",     "Open file picker",               None,                   icon="+", category="files", action="file_dialog"),
-    Command("/ls",        "List dir",        "Browse a directory",             "ls {path}",            icon="D", category="files"),
+    Command("/ls",        "List dir",        "Browse a directory",             "show files in {path}", icon="D", category="files"),
     Command("/clipboard", "Clipboard",       "Clipboard history",              "clipboard list",       icon="C", category="files"),
-    Command("/passwords", "Passwords",       "Open password manager",          "passwords",            icon="K", category="files"),
+    Command("/passwords", "Passwords",       "Open password manager",          "password manager",     icon="K", category="files"),
 
     # ── Productivity ──
     Command("/weather",   "Weather",         "Current weather",                "weather {city}",       icon="W", category="productivity"),

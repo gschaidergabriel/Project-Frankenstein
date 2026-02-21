@@ -820,22 +820,32 @@ class MessageMixin:
         search_frame = tk.Frame(self.results_container, bg=COLORS["bg_main"])
         search_frame.pack(fill="x", pady=(0, 4))
 
+        tk.Label(
+            search_frame, text="SEARCH",
+            bg=COLORS["bg_main"], fg=COLORS["neon_cyan"],
+            font=("Consolas", 9, "bold")
+        ).pack(side="left", padx=(0, 6))
+
         search_entry = tk.Entry(
             search_frame, bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
             insertbackground=COLORS["neon_cyan"], font=("Consolas", 9),
             relief="flat", highlightbackground=COLORS["text_muted"],
             highlightcolor=COLORS["neon_cyan"], highlightthickness=1,
         )
-        search_entry.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        search_entry.pack(side="left", fill="x", expand=True)
         search_entry.bind("<Return>", lambda e, f=folder: self._io_q.put(
             ("email_search", {"query": search_entry.get().strip(), "folder": f})
         ) if search_entry.get().strip() else None)
 
-        tk.Label(
-            search_frame, text="from: subject: date:",
-            bg=COLORS["bg_main"], fg=COLORS["text_muted"],
-            font=("Consolas", 7)
-        ).pack(side="right")
+        # Force focus on click (overrideredirect windows need this)
+        def _focus_search(event=None):
+            try:
+                self.focus_force()
+                search_entry.focus_set()
+            except Exception:
+                pass
+        search_entry.bind("<Button-1>", _focus_search, add=True)
+        search_frame.bind("<Button-1>", _focus_search)
 
         # Scrollable frame for email cards
         canvas = tk.Canvas(self.results_container, bg=COLORS["bg_main"], highlightthickness=0, height=280)

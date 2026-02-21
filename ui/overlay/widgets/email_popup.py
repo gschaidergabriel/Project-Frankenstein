@@ -76,12 +76,67 @@ class EmailPopup(tk.Toplevel):
 
         self.bind("<Escape>", lambda e: self.destroy())
 
+        # Force focus to this window on any click (overrideredirect windows
+        # don't receive focus automatically from the window manager)
+        self.bind("<Button-1>", self._force_focus, add=True)
+
+        # Grab mouse scroll events when pointer is inside popup
+        # to prevent them from propagating to the overlay underneath
+        self.bind("<Enter>", self._grab_scroll)
+        self.bind("<Leave>", self._release_scroll)
+
         if email_data:
             self._build_read_view()
         else:
             self._build_compose_view()
 
+        # Take focus immediately
+        self.focus_force()
+
+    def _force_focus(self, event=None):
+        """Force focus to popup and to the clicked widget if it accepts input."""
+        self.focus_force()
+        if event and event.widget:
+            try:
+                w = event.widget
+                if isinstance(w, (tk.Text, tk.Entry)):
+                    w.focus_set()
+            except Exception:
+                pass
+
+    def _grab_scroll(self, event=None):
+        """Bind scroll events globally when mouse enters popup."""
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(seq, self._on_popup_scroll)
+
+    def _release_scroll(self, event=None):
+        """Unbind scroll capture when mouse leaves popup."""
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.unbind_all(seq)
+
+    def _on_popup_scroll(self, event):
+        """Route scroll events to the correct text widget inside popup."""
+        # Find which text widget the mouse is over
+        w = event.widget
+        try:
+            target = w.winfo_containing(event.x_root, event.y_root)
+        except Exception:
+            target = w
+        if isinstance(target, tk.Text):
+            if event.num == 4:
+                target.yview_scroll(-3, "units")
+            elif event.num == 5:
+                target.yview_scroll(3, "units")
+            elif event.delta:
+                target.yview_scroll(-1 * (event.delta // 120), "units")
+        return "break"
+
     def destroy(self):
+        # Release scroll bindings before destroying
+        try:
+            self._release_scroll()
+        except Exception:
+            pass
         if self._on_destroy:
             try:
                 self._on_destroy()

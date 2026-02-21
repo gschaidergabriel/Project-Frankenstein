@@ -148,6 +148,8 @@ class WorkerMixin:
                     self._do_email_toggle_read_worker(**arg)
                 elif kind == "email_compose":
                     self._do_email_compose_worker(**arg)
+                elif kind == "email_reply_draft":
+                    self._do_email_reply_draft_worker(**arg)
                 # Calendar operations
                 elif kind == "calendar_today":
                     self._do_calendar_today_worker(**arg)

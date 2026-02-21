@@ -144,12 +144,12 @@ def _folder_path(imap_dir: Path, folder: str) -> Optional[Path]:
 
 # ── Email content sanitization ──────────────────────────────────────
 
-def sanitize_email_content(raw_text: str) -> str:
+def sanitize_email_content(raw_text: str, max_chars: int = MAX_BODY_CHARS) -> str:
     """
-    Sanitize email content for safe LLM consumption.
+    Sanitize email content for safe display / LLM consumption.
 
-    Strips HTML, scripts, data URIs, base64 blocks, and injection patterns.
-    Truncates to MAX_BODY_CHARS.
+    Strips HTML, scripts, data URIs, base64 blocks, injection patterns,
+    and newsletter boilerplate.  Truncates to max_chars.
     """
     if not raw_text:
         return ""
@@ -159,19 +159,45 @@ def sanitize_email_content(raw_text: str) -> str:
     # 1. Remove script/style/iframe blocks first (before tag stripping)
     text = _SCRIPT_STYLE_RE.sub("", text)
 
-    # 2. Remove all HTML tags
+    # 2. Convert block-level HTML tags to newlines BEFORE stripping
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(p|div|tr|li|h[1-6]|blockquote|section|article|header|footer)>",
+                  "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<(hr)\s*/?>", "\n---\n", text, flags=re.IGNORECASE)
+
+    # 3. Remove all remaining HTML tags
     text = _HTML_TAG_RE.sub(" ", text)
 
-    # 2b. Decode HTML entities (&nbsp; &amp; &#160; etc.)
+    # 3b. Decode HTML entities (&nbsp; &amp; &#160; etc.)
     text = html.unescape(text)
 
-    # 3. Remove data: URIs
-    text = _DATA_URI_RE.sub("[data-uri-removed]", text)
+    # 4. Remove data: URIs
+    text = _DATA_URI_RE.sub("", text)
 
-    # 4. Remove long base64 blocks
-    text = _BASE64_BLOCK_RE.sub("[base64-removed]", text)
+    # 5. Remove long base64 blocks
+    text = _BASE64_BLOCK_RE.sub("", text)
 
-    # 5. Remove injection patterns (line by line)
+    # 6. Remove orphan Unicode control chars / zero-width / replacement chars
+    text = re.sub(r"[\u200b\u200c\u200d\u200e\u200f\ufeff\u00ad\u2028\u2029\ufffd]", "", text)
+
+    # 7. Remove newsletter boilerplate lines
+    text = re.sub(
+        r"^.{0,5}(view\s+(in|this)\s+(browser|email|online)"
+        r"|unsubscribe|manage\s+preferences"
+        r"|click\s+here\s+to\s+(view|read|unsubscribe)"
+        r"|open\s+in\s+(your\s+)?browser"
+        r"|having\s+trouble\s+viewing"
+        r"|email\s+not\s+displaying"
+        r"|add\s+us\s+to\s+your\s+address\s+book"
+        r"|to\s+view\s+this\s+email\s+as\s+a\s+web\s*page"
+        r").*$",
+        "", text, flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+    # 8. Remove orphan numbers on their own line (tracking pixel widths etc.)
+    text = re.sub(r"^\s*\d{1,4}\s*$", "", text, flags=re.MULTILINE)
+
+    # 9. Remove injection patterns (line by line)
     lines = text.split("\n")
     clean_lines = []
     for line in lines:
@@ -181,14 +207,16 @@ def sanitize_email_content(raw_text: str) -> str:
             clean_lines.append(line)
     text = "\n".join(clean_lines)
 
-    # 6. Collapse whitespace
+    # 10. Collapse whitespace
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    # Strip each line
+    text = "\n".join(line.strip() for line in text.split("\n"))
     text = text.strip()
 
-    # 7. Truncate
-    if len(text) > MAX_BODY_CHARS:
-        text = text[:MAX_BODY_CHARS] + "\n[... truncated]"
+    # 11. Truncate
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n[... truncated]"
 
     return text
 
@@ -462,12 +490,20 @@ def read_email(
 
     mbox.close()
 
+    # Sanitize with generous limit for full-body popup display
+    clean_body = sanitize_email_content(body, max_chars=8000)
+
+    # Remove leading duplicate of subject line (common in newsletters)
+    subj_clean = _sanitize_subject(subject)
+    if subj_clean and clean_body.startswith(subj_clean):
+        clean_body = clean_body[len(subj_clean):].lstrip(" \n\t:–—-")
+
     return {
         "from": _sanitize_subject(from_addr),
         "to": _sanitize_subject(to_addr),
-        "subject": _sanitize_subject(subject),
+        "subject": subj_clean,
         "date": date_str,
-        "body": sanitize_email_content(body),
+        "body": clean_body,
     }
 
 

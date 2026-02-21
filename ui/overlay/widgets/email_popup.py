@@ -408,23 +408,22 @@ class EmailPopup(tk.Toplevel):
     # ── Read view actions ──────────────────────────────────────────
 
     def _on_reply(self):
-        """Switch to compose mode with reply context."""
+        """Request AI-generated reply, then switch to compose mode."""
         ed = self._email_data
-        # Extract reply-to address (use From header)
         reply_to = ed.sender
-        # Build Re: subject
         subject = ed.subject or ""
         if not subject.lower().startswith("re:"):
             subject = f"Re: {subject}"
-        # Quote original body
         body = self._full_body or ed.snippet or ""
 
-        self._build_compose_view(
-            reply_to=reply_to,
+        # Dispatch to IO thread — worker will call fill_compose when done
+        self._show_status("Generating reply...", COLORS["neon_cyan"])
+        self._dispatch(
+            "email_reply_draft",
+            sender=ed.sender, subject=ed.subject,
+            body=body, reply_to=reply_to,
             reply_subject=subject,
-            reply_body=body,
-            in_reply_to=ed.msg_id,
-            references=ed.msg_id,
+            msg_id=ed.msg_id,
         )
 
     def _on_compose_new(self):
@@ -444,14 +443,12 @@ class EmailPopup(tk.Toplevel):
     def _on_spam(self):
         ed = self._email_data
         self._dispatch("email_spam", folder=ed.folder, msg_id=ed.msg_id, query=ed.sender)
-        self._show_status("Moved to spam.", COLORS["warning"])
-        self.after(1000, self.destroy)
+        self.destroy()
 
     def _on_delete(self):
         ed = self._email_data
         self._dispatch("email_delete_single", folder=ed.folder, msg_id=ed.msg_id, query=ed.sender)
-        self._show_status("Deleted.", COLORS["error"])
-        self.after(1000, self.destroy)
+        self.destroy()
 
     def _on_thunderbird(self):
         try:
@@ -526,3 +523,19 @@ class EmailPopup(tk.Toplevel):
             self._body_text.delete("1.0", "end")
             self._body_text.insert("1.0", full_body)
             self._body_text.configure(state="disabled")
+
+    def fill_compose(self, reply_to: str, reply_subject: str,
+                     reply_body: str, ai_draft: str,
+                     in_reply_to: str = "", references: str = ""):
+        """Switch to compose view with AI-generated reply pre-filled."""
+        self._build_compose_view(
+            reply_to=reply_to,
+            reply_subject=reply_subject,
+            reply_body=reply_body,
+            in_reply_to=in_reply_to,
+            references=references,
+        )
+        # Insert AI draft at top of compose text (before quoted original)
+        if ai_draft and hasattr(self, "_compose_text"):
+            self._compose_text.insert("1.0", ai_draft)
+            self._compose_text.mark_set("insert", "1.0")

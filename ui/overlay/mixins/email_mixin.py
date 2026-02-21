@@ -621,6 +621,50 @@ class EmailMixin:
         """Open a blank compose popup (IO thread dispatches to main thread)."""
         self._ui_call(self._open_compose_popup)
 
+    def _do_email_reply_draft_worker(self, sender: str = "", subject: str = "",
+                                     body: str = "", reply_to: str = "",
+                                     reply_subject: str = "", msg_id: str = "", **kwargs):
+        """Generate AI reply draft via LLM and fill compose view (IO thread)."""
+        from overlay.constants import FRANK_IDENTITY
+        from overlay.services.core_api import _core_chat
+
+        # Build prompt for reply generation
+        body_snippet = body[:1500] if body else "(empty)"
+        prompt = (
+            f"[Identity: {FRANK_IDENTITY}]\n\n"
+            f"Write a brief, friendly reply to this email.\n\n"
+            f"From: {sender}\n"
+            f"Subject: {subject}\n"
+            f"Body:\n{body_snippet}\n\n"
+            f"Write ONLY the reply text (no greeting header like 'Subject:' or 'To:').\n"
+            f"Keep it concise (2-5 sentences). Match the language of the original email.\n"
+            f"Do NOT include email headers or metadata in your response."
+        )
+
+        ai_draft = ""
+        try:
+            res = _core_chat(prompt, max_tokens=400, timeout_s=60, task="chat.fast", force="llama")
+            if res and res.get("ok"):
+                ai_draft = (res.get("text") or "").strip()
+        except Exception as e:
+            LOG.warning(f"AI reply draft failed: {e}")
+
+        if not ai_draft:
+            ai_draft = ""
+
+        # Fill the popup compose view on main thread
+        def _fill():
+            if self._email_popup and self._email_popup.winfo_exists():
+                self._email_popup.fill_compose(
+                    reply_to=reply_to,
+                    reply_subject=reply_subject,
+                    reply_body=body,
+                    ai_draft=ai_draft,
+                    in_reply_to=msg_id,
+                    references=msg_id,
+                )
+        self._ui_call(_fill)
+
     def _do_email_general_worker(self, user_msg: str = "", voice: bool = False):
         """Handle general email-related queries via LLM with email context."""
         self._ui_call(self._show_typing)

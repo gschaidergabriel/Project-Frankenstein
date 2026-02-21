@@ -17,6 +17,13 @@ _EMAIL_POLL_MS = 60_000
 class EmailMixin:
     """Thunderbird email integration: list, read, unread counts, new-email notifications."""
 
+    # Locally deleted/spammed msg_ids — filtered from list until Thunderbird syncs the mbox
+    @property
+    def _deleted_msg_ids(self) -> set:
+        if not hasattr(self, "_email_deleted_ids"):
+            self._email_deleted_ids = set()
+        return self._email_deleted_ids
+
     # ── Polling (main thread via after()) ────────────────────────────
 
     def _email_poll_timer(self):
@@ -361,6 +368,11 @@ class EmailMixin:
                 return
 
             emails = result.get("emails", [])
+
+            # Filter out locally deleted/spammed emails (mbox not yet synced)
+            if self._deleted_msg_ids:
+                emails = [e for e in emails if e.get("id") not in self._deleted_msg_ids]
+
             if not emails:
                 self._ui_call(self._hide_typing)
                 self._ui_call(lambda: self._add_message("Frank", f"No emails in {folder}.", is_system=True))
@@ -438,6 +450,10 @@ class EmailMixin:
         """Move a single email to spam via toolbox."""
         self._ui_call(self._show_typing)
 
+        # Track locally so list refresh hides it immediately
+        if msg_id:
+            self._deleted_msg_ids.add(msg_id)
+
         try:
             payload = {"folder": folder}
             if msg_id:
@@ -450,6 +466,8 @@ class EmailMixin:
 
             if not result or not result.get("ok"):
                 error = (result or {}).get("error", "Move to spam failed")
+                if msg_id:
+                    self._deleted_msg_ids.discard(msg_id)  # rollback on failure
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
                 return
 
@@ -457,6 +475,8 @@ class EmailMixin:
             if moved > 0:
                 self._ui_call(lambda: self._add_message("Frank", "Email moved to spam.", is_system=True))
             else:
+                if msg_id:
+                    self._deleted_msg_ids.discard(msg_id)
                 self._ui_call(lambda: self._add_message("Frank", "Email not found.", is_system=True))
 
             # Refresh email list
@@ -470,6 +490,10 @@ class EmailMixin:
         """Delete a single email via toolbox."""
         self._ui_call(self._show_typing)
 
+        # Track locally so list refresh hides it immediately
+        if msg_id:
+            self._deleted_msg_ids.add(msg_id)
+
         try:
             payload = {"folder": folder}
             if msg_id:
@@ -482,6 +506,8 @@ class EmailMixin:
 
             if not result or not result.get("ok"):
                 error = (result or {}).get("error", "Delete failed")
+                if msg_id:
+                    self._deleted_msg_ids.discard(msg_id)  # rollback on failure
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
                 return
 
@@ -489,6 +515,8 @@ class EmailMixin:
             if deleted > 0:
                 self._ui_call(lambda: self._add_message("Frank", "Email deleted.", is_system=True))
             else:
+                if msg_id:
+                    self._deleted_msg_ids.discard(msg_id)
                 self._ui_call(lambda: self._add_message("Frank", "Email not found.", is_system=True))
 
             # Refresh email list

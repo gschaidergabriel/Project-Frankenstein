@@ -18,6 +18,10 @@ from pathlib import Path
 try:
     import rich
 except ImportError:
+    if getattr(sys, '_MEIPASS', None):
+        print("\033[31m[ERROR] rich library missing from PyInstaller bundle.\033[0m")
+        print("\033[31m        Rebuild with: pyinstaller install-wizard.spec\033[0m")
+        sys.exit(1)
     print("\033[32m[*] Installing rich library...\033[0m")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "rich", "-q"])
     import rich
@@ -702,28 +706,34 @@ def setup_repo_if_needed() -> Path:
     else:
         console.print()
         console.print(f"  [{MATRIX_GREEN}]Cloning repository...[/]")
-        target_path.mkdir(parents=True, exist_ok=True)
+
+        clone_target = target_path / "opt" / "aicore"
+
+        # Remove empty/incomplete clone targets
+        if clone_target.exists() and not (clone_target / "install.sh").exists():
+            import shutil as _sh
+            _sh.rmtree(clone_target, ignore_errors=True)
+
+        clone_target.parent.mkdir(parents=True, exist_ok=True)
 
         proc = subprocess.run(
-            ["git", "clone", REPO_URL, str(target_path / "opt" / "aicore")],
-            capture_output=True, text=True, timeout=300,
+            ["git", "clone", REPO_URL, str(clone_target)],
+            capture_output=True, text=True, timeout=600,
         )
         if proc.returncode != 0:
-            # Maybe the repo structure is different — try cloning to root
-            proc = subprocess.run(
-                ["git", "clone", REPO_URL, str(target_path)],
-                capture_output=True, text=True, timeout=300,
-            )
-            if proc.returncode != 0:
-                console.print(f"  [bold #FF4444]Git clone failed:[/]")
-                console.print(f"  [#FF4444]{proc.stderr}[/]")
-                sys.exit(1)
+            console.print(f"  [bold #FF4444]Git clone failed:[/]")
+            console.print(f"  [#FF4444]{proc.stderr}[/]")
+            console.print()
+            console.print(f"  [{MATRIX_DIM}]If this is a private repo, clone it manually first:[/]")
+            console.print(f"  [{MATRIX_GREEN}]  git clone {REPO_URL} {clone_target}[/]")
+            console.print(f"  [{MATRIX_DIM}]Then re-run this installer.[/]")
+            sys.exit(1)
 
         # Find install.sh in the cloned tree
         for candidate in [
+            clone_target / "install.sh",
             target_path / "opt" / "aicore" / "install.sh",
             target_path / "install.sh",
-            aicore_src / "install.sh",
         ]:
             if candidate.exists():
                 aicore_src = candidate.parent

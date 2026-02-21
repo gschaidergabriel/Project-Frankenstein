@@ -1,12 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_all
+
+rich_datas, rich_binaries, rich_hiddenimports = collect_all('rich')
 
 a = Analysis(
     ['install_wizard.py'],
     pathex=[],
-    binaries=[],
-    datas=[('install.sh', '.')],
-    hiddenimports=[],
+    binaries=rich_binaries,
+    datas=[('install.sh', '.')] + rich_datas,
+    hiddenimports=rich_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

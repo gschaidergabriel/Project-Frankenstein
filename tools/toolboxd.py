@@ -2077,6 +2077,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "email": result})
             return
 
+        if p == "/email/search":
+            from email_reader import search_emails
+            query = str(payload.get("query", ""))
+            folder = str(payload.get("folder", "INBOX"))
+            limit = int(payload.get("limit", 20))
+            if not query:
+                self._send(400, {"ok": False, "error": "Query required"})
+                return
+            results = search_emails(query=query, folder=folder, limit=limit)
+            if results and isinstance(results, list) and results and "error" in results[0]:
+                self._send(500, {"ok": False, "error": results[0]["error"]})
+            else:
+                self._send(200, {"ok": True, "count": len(results), "emails": results})
+            return
+
         if p == "/email/check_new":
             from email_reader import check_new_emails
             result = check_new_emails()

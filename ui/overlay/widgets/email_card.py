@@ -158,11 +158,17 @@ class EmailCard(tk.Frame):
 
     def _on_enter(self, event):
         self._update_colors(self._hover_bg, COLORS["neon_green"])
-        self.sender_label.configure(fg=COLORS.get("link_hover", COLORS["neon_cyan"]))
+        try:
+            self.sender_label.configure(fg=COLORS.get("link_hover", COLORS["neon_cyan"]))
+        except tk.TclError:
+            pass
 
     def _on_leave(self, event):
         self._update_colors(self._normal_bg, self._border_color)
-        self.sender_label.configure(fg=self._sender_fg)
+        try:
+            self.sender_label.configure(fg=self._sender_fg)
+        except tk.TclError:
+            pass
 
     def _on_click(self, event):
         if self.on_click:

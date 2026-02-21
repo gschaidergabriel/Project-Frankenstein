@@ -276,6 +276,10 @@ def _sanitize_subject(subject: str) -> str:
     """Sanitize email subject line."""
     if not subject:
         return "(no subject)"
+    # Normalize IMAP header folding (CRLF + whitespace → single space)
+    subject = re.sub(r'\r\n[\t ]+', ' ', subject)
+    subject = re.sub(r'[\r\n]+', ' ', subject)
+    subject = ' '.join(subject.split())
     # Strip HTML and injection patterns
     subject = _HTML_TAG_RE.sub("", subject)
     if _INJECTION_PATTERNS.search(subject):
@@ -290,6 +294,8 @@ def _decode_header(value: Optional[str]) -> str:
     if not value:
         return ""
     try:
+        # Unfold IMAP header folding before decoding
+        value = re.sub(r'\r\n[\t ]+', ' ', value)
         parts = email.header.decode_header(value)
         decoded = []
         for part, charset in parts:
@@ -297,9 +303,11 @@ def _decode_header(value: Optional[str]) -> str:
                 decoded.append(part.decode(charset or "utf-8", errors="replace"))
             else:
                 decoded.append(part)
-        return " ".join(decoded)
+        result = " ".join(decoded)
+        # Clean remaining CRLF artifacts
+        return ' '.join(result.split())
     except Exception:
-        return str(value)
+        return ' '.join(str(value).split())
 
 
 def _extract_text_body(msg: email.message.Message) -> str:

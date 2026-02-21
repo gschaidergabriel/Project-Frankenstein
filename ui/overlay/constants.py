@@ -838,9 +838,9 @@ USER_NAME_RE = re.compile(
 
 # 17. Email detection (bilingual DE+EN)
 EMAIL_LIST_RE = re.compile(
-    r"(zeig|show|lies|read|welche|was fuer|was für|liste|list|check|pruef|prüf|schau|gib|hole|hol|fetch|get).{0,20}(e-?mails?|mails?|posteingang|inbox)"
-    r"|(e-?mails?|mails?|posteingang|inbox).{0,15}(zeigen|anzeigen|auflisten|checken|prüfen|abrufen|holen|show|list|check|fetch)"
-    r"|check\s+(my\s+)?inbox|show\s+(my\s+)?inbox|check\s+(my\s+)?mail",
+    r"(zeig|show|lies|read|welche|was fuer|was für|liste|list|check|pruef|prüf|schau|gib|hole|hol|fetch|get).{0,20}(e-?mails?|mails?|posteingang|inbox)\b"
+    r"|\b(e-?mails?|mails?|posteingang|inbox)\b.{0,15}(zeigen|anzeigen|auflisten|checken|prüfen|abrufen|holen|show|list|check|fetch)"
+    r"|check\s+(my\s+)?inbox|show\s+(my\s+)?inbox|check\s+(my\s+)?mail\b",
     re.IGNORECASE,
 )
 EMAIL_READ_RE = re.compile(
@@ -855,12 +855,12 @@ EMAIL_READ_LATEST_RE = re.compile(
     re.IGNORECASE,
 )
 EMAIL_UNREAD_RE = re.compile(
-    r"\b(neue?\b|ungelesen|unread|wieviele?|how many|habe ich|do i have|any new|got any).{0,20}(e-?mails?|mails?|nachrichten|messages?|post)"
-    r"|new\s+(e-?mails?|mails?|messages?)|unread\s+(e-?mails?|mails?|messages?)",
+    r"\b(neue?\b|ungelesen|unread|wieviele?|how many|habe ich|do i have|any new|got any).{0,20}(e-?mails?|mails?|nachrichten|messages?|post)\b"
+    r"|new\s+(e-?mails?|mails?|messages?)\b|unread\s+(e-?mails?|mails?|messages?)\b",
     re.IGNORECASE,
 )
 EMAIL_DELETE_RE = re.compile(
-    r"(lösch|loesch|delete|entfern|remove|weg mit|räum|raeum|leere?|clear|clean).{0,30}(e-?mails?|mails?|nachrichten|messages?|spam|posteingang|inbox|papierkorb|trash|diese|this|these)",
+    r"(lösch|loesch|delete|entfern|remove|weg mit|räum|raeum|leere?|clear|clean).{0,30}(e-?mails?|mails?|nachrichten|messages?|spam|posteingang|inbox|papierkorb|trash|diese|this|these)\b",
     re.IGNORECASE,
 )
 # General email intent (catches anything email-related that other patterns missed)

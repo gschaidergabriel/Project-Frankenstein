@@ -46,6 +46,15 @@ class EmailPopup(tk.Toplevel):
         self._on_action = on_action  # callback(action, **kwargs) for IO dispatch
         self._attachments: List[str] = []
 
+        # Pick up pre-injected attachments (avoids double build)
+        # Immediately consume and clear to prevent leakage to next instance
+        pre_att = getattr(self.__class__, '_pre_attachments', None)
+        if pre_att:
+            self._read_attachments_data = list(pre_att)  # copy, don't share ref
+            self.__class__._pre_attachments = None
+        else:
+            self._read_attachments_data = []
+
         self.title("FRANK MAIL")
         self.configure(bg=COLORS["bg_main"])
         self.overrideredirect(True)

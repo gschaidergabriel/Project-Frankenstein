@@ -1032,7 +1032,7 @@ class MessageMixin:
 
     def _tick_undo_countdown(self):
         """Update undo countdown timer."""
-        if not self._undo_delete_widget or self._undo_seconds_left <= 0:
+        if not self._undo_delete_widget or not hasattr(self, '_undo_seconds_left') or self._undo_seconds_left <= 0:
             return
         self._undo_seconds_left -= 1
         if self._undo_seconds_left > 0:

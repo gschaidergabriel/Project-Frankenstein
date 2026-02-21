@@ -57,6 +57,8 @@ class ModernEntry(tk.Frame):
         # ── Command Palette ──
         self._palette = None  # Active CommandPalette instance
         self._palette_callback = None  # Set by overlay to handle command selection
+        self._slash_debounce_id = None  # debounce timer for slash filter
+        self._focus_out_id = None  # delayed focus-out timer
 
         # CRITICAL: Click to force focus (needed for overrideredirect windows)
         self.text.bind("<Button-1>", self._on_click)
@@ -192,18 +194,23 @@ class ModernEntry(tk.Frame):
         self._check_slash_trigger()
 
     def _check_slash_trigger(self):
-        """Check if '/' was typed as first char to open palette."""
+        """Debounced check for '/' as first char to open/update palette."""
+        if self._slash_debounce_id is not None:
+            self.after_cancel(self._slash_debounce_id)
+        self._slash_debounce_id = self.after(30, self._do_slash_check)
+
+    def _do_slash_check(self):
+        """Actual slash check after debounce."""
+        self._slash_debounce_id = None
         try:
             content = self.text.get("1.0", "end-1c")
             if content.startswith("/") and len(content) >= 1:
                 if self._palette is None or not self._palette.winfo_exists():
                     self._open_palette()
                 else:
-                    # Update filter
                     query = content[1:]
                     self._palette.update_filter(query)
             else:
-                # Close palette if / was removed
                 self._dismiss_palette()
         except Exception:
             pass
@@ -342,13 +349,38 @@ class ModernEntry(tk.Frame):
         return "break"
 
     def _on_focus_in(self, event):
-        """Cyan border on focus."""
+        """Cyan border on focus. Cancel any pending palette dismiss."""
+        if self._focus_out_id is not None:
+            self.after_cancel(self._focus_out_id)
+            self._focus_out_id = None
         self.configure(bg=COLORS["neon_cyan"])
 
     def _on_focus_out(self, event):
-        """Magenta border when unfocused."""
+        """Magenta border when unfocused. Delayed palette dismiss to allow clicks."""
         self.configure(bg=COLORS["neon_green"])
-        # Dismiss palette on focus out
+        # Delay dismiss so palette click events can fire first
+        if self._focus_out_id is not None:
+            self.after_cancel(self._focus_out_id)
+        self._focus_out_id = self.after(200, self._delayed_palette_dismiss)
+
+    def _delayed_palette_dismiss(self):
+        """Dismiss palette after delay, unless focus returned to entry or palette."""
+        self._focus_out_id = None
+        try:
+            focused = self.focus_get()
+            # Keep palette if focus is on entry text or on the palette itself
+            if focused is self.text:
+                return
+            if self._palette is not None:
+                try:
+                    if self._palette.winfo_exists():
+                        pal_str = str(self._palette)
+                        if focused is not None and str(focused).startswith(pal_str):
+                            return
+                except Exception:
+                    pass
+        except Exception:
+            pass
         self._dismiss_palette()
 
     def _show_paste_menu(self, event):

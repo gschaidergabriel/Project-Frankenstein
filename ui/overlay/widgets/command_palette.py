@@ -4,6 +4,9 @@ Appears above the input field when user types '/'.
 Keyboard-navigable (Up/Down/Enter/Escape).
 Filters live as the user types.
 Scrollable when items exceed visible area.
+
+Performance: Uses a pre-allocated widget pool to avoid
+destroy/recreate cycles on every keystroke.
 """
 
 import tkinter as tk
@@ -18,6 +21,9 @@ _FG_SLASH_SEL = COLORS["neon_cyan"]
 _FG_DESC = COLORS["text_secondary"]
 _FG_ICON = COLORS["text_muted"]
 
+# Size of the pre-allocated widget pool (covers all commands)
+_POOL_SIZE = len(COMMANDS)
+
 
 class CommandPalette(tk.Toplevel):
     """Floating command palette dropdown with scroll support."""
@@ -31,8 +37,14 @@ class CommandPalette(tk.Toplevel):
         self.on_select = on_select
         self._selected_idx = 0
         self._items = list(COMMANDS)
-        self._item_rows = []  # [(frame, icon_lbl, slash_lbl, desc_lbl), ...]
-        self._last_filter = None  # avoid redundant rebuilds
+        self._pool = []         # pre-allocated (frame, icon_lbl, slash_lbl, desc_lbl)
+        self._visible_count = 0 # how many pool rows are currently shown
+        self._last_filter = None
+        self._last_visible_n = -1  # track visible count for repositioning
+        self._dismissed = False
+
+        # "No matches" label (hidden by default)
+        self._no_match_lbl = None
 
         # Frameless popup
         self.overrideredirect(True)
@@ -70,29 +82,72 @@ class CommandPalette(tk.Toplevel):
             (0, 0), window=self._list_frame, anchor="nw",
         )
 
-        # Resize canvas window width to match canvas
         self._canvas.bind("<Configure>", self._on_canvas_configure)
         self._list_frame.bind("<Configure>", self._on_list_configure)
 
         self._canvas.pack(side="left", fill="both", expand=True)
-        # Scrollbar packed on demand in _update_scrollbar
 
-        # Mousewheel scrolling (bind recursively)
-        self._bind_scroll(self._canvas)
+        # Mousewheel on canvas itself
+        self._canvas.bind("<Button-4>", self._scroll_up)
+        self._canvas.bind("<Button-5>", self._scroll_down)
+        self._canvas.bind("<MouseWheel>", self._scroll_wheel)
 
-        # Build initial items
-        self._build_items("")
+        # ── Pre-allocate widget pool ──
+        self._create_pool()
+
+        # Apply initial filter (show all)
+        self._apply_filter("")
 
         # Position above entry
         self._position()
 
-        # Keyboard fallback (entry normally handles keys)
+        # Keyboard fallback
         self.bind("<Escape>", lambda e: self.dismiss())
         self.bind("<Return>", self._on_enter)
         self.bind("<Up>", self._on_up)
         self.bind("<Down>", self._on_down)
         self.bind("<Key>", self._on_key)
         self.bind("<FocusOut>", self._on_focus_out)
+
+    # ── Widget Pool ──
+
+    def _create_pool(self):
+        """Pre-allocate all row widgets once. Bind events once."""
+        for i in range(_POOL_SIZE):
+            frame = tk.Frame(self._list_frame, bg=_BG, height=_ITEM_H)
+            frame.pack_propagate(False)
+
+            icon_lbl = tk.Label(
+                frame, text="",
+                bg=_BG, fg=_FG_ICON,
+                font=("Consolas", 9), width=3,
+            )
+            icon_lbl.pack(side="left")
+
+            slash_lbl = tk.Label(
+                frame, text="",
+                bg=_BG, fg=_FG_SLASH,
+                font=("Consolas", 9, "bold"), anchor="w",
+            )
+            slash_lbl.pack(side="left", padx=(0, 6))
+
+            desc_lbl = tk.Label(
+                frame, text="",
+                bg=_BG, fg=_FG_DESC,
+                font=("Consolas", 8), anchor="w",
+            )
+            desc_lbl.pack(side="left", fill="x", expand=True)
+
+            # Bind click, hover, scroll ONCE per widget
+            for w in (frame, icon_lbl, slash_lbl, desc_lbl):
+                w.bind("<Button-1>", lambda e, j=i: self._select_item(j))
+                w.bind("<Enter>", lambda e, j=i: self._hover_item(j))
+                w.bind("<Button-4>", self._scroll_up)
+                w.bind("<Button-5>", self._scroll_down)
+                w.bind("<MouseWheel>", self._scroll_wheel)
+
+            # Don't pack yet -- _apply_filter will pack visible rows
+            self._pool.append((frame, icon_lbl, slash_lbl, desc_lbl))
 
     # ── Canvas / Scroll helpers ──
 
@@ -101,14 +156,6 @@ class CommandPalette(tk.Toplevel):
 
     def _on_list_configure(self, event):
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
-
-    def _bind_scroll(self, widget):
-        """Bind mousewheel to widget and all children recursively."""
-        widget.bind("<Button-4>", self._scroll_up)
-        widget.bind("<Button-5>", self._scroll_down)
-        widget.bind("<MouseWheel>", self._scroll_wheel)
-        for child in widget.winfo_children():
-            self._bind_scroll(child)
 
     def _scroll_up(self, event):
         self._canvas.yview_scroll(-2, "units")
@@ -123,9 +170,7 @@ class CommandPalette(tk.Toplevel):
         return "break"
 
     def _update_scrollbar(self):
-        """Show/hide scrollbar based on content vs visible area."""
-        total = len(self._items)
-        if total > self.MAX_VISIBLE:
+        if self._visible_count > self.MAX_VISIBLE:
             self._scrollbar.pack(side="right", fill="y")
         else:
             self._scrollbar.pack_forget()
@@ -140,9 +185,9 @@ class CommandPalette(tk.Toplevel):
             ew = self.entry_widget.winfo_width()
 
             pw = min(max(ew, 340), 420)
-            visible = min(len(self._items), self.MAX_VISIBLE)
+            visible = min(self._visible_count, self.MAX_VISIBLE)
             visible = max(visible, 1)
-            ph = 26 + visible * _ITEM_H + 6  # header + items + padding
+            ph = 26 + visible * _ITEM_H + 6
 
             px = ex
             py = ey - ph - 4
@@ -155,79 +200,70 @@ class CommandPalette(tk.Toplevel):
             LOG.debug(f"CommandPalette position error: {e}")
             self.geometry("380x300+100+100")
 
-    # ── Build / Rebuild Items ──
+    # ── Filter (recycling, no destroy/create) ──
 
-    def _build_items(self, query: str):
-        """Full rebuild of item widgets (only when filter text changes)."""
+    def _apply_filter(self, query: str):
+        """Update visible items by recycling pool widgets. No destroy/create."""
         self._last_filter = query
-
-        # Destroy old rows
-        for row in self._item_rows:
-            row[0].destroy()
-        self._item_rows = []
 
         # Filter commands
         self._items = filter_commands(query)
+
+        # Hide "no matches" label if it exists
+        if self._no_match_lbl is not None:
+            self._no_match_lbl.pack_forget()
+
         if not self._items:
-            lbl = tk.Label(
-                self._list_frame, text="  No matches",
-                bg=_BG, fg=COLORS["text_muted"],
-                font=("Consolas", 9), anchor="w", padx=8, height=2,
-            )
-            lbl.pack(fill="x")
-            self._item_rows.append((lbl, lbl, lbl, lbl))
+            # Hide all pool rows
+            for frame, _, _, _ in self._pool:
+                frame.pack_forget()
+            self._visible_count = 0
+
+            # Show "no matches"
+            if self._no_match_lbl is None:
+                self._no_match_lbl = tk.Label(
+                    self._list_frame, text="  No matches",
+                    bg=_BG, fg=COLORS["text_muted"],
+                    font=("Consolas", 9), anchor="w", padx=8, height=2,
+                )
+            self._no_match_lbl.pack(fill="x")
+            self._visible_count = 1  # for positioning
             self._update_scrollbar()
             return
 
         self._selected_idx = max(0, min(self._selected_idx, len(self._items) - 1))
 
-        for i, cmd in enumerate(self._items):
-            frame = tk.Frame(self._list_frame, bg=_BG, height=_ITEM_H)
-            frame.pack(fill="x")
-            frame.pack_propagate(False)
+        # Update pool rows: show matching, hide rest
+        for i in range(_POOL_SIZE):
+            frame, icon_lbl, slash_lbl, desc_lbl = self._pool[i]
+            if i < len(self._items):
+                cmd = self._items[i]
+                icon_lbl.configure(text=f" {cmd.icon} ")
+                slash_lbl.configure(text=cmd.slash)
+                desc_lbl.configure(text=cmd.description)
+                frame.pack(fill="x")
+            else:
+                if i < self._visible_count:
+                    # Was visible, now hide
+                    frame.pack_forget()
 
-            icon_lbl = tk.Label(
-                frame, text=f" {cmd.icon} ",
-                bg=_BG, fg=_FG_ICON,
-                font=("Consolas", 9), width=3,
-            )
-            icon_lbl.pack(side="left")
-
-            slash_lbl = tk.Label(
-                frame, text=cmd.slash,
-                bg=_BG, fg=_FG_SLASH,
-                font=("Consolas", 9, "bold"), anchor="w",
-            )
-            slash_lbl.pack(side="left", padx=(0, 6))
-
-            desc_lbl = tk.Label(
-                frame, text=cmd.description,
-                bg=_BG, fg=_FG_DESC,
-                font=("Consolas", 8), anchor="w",
-            )
-            desc_lbl.pack(side="left", fill="x", expand=True)
-
-            # Click + hover bindings
-            for w in (frame, icon_lbl, slash_lbl, desc_lbl):
-                w.bind("<Button-1>", lambda e, j=i: self._select_item(j))
-                w.bind("<Enter>", lambda e, j=i: self._hover_item(j))
-
-            # Scroll bindings
-            self._bind_scroll(frame)
-
-            self._item_rows.append((frame, icon_lbl, slash_lbl, desc_lbl))
-
+        self._visible_count = len(self._items)
         self._update_scrollbar()
         self._highlight_selected()
 
+        # Scroll to top on new filter
+        self._canvas.yview_moveto(0)
+
     def _highlight_selected(self):
-        """Update highlight colors without rebuilding widgets (fast, no flicker)."""
-        for i, (frame, icon_lbl, slash_lbl, desc_lbl) in enumerate(self._item_rows):
+        """Update highlight colors without rebuilding widgets."""
+        for i in range(self._visible_count):
+            if i >= len(self._pool):
+                break
+            frame, icon_lbl, slash_lbl, desc_lbl = self._pool[i]
             if i == self._selected_idx:
                 bg, fg_sl = _BG_SEL, _FG_SLASH_SEL
             else:
                 bg, fg_sl = _BG, _FG_SLASH
-
             try:
                 frame.configure(bg=bg)
                 icon_lbl.configure(bg=bg)
@@ -238,7 +274,7 @@ class CommandPalette(tk.Toplevel):
 
     def _ensure_visible(self):
         """Scroll so the selected item is visible in the canvas."""
-        if not self._item_rows or self._selected_idx >= len(self._item_rows):
+        if self._visible_count == 0 or self._selected_idx >= self._visible_count:
             return
         try:
             y_top = self._selected_idx * _ITEM_H
@@ -247,7 +283,6 @@ class CommandPalette(tk.Toplevel):
             if canvas_h <= 0:
                 return
 
-            # Get current scroll position in pixels
             regions = self._canvas.cget("scrollregion").split()
             if len(regions) < 4:
                 return
@@ -269,8 +304,7 @@ class CommandPalette(tk.Toplevel):
     # ── Hover / Select ──
 
     def _hover_item(self, idx: int):
-        """Highlight on mouse hover (no rebuild, just color change)."""
-        if idx != self._selected_idx and 0 <= idx < len(self._item_rows):
+        if idx != self._selected_idx and 0 <= idx < self._visible_count:
             self._selected_idx = idx
             self._highlight_selected()
 
@@ -326,10 +360,7 @@ class CommandPalette(tk.Toplevel):
 
     def _sync_filter(self):
         query = self._get_current_query()
-        if query != self._last_filter:
-            self._selected_idx = 0
-            self._build_items(query)
-            self._position()
+        self.update_filter(query)
 
     def _get_current_query(self) -> str:
         try:
@@ -340,9 +371,14 @@ class CommandPalette(tk.Toplevel):
 
     def update_filter(self, query: str):
         """Called externally by entry on keypress."""
-        if query != self._last_filter:
-            self._selected_idx = 0
-            self._build_items(query)
+        if query == self._last_filter:
+            return  # no change, skip
+        old_visible = self._visible_count
+        self._selected_idx = 0
+        self._apply_filter(query)
+        # Only reposition when visible item count actually changed
+        new_visible = min(self._visible_count, self.MAX_VISIBLE)
+        if new_visible != min(old_visible, self.MAX_VISIBLE):
             self._position()
 
     # ── Focus / Dismiss ──
@@ -351,6 +387,8 @@ class CommandPalette(tk.Toplevel):
         self.after(150, self._check_focus)
 
     def _check_focus(self):
+        if self._dismissed:
+            return
         try:
             focused = self.focus_get()
             if focused is None or (focused is not self and
@@ -361,6 +399,9 @@ class CommandPalette(tk.Toplevel):
             self.dismiss()
 
     def dismiss(self):
+        if self._dismissed:
+            return
+        self._dismissed = True
         try:
             self.destroy()
         except Exception:

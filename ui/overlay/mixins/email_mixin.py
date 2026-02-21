@@ -507,12 +507,11 @@ class EmailMixin:
             self._ui_call(lambda err=e: self._add_message("Frank", f"Move to spam failed: {err}", is_system=True))
 
     # ── Undo-delete state ──
-    _UNDO_DELETE_DELAY_S = 5.0
-    _pending_delete = None  # dict with {folder, msg_id, query, email_data, cancelled}
+    _UNDO_DELETE_DELAY_MS = 5000
+    _pending_delete = None  # dict with {folder, msg_id, query, email_data, cancelled, timer_id}
 
     def _do_email_delete_single_worker(self, folder: str = "INBOX", msg_id: str = None, query: str = None):
-        """Delete a single email with 5-second undo window."""
-        import time as _time
+        """Delete a single email with 5-second undo window (non-blocking)."""
 
         # Save email data for potential undo restore
         removed_email = None
@@ -528,51 +527,93 @@ class EmailMixin:
             self._deleted_msg_ids.add(msg_id)
             self._ui_call(lambda mid=msg_id: self._remove_email_from_list(msg_id=mid))
 
+        # Cancel any existing pending delete (execute it immediately)
+        if self._pending_delete and not self._pending_delete.get("cancelled"):
+            self._execute_pending_delete()
+
         # Create pending delete record
         pending = {"folder": folder, "msg_id": msg_id, "query": query,
                    "email_data": removed_email, "cancelled": False}
         self._pending_delete = pending
 
-        # Show undo notification
-        self._ui_call(lambda f=folder: self._show_undo_delete_notification(f))
+        # Show undo notification + schedule delete via main-thread timer (non-blocking)
+        self._ui_call(lambda: self._start_undo_timer(pending))
 
-        # Wait for undo window
-        _time.sleep(self._UNDO_DELETE_DELAY_S)
+    def _start_undo_timer(self, pending):
+        """Start the undo timer on the main thread (non-blocking)."""
+        self._show_undo_delete_notification(pending.get("folder", "INBOX"))
+        timer_id = self.after(self._UNDO_DELETE_DELAY_MS, lambda: self._undo_timer_expired(pending))
+        pending["timer_id"] = timer_id
 
-        # Check if cancelled
+    def _undo_timer_expired(self, pending):
+        """Called when undo window expires — execute the actual delete."""
         if pending.get("cancelled"):
-            LOG.info(f"Delete cancelled (undo): msg_id={msg_id}")
             return
-
-        # Execute the actual delete
+        if self._pending_delete is not pending:
+            return  # superseded by another delete
+        self._remove_undo_notification()
+        # Dispatch actual delete to IO thread
+        self._io_q.put(("_email_execute_delete", {
+            "folder": pending["folder"], "msg_id": pending.get("msg_id"),
+            "query": pending.get("query")}))
         self._pending_delete = None
+
+    def _execute_pending_delete(self):
+        """Immediately execute a pending delete (called when another delete supersedes it)."""
+        pending = self._pending_delete
+        if not pending or pending.get("cancelled"):
+            return
+        # Cancel the timer
+        timer_id = pending.get("timer_id")
+        if timer_id:
+            try:
+                self.after_cancel(timer_id)
+            except Exception:
+                pass
+        # Execute immediately via IO queue
+        self._io_q.put(("_email_execute_delete", {
+            "folder": pending["folder"], "msg_id": pending.get("msg_id"),
+            "query": pending.get("query")}))
+        self._pending_delete = None
+
+    def _do_email_execute_delete_worker(self, folder: str = "INBOX", msg_id: str = None, query: str = None, **kwargs):
+        """Actually execute IMAP delete (IO thread). Called after undo window expires."""
         try:
             payload = {"folder": folder}
             if msg_id:
                 payload["id"] = msg_id
             if query:
                 payload["query"] = query
-
             result = _toolbox_call("/email/delete", payload, timeout_s=15.0)
-
             if not result or not result.get("ok"):
                 error = (result or {}).get("error", "Delete failed")
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
-
         except Exception as e:
             self._ui_call(lambda err=e: self._add_message("Frank", f"Delete failed: {err}", is_system=True))
 
-        # Remove undo notification
-        self._ui_call(self._remove_undo_notification)
-
     def _do_email_undo_delete_worker(self, **kwargs):
-        """Cancel a pending delete (undo)."""
+        """Cancel a pending delete (undo). Runs on IO thread — dispatch actual
+        cancellation to main thread to avoid cross-thread races on _pending_delete."""
+        # Delegate the entire undo operation to the main thread where _pending_delete
+        # and the timer are managed, avoiding race conditions.
+        self._ui_call(self._execute_undo_delete)
+
+    def _execute_undo_delete(self):
+        """Actually perform undo-delete (MUST run on main thread)."""
         pending = self._pending_delete
         if not pending or pending.get("cancelled"):
-            self._ui_call(lambda: self._add_message("Frank", "Nothing to undo.", is_system=True))
+            self._add_message("Frank", "Nothing to undo.", is_system=True)
             return
 
         pending["cancelled"] = True
+
+        # Cancel the timer
+        timer_id = pending.get("timer_id")
+        if timer_id:
+            try:
+                self.after_cancel(timer_id)
+            except Exception:
+                pass
 
         # Restore email to displayed list
         email_data = pending.get("email_data")
@@ -582,11 +623,11 @@ class EmailMixin:
         if email_data and hasattr(self, "_current_email_list"):
             self._current_email_list.append(email_data)
             folder = getattr(self, "_current_email_folder", "INBOX")
-            self._ui_call(lambda: self._render_email_list(self._current_email_list, folder))
+            self._render_email_list(self._current_email_list, folder)
 
         self._pending_delete = None
-        self._ui_call(self._remove_undo_notification)
-        self._ui_call(lambda: self._add_message("Frank", "Delete undone — email restored.", is_system=True))
+        self._remove_undo_notification()
+        self._add_message("Frank", "Delete undone — email restored.", is_system=True)
 
     # ── Email Popup workers ──────────────────────────────────────────
 
@@ -626,6 +667,15 @@ class EmailMixin:
             self._email_popup = None
 
         from overlay.widgets.email_popup import EmailPopup
+
+        # Pre-set attachment data as class attribute so __init__'s _build_read_view sees it
+        # This avoids a double build (once in __init__, once to add attachments)
+        if attachments:
+            # Temporarily store on the class to inject before init builds the view
+            EmailPopup._pre_attachments = attachments
+        else:
+            EmailPopup._pre_attachments = None
+
         popup = EmailPopup(
             self,
             email_data=email_data,
@@ -633,9 +683,7 @@ class EmailMixin:
             on_destroy=self._on_email_popup_destroyed,
             on_action=lambda action, **kw: self._io_q.put((action, kw)),
         )
-        if attachments:
-            popup._read_attachments_data = attachments
-            popup._build_read_view()
+        EmailPopup._pre_attachments = None
         self._email_popup = popup
 
     def _open_compose_popup(self):

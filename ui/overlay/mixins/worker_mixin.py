@@ -160,6 +160,8 @@ class WorkerMixin:
                     self._do_email_save_attachment_worker(**arg)
                 elif kind == "email_undo_delete":
                     self._do_email_undo_delete_worker(**arg)
+                elif kind == "_email_execute_delete":
+                    self._do_email_execute_delete_worker(**arg)
                 # Calendar operations
                 elif kind == "calendar_today":
                     self._do_calendar_today_worker(**arg)

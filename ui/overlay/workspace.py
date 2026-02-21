@@ -162,9 +162,9 @@ def build_workspace(
     # Grounding anchor — placed last so it's closest to generation point.
     # 7B models follow instructions better when they appear near the end.
     lines.append(
-        "RULE: Be brief (1-3 sentences). No essays, no poetry, no monologues. "
-        "Match the user's energy — casual input gets casual output. "
-        "Only reference data explicitly provided above. "
+        "RESPOND IN 1-3 SENTENCES MAX. No essays. No poetry. No philosophical monologues. "
+        "Match the user's energy — casual gets casual. "
+        "Stay in English unless explicitly told to switch. "
         "Never simulate actions (*opens…*, *checks…*). "
         "Never invent counts, stats, or events."
     )

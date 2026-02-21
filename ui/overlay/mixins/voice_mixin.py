@@ -139,7 +139,7 @@ class VoiceMixin:
             # Route to LLM with system context
             self._chat_q.put(("chat", {
                 "msg": msg,
-                "max_tokens": 256,
+                "max_tokens": 150,
                 "timeout_s": DEFAULT_TIMEOUT_S,
                 "task": "chat.fast",
                 "force": "llama",

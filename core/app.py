@@ -113,7 +113,7 @@ INFER_MAX_CONCURRENCY = int(os.environ.get("AICORE_CORE_INFER_MAX_CONCURRENCY", 
 INFER_SEM = threading.BoundedSemaphore(INFER_MAX_CONCURRENCY)
 
 TASK_POLICY = {
-    "chat.fast":   {"max_tokens": 256,  "timeout_s": 600},
+    "chat.fast":   {"max_tokens": 150,  "timeout_s": 600},
     "code.edit":   {"max_tokens": 512,  "timeout_s": 900},
     "tool.json":   {"max_tokens": 512,  "timeout_s": 900},
     "audit":       {"max_tokens": 768,  "timeout_s": 1800},

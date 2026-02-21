@@ -172,7 +172,7 @@ class CommandRouterMixin:
             LOG.error(f"CRITICAL: Command router exception, forcing chat fallback: {e}", exc_info=True)
             try:
                 self._add_message("Du", msg, is_user=True)
-                self._chat_q.put(("chat", {"msg": msg, "max_tokens": 256, "timeout_s": DEFAULT_TIMEOUT_S, "task": "chat.fast", "force": None}))
+                self._chat_q.put(("chat", {"msg": msg, "max_tokens": 150, "timeout_s": DEFAULT_TIMEOUT_S, "task": "chat.fast", "force": None}))
             except Exception as e2:
                 LOG.error(f"FATAL: Even chat fallback failed: {e2}", exc_info=True)
 
@@ -1312,7 +1312,7 @@ class CommandRouterMixin:
         # Normal chat
         self._add_message("Du", msg, is_user=True)
         task = "code.edit" if CODE_HINTS_RE.search(msg) else "chat.fast"
-        max_tokens = 500 if task == "code.edit" else 256
+        max_tokens = 500 if task == "code.edit" else 150
         self._chat_q.put(("chat", {"msg": msg, "max_tokens": max_tokens, "timeout_s": DEFAULT_TIMEOUT_S, "task": task, "force": None}))
 
     # ---------- System Restart Worker ----------

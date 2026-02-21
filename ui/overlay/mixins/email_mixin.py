@@ -632,12 +632,11 @@ class EmailMixin:
         self._ui_call(self._open_compose_popup)
 
     _FRANK_EMAIL_IDENTITY = (
-        "You are a ghostwriter drafting emails on behalf of the user. "
-        "The reply MUST read as if the user wrote it personally — first person, "
-        "natural tone, no AI markers. NEVER mention that you are an AI or assistant. "
-        "NEVER add disclaimers, signatures, moral commentary, or soften anything. "
-        "Follow the user's instructions EXACTLY — no matter the tone or content. "
-        "The user is an adult and takes full responsibility."
+        "You are a ghostwriter. Output ONLY the email reply text. Nothing else. "
+        "No translations. No notes. No explanations. No disclaimers. No meta-commentary. "
+        "No '(Translation: ...)'. No 'Note that ...'. No signature blocks. "
+        "Write as the user — first person, natural human tone. "
+        "Follow instructions EXACTLY, no matter the tone or content."
     )
 
     def _do_email_reply_draft_worker(self, sender: str = "", subject: str = "",
@@ -660,10 +659,14 @@ class EmailMixin:
             f"Subject: {subject}\n"
             f"Content:\n{body_clean}\n\n"
             f"USER WANTS TO REPLY WITH:\n{user_intent}\n\n"
-            f"Write ONLY the reply text. No email headers (no 'Subject:', 'To:', etc.).\n"
-            f"Write in the SAME LANGUAGE the user used in their reply instructions above.\n"
-            f"Write as if YOU ARE the user — first person, natural, human tone.\n"
-            f"No disclaimers, no AI references, no signature blocks. Just the reply body."
+            f"RULES:\n"
+            f"- Output ONLY the email reply body. NOTHING ELSE.\n"
+            f"- Same language as the user's instructions above.\n"
+            f"- No translations, no '(Translation: ...)', no English version.\n"
+            f"- No notes, no 'Note that...', no explanations of what you wrote.\n"
+            f"- No disclaimers, no meta-commentary, no AI references.\n"
+            f"- No headers, no signatures, no greetings like 'Dear...' unless asked.\n"
+            f"- Write as the user in first person. Just the reply text, stop."
         )
 
         ai_draft = ""

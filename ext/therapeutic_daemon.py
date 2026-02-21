@@ -296,11 +296,13 @@ def _call_llm(url: str, payload: dict, timeout: int = RESPONSE_TIMEOUT, retries:
             LOG.error(f"LLM call failed ({url}): {e}")
             return None
         except urllib.error.URLError as e:
-            LOG.error(f"LLM call failed ({url}): {e}")
-            return None
+            LOG.warning(f"LLM connection error ({url}): {e} (attempt {attempt+1}/{retries})")
+            time.sleep(15)
+            continue
         except Exception as e:
-            LOG.error(f"LLM call error ({url}): {e}")
-            return None
+            LOG.warning(f"LLM call error ({url}): {e} (attempt {attempt+1}/{retries})")
+            time.sleep(10)
+            continue
 
     LOG.error(f"All {retries} attempts failed for {url}")
     return None

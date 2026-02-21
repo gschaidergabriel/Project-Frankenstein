@@ -278,14 +278,16 @@ class UiMixin:
     # ---- Canvas / scroll helpers ----
 
     def _on_frame_configure(self, event):
+        # Defer scrollregion updates during drag to prevent scroll-jumping
+        # while bubbles are reflowing. The width update still flows through
+        # _on_canvas_configure so bubbles resize live with the window edge.
+        if getattr(self, '_resize_edge', None):
+            return
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
 
     def _on_canvas_configure(self, event):
-        # Suppress during active drag — the geometry change already resizes the
-        # canvas visually. Both canvas and messages_frame share bg_chat color so
-        # no black gap is visible. Width sync happens once in _on_resize_end.
-        if getattr(self, '_resize_edge', None):
-            return
+        # Always sync messages_frame width to canvas — this makes bubbles
+        # stick to the right edge and reflow seamlessly during drag.
         self.chat_canvas.itemconfig(self.canvas_window, width=event.width)
 
     def _on_mousewheel(self, event):
@@ -307,7 +309,6 @@ class UiMixin:
         self._resize_start_x = 0
         self._resize_start_width = 0
         self._last_strut_update = 0.0
-        self._last_canvas_resize = 0.0
 
         self.bind("<Motion>", self._on_motion_resize_cursor)
         self.bind("<ButtonPress-1>", self._on_resize_start, add="+")
@@ -360,20 +361,13 @@ class UiMixin:
             self._update_strut()
 
     def _on_resize_end(self, event):
-        """End resize and finalize strut + re-layout chat content."""
+        """End resize and finalize strut + scroll region."""
         if self._resize_edge == "e":
             if hasattr(self, '_update_strut'):
                 self._update_strut()
-        # Clear resize flag FIRST so _on_canvas_configure is unblocked,
-        # then trigger the width sync via a deferred configure event.
         self._resize_edge = None
-        try:
-            cw = self.chat_canvas.winfo_width()
-            self.chat_canvas.itemconfig(self.canvas_window, width=cw)
-        except Exception:
-            pass
-        # Scrollregion update after bubble remeasurements settle (150ms debounce)
-        self.after(300, self._finalize_resize_layout)
+        # Scrollregion update after bubble remeasurements settle
+        self.after(200, self._finalize_resize_layout)
 
     def _finalize_resize_layout(self):
         """Deferred scrollregion update after resize settles."""

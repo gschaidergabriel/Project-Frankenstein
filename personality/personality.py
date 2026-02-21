@@ -43,7 +43,7 @@ CACHE_FILE = Path("/var/lib/aicore/personality_cache.json")
 
 # Reload settings
 RELOAD_CHECK_INTERVAL = 5.0  # Check file mtime every 5 seconds
-MAX_PROMPT_LENGTH = 6500  # Hard limit for system prompt (chars, ~2000 tokens — fits in 4096 LLM context)
+MAX_PROMPT_LENGTH = 3000  # Hard limit for system prompt (chars, ~750 tokens — leaves room for conversation)
 
 # Thread-safe state
 _lock = threading.RLock()

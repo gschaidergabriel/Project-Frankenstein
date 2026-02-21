@@ -285,8 +285,6 @@ class EmailPopup(tk.Toplevel):
 
         self._make_button(row1, "REPLY", "#006400",
                           command=self._on_reply).pack(side="left", padx=(0, 4))
-        self._make_button(row1, "REPLY ALL", "#005500",
-                          command=self._on_reply_all).pack(side="left", padx=(0, 4))
         self._make_button(row1, "FORWARD", "#005577",
                           command=self._on_forward).pack(side="left", padx=(0, 4))
         self._make_button(row1, "SPAM", "#8B8000",

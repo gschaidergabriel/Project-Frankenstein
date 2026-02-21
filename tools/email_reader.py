@@ -778,6 +778,56 @@ def _resolve_imap_folder(folder: str) -> str:
     return _GMAIL_FOLDER_MAP.get(folder.lower(), _GMAIL_FOLDER_MAP.get(folder, folder))
 
 
+# ── Local mbox sync helper ─────────────────────────────────────────
+
+def _remove_from_local_mbox(folder: str, msg_id: str, profile: Optional[Path] = None):
+    """Remove a message from the local Thunderbird mbox file + invalidate .msf cache.
+
+    This keeps Thunderbird's local view in sync after an IMAP delete/move.
+    """
+    try:
+        if profile is None:
+            profile = find_thunderbird_profile()
+        if not profile:
+            return
+
+        imap_dir = _get_imap_dir(profile)
+        if not imap_dir:
+            return
+
+        mbox_path = _folder_path(imap_dir, folder)
+        if not mbox_path or not mbox_path.exists():
+            return
+
+        mbox = mailbox.mbox(str(mbox_path))
+        mbox.lock()
+        try:
+            keys_to_remove = []
+            mid_clean = msg_id.strip("<>")
+            for key in mbox.keys():
+                m = mbox[key]
+                m_id = (m.get("Message-ID") or "").strip("<>")
+                if m_id == mid_clean:
+                    keys_to_remove.append(key)
+
+            for key in reversed(keys_to_remove):
+                mbox.remove(key)
+
+            if keys_to_remove:
+                mbox.flush()
+                LOG.info(f"Removed {len(keys_to_remove)} message(s) from local mbox {folder}")
+
+                # Delete .msf summary file so Thunderbird re-indexes
+                msf_path = Path(str(mbox_path) + ".msf")
+                if msf_path.exists():
+                    msf_path.unlink()
+        finally:
+            mbox.unlock()
+            mbox.close()
+    except Exception as e:
+        LOG.warning(f"Local mbox sync failed for {folder}: {e}")
+
+
 # ── IMAP delete ────────────────────────────────────────────────────
 
 def delete_emails(
@@ -857,6 +907,11 @@ def delete_emails(
         imap.logout()
 
         LOG.info(f"Deleted {count} emails from {imap_folder}")
+
+        # Sync local mbox: remove deleted message so Thunderbird sees it immediately
+        if msg_id:
+            _remove_from_local_mbox(folder, msg_id, profile)
+
         return {"ok": True, "deleted": count}
 
     except imaplib.IMAP4.error as e:
@@ -941,6 +996,11 @@ def move_to_spam(
         imap.logout()
 
         LOG.info(f"Moved email to spam from {imap_folder}")
+
+        # Sync local mbox
+        if msg_id:
+            _remove_from_local_mbox(folder, msg_id, profile)
+
         return {"ok": True, "moved": 1}
 
     except imaplib.IMAP4.error as e:

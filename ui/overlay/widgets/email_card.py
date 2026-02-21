@@ -87,9 +87,10 @@ class EmailCard(tk.Frame):
             badge.pack(side="left", padx=(0, 6))
 
         sender_text = format_sender(email_data.sender)
+        sender_fg = COLORS["link"] if not email_data.read else "#777788"
         self.sender_label = tk.Label(
             header, text=sender_text,
-            bg=self._normal_bg, fg=COLORS["link"],
+            bg=self._normal_bg, fg=sender_fg,
             font=("Consolas", 10, "bold"),
             anchor="w", cursor="hand2"
         )
@@ -104,12 +105,13 @@ class EmailCard(tk.Frame):
         self.date_label.pack(side="right")
 
         # Subject line
-        subj = email_data.subject or "(kein Betreff)"
+        subj = email_data.subject or "(no subject)"
         if len(subj) > 55:
             subj = subj[:55] + "..."
+        subject_fg = COLORS["text_primary"] if not email_data.read else "#666677"
         self.subject_label = tk.Label(
             content, text=subj,
-            bg=self._normal_bg, fg=COLORS["text_primary"],
+            bg=self._normal_bg, fg=subject_fg,
             font=("Consolas", 9), anchor="w"
         )
         self.subject_label.pack(anchor="w", fill="x", pady=(2, 0))

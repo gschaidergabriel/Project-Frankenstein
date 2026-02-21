@@ -2143,6 +2143,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **result})
             return
 
+        if p == "/email/save_attachment":
+            from email_reader import save_attachment
+            folder = str(payload.get("folder", "INBOX"))
+            msg_id = payload.get("msg_id") or payload.get("id")
+            att_idx = int(payload.get("attachment_index", 0))
+            save_dir = payload.get("save_dir")
+            result = save_attachment(folder=folder, msg_id=msg_id,
+                                     attachment_index=att_idx, save_dir=save_dir)
+            if "error" in result:
+                self._send(500, {"ok": False, "error": result["error"]})
+            else:
+                self._send(200, {"ok": True, **result})
+            return
+
         if p == "/email/toggle_read":
             from email_reader import toggle_read_status
             folder = str(payload.get("folder", "INBOX"))
@@ -2175,6 +2189,17 @@ class Handler(BaseHTTPRequestHandler):
                 if config.get("password"):
                     safe["has_password"] = True
                 self._send(200, {"ok": True, "config": safe})
+            return
+
+        if p == "/email/outbox/status":
+            from email_reader import get_outbox_status
+            self._send(200, get_outbox_status())
+            return
+
+        if p == "/email/outbox/process":
+            from email_reader import process_outbox
+            result = process_outbox()
+            self._send(200, result)
             return
 
         # ── Calendar endpoints ────────────────────────────────────

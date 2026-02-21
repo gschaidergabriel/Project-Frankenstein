@@ -156,6 +156,10 @@ class WorkerMixin:
                     self._do_email_search_worker(**arg)
                 elif kind == "email_thread":
                     self._do_email_thread_worker(**arg)
+                elif kind == "email_save_attachment":
+                    self._do_email_save_attachment_worker(**arg)
+                elif kind == "email_undo_delete":
+                    self._do_email_undo_delete_worker(**arg)
                 # Calendar operations
                 elif kind == "calendar_today":
                     self._do_calendar_today_worker(**arg)

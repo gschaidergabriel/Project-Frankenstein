@@ -772,6 +772,9 @@ class MessageMixin:
         """Render clickable email cards with REAL metadata (no LLM)."""
         from overlay.widgets.email_card import EmailCard, EmailData
 
+        # Sort: unread first, then read (newest first within each group)
+        emails = sorted(emails, key=lambda e: (e.get("read", True), -e.get("timestamp", 0)))
+
         # Store for instant removal on delete/spam + "diese mails" context
         self._current_email_list = list(emails)
         self._current_email_folder = folder
@@ -903,6 +906,148 @@ class MessageMixin:
             for child in widget.winfo_children():
                 _bind_scroll_recursive(child)
         _bind_scroll_recursive(scrollable_frame)
+
+    def _show_email_overflow_notification(self, shown: int, total: int, folder: str):
+        """Show a styled notification card when there are more emails than the display limit."""
+        _FOLDER_DISPLAY = {
+            "INBOX": "Inbox", "[Gmail]/Spam": "Spam",
+            "[Gmail]/Papierkorb": "Trash", "[Gmail]/Gesendet": "Sent",
+        }
+        folder_name = _FOLDER_DISPLAY.get(folder, folder)
+
+        notif = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
+        notif.pack(fill="x", padx=10, pady=6)
+
+        container = tk.Frame(notif, bg=COLORS["bg_chat"])
+        container.pack(fill="x")
+
+        # Amber border card
+        border = tk.Frame(container, bg="#FFD700", padx=1, pady=1)
+        border.pack(fill="x")
+
+        inner = tk.Frame(border, bg=COLORS["bg_elevated"], padx=16, pady=10)
+        inner.pack(fill="x")
+
+        # Title row
+        tk.Label(
+            inner, text=f"MAIL LIMIT // {folder_name.upper()}",
+            bg=COLORS["bg_elevated"], fg="#FFD700",
+            font=("Consolas", 10, "bold"), anchor="w",
+        ).pack(anchor="w")
+
+        # Separator
+        tk.Frame(inner, bg="#FFD700", height=1).pack(fill="x", pady=(4, 4))
+
+        # Info
+        tk.Label(
+            inner,
+            text=f"Showing {shown} of {total} emails.",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
+            font=("Consolas", 9), anchor="w",
+        ).pack(anchor="w")
+
+        tk.Label(
+            inner,
+            text="Open Thunderbird to view all messages.",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+            font=("Consolas", 9), anchor="w",
+        ).pack(anchor="w", pady=(2, 0))
+
+        # Open button
+        open_btn = tk.Label(
+            inner, text=" OPEN THUNDERBIRD ",
+            bg="#1a1a3e", fg="#FFD700",
+            font=("Consolas", 9, "bold"), cursor="hand2", padx=8, pady=3,
+        )
+        open_btn.pack(anchor="w", pady=(6, 0))
+        open_btn.bind("<Button-1>", lambda e: self._open_thunderbird())
+        open_btn.bind("<Enter>", lambda e: open_btn.configure(bg="#282840"))
+        open_btn.bind("<Leave>", lambda e: open_btn.configure(bg="#1a1a3e"))
+
+        self.messages_frame.update_idletasks()
+        self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+        self._smart_scroll()
+
+    # ── Undo-delete notification ──
+
+    _undo_delete_widget = None
+
+    def _show_undo_delete_notification(self, folder: str):
+        """Show a styled undo-delete notification with countdown."""
+        self._remove_undo_notification()
+
+        notif = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
+        notif.pack(fill="x", padx=10, pady=6)
+
+        container = tk.Frame(notif, bg=COLORS["bg_chat"])
+        container.pack(fill="x")
+
+        # Red border card
+        border = tk.Frame(container, bg="#dd4444", padx=1, pady=1)
+        border.pack(fill="x")
+
+        inner = tk.Frame(border, bg=COLORS["bg_elevated"], padx=16, pady=8)
+        inner.pack(fill="x")
+
+        # Title + undo button row
+        row = tk.Frame(inner, bg=COLORS["bg_elevated"])
+        row.pack(fill="x")
+
+        tk.Label(
+            row, text="Email deleted.",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
+            font=("Consolas", 10), anchor="w",
+        ).pack(side="left")
+
+        undo_btn = tk.Label(
+            row, text=" UNDO ",
+            bg="#1a1a3e", fg="#00cc88",
+            font=("Consolas", 10, "bold"), cursor="hand2", padx=8, pady=2,
+        )
+        undo_btn.pack(side="right", padx=(8, 0))
+        undo_btn.bind("<Button-1>", lambda e: self._io_q.put(("email_undo_delete", {})))
+        undo_btn.bind("<Enter>", lambda e: undo_btn.configure(bg="#282840"))
+        undo_btn.bind("<Leave>", lambda e: undo_btn.configure(bg="#1a1a3e"))
+
+        # Countdown label
+        self._undo_countdown = tk.Label(
+            inner, text="5s remaining",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+            font=("Consolas", 8), anchor="w",
+        )
+        self._undo_countdown.pack(anchor="w", pady=(2, 0))
+
+        self._undo_delete_widget = notif
+        self._undo_seconds_left = 5
+
+        self.messages_frame.update_idletasks()
+        self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+        self._smart_scroll()
+
+        # Start countdown
+        self._tick_undo_countdown()
+
+    def _tick_undo_countdown(self):
+        """Update undo countdown timer."""
+        if not self._undo_delete_widget or self._undo_seconds_left <= 0:
+            return
+        self._undo_seconds_left -= 1
+        if self._undo_seconds_left > 0:
+            try:
+                if hasattr(self, "_undo_countdown") and self._undo_countdown.winfo_exists():
+                    self._undo_countdown.configure(text=f"{self._undo_seconds_left}s remaining")
+            except Exception:
+                pass
+            self.after(1000, self._tick_undo_countdown)
+
+    def _remove_undo_notification(self):
+        """Remove the undo-delete notification widget."""
+        if self._undo_delete_widget:
+            try:
+                self._undo_delete_widget.destroy()
+            except Exception:
+                pass
+            self._undo_delete_widget = None
 
     def _show_email_in_chat(self, email_data):
         """Instant email detail: show metadata in chat + action bar below. No LLM, 0ms."""

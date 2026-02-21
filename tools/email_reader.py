@@ -81,6 +81,13 @@ try:
 except ImportError:
     STATE_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "email_state.json"
 
+# Outbox file for offline send queue
+try:
+    from config.paths import get_state as _gs
+    OUTBOX_FILE = _gs("email_outbox")
+except ImportError:
+    OUTBOX_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "email_outbox.json"
+
 
 def find_thunderbird_profile() -> Optional[Path]:
     """Auto-detect the default Thunderbird profile directory."""
@@ -321,6 +328,201 @@ def _extract_text_body(msg: email.message.Message) -> str:
     return ""
 
 
+def _extract_attachments(msg: email.message.Message) -> List[Dict[str, Any]]:
+    """Extract attachment metadata from an email message.
+
+    Returns list of dicts: {filename, size, content_type, index}
+    """
+    attachments = []
+    idx = 0
+    for part in msg.walk():
+        content_disp = str(part.get("Content-Disposition", ""))
+        content_type = part.get_content_type()
+
+        # Skip text body parts
+        if content_type in ("text/plain", "text/html") and "attachment" not in content_disp:
+            continue
+        if part.is_multipart():
+            continue
+
+        filename = part.get_filename()
+        if not filename and "attachment" not in content_disp:
+            continue
+
+        if not filename:
+            ext = {
+                "application/pdf": ".pdf",
+                "image/png": ".png",
+                "image/jpeg": ".jpg",
+                "application/zip": ".zip",
+            }.get(content_type, ".bin")
+            filename = f"attachment_{idx}{ext}"
+
+        # Decode filename if encoded
+        try:
+            decoded_parts = email.header.decode_header(filename)
+            filename = "".join(
+                part.decode(enc or "utf-8") if isinstance(part, bytes) else part
+                for part, enc in decoded_parts
+            )
+        except Exception:
+            pass
+
+        payload = part.get_payload(decode=True)
+        size = len(payload) if payload else 0
+
+        attachments.append({
+            "filename": filename,
+            "size": size,
+            "content_type": content_type,
+            "index": idx,
+        })
+        idx += 1
+
+    return attachments
+
+
+def save_attachment(
+    folder: str = "INBOX",
+    msg_id: Optional[str] = None,
+    attachment_index: int = 0,
+    save_dir: Optional[str] = None,
+    profile: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Save an email attachment to disk.
+
+    Args:
+        folder: IMAP folder
+        msg_id: Message-ID header
+        attachment_index: Index of the attachment to save
+        save_dir: Directory to save to (default: ~/Downloads)
+
+    Returns:
+        {"ok": True, "path": "/path/to/file"} or {"error": "..."}
+    """
+    import imaplib
+
+    if not msg_id:
+        return {"error": "Message-ID required"}
+
+    dest_dir = Path(save_dir) if save_dir else Path.home() / "Downloads"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # Try IMAP first
+    imap, creds = _imap_connect(profile)
+    if imap:
+        try:
+            imap_folder = _resolve_imap_folder(folder)
+            status, data = imap.select(imap_folder, readonly=True)
+            if status == "OK":
+                mid = msg_id.strip("<>")
+                status, search_data = imap.search(None, f'HEADER Message-ID "<{mid}>"')
+                if status == "OK" and search_data[0]:
+                    target_id = search_data[0].split()[-1]
+                    status, msg_data = imap.fetch(target_id, "(BODY.PEEK[])")
+                    if status == "OK" and msg_data and isinstance(msg_data[0], tuple):
+                        msg = email.message_from_bytes(msg_data[0][1])
+                        return _save_attachment_from_msg(msg, attachment_index, dest_dir)
+            imap.close()
+            imap.logout()
+        except Exception as e:
+            LOG.warning(f"IMAP attachment save failed: {e}")
+            try:
+                imap.logout()
+            except Exception:
+                pass
+
+    # mbox fallback
+    if profile is None:
+        profile = find_thunderbird_profile()
+    if not profile:
+        return {"error": "Thunderbird profile not found"}
+
+    imap_dir = _get_imap_dir(profile)
+    if not imap_dir:
+        return {"error": "No IMAP directory found"}
+
+    mbox_path = _folder_path(imap_dir, folder)
+    if not mbox_path:
+        return {"error": f"Folder '{folder}' not found"}
+
+    try:
+        mbox = mailbox.mbox(str(mbox_path))
+        for key in mbox.keys():
+            m = mbox[key]
+            if m.get("Message-ID", "").strip("<>") == msg_id.strip("<>"):
+                result = _save_attachment_from_msg(m, attachment_index, dest_dir)
+                mbox.close()
+                return result
+        mbox.close()
+        return {"error": "Email not found"}
+    except Exception as e:
+        return {"error": f"mbox error: {e}"}
+
+
+def _save_attachment_from_msg(msg: email.message.Message, attachment_index: int,
+                               dest_dir: Path) -> Dict[str, Any]:
+    """Extract and save a specific attachment from an email.message."""
+    idx = 0
+    for part in msg.walk():
+        content_disp = str(part.get("Content-Disposition", ""))
+        content_type = part.get_content_type()
+
+        if content_type in ("text/plain", "text/html") and "attachment" not in content_disp:
+            continue
+        if part.is_multipart():
+            continue
+
+        filename = part.get_filename()
+        if not filename and "attachment" not in content_disp:
+            continue
+
+        if idx == attachment_index:
+            if not filename:
+                ext = {
+                    "application/pdf": ".pdf",
+                    "image/png": ".png",
+                    "image/jpeg": ".jpg",
+                    "application/zip": ".zip",
+                }.get(content_type, ".bin")
+                filename = f"attachment_{idx}{ext}"
+
+            try:
+                decoded_parts = email.header.decode_header(filename)
+                filename = "".join(
+                    p.decode(enc or "utf-8") if isinstance(p, bytes) else p
+                    for p, enc in decoded_parts
+                )
+            except Exception:
+                pass
+
+            # Sanitize filename
+            filename = re.sub(r'[/\\<>:"|?*]', '_', filename)
+
+            payload = part.get_payload(decode=True)
+            if not payload:
+                return {"error": "Attachment is empty"}
+
+            dest_path = dest_dir / filename
+            # Avoid overwrite
+            if dest_path.exists():
+                stem = dest_path.stem
+                suffix = dest_path.suffix
+                counter = 1
+                while dest_path.exists():
+                    dest_path = dest_dir / f"{stem}_{counter}{suffix}"
+                    counter += 1
+
+            dest_path.write_bytes(payload)
+            LOG.info(f"Attachment saved: {dest_path}")
+            return {"ok": True, "path": str(dest_path), "filename": filename,
+                    "size": len(payload)}
+
+        idx += 1
+
+    return {"error": f"Attachment index {attachment_index} not found"}
+
+
 def _parse_mozilla_status(status_str: str) -> Dict[str, bool]:
     """Parse X-Mozilla-Status flags."""
     try:
@@ -377,9 +579,17 @@ def list_emails(
     profile: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """
-    List emails from a Thunderbird mbox folder.
+    List emails. Tries IMAP first, falls back to local mbox.
     Returns newest first, limited to `limit` entries.
     """
+    # ── IMAP primary ──
+    imap_result = _imap_list_emails(folder, limit, profile)
+    if imap_result is not None:
+        LOG.debug(f"IMAP list: {len(imap_result)} emails from {folder}")
+        return imap_result
+    LOG.debug("IMAP unavailable, using mbox fallback")
+
+    # ── mbox fallback ──
     if profile is None:
         profile = find_thunderbird_profile()
     if not profile:
@@ -475,9 +685,18 @@ def read_email(
     profile: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
-    Read a single email by Message-ID, index, or search query.
+    Read a single email. Tries IMAP first, falls back to local mbox.
     Returns full sanitized content.
     """
+    # ── IMAP primary (when msg_id or query available) ──
+    if msg_id or query:
+        imap_result = _imap_read_email(folder, msg_id=msg_id, query=query, profile=profile)
+        if imap_result is not None:
+            LOG.debug(f"IMAP read: {imap_result.get('subject', '?')[:50]}")
+            return imap_result
+        LOG.debug("IMAP read failed, using mbox fallback")
+
+    # ── mbox fallback ──
     if profile is None:
         profile = find_thunderbird_profile()
     if not profile:
@@ -543,6 +762,7 @@ def read_email(
     subject = _decode_header(target_msg.get("Subject", ""))
     date_str = target_msg.get("Date", "")
     body = _extract_text_body(target_msg)
+    attachments = _extract_attachments(target_msg)
 
     mbox.close()
 
@@ -561,6 +781,7 @@ def read_email(
         "subject": subj_clean,
         "date": date_str,
         "body": clean_body,
+        "attachments": attachments,
     }
 
 
@@ -1021,6 +1242,329 @@ for _alias in ("webde", "tonline", "proton", "fastmail"):
     _PROVIDER_FOLDER_MAPS[_alias] = _PROVIDER_FOLDER_MAPS["generic"]
 
 
+# ── IMAP connection helper ────────────────────────────────────────
+
+def _imap_connect(profile: Optional[Path] = None):
+    """Create an authenticated IMAP connection.
+
+    Returns (imap_connection, credentials_dict) or (None, None) on failure.
+    """
+    import imaplib
+
+    creds = _get_imap_credentials(profile)
+    if not creds:
+        return None, None
+
+    try:
+        imap = imaplib.IMAP4_SSL(
+            creds["host"], port=int(creds.get("imap_port", 993)), timeout=15,
+        )
+        if creds.get("auth_method") == "xoauth2":
+            auth_string = f"user={creds['user']}\x01auth=Bearer {creds['access_token']}\x01\x01"
+            imap.authenticate("XOAUTH2", lambda _: auth_string.encode())
+        else:
+            imap.login(creds["user"], creds["password"])
+        return imap, creds
+    except Exception as e:
+        LOG.warning(f"IMAP connect failed: {e}")
+        return None, None
+
+
+def _parse_imap_headers(response) -> List[Dict[str, Any]]:
+    """Parse IMAP FETCH response with FLAGS and HEADER data into email dicts."""
+    emails = []
+    for item in response:
+        if not isinstance(item, tuple) or len(item) < 2:
+            continue
+
+        meta_line = item[0].decode("utf-8", errors="replace") if isinstance(item[0], bytes) else str(item[0])
+        header_data = item[1]
+
+        flags_match = re.search(r'FLAGS \(([^)]*)\)', meta_line)
+        flags_str = flags_match.group(1) if flags_match else ""
+
+        if isinstance(header_data, bytes):
+            msg = email.message_from_bytes(header_data)
+        else:
+            msg = email.message_from_string(str(header_data))
+
+        from_addr = _decode_header(msg.get("From", ""))
+        to_addr = _decode_header(msg.get("To", ""))
+        cc_addr = _decode_header(msg.get("Cc", ""))
+        subject_h = _decode_header(msg.get("Subject", ""))
+        date_str = msg.get("Date", "")
+        msg_id_h = msg.get("Message-ID", "")
+
+        try:
+            date_tuple = email.utils.parsedate_tz(date_str)
+            timestamp = email.utils.mktime_tz(date_tuple) if date_tuple else 0
+        except Exception:
+            timestamp = 0
+
+        emails.append({
+            "id": msg_id_h,
+            "idx": 0,
+            "from": _sanitize_subject(from_addr),
+            "to": _sanitize_subject(to_addr),
+            "cc": _HTML_TAG_RE.sub("", cc_addr)[:MAX_SUBJECT_CHARS] if cc_addr else "",
+            "subject": _sanitize_subject(subject_h),
+            "date": date_str,
+            "timestamp": timestamp,
+            "snippet": "",
+            "read": "\\Seen" in flags_str,
+            "replied": "\\Answered" in flags_str,
+            "starred": "\\Flagged" in flags_str,
+        })
+
+    return emails
+
+
+def _imap_list_emails(folder: str, limit: int, profile: Optional[Path] = None) -> Optional[List[Dict[str, Any]]]:
+    """List emails via IMAP FETCH. Returns None on failure (triggers mbox fallback)."""
+    imap, creds = _imap_connect(profile)
+    if not imap:
+        return None
+
+    imap_folder = _resolve_imap_folder(folder)
+
+    try:
+        status, data = imap.select(imap_folder, readonly=True)
+        if status != "OK":
+            imap.logout()
+            return None
+
+        msg_count = int(data[0])
+        if msg_count == 0:
+            imap.close()
+            imap.logout()
+            return []
+
+        start = max(1, msg_count - limit + 1)
+        fetch_range = f"{start}:{msg_count}"
+
+        status, response = imap.fetch(
+            fetch_range,
+            "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])",
+        )
+
+        if status != "OK" or not response:
+            imap.close()
+            imap.logout()
+            return None
+
+        emails = _parse_imap_headers(response)
+        imap.close()
+        imap.logout()
+
+        emails.sort(key=lambda e: e["timestamp"], reverse=True)
+        return emails[:limit]
+
+    except Exception as e:
+        LOG.warning(f"IMAP list failed: {e}")
+        try:
+            imap.logout()
+        except Exception:
+            pass
+        return None
+
+
+def _imap_read_email(folder: str, msg_id: Optional[str] = None,
+                     query: Optional[str] = None,
+                     profile: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Read a single email via IMAP FETCH. Returns None on failure."""
+    imap, creds = _imap_connect(profile)
+    if not imap:
+        return None
+
+    imap_folder = _resolve_imap_folder(folder)
+
+    try:
+        status, data = imap.select(imap_folder, readonly=True)
+        if status != "OK":
+            imap.logout()
+            return None
+
+        if msg_id:
+            mid = msg_id.strip("<>")
+            status, search_data = imap.search(None, f'HEADER Message-ID "<{mid}>"')
+        elif query:
+            q = query.replace('"', '\\"')
+            status, search_data = imap.search(None, f'(OR FROM "{q}" SUBJECT "{q}")')
+        else:
+            imap.close()
+            imap.logout()
+            return None
+
+        if status != "OK" or not search_data[0]:
+            imap.close()
+            imap.logout()
+            return None
+
+        target_id = search_data[0].split()[-1]
+
+        status, msg_data = imap.fetch(target_id, "(BODY.PEEK[])")
+        if status != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
+            imap.close()
+            imap.logout()
+            return None
+
+        raw_email = msg_data[0][1]
+        msg = email.message_from_bytes(raw_email)
+
+        from_addr = _decode_header(msg.get("From", ""))
+        to_addr = _decode_header(msg.get("To", ""))
+        cc_addr = _decode_header(msg.get("Cc", ""))
+        subject_h = _decode_header(msg.get("Subject", ""))
+        date_str = msg.get("Date", "")
+        body = _extract_text_body(msg)
+        attachments = _extract_attachments(msg)
+
+        imap.close()
+        imap.logout()
+
+        clean_body = sanitize_email_content(body, max_chars=8000)
+        subj_clean = _sanitize_subject(subject_h)
+        if subj_clean and clean_body.startswith(subj_clean):
+            clean_body = clean_body[len(subj_clean):].lstrip(" \n\t:\u2013\u2014-")
+
+        return {
+            "from": _sanitize_subject(from_addr),
+            "to": _sanitize_subject(to_addr),
+            "cc": _HTML_TAG_RE.sub("", cc_addr)[:MAX_SUBJECT_CHARS] if cc_addr else "",
+            "subject": subj_clean,
+            "date": date_str,
+            "body": clean_body,
+            "attachments": attachments,
+        }
+
+    except Exception as e:
+        LOG.warning(f"IMAP read failed: {e}")
+        try:
+            imap.logout()
+        except Exception:
+            pass
+        return None
+
+
+def _imap_search_emails(query: str, folder: str, limit: int,
+                        profile: Optional[Path] = None) -> Optional[List[Dict[str, Any]]]:
+    """Search emails via IMAP SEARCH (server-side, unlimited). Returns None on failure."""
+    from datetime import datetime, timedelta
+
+    imap, creds = _imap_connect(profile)
+    if not imap:
+        return None
+
+    imap_folder = _resolve_imap_folder(folder)
+
+    try:
+        status, data = imap.select(imap_folder, readonly=True)
+        if status != "OK":
+            imap.logout()
+            return None
+
+        remaining = query
+        criteria = []
+
+        # from: operator
+        m = re.search(r'from:"([^"]+)"', remaining, re.IGNORECASE)
+        if m:
+            criteria.append(f'FROM "{m.group(1)}"')
+            remaining = remaining[:m.start()] + remaining[m.end():]
+        else:
+            m = re.search(r'from:(\S+)', remaining, re.IGNORECASE)
+            if m:
+                criteria.append(f'FROM "{m.group(1)}"')
+                remaining = remaining[:m.start()] + remaining[m.end():]
+
+        # subject: operator
+        m = re.search(r'subject:"([^"]+)"', remaining, re.IGNORECASE)
+        if m:
+            criteria.append(f'SUBJECT "{m.group(1)}"')
+            remaining = remaining[:m.start()] + remaining[m.end():]
+        else:
+            m = re.search(r'subject:(\S+)', remaining, re.IGNORECASE)
+            if m:
+                criteria.append(f'SUBJECT "{m.group(1)}"')
+                remaining = remaining[:m.start()] + remaining[m.end():]
+
+        # date: operator
+        m = re.search(r'date:(\S+)', remaining, re.IGNORECASE)
+        if m:
+            date_val = m.group(1).lower()
+            remaining = remaining[:m.start()] + remaining[m.end():]
+            now = datetime.now()
+            if date_val == "today":
+                criteria.append(f'SINCE {now.strftime("%d-%b-%Y")}')
+            elif date_val == "week":
+                criteria.append(f'SINCE {(now - timedelta(days=7)).strftime("%d-%b-%Y")}')
+            elif date_val == "month":
+                criteria.append(f'SINCE {(now - timedelta(days=30)).strftime("%d-%b-%Y")}')
+            else:
+                try:
+                    d = datetime.strptime(date_val, "%Y-%m-%d")
+                    criteria.append(f'ON {d.strftime("%d-%b-%Y")}')
+                except ValueError:
+                    pass
+
+        # Free text search (FROM + SUBJECT)
+        text_filter = remaining.strip()
+        if text_filter:
+            t = text_filter.replace('"', '\\"')
+            criteria.append(f'(OR FROM "{t}" SUBJECT "{t}")')
+
+        search_str = " ".join(criteria) if criteria else "ALL"
+
+        try:
+            status, search_data = imap.search(None, search_str)
+        except Exception:
+            # Fallback: simpler query if server rejects complex OR
+            if text_filter:
+                t = text_filter.replace('"', '\\"')
+                status, search_data = imap.search(None, f'SUBJECT "{t}"')
+            else:
+                status, search_data = imap.search(None, "ALL")
+
+        if status != "OK" or not search_data[0]:
+            imap.close()
+            imap.logout()
+            return []
+
+        ids = search_data[0].split()
+        target_ids = ids[-limit:]
+
+        if not target_ids:
+            imap.close()
+            imap.logout()
+            return []
+
+        id_str = b",".join(target_ids)
+        status, response = imap.fetch(
+            id_str,
+            "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])",
+        )
+
+        if status != "OK":
+            imap.close()
+            imap.logout()
+            return []
+
+        emails = _parse_imap_headers(response)
+        imap.close()
+        imap.logout()
+
+        emails.sort(key=lambda e: e["timestamp"], reverse=True)
+        return emails
+
+    except Exception as e:
+        LOG.warning(f"IMAP search failed: {e}")
+        try:
+            imap.logout()
+        except Exception:
+            pass
+        return None
+
+
 def _get_active_provider() -> str:
     """Get the active provider type from config or auto-detect."""
     config = load_email_config()
@@ -1181,9 +1725,16 @@ def delete_emails(
         ids = msg_ids[0].split()
         count = len(ids)
 
-        # Mark as deleted
-        for uid in ids:
-            imap.store(uid, "+FLAGS", "\\Deleted")
+        # Rate-limited bulk delete: process in batches to avoid server overload
+        _BATCH_SIZE = 50
+        _BATCH_DELAY = 0.5  # seconds between batches
+        for i in range(0, count, _BATCH_SIZE):
+            batch = ids[i:i + _BATCH_SIZE]
+            for uid in batch:
+                imap.store(uid, "+FLAGS", "\\Deleted")
+            # Pause between batches (skip pause for single items or last batch)
+            if count > _BATCH_SIZE and i + _BATCH_SIZE < count:
+                time.sleep(_BATCH_DELAY)
 
         # Expunge (permanently remove)
         imap.expunge()
@@ -1305,6 +1856,7 @@ def send_email(
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
     profile: Optional[Path] = None,
+    _from_outbox: bool = False,
 ) -> Dict[str, Any]:
     """
     Send an email via Gmail SMTP using OAuth2 (same token as IMAP).
@@ -1382,35 +1934,66 @@ def send_email(
     if bcc:
         all_recipients.extend(addr.strip() for addr in bcc.split(",") if addr.strip())
 
-    # Send via SMTP with XOAUTH2
-    try:
-        smtp_host = creds.get("smtp_host", "smtp.gmail.com")
-        smtp_port = int(creds.get("smtp_port", 587))
-        smtp = smtplib.SMTP(smtp_host, smtp_port)
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
+    # Send via SMTP with retry + exponential backoff
+    global _oauth_cache, _oauth_cache_ts
+    smtp_host = creds.get("smtp_host", "smtp.gmail.com")
+    smtp_port = int(creds.get("smtp_port", 587))
+    _MAX_SMTP_RETRIES = 3
 
-        # Authenticate based on method
-        if creds.get("auth_method") == "xoauth2":
-            auth_string = f"user={user}\x01auth=Bearer {creds['access_token']}\x01\x01"
-            smtp.docmd("AUTH", "XOAUTH2 " + base64.b64encode(auth_string.encode()).decode())
-        else:
-            smtp.login(user, creds["password"])
+    for attempt in range(_MAX_SMTP_RETRIES):
+        try:
+            smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.ehlo()
 
-        smtp.sendmail(user, all_recipients, msg.as_string())
-        smtp.quit()
+            if creds.get("auth_method") == "xoauth2":
+                auth_string = f"user={user}\x01auth=Bearer {creds['access_token']}\x01\x01"
+                smtp.docmd("AUTH", "XOAUTH2 " + base64.b64encode(auth_string.encode()).decode())
+            else:
+                smtp.login(user, creds["password"])
 
-        message_id = msg.get("Message-ID", "")
-        LOG.info(f"Email sent to {to}: {subject[:50]}")
-        return {"ok": True, "message_id": message_id}
+            smtp.sendmail(user, all_recipients, msg.as_string())
+            smtp.quit()
 
-    except smtplib.SMTPAuthenticationError as e:
-        LOG.warning(f"SMTP auth failed, falling back to Thunderbird compose: {e}")
-        return _thunderbird_compose_fallback(to, subject, body)
-    except Exception as e:
-        LOG.warning(f"SMTP send failed, falling back to Thunderbird compose: {e}")
-        return _thunderbird_compose_fallback(to, subject, body)
+            message_id = msg.get("Message-ID", "")
+            LOG.info(f"Email sent to {to}: {subject[:50]}")
+            return {"ok": True, "message_id": message_id}
+
+        except smtplib.SMTPAuthenticationError as e:
+            LOG.warning(f"SMTP auth failed (attempt {attempt + 1}/{_MAX_SMTP_RETRIES}): {e}")
+            if attempt < _MAX_SMTP_RETRIES - 1:
+                # Refresh OAuth token on auth failure
+                if creds.get("auth_method") == "xoauth2":
+                    _oauth_cache = None
+                    _oauth_cache_ts = 0
+                    creds = _get_imap_credentials(profile)
+                    if not creds:
+                        break
+                    user = creds["user"]
+                time.sleep(2 ** attempt)
+                continue
+
+        except Exception as e:
+            LOG.warning(f"SMTP send failed (attempt {attempt + 1}/{_MAX_SMTP_RETRIES}): {e}")
+            if attempt < _MAX_SMTP_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+
+    # All retries exhausted — queue to outbox + Thunderbird compose as last resort
+    LOG.warning("SMTP failed after all retries")
+    if not _from_outbox:
+        queue_to_outbox(to, subject, body, cc=cc, bcc=bcc,
+                        attachments=attachments, in_reply_to=in_reply_to,
+                        references=references)
+        tb_result = _thunderbird_compose_fallback(to, subject, body)
+        return {
+            "ok": True,
+            "queued": True,
+            "fallback": tb_result.get("fallback"),
+            "message": f"Email queued for retry. Also opened in Thunderbird as backup.",
+        }
+    return {"error": "Send failed (outbox retry)"}
 
 
 def _thunderbird_compose_fallback(to: str, subject: str, body: str) -> Dict[str, Any]:
@@ -1432,6 +2015,143 @@ def _thunderbird_compose_fallback(to: str, subject: str, body: str) -> Dict[str,
             return {"error": "SMTP failed and Thunderbird not found."}
 
     return {"ok": True, "fallback": "thunderbird", "message": "Opened in Thunderbird compose."}
+
+
+# ── Offline outbox queue ─────────────────────────────────────────
+
+import threading
+
+_outbox_lock = threading.Lock()
+
+
+def _load_outbox() -> List[Dict[str, Any]]:
+    """Load queued emails from outbox file."""
+    try:
+        if OUTBOX_FILE.exists():
+            return json.loads(OUTBOX_FILE.read_text())
+    except Exception as e:
+        LOG.warning(f"Failed to load outbox: {e}")
+    return []
+
+
+def _save_outbox(items: List[Dict[str, Any]]) -> None:
+    """Persist outbox queue to disk."""
+    try:
+        OUTBOX_FILE.parent.mkdir(parents=True, exist_ok=True)
+        OUTBOX_FILE.write_text(json.dumps(items, indent=2))
+    except Exception as e:
+        LOG.warning(f"Failed to save outbox: {e}")
+
+
+def queue_to_outbox(
+    to: str,
+    subject: str,
+    body: str,
+    cc: Optional[str] = None,
+    bcc: Optional[str] = None,
+    attachments: Optional[List[str]] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Queue a failed email for later retry."""
+    entry = {
+        "to": to,
+        "subject": subject,
+        "body": body,
+        "cc": cc,
+        "bcc": bcc,
+        "attachments": attachments,
+        "in_reply_to": in_reply_to,
+        "references": references,
+        "queued_at": time.time(),
+        "attempts": 0,
+        "last_attempt": 0,
+    }
+    with _outbox_lock:
+        items = _load_outbox()
+        items.append(entry)
+        _save_outbox(items)
+    LOG.info(f"Email queued in outbox: to={to}, subject={subject[:50]}")
+    return {"ok": True, "queued": True, "message": f"Email to {to} queued for retry."}
+
+
+def process_outbox(profile: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Retry sending queued outbox emails.
+
+    Called periodically (e.g. every 60s from email poll timer).
+    Uses exponential backoff per entry: min 30s between retries,
+    doubling each attempt up to 15 min max.
+    Entries are removed after successful send or after 24h.
+    """
+    with _outbox_lock:
+        items = _load_outbox()
+    if not items:
+        return {"ok": True, "processed": 0, "remaining": 0}
+
+    now = time.time()
+    sent = 0
+    expired = 0
+    remaining = []
+
+    for entry in items:
+        age = now - entry.get("queued_at", now)
+        attempts = entry.get("attempts", 0)
+        last_attempt = entry.get("last_attempt", 0)
+
+        # Expire after 24 hours
+        if age > 86400:
+            expired += 1
+            LOG.info(f"Outbox entry expired (24h): to={entry.get('to')}")
+            continue
+
+        # Exponential backoff: 30s, 60s, 120s, ... max 900s (15min)
+        backoff = min(30 * (2 ** attempts), 900)
+        if now - last_attempt < backoff:
+            remaining.append(entry)
+            continue
+
+        # Try to send
+        entry["attempts"] = attempts + 1
+        entry["last_attempt"] = now
+
+        result = send_email(
+            to=entry.get("to", ""),
+            subject=entry.get("subject", ""),
+            body=entry.get("body", ""),
+            cc=entry.get("cc"),
+            bcc=entry.get("bcc"),
+            attachments=entry.get("attachments"),
+            in_reply_to=entry.get("in_reply_to"),
+            references=entry.get("references"),
+            profile=profile,
+            _from_outbox=True,  # prevent re-queueing
+        )
+
+        if result.get("ok") and not result.get("queued"):
+            sent += 1
+            LOG.info(f"Outbox email sent: to={entry.get('to')}")
+        else:
+            remaining.append(entry)
+
+    # Save updated queue
+    with _outbox_lock:
+        _save_outbox(remaining)
+
+    if sent or expired:
+        LOG.info(f"Outbox processed: sent={sent}, expired={expired}, remaining={len(remaining)}")
+    return {"ok": True, "processed": sent, "expired": expired, "remaining": len(remaining)}
+
+
+def get_outbox_status() -> Dict[str, Any]:
+    """Return current outbox queue status."""
+    with _outbox_lock:
+        items = _load_outbox()
+    return {"ok": True, "queued": len(items), "items": [
+        {"to": e.get("to", ""), "subject": e.get("subject", "")[:50],
+         "queued_at": e.get("queued_at", 0), "attempts": e.get("attempts", 0)}
+        for e in items
+    ]}
 
 
 # ── IMAP save draft ──────────────────────────────────────────────
@@ -1573,6 +2293,8 @@ def search_emails(
 ) -> List[Dict[str, Any]]:
     """Search emails with operators: from:, subject:, date:, or free text.
 
+    Tries IMAP SEARCH first (server-side, unlimited), falls back to mbox scan.
+
     Supported operators:
         from:name         - Search in From header
         from:"full name"  - Quoted search in From header
@@ -1585,6 +2307,14 @@ def search_emails(
 
     Multiple operators can be combined: "from:john subject:meeting"
     """
+    # ── IMAP SEARCH primary (server-side, unlimited) ──
+    imap_result = _imap_search_emails(query, folder, limit, profile)
+    if imap_result is not None:
+        LOG.debug(f"IMAP search: {len(imap_result)} results for '{query[:30]}'")
+        return imap_result
+    LOG.debug("IMAP search failed, using mbox scan fallback")
+
+    # ── mbox scan fallback ──
     import re as _re
     from datetime import datetime, timedelta
 
@@ -1814,11 +2544,13 @@ def get_email_thread(
 ) -> List[Dict[str, Any]]:
     """Get all emails in a conversation thread.
 
-    Matches by normalized subject (strip Re:/Fwd:/AW:/WG:) and
-    References/In-Reply-To header chain.
+    Matches strictly by References/In-Reply-To header chain only.
+    Subject-based matching is intentionally avoided to prevent false
+    positives (e.g. two unrelated "Meeting" threads merging).
     Returns oldest first for conversation flow.
     """
-    import re as _re
+    if not msg_id:
+        return [{"error": "Message-ID required for thread detection"}]
 
     if profile is None:
         profile = find_thunderbird_profile()
@@ -1838,20 +2570,59 @@ def get_email_thread(
     except Exception as e:
         return [{"error": f"mbox parse error: {e}"}]
 
-    def _normalize_subj(s):
-        return _re.sub(r'^(Re|Fwd|Fw|AW|WG)\s*:\s*', '', s, flags=_re.IGNORECASE).strip().lower()
+    target_mid = msg_id.strip("<>")
 
-    target_subject = _normalize_subj(subject) if subject else ""
-    target_mid = msg_id.strip("<>") if msg_id else ""
+    thread_mids = {target_mid}
 
-    thread_mids = set()
-    if target_mid:
-        thread_mids.add(target_mid)
+    # Two passes: first build a graph of References/In-Reply-To links,
+    # then walk the graph to find all thread members.
+    all_keys = mbox.keys()
 
+    # Pass 1: build reference graph (O(n) scan)
+    # msg_refs[mid] = set of Message-IDs this message references
+    # ref_by[mid] = set of Message-IDs that reference this message
+    msg_refs = {}
+    ref_by = {}
+
+    for key in all_keys:
+        try:
+            msg = mbox[key]
+        except Exception:
+            continue
+        m_mid = (msg.get("Message-ID") or "").strip("<>")
+        if not m_mid:
+            continue
+        m_reply_to = (msg.get("In-Reply-To") or "").strip("<>")
+        m_refs_str = msg.get("References", "") or ""
+        # Extract all Message-IDs from References header
+        ref_ids = set()
+        if m_reply_to:
+            ref_ids.add(m_reply_to)
+        for ref_match in re.finditer(r'<([^>]+)>', m_refs_str):
+            ref_ids.add(ref_match.group(1))
+        msg_refs[m_mid] = ref_ids
+        for rid in ref_ids:
+            ref_by.setdefault(rid, set()).add(m_mid)
+
+    # BFS/DFS to expand thread_mids through the reference graph
+    queue = list(thread_mids)
+    while queue:
+        current = queue.pop()
+        # Messages that reference 'current'
+        for child in ref_by.get(current, set()):
+            if child not in thread_mids:
+                thread_mids.add(child)
+                queue.append(child)
+        # Messages that 'current' references (walk up the chain)
+        for parent in msg_refs.get(current, set()):
+            if parent not in thread_mids:
+                thread_mids.add(parent)
+                queue.append(parent)
+
+    # Pass 2: collect full email data for all thread members
     results = []
-    keys = mbox.keys()
 
-    for key in keys:
+    for key in all_keys:
         try:
             msg = mbox[key]
         except Exception:
@@ -1864,36 +2635,14 @@ def get_email_thread(
         except (ValueError, TypeError):
             pass
 
-        m_subject = _decode_header(msg.get("Subject", ""))
         m_mid = (msg.get("Message-ID") or "").strip("<>")
-        m_refs = msg.get("References", "") or ""
-        m_reply_to = (msg.get("In-Reply-To") or "").strip("<>")
-
-        match = False
-
-        # Match by References/In-Reply-To chain
-        if target_mid:
-            if target_mid in m_refs or m_reply_to == target_mid or m_mid == target_mid:
-                match = True
-            for tid in thread_mids:
-                if tid in m_refs or m_reply_to == tid:
-                    match = True
-                    break
-
-        # Match by normalized subject
-        if not match and target_subject:
-            if _normalize_subj(m_subject) == target_subject:
-                match = True
-
-        if not match:
+        if not m_mid or m_mid not in thread_mids:
             continue
-
-        if m_mid:
-            thread_mids.add(m_mid)
 
         flags = _parse_mozilla_status(moz_status)
         from_addr = _decode_header(msg.get("From", ""))
         to_addr = _decode_header(msg.get("To", ""))
+        subject_h = _decode_header(msg.get("Subject", ""))
         date_str = msg.get("Date", "")
 
         try:
@@ -1910,7 +2659,7 @@ def get_email_thread(
             "idx": key,
             "from": _sanitize_subject(from_addr),
             "to": _sanitize_subject(to_addr),
-            "subject": _sanitize_subject(m_subject),
+            "subject": _sanitize_subject(subject_h),
             "date": date_str,
             "timestamp": timestamp,
             "snippet": snippet,

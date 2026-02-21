@@ -42,14 +42,17 @@ class EmailMixin:
     # ── Worker methods (IO thread) ──────────────────────────────────
 
     def _do_email_check_worker(self):
-        """Check for new emails and notify user if any found."""
+        """Check for new emails and notify user if any found. Also process outbox."""
         try:
             result = _toolbox_call("/email/check_new", {}, timeout_s=10.0)
             if not result or not result.get("ok"):
+                # Still try to process outbox even if email check fails
+                self._process_outbox_silent()
                 return
 
             total_new = result.get("total_new", 0)
             if total_new <= 0:
+                self._process_outbox_silent()
                 return
 
             new_emails = result.get("new_emails", [])
@@ -76,6 +79,21 @@ class EmailMixin:
 
         except Exception as e:
             LOG.warning(f"Email check worker error: {e}")
+        finally:
+            self._process_outbox_silent()
+
+    def _process_outbox_silent(self):
+        """Process outbox queue silently. Notify user only on successful sends."""
+        try:
+            result = _toolbox_call("/email/outbox/process", {}, timeout_s=30.0)
+            if result and result.get("ok"):
+                sent = result.get("processed", 0)
+                if sent > 0:
+                    word = "email" if sent == 1 else "emails"
+                    msg = f"Outbox: {sent} queued {word} sent successfully."
+                    self._ui_call(lambda m=msg: self._add_message("Frank", m, is_system=True))
+        except Exception as e:
+            LOG.debug(f"Outbox process error: {e}")
 
     def _do_email_unread_worker(self, voice: bool = False):
         """Get unread email counts and display them."""
@@ -324,7 +342,7 @@ class EmailMixin:
             if query:
                 payload["query"] = query
 
-            result = _toolbox_call("/email/delete", payload, timeout_s=30.0)
+            result = _toolbox_call("/email/delete", payload, timeout_s=120.0)
             self._ui_call(self._hide_typing)
 
             if not result or not result.get("ok"):
@@ -355,11 +373,24 @@ class EmailMixin:
 
     # ── Card-based workers (NO LLM for metadata) ───────────────────
 
-    def _do_email_list_cards_worker(self, folder: str = "INBOX", limit: int = 20, unread_only: bool = True):
-        """Fetch emails and render as clickable cards with REAL metadata (no LLM)."""
+    _EMAIL_DISPLAY_LIMIT = 100
+
+    def _do_email_list_cards_worker(self, folder: str = "INBOX", limit: int = 100, **kwargs):
+        """Fetch ALL emails and render as clickable cards. Unread first (colored), read after (gray)."""
         self._ui_call(self._show_typing)
 
         try:
+            # Get total count for the folder (for >100 notification)
+            total_in_folder = 0
+            try:
+                unread_result = _toolbox_call("/email/unread", {}, timeout_s=10.0)
+                if unread_result and unread_result.get("ok"):
+                    folder_info = unread_result.get("unread", {}).get(folder, {})
+                    if isinstance(folder_info, dict):
+                        total_in_folder = folder_info.get("total", 0)
+            except Exception:
+                pass
+
             result = _toolbox_call("/email/list", {"folder": folder, "limit": limit}, timeout_s=15.0)
             if not result or not result.get("ok"):
                 error = (result or {}).get("error", "Toolbox not reachable")
@@ -378,15 +409,20 @@ class EmailMixin:
                 self._ui_call(lambda: self._add_message("Frank", f"No emails in {folder}.", is_system=True))
                 return
 
-            # Filter unread if requested
-            if unread_only:
-                unread = [e for e in emails if not e.get("read", True)]
-                if unread:
-                    emails = unread
-                # else: show all as fallback
+            # Cap at display limit
+            shown = len(emails)
+            if shown > self._EMAIL_DISPLAY_LIMIT:
+                emails = emails[:self._EMAIL_DISPLAY_LIMIT]
+                shown = self._EMAIL_DISPLAY_LIMIT
 
             self._ui_call(self._hide_typing)
             self._ui_call(lambda em=emails, f=folder: self._render_email_list(em, f))
+
+            # Show overflow notification if there are more emails than the limit
+            actual_total = max(total_in_folder, shown)
+            if actual_total > self._EMAIL_DISPLAY_LIMIT:
+                self._ui_call(lambda t=actual_total, s=shown, f=folder:
+                              self._show_email_overflow_notification(s, t, f))
 
         except Exception as e:
             self._ui_call(self._hide_typing)
@@ -470,13 +506,46 @@ class EmailMixin:
             self._ui_call(self._hide_typing)
             self._ui_call(lambda err=e: self._add_message("Frank", f"Move to spam failed: {err}", is_system=True))
 
+    # ── Undo-delete state ──
+    _UNDO_DELETE_DELAY_S = 5.0
+    _pending_delete = None  # dict with {folder, msg_id, query, email_data, cancelled}
+
     def _do_email_delete_single_worker(self, folder: str = "INBOX", msg_id: str = None, query: str = None):
-        """Delete a single email via toolbox."""
+        """Delete a single email with 5-second undo window."""
+        import time as _time
+
+        # Save email data for potential undo restore
+        removed_email = None
+        if hasattr(self, "_current_email_list") and self._current_email_list and msg_id:
+            for e in self._current_email_list:
+                eid = e.get("id", "")
+                if eid and (eid == msg_id or eid.strip("<>") == msg_id.strip("<>")):
+                    removed_email = dict(e)
+                    break
+
         # Immediately remove from displayed list (UI-first)
         if msg_id:
             self._deleted_msg_ids.add(msg_id)
             self._ui_call(lambda mid=msg_id: self._remove_email_from_list(msg_id=mid))
 
+        # Create pending delete record
+        pending = {"folder": folder, "msg_id": msg_id, "query": query,
+                   "email_data": removed_email, "cancelled": False}
+        self._pending_delete = pending
+
+        # Show undo notification
+        self._ui_call(lambda f=folder: self._show_undo_delete_notification(f))
+
+        # Wait for undo window
+        _time.sleep(self._UNDO_DELETE_DELAY_S)
+
+        # Check if cancelled
+        if pending.get("cancelled"):
+            LOG.info(f"Delete cancelled (undo): msg_id={msg_id}")
+            return
+
+        # Execute the actual delete
+        self._pending_delete = None
         try:
             payload = {"folder": folder}
             if msg_id:
@@ -491,17 +560,63 @@ class EmailMixin:
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
 
         except Exception as e:
-            self._ui_call(self._hide_typing)
             self._ui_call(lambda err=e: self._add_message("Frank", f"Delete failed: {err}", is_system=True))
+
+        # Remove undo notification
+        self._ui_call(self._remove_undo_notification)
+
+    def _do_email_undo_delete_worker(self, **kwargs):
+        """Cancel a pending delete (undo)."""
+        pending = self._pending_delete
+        if not pending or pending.get("cancelled"):
+            self._ui_call(lambda: self._add_message("Frank", "Nothing to undo.", is_system=True))
+            return
+
+        pending["cancelled"] = True
+
+        # Restore email to displayed list
+        email_data = pending.get("email_data")
+        msg_id = pending.get("msg_id")
+        if msg_id:
+            self._deleted_msg_ids.discard(msg_id)
+        if email_data and hasattr(self, "_current_email_list"):
+            self._current_email_list.append(email_data)
+            folder = getattr(self, "_current_email_folder", "INBOX")
+            self._ui_call(lambda: self._render_email_list(self._current_email_list, folder))
+
+        self._pending_delete = None
+        self._ui_call(self._remove_undo_notification)
+        self._ui_call(lambda: self._add_message("Frank", "Delete undone — email restored.", is_system=True))
 
     # ── Email Popup workers ──────────────────────────────────────────
 
     _email_popup = None  # singleton reference
 
     def _on_email_popup_destroyed(self):
+        popup = self._email_popup
         self._email_popup = None
 
-    def _open_email_popup(self, email_data, full_body: str = ""):
+        # Auto-mark email as read when popup is closed
+        if popup and hasattr(popup, '_email_data') and popup._email_data:
+            ed = popup._email_data
+            if not ed.read:
+                # Mark as read via IMAP
+                self._io_q.put(("email_toggle_read", {
+                    "folder": ed.folder, "msg_id": ed.msg_id, "mark_read": True,
+                }))
+                ed.read = True
+
+                # Update local list and re-render with email moved to "read" section
+                if hasattr(self, "_current_email_list") and self._current_email_list:
+                    for e in self._current_email_list:
+                        mid = e.get("id", "")
+                        if mid and (mid == ed.msg_id or mid.strip("<>") == (ed.msg_id or "").strip("<>")):
+                            e["read"] = True
+                            break
+                    folder = getattr(self, "_current_email_folder", "INBOX")
+                    self._render_email_list(self._current_email_list, folder)
+
+    def _open_email_popup(self, email_data, full_body: str = "", attachments=None):
         """Open email popup window (MUST run on main thread)."""
         if self._email_popup is not None:
             try:
@@ -511,13 +626,17 @@ class EmailMixin:
             self._email_popup = None
 
         from overlay.widgets.email_popup import EmailPopup
-        self._email_popup = EmailPopup(
+        popup = EmailPopup(
             self,
             email_data=email_data,
             full_body=full_body,
             on_destroy=self._on_email_popup_destroyed,
             on_action=lambda action, **kw: self._io_q.put((action, kw)),
         )
+        if attachments:
+            popup._read_attachments_data = attachments
+            popup._build_read_view()
+        self._email_popup = popup
 
     def _open_compose_popup(self):
         """Open a blank compose popup (MUST run on main thread)."""
@@ -543,6 +662,7 @@ class EmailMixin:
 
         self._ui_call(self._show_typing)
         full_body = ""
+        attachments = []
         try:
             payload = {"folder": email_data.folder}
             if email_data.msg_id:
@@ -554,6 +674,7 @@ class EmailMixin:
             if result and result.get("ok"):
                 em = result.get("email", {})
                 full_body = em.get("body", "") or email_data.snippet or ""
+                attachments = em.get("attachments", [])
                 # Enrich EmailData with to/cc from full read
                 if not email_data.to and em.get("to"):
                     email_data.to = em["to"]
@@ -564,7 +685,8 @@ class EmailMixin:
             full_body = email_data.snippet or "(Could not load email body)"
 
         self._ui_call(self._hide_typing)
-        self._ui_call(lambda ed=email_data, fb=full_body: self._open_email_popup(ed, fb))
+        self._ui_call(lambda ed=email_data, fb=full_body, att=attachments:
+                      self._open_email_popup(ed, fb, att))
 
     def _do_email_send_worker(self, to: str = "", subject: str = "", body: str = "",
                               cc: str = None, bcc: str = None,
@@ -585,8 +707,15 @@ class EmailMixin:
 
             result = _toolbox_call("/email/send", payload, timeout_s=30.0)
             if result and result.get("ok"):
+                queued = result.get("queued")
                 fallback = result.get("fallback")
-                if fallback == "thunderbird":
+                if queued:
+                    msg = "Network issue — email queued for automatic retry."
+                    if fallback == "thunderbird":
+                        msg += " Also opened in Thunderbird as backup."
+                    self._ui_call(lambda m=msg: self._add_message("Frank", m, is_system=True))
+                    self._ui_call(lambda m=msg: self._email_popup and self._email_popup.send_result(True, m, warning=True))
+                elif fallback == "thunderbird":
                     msg = "SMTP failed — opened in Thunderbird compose."
                     self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
                     self._ui_call(lambda: self._email_popup and self._email_popup.send_result(True, msg, warning=True))
@@ -601,6 +730,32 @@ class EmailMixin:
         except Exception as e:
             self._ui_call(lambda err=e: self._add_message("Frank", f"Send failed: {err}", is_system=True))
             self._ui_call(lambda err=e: self._email_popup and self._email_popup.send_result(False, str(err)))
+
+    def _do_email_save_attachment_worker(self, folder: str = "INBOX", msg_id: str = "",
+                                         attachment_index: int = 0, **kwargs):
+        """Save email attachment to ~/Downloads (IO thread)."""
+        try:
+            payload = {"folder": folder, "msg_id": msg_id,
+                       "attachment_index": attachment_index}
+            result = _toolbox_call("/email/save_attachment", payload, timeout_s=30.0)
+            if result and result.get("ok"):
+                path = result.get("path", "")
+                fname = result.get("filename", "attachment")
+                msg = f"Saved: {fname}"
+                self._ui_call(lambda m=msg: (
+                    self._email_popup and self._email_popup._show_status(m, "#00cc88")
+                ))
+                self._ui_call(lambda p=path: self._add_message(
+                    "Frank", f"Attachment saved to {p}", is_system=True))
+            else:
+                error = (result or {}).get("error", "Save failed")
+                self._ui_call(lambda e=error: (
+                    self._email_popup and self._email_popup._show_status(f"Error: {e}", "#dd4444")
+                ))
+        except Exception as e:
+            self._ui_call(lambda err=e: (
+                self._email_popup and self._email_popup._show_status(f"Error: {err}", "#dd4444")
+            ))
 
     def _do_email_draft_worker(self, to: str = "", subject: str = "", body: str = "", **kwargs):
         """Save draft via toolbox (IO thread)."""

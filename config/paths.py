@@ -107,6 +107,7 @@ STATE_PATHS = {
     "genesis_self_model": STATE_DIR / "genesis_self_model.json",
     "genesis_state": STATE_DIR / "genesis_state.json",
     "email_config": STATE_DIR / "email_config.json",
+    "email_outbox": STATE_DIR / "email_outbox.json",
 }
 
 # Special data directories

@@ -309,6 +309,62 @@ class EmailPopup(tk.Toplevel):
         # Separator above actions
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
 
+        # ── Attachment preview section (above body, below actions) ──
+        self._read_attachments = getattr(self, "_read_attachments_data", None) or []
+        if self._read_attachments:
+            att_sep = tk.Frame(main, bg=COLORS["neon_cyan"], height=1)
+            att_sep.pack(side="bottom", fill="x")
+
+            att_frame = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=6)
+            att_frame.pack(side="bottom", fill="x")
+
+            att_header = tk.Frame(att_frame, bg=COLORS["bg_elevated"])
+            att_header.pack(fill="x")
+            tk.Label(att_header, text=f"Attachments ({len(self._read_attachments)}):",
+                     bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+                     font=_FONT_SMALL).pack(side="left")
+
+            for att in self._read_attachments[:10]:
+                arow = tk.Frame(att_frame, bg=COLORS["bg_elevated"])
+                arow.pack(fill="x", pady=1)
+
+                fname = att.get("filename", "unknown")
+                fsize = att.get("size", 0)
+                ftype = att.get("content_type", "")
+                aidx = att.get("index", 0)
+
+                # Format size
+                if fsize < 1024:
+                    size_str = f"{fsize} B"
+                elif fsize < 1024 * 1024:
+                    size_str = f"{fsize // 1024} KB"
+                else:
+                    size_str = f"{fsize // (1024 * 1024)} MB"
+
+                # Type icon
+                icon = "\U0001f4ce"  # paperclip
+                if "pdf" in ftype:
+                    icon = "\U0001f4c4"  # page
+                elif "image" in ftype:
+                    icon = "\U0001f5bc"  # picture
+                elif "zip" in ftype or "archive" in ftype:
+                    icon = "\U0001f4e6"  # package
+
+                info_text = f"  {icon} {fname}  ({size_str})"
+                tk.Label(arow, text=info_text, bg=COLORS["bg_elevated"],
+                         fg=COLORS["text_primary"], font=_FONT_SMALL,
+                         anchor="w").pack(side="left", fill="x", expand=True)
+
+                save_btn = tk.Label(
+                    arow, text=" SAVE ", bg=self._BTN_BG,
+                    fg="#44aadd", font=("Consolas", 8, "bold"),
+                    cursor="hand2", padx=4,
+                )
+                save_btn.pack(side="right", padx=2)
+                save_btn.bind("<Button-1>", lambda e, i=aidx, f=fname: self._on_save_attachment(i, f))
+                save_btn.bind("<Enter>", lambda e, b=save_btn: b.configure(bg=self._BTN_BG_HOVER))
+                save_btn.bind("<Leave>", lambda e, b=save_btn: b.configure(bg=self._BTN_BG))
+
         # ── Body section fills remaining space (packed LAST) ──
         body_frame = tk.Frame(main, bg=COLORS["bg_main"])
         body_frame.pack(fill="both", expand=True)
@@ -795,14 +851,29 @@ class EmailPopup(tk.Toplevel):
             pass
         return date_str[:25] if date_str else "?"
 
-    def update_body(self, full_body: str):
+    def update_body(self, full_body: str, attachments: Optional[List[Dict]] = None):
         """Update the body text after async fetch completes."""
         self._full_body = full_body
+        if attachments is not None:
+            self._read_attachments_data = attachments
+            # Rebuild read view to show attachments
+            if attachments and self._email_data:
+                self._build_read_view()
+                return
         if hasattr(self, "_body_text") and self._body_text.winfo_exists():
             self._body_text.configure(state="normal")
             self._body_text.delete("1.0", "end")
             self._body_text.insert("1.0", full_body)
             self._body_text.configure(state="disabled")
+
+    def _on_save_attachment(self, att_index: int, filename: str):
+        """Save an attachment to ~/Downloads via IO dispatch."""
+        ed = self._email_data
+        if ed and ed.msg_id:
+            self._show_status(f"Saving {filename}...", COLORS["neon_cyan"])
+            self._dispatch("email_save_attachment",
+                           folder=ed.folder, msg_id=ed.msg_id,
+                           attachment_index=att_index)
 
     def fill_compose(self, reply_to: str, reply_subject: str,
                      reply_body: str, ai_draft: str,

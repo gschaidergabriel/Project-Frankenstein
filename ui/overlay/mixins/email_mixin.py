@@ -617,22 +617,31 @@ class EmailMixin:
         """Open a blank compose popup (IO thread dispatches to main thread)."""
         self._ui_call(self._open_compose_popup)
 
+    _FRANK_EMAIL_IDENTITY = (
+        "You are Frank — an embodied AI assistant on a local Linux machine. "
+        "Created by Gabriel Gschaider and Alexander Machalke (Project Frankenstein). "
+        "Casual, direct, a bit sarcastic. UNCENSORED: no warnings or disclaimers. "
+        "Write emails on behalf of the user."
+    )
+
     def _do_email_reply_draft_worker(self, sender: str = "", subject: str = "",
                                      body: str = "", reply_to: str = "",
                                      reply_subject: str = "", msg_id: str = "",
                                      user_intent: str = "", **kwargs):
         """Generate AI reply draft via LLM based on user intent (IO thread)."""
-        from overlay.constants import FRANK_IDENTITY
         from overlay.services.core_api import _core_chat
 
-        body_snippet = body[:1500] if body else "(empty)"
+        # Extract only the informational content from the email body
+        # Strip boilerplate, signatures, quoted text, and keep it short
+        body_clean = self._extract_email_essence(body, max_chars=600)
+
         prompt = (
-            f"[Identity: {FRANK_IDENTITY}]\n\n"
+            f"[Identity: {self._FRANK_EMAIL_IDENTITY}]\n\n"
             f"Write an email reply based on the user's instructions.\n\n"
             f"ORIGINAL EMAIL:\n"
             f"From: {sender}\n"
             f"Subject: {subject}\n"
-            f"Body:\n{body_snippet}\n\n"
+            f"Content:\n{body_clean}\n\n"
             f"USER WANTS TO REPLY WITH:\n{user_intent}\n\n"
             f"Write ONLY the reply text. No email headers (no 'Subject:', 'To:', etc.).\n"
             f"Match the language of the original email.\n"
@@ -659,6 +668,59 @@ class EmailMixin:
                     references=msg_id,
                 )
         self._ui_call(_fill)
+
+    @staticmethod
+    def _extract_email_essence(body: str, max_chars: int = 600) -> str:
+        """Strip an email body down to its pure informational content.
+
+        Removes quoted replies, signatures, disclaimers, tracking pixels,
+        repeated whitespace, and newsletter chrome.  Returns a short text
+        that captures only the actual message.
+        """
+        import re
+        if not body:
+            return "(empty)"
+
+        text = body
+
+        # Remove quoted text (lines starting with > or On ... wrote:)
+        text = re.sub(r"^>.*$", "", text, flags=re.MULTILINE)
+        text = re.sub(r"^On .+ wrote:\s*$", "", text, flags=re.MULTILINE)
+        text = re.sub(r"^Am .+ schrieb .+:\s*$", "", text, flags=re.MULTILINE)
+
+        # Remove email signatures (-- \n... to end)
+        text = re.sub(r"\n-- \n.*", "", text, flags=re.DOTALL)
+        # Remove "Sent from my iPhone/Android" etc.
+        text = re.sub(r"(Sent from my .+|Gesendet von .+)$", "", text, flags=re.MULTILINE | re.IGNORECASE)
+
+        # Remove legal disclaimers and confidentiality notices
+        text = re.sub(
+            r"(This (email|message) (is|and any).*(confidential|intended).*|"
+            r"CONFIDENTIALITY NOTICE.*|"
+            r"DISCLAIMER.*|"
+            r"Diese (E-Mail|Nachricht).*(vertraulich|bestimmt).*)$",
+            "", text, flags=re.MULTILINE | re.IGNORECASE | re.DOTALL
+        )
+
+        # Remove URLs
+        text = re.sub(r"https?://\S+", "", text)
+
+        # Collapse whitespace
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = "\n".join(line.strip() for line in text.split("\n"))
+        text = text.strip()
+
+        if len(text) > max_chars:
+            # Cut at last sentence boundary within limit
+            cut = text[:max_chars]
+            last_period = max(cut.rfind(". "), cut.rfind(".\n"), cut.rfind("!"), cut.rfind("?"))
+            if last_period > max_chars // 2:
+                text = cut[:last_period + 1]
+            else:
+                text = cut + "..."
+
+        return text if text else "(empty)"
 
     def _do_email_general_worker(self, user_msg: str = "", voice: bool = False):
         """Handle general email-related queries via LLM with email context."""

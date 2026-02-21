@@ -175,10 +175,12 @@ class ProactiveController:
 
         # Unread emails
         try:
-            from tools.email_reader import count_unread
-            result = count_unread()
-            if result and result.get("ok") and result.get("total", 0) > 0:
-                parts.append(f"**{result['total']} unread emails**")
+            from tools.email_reader import get_unread_count
+            result = get_unread_count()
+            if result and "error" not in result:
+                total_unread = sum(v.get("unread", 0) for v in result.values())
+                if total_unread > 0:
+                    parts.append(f"**{total_unread} unread emails**")
         except Exception:
             pass
 
@@ -236,11 +238,12 @@ class ProactiveController:
 
         try:
             from tools.email_reader import list_emails
-            result = list_emails(folder="INBOX", limit=10, unread_only=True)
-            if not result or not result.get("ok"):
+            all_emails = list_emails(folder="INBOX", limit=30)
+            if not all_emails or (len(all_emails) == 1 and "error" in all_emails[0]):
                 return []
 
-            emails = result.get("emails", [])
+            # Filter to unread only
+            emails = [e for e in all_emails if not e.get("read", True)]
             if not emails:
                 return []
         except Exception:

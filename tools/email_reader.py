@@ -536,9 +536,16 @@ def check_new_emails(profile: Optional[Path] = None) -> Dict[str, Any]:
 
 # ── IMAP credentials from Thunderbird (OAuth2) ────────────────────────
 
-# Thunderbird's built-in Google OAuth2 credentials (from omni.ja OAuth2Providers.sys.mjs)
-_GOOGLE_CLIENT_ID = "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleusercontent.com"
-_GOOGLE_CLIENT_SECRET = "kSmqreRr0qwBWJgbf5Y-PjSU"
+# Thunderbird's public OAuth2 credentials (from omni.ja, publicly available)
+# Can be overridden via environment for custom OAuth apps
+_GOOGLE_CLIENT_ID = os.environ.get(
+    "FRANK_GOOGLE_CLIENT_ID",
+    "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleusercontent.com",
+)
+_GOOGLE_CLIENT_SECRET = os.environ.get(
+    "FRANK_GOOGLE_CLIENT_SECRET",
+    "kSmqreRr0qwBWJgbf5Y-PjSU",
+)
 _GOOGLE_TOKEN_URL = "https://www.googleapis.com/oauth2/v3/token"
 
 _oauth_cache: Optional[Dict[str, str]] = None

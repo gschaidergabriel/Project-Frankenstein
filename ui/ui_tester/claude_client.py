@@ -9,6 +9,7 @@ autonomous testing and design analysis.
 import base64
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,7 +19,9 @@ LOG = logging.getLogger("ui_tester.claude")
 
 # API Configuration
 API_URL = "https://api.anthropic.com/v1/messages"
-API_KEY = "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"
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+if not API_KEY:
+    LOG.warning("ANTHROPIC_API_KEY not set — Claude UI tester will not work")
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 API_VERSION = "2023-06-01"
 

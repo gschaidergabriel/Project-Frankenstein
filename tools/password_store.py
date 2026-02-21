@@ -377,7 +377,7 @@ if __name__ == "__main__":
     print("1. is_initialized() before init:", not is_initialized(), "✓" if not is_initialized() else "✗")
 
     # Test 2: Init store
-    r = init_store("TestMaster123!")
+    r = init_store("test-master-pw")
     print("2. init_store():", r.get("ok"), "✓" if r.get("ok") else "✗")
     print("   is_initialized():", is_initialized())
     print("   is_unlocked():", is_unlocked())
@@ -391,13 +391,13 @@ if __name__ == "__main__":
     print("4. unlock(wrong):", not r.get("ok"), "✓" if not r.get("ok") else "✗", f"({r.get('error')})")
 
     # Test 5: Correct password
-    r = unlock("TestMaster123!")
+    r = unlock("test-master-pw")
     print("5. unlock(correct):", r.get("ok"), "✓" if r.get("ok") else "✗")
 
     # Test 6: Add entries
-    r1 = add_password("Netflix", "user@mail.com", "NetflixPW123!", url="netflix.com")
-    r2 = add_password("GitHub", "devuser", "GitH!ub$ecr3t", url="github.com", notes="2FA enabled")
-    r3 = add_password("Steam", "gamer42", "St3amPa$$", url="store.steampowered.com")
+    r1 = add_password("TestService1", "testuser1@example.com", "test-pw-001", url="example.com")
+    r2 = add_password("TestService2", "testuser2", "test-pw-002", url="example.org", notes="2FA enabled")
+    r3 = add_password("TestService3", "testuser3", "test-pw-003", url="example.net")
     print("6. add_password() x3:", all(r.get("ok") for r in [r1, r2, r3]),
           "✓" if all(r.get("ok") for r in [r1, r2, r3]) else "✗")
 
@@ -411,20 +411,20 @@ if __name__ == "__main__":
     # Test 8: Get with decryption
     r = get_password(r1["id"])
     e = r.get("entry", {})
-    pw_ok = e.get("password") == "NetflixPW123!" and e.get("username") == "user@mail.com"
+    pw_ok = e.get("password") == "test-pw-001" and e.get("username") == "testuser1@example.com"
     print("8. get_password(decrypt):", pw_ok, "✓" if pw_ok else "✗",
           f"(user={e.get('username')}, pw={'***' if e.get('password') else 'FAIL'})")
 
     # Test 9: Search
-    r = search_passwords("git")
-    print("9. search('git'):", r.get("count") == 1, "✓" if r.get("count") == 1 else "✗",
+    r = search_passwords("Service2")
+    print("9. search('Service2'):", r.get("count") == 1, "✓" if r.get("count") == 1 else "✗",
           f"(found: {[e['name'] for e in r.get('entries', [])]})")
 
     # Test 10: Update
-    r = update_password(r2["id"], password="NewGitPW!!!")
+    r = update_password(r2["id"], password="test-pw-002-updated")
     print("10. update_password():", r.get("ok"), "✓" if r.get("ok") else "✗")
     r = get_password(r2["id"])
-    upd_ok = r.get("entry", {}).get("password") == "NewGitPW!!!"
+    upd_ok = r.get("entry", {}).get("password") == "test-pw-002-updated"
     print("    verify updated pw:", upd_ok, "✓" if upd_ok else "✗")
 
     # Test 11: Delete

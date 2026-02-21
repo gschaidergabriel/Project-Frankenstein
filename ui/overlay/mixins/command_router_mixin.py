@@ -1312,7 +1312,13 @@ class CommandRouterMixin:
         # Normal chat
         self._add_message("Du", msg, is_user=True)
         task = "code.edit" if CODE_HINTS_RE.search(msg) else "chat.fast"
-        max_tokens = 500 if task == "code.edit" else 150
+        # Dynamic token budget: short for casual, more for explicit detail requests
+        if task == "code.edit":
+            max_tokens = 500
+        elif re.search(r"\b(detail|explain|ausf[uü]hrlich|erzähl|erklär|tell me about|describe|how does|wie funktioniert)\b", msg, re.IGNORECASE):
+            max_tokens = 400
+        else:
+            max_tokens = 150
         self._chat_q.put(("chat", {"msg": msg, "max_tokens": max_tokens, "timeout_s": DEFAULT_TIMEOUT_S, "task": task, "force": None}))
 
     # ---------- System Restart Worker ----------

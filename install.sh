@@ -144,6 +144,11 @@ sudo apt-get install -y -qq \
     espeak libsndfile1-dev libsndfile1 \
     2>/dev/null
 
+# QR code scanning (pyzbar C backend) + screenshots
+sudo apt-get install -y -qq \
+    libzbar0 maim \
+    2>/dev/null
+
 echo "  Done."
 
 # ============================================================================

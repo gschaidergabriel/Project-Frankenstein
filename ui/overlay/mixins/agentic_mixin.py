@@ -53,6 +53,13 @@ class AgenticMixin:
         import re as _re
         query_lower = query.lower()
 
+        # ── Early exit: queries that match specific command handlers are NEVER agentic ──
+        # File search ("search on the system for X") would otherwise match
+        # the self-analysis regex via "search ... the ... system".
+        from overlay.constants import FILE_SEARCH_RE, FILE_SEARCH_ALT_RE
+        if FILE_SEARCH_RE.search(query_lower) or FILE_SEARCH_ALT_RE.search(query_lower):
+            return False
+
         # ── Early exit: discussion/opinion/explanation/reflective queries are NEVER agentic ──
         discussion_patterns = [
             "meinung", "denkst du", "was hältst du", "was haeltst du",

@@ -52,7 +52,8 @@ COMMANDS: List[Command] = [
     Command("/system",    "System",          "System health status",           "health",               icon="G", category="system"),
     Command("/usb",       "USB",             "List USB devices",               "usb devices",          icon="U", category="system"),
     Command("/print",     "Printer",         "Printer status",                 "printer status",       icon="P", category="system"),
-    Command("/qr",        "QR Code",         "Scan or generate QR code",       "scan qr code",         icon="Q", category="system"),
+    Command("/qr",        "QR Scan",         "Scan QR code from screen",       "scan qr code",         icon="Q", category="system"),
+    Command("/qrgen",    "QR Generate",     "Generate QR code",               "generate qr code for {data}", icon="Q", category="system"),
     Command("/network",   "Network",         "Network information",            "wifi info",            icon="W", category="system"),
     Command("/llm",       "LLM",             "Restart the LLM server",         "restart llm",          icon="L", category="system"),
 

@@ -45,8 +45,16 @@ class ImageViewer(tk.Toplevel):
         self.bind("<Button-3>", self._close_viewer)  # Right click also closes
         self.focus_set()
 
-        # Grab focus to catch Escape
-        self.grab_set()
+        # Grab focus to catch Escape (delayed — window must be mapped first)
+        self.after(50, self._try_grab)
+
+    def _try_grab(self):
+        """Attempt grab_set after window is mapped."""
+        try:
+            self.grab_set()
+        except tk.TclError:
+            # Window not viewable yet, retry once more
+            self.after(100, lambda: self.grab_set() if self.winfo_exists() else None)
 
     def _close_viewer(self, event=None):
         """Close the viewer and stop event propagation."""

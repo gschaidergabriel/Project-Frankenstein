@@ -204,19 +204,57 @@ class ImageBubble(tk.Frame):
             )
             caption_label.pack(anchor="w", pady=(4, 0))
 
-        # Click hint
+        # Action row: enlarge + save
+        action_row = tk.Frame(content, bg=self._bubble_bg)
+        action_row.pack(anchor="w", pady=(2, 0))
+
         hint = tk.Label(
-            content,
+            action_row,
             text="[ CLICK TO ENLARGE ]",
             bg=self._bubble_bg,
             fg=COLORS["text_muted"],
             font=("Consolas", 7)
         )
-        hint.pack(anchor="w", pady=(2, 0))
+        hint.pack(side="left")
         hint.bind("<Button-1>", self._on_image_click)
+
+        # "Save as" link
+        save_label = tk.Label(
+            action_row,
+            text="[ SAVE AS ]",
+            bg=self._bubble_bg,
+            fg=COLORS["neon_cyan"],
+            font=("Consolas", 7),
+            cursor="hand2",
+        )
+        save_label.pack(side="left", padx=(8, 0))
+        save_label.bind("<Button-1>", self._on_save_as)
+        save_label.bind("<Enter>", lambda e: save_label.configure(fg=COLORS["neon_green"]))
+        save_label.bind("<Leave>", lambda e: save_label.configure(fg=COLORS["neon_cyan"]))
 
         # Store reference to img_frame for resize
         self._img_frame = img_frame
+
+    def _on_save_as(self, event=None):
+        """Open native 'Save As' dialog for the image."""
+        if not self.image_path:
+            return
+        try:
+            from tkinter import filedialog
+            # Suggest a filename based on caption or original name
+            default_name = os.path.basename(self.image_path)
+            dest = filedialog.asksaveasfilename(
+                title="Save Image",
+                initialfile=default_name,
+                defaultextension=".png",
+                filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg"), ("All Files", "*.*")],
+            )
+            if dest:
+                import shutil
+                shutil.copy2(self.image_path, dest)
+                LOG.info(f"Image saved to: {dest}")
+        except Exception as e:
+            LOG.error(f"Image save failed: {e}")
 
     def _on_image_click(self, event=None):
         """Handle image click - open viewer or call callback."""

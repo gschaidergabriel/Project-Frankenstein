@@ -106,6 +106,7 @@ STATE_PATHS = {
     "device_cache": STATE_DIR / "device_cache.json",
     "genesis_self_model": STATE_DIR / "genesis_self_model.json",
     "genesis_state": STATE_DIR / "genesis_state.json",
+    "email_config": STATE_DIR / "email_config.json",
 }
 
 # Special data directories

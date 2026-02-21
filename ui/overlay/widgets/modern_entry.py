@@ -231,6 +231,13 @@ class ModernEntry(tk.Frame):
                 root._on_attach()
             return
 
+        if command.action == "email_settings":
+            root = self.winfo_toplevel()
+            if hasattr(root, '_io_q'):
+                self._set_text("")
+                root._io_q.put(("email_settings", {}))
+            return
+
         if command.template:
             # Insert template into entry
             template = command.template

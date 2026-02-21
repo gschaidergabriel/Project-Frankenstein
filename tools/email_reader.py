@@ -117,11 +117,23 @@ def find_thunderbird_profile() -> Optional[Path]:
 
 
 def _get_imap_dir(profile: Path) -> Optional[Path]:
-    """Find the IMAP mail directory within a profile."""
+    """Find the IMAP mail directory within a profile.
+
+    Respects email_config.json account setting. Falls back to first account.
+    """
     imap_root = profile / "ImapMail"
     if not imap_root.is_dir():
         return None
-    # Find first IMAP account directory
+
+    # Check if a specific account is configured
+    config = load_email_config()
+    account = config.get("account", "auto")
+    if account != "auto":
+        target = imap_root / account
+        if target.is_dir():
+            return target
+
+    # Fallback: first IMAP account directory
     for d in sorted(imap_root.iterdir()):
         if d.is_dir() and not d.name.startswith("."):
             return d
@@ -706,15 +718,23 @@ def _get_imap_credentials(profile: Optional[Path] = None) -> Optional[Dict[str, 
     try:
         logins = json.loads(logins_file.read_text())
 
-        # Find the OAuth2 entry (has the refresh token)
+        # Find the OAuth2 / IMAP entry matching the configured account
+        config = load_email_config()
+        configured_account = config.get("account", "auto")
+
         oauth_entry = None
         imap_entry = None
         for entry in logins.get("logins", []):
             hostname = entry.get("hostname", "")
             if hostname.startswith("oauth://"):
-                oauth_entry = entry
+                if oauth_entry is None:
+                    oauth_entry = entry
             elif "imap" in hostname.lower():
-                imap_entry = entry
+                # If a specific account is configured, match it
+                if configured_account != "auto" and configured_account in hostname:
+                    imap_entry = entry
+                elif imap_entry is None:
+                    imap_entry = entry
 
         if not oauth_entry:
             LOG.warning("No OAuth2 entry found in logins.json")
@@ -742,13 +762,25 @@ def _get_imap_credentials(profile: Optional[Path] = None) -> Optional[Dict[str, 
         if not access_token:
             return None
 
-        # Determine IMAP host
+        # Determine IMAP host and derive SMTP host
         host = "imap.gmail.com"
         if imap_entry:
             host = imap_entry.get("hostname", "").replace("imap://", "").strip("/") or host
 
+        # Also find SMTP host from logins
+        smtp_host = host.replace("imap.", "smtp.")  # fallback: imap.x.com → smtp.x.com
+        for entry in logins.get("logins", []):
+            h = entry.get("hostname", "")
+            if "smtp" in h.lower():
+                if configured_account != "auto" and configured_account.replace("imap.", "") in h:
+                    smtp_host = h.replace("smtp://", "").strip("/")
+                    break
+                elif smtp_host == host.replace("imap.", "smtp."):
+                    smtp_host = h.replace("smtp://", "").strip("/")
+
         result = {
             "host": host,
+            "smtp_host": smtp_host,
             "user": user,
             "access_token": access_token,
             "auth_method": "xoauth2",
@@ -764,31 +796,172 @@ def _get_imap_credentials(profile: Optional[Path] = None) -> Optional[Dict[str, 
     return None
 
 
+# ── Email config persistence ──────────────────────────────────────
+
+try:
+    from config.paths import get_state as _get_state_path
+    _EMAIL_CONFIG_FILE = _get_state_path("email_config")
+except ImportError:
+    _EMAIL_CONFIG_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "email_config.json"
+
+_email_config_cache: Optional[Dict[str, Any]] = None
+
+
+def load_email_config() -> Dict[str, Any]:
+    """Load email config. Returns {"account": "auto", "provider": "auto"}."""
+    global _email_config_cache
+    if _email_config_cache is not None:
+        return _email_config_cache
+    if _EMAIL_CONFIG_FILE.exists():
+        try:
+            _email_config_cache = json.loads(_EMAIL_CONFIG_FILE.read_text())
+            return _email_config_cache
+        except Exception:
+            pass
+    return {"account": "auto", "provider": "auto"}
+
+
+def save_email_config(config: Dict[str, Any]) -> None:
+    """Save email config to disk."""
+    global _email_config_cache
+    try:
+        _EMAIL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _EMAIL_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+        _email_config_cache = config
+        LOG.info(f"Email config saved: {config}")
+    except Exception as e:
+        LOG.warning(f"Failed to save email config: {e}")
+
+
+def list_imap_accounts(profile: Optional[Path] = None) -> List[Dict[str, str]]:
+    """List all IMAP account directories in Thunderbird profile.
+
+    Returns [{"server": "imap.gmail.com", "provider": "gmail"}, ...]
+    """
+    if profile is None:
+        profile = find_thunderbird_profile()
+    if not profile:
+        return []
+
+    imap_root = profile / "ImapMail"
+    if not imap_root.is_dir():
+        return []
+
+    accounts = []
+    for d in sorted(imap_root.iterdir()):
+        if d.is_dir() and not d.name.startswith("."):
+            server = d.name
+            provider = _detect_provider(server)
+            accounts.append({"server": server, "provider": provider, "path": str(d)})
+    return accounts
+
+
+def _detect_provider(server: str) -> str:
+    """Auto-detect email provider from IMAP server name."""
+    s = server.lower()
+    if "gmail" in s or "googlemail" in s:
+        return "gmail"
+    if "outlook" in s or "office365" in s or "hotmail" in s or "live.com" in s:
+        return "outlook"
+    if "yahoo" in s:
+        return "yahoo"
+    if "icloud" in s or "apple" in s or "me.com" in s:
+        return "icloud"
+    if "gmx" in s:
+        return "gmx"
+    if "web.de" in s:
+        return "webde"
+    if "t-online" in s or "telekom" in s:
+        return "tonline"
+    if "proton" in s:
+        return "proton"
+    if "fastmail" in s:
+        return "fastmail"
+    return "generic"
+
+
 # ── IMAP folder name mapping ───────────────────────────────────────
 
-# Gmail IMAP folder names (German locale)
-_GMAIL_FOLDER_MAP = {
-    "INBOX": "INBOX",
-    "spam": "[Gmail]/Spam",
-    "[Gmail]/Spam": "[Gmail]/Spam",
-    "trash": "[Gmail]/Papierkorb",
-    "papierkorb": "[Gmail]/Papierkorb",
-    "[Gmail]/Papierkorb": "[Gmail]/Papierkorb",
-    "sent": "[Gmail]/Gesendet",
-    "gesendet": "[Gmail]/Gesendet",
-    "[Gmail]/Gesendet": "[Gmail]/Gesendet",
-    "drafts": "[Gmail]/Entw&APw-rfe",
-    "entwürfe": "[Gmail]/Entw&APw-rfe",
-    "wichtig": "[Gmail]/Wichtig",
-    "[Gmail]/Wichtig": "[Gmail]/Wichtig",
-    "alle nachrichten": "[Gmail]/Alle Nachrichten",
-    "[Gmail]/Alle Nachrichten": "[Gmail]/Alle Nachrichten",
+# Provider-specific folder maps: user-friendly name → IMAP folder name
+_PROVIDER_FOLDER_MAPS = {
+    "gmail": {
+        "spam": "[Gmail]/Spam", "junk": "[Gmail]/Spam",
+        "trash": "[Gmail]/Papierkorb", "papierkorb": "[Gmail]/Papierkorb", "deleted": "[Gmail]/Papierkorb",
+        "sent": "[Gmail]/Gesendet", "gesendet": "[Gmail]/Gesendet",
+        "drafts": "[Gmail]/Entw&APw-rfe", "entwürfe": "[Gmail]/Entw&APw-rfe",
+        "wichtig": "[Gmail]/Wichtig", "important": "[Gmail]/Wichtig", "starred": "[Gmail]/Wichtig",
+        "alle nachrichten": "[Gmail]/Alle Nachrichten", "all mail": "[Gmail]/Alle Nachrichten",
+        # Pass-through for exact IMAP names
+        "[Gmail]/Spam": "[Gmail]/Spam", "[Gmail]/Papierkorb": "[Gmail]/Papierkorb",
+        "[Gmail]/Gesendet": "[Gmail]/Gesendet", "[Gmail]/Entw&APw-rfe": "[Gmail]/Entw&APw-rfe",
+        "[Gmail]/Wichtig": "[Gmail]/Wichtig", "[Gmail]/Alle Nachrichten": "[Gmail]/Alle Nachrichten",
+    },
+    "outlook": {
+        "spam": "Junk", "junk": "Junk",
+        "trash": "Deleted", "papierkorb": "Deleted", "deleted": "Deleted",
+        "sent": "Sent", "gesendet": "Sent",
+        "drafts": "Drafts", "entwürfe": "Drafts",
+        "important": "INBOX", "wichtig": "INBOX",
+        "archive": "Archive",
+    },
+    "yahoo": {
+        "spam": "Bulk Mail", "junk": "Bulk Mail",
+        "trash": "Trash", "papierkorb": "Trash", "deleted": "Trash",
+        "sent": "Sent", "gesendet": "Sent",
+        "drafts": "Draft", "entwürfe": "Draft",
+    },
+    "icloud": {
+        "spam": "Junk", "junk": "Junk",
+        "trash": "Deleted Messages", "papierkorb": "Deleted Messages", "deleted": "Deleted Messages",
+        "sent": "Sent Messages", "gesendet": "Sent Messages",
+        "drafts": "Drafts", "entwürfe": "Drafts",
+        "archive": "Archive",
+    },
+    "gmx": {
+        "spam": "Spam", "junk": "Spam",
+        "trash": "Trash", "papierkorb": "Trash", "deleted": "Trash",
+        "sent": "Sent", "gesendet": "Sent",
+        "drafts": "Drafts", "entwürfe": "Drafts",
+    },
+    "generic": {
+        "spam": "Spam", "junk": "Junk",
+        "trash": "Trash", "papierkorb": "Trash", "deleted": "Trash",
+        "sent": "Sent", "gesendet": "Sent",
+        "drafts": "Drafts", "entwürfe": "Drafts",
+        "archive": "Archive",
+    },
 }
+# webde, tonline, proton, fastmail all use generic IMAP structure
+for _alias in ("webde", "tonline", "proton", "fastmail"):
+    _PROVIDER_FOLDER_MAPS[_alias] = _PROVIDER_FOLDER_MAPS["generic"]
+
+
+def _get_active_provider() -> str:
+    """Get the active provider type from config or auto-detect."""
+    config = load_email_config()
+    provider = config.get("provider", "auto")
+    if provider != "auto":
+        return provider
+    # Auto-detect from configured/default account
+    account = config.get("account", "auto")
+    if account != "auto":
+        return _detect_provider(account)
+    # Detect from first IMAP dir
+    profile = find_thunderbird_profile()
+    if profile:
+        imap_dir = _get_imap_dir(profile)
+        if imap_dir:
+            return _detect_provider(imap_dir.name)
+    return "generic"
 
 
 def _resolve_imap_folder(folder: str) -> str:
     """Resolve a user-friendly folder name to IMAP folder name."""
-    return _GMAIL_FOLDER_MAP.get(folder.lower(), _GMAIL_FOLDER_MAP.get(folder, folder))
+    if folder.upper() == "INBOX":
+        return "INBOX"
+    provider = _get_active_provider()
+    fmap = _PROVIDER_FOLDER_MAPS.get(provider, _PROVIDER_FOLDER_MAPS["generic"])
+    return fmap.get(folder.lower(), fmap.get(folder, folder))
 
 
 # ── Local mbox sync helper ─────────────────────────────────────────
@@ -973,7 +1146,7 @@ def move_to_spam(
         return {"error": "IMAP credentials not found."}
 
     imap_folder = _resolve_imap_folder(folder)
-    spam_folder = "[Gmail]/Spam"
+    spam_folder = _resolve_imap_folder("spam")
 
     try:
         imap = imaplib.IMAP4_SSL(creds["host"])
@@ -1127,7 +1300,8 @@ def send_email(
 
     # Send via SMTP with XOAUTH2
     try:
-        smtp = smtplib.SMTP("smtp.gmail.com", 587)
+        smtp_host = creds.get("smtp_host", "smtp.gmail.com")
+        smtp = smtplib.SMTP(smtp_host, 587)
         smtp.ehlo()
         smtp.starttls()
         smtp.ehlo()
@@ -1201,7 +1375,7 @@ def save_draft(
     if subject:
         msg["Subject"] = subject
 
-    drafts_folder = "[Gmail]/Entw&APw-rfe"
+    drafts_folder = _resolve_imap_folder("drafts")
 
     try:
         imap = imaplib.IMAP4_SSL(creds["host"])

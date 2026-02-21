@@ -35,6 +35,7 @@ COMMANDS: List[Command] = [
     # ── Communication ──
     Command("/emails",    "Emails",          "List recent emails",             "list emails",          icon="E", category="comm"),
     Command("/email",     "Read email",      "Read specific email",            "read email {query}",   icon="E", category="comm"),
+    Command("/mailconfig","Mail Settings",   "Configure email provider",       None,                   icon="M", category="comm", action="email_settings"),
     Command("/calendar",  "Calendar",        "Today's appointments",           "appointments today",   icon="C", category="comm"),
     Command("/week",      "This week",       "This week's schedule",           "show this week",       icon="W", category="comm"),
     Command("/contacts",  "Contacts",        "List contacts",                  "list contacts",        icon="P", category="comm"),

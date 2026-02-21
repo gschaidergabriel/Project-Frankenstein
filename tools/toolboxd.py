@@ -2155,6 +2155,22 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, **result})
             return
 
+        if p == "/email/accounts":
+            from email_reader import list_imap_accounts, load_email_config
+            accounts = list_imap_accounts()
+            config = load_email_config()
+            self._send(200, {"ok": True, "accounts": accounts, "config": config})
+            return
+
+        if p == "/email/config":
+            from email_reader import save_email_config, load_email_config
+            if payload:
+                save_email_config(payload)
+                self._send(200, {"ok": True, "saved": payload})
+            else:
+                self._send(200, {"ok": True, "config": load_email_config()})
+            return
+
         # ── Calendar endpoints ────────────────────────────────────
 
         if p == "/calendar/today":

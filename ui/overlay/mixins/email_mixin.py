@@ -631,6 +631,61 @@ class EmailMixin:
         """Open a blank compose popup (IO thread dispatches to main thread)."""
         self._ui_call(self._open_compose_popup)
 
+    # ── Email Settings ─────────────────────────────────────────────
+
+    _email_settings_popup = None
+
+    def _on_email_settings_destroyed(self):
+        self._email_settings_popup = None
+
+    def _do_email_settings_worker(self, **kwargs):
+        """Fetch accounts and open settings popup (IO thread)."""
+        try:
+            result = _toolbox_call("/email/accounts", {}, timeout_s=10.0)
+            accounts = result.get("accounts", []) if result and result.get("ok") else []
+            config = result.get("config", {}) if result and result.get("ok") else {}
+        except Exception as e:
+            LOG.warning(f"Email settings fetch error: {e}")
+            accounts = []
+            config = {}
+
+        self._ui_call(lambda a=accounts, c=config: self._open_email_settings_popup(a, c))
+
+    def _open_email_settings_popup(self, accounts, config):
+        """Open email settings popup (MUST run on main thread)."""
+        if self._email_settings_popup is not None:
+            try:
+                self._email_settings_popup.destroy()
+            except Exception:
+                pass
+            self._email_settings_popup = None
+
+        from overlay.widgets.email_settings_popup import EmailSettingsPopup
+        self._email_settings_popup = EmailSettingsPopup(
+            self,
+            accounts=accounts,
+            current_config=config,
+            on_save=self._save_email_config,
+            on_destroy=self._on_email_settings_destroyed,
+        )
+
+    def _save_email_config(self, config):
+        """Save email config via toolbox."""
+        import threading
+
+        def _save():
+            try:
+                _toolbox_call("/email/config", config, timeout_s=10.0)
+                self._ui_call(lambda: self._add_message(
+                    "Frank",
+                    f"Mail settings saved: {config.get('account', 'auto')} ({config.get('provider', 'auto')})",
+                    is_system=True))
+            except Exception as e:
+                self._ui_call(lambda: self._add_message(
+                    "Frank", f"Failed to save mail settings: {e}", is_system=True))
+
+        threading.Thread(target=_save, daemon=True).start()
+
     _FRANK_EMAIL_IDENTITY = (
         "You are a ghostwriter. Output ONLY the email reply text. Nothing else. "
         "No translations. No notes. No explanations. No disclaimers. No meta-commentary. "

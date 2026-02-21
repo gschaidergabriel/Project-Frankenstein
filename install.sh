@@ -741,6 +741,28 @@ NoNewPrivileges=true
 [Install]
 WantedBy=default.target"
 
+# ── Frank Overlay (Chat UI) ────────────────────────────────────────────────
+
+write_service "frank-overlay.service" "\
+[Unit]
+Description=Frank Chat Overlay
+After=aicore-core.service aicore-router.service
+Wants=aicore-core.service aicore-router.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR/ui
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/ui/chat_overlay.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target"
+
 # ── Tier 3: Autonomous systems ──────────────────────────────────────────────
 
 write_service "aicore-genesis.service" "\
@@ -959,6 +981,7 @@ systemctl --user enable aicore-consciousness.service 2>/dev/null || true
 systemctl --user enable aicore-gaming-mode.service 2>/dev/null || true
 systemctl --user enable aicore-asrs.service 2>/dev/null || true
 systemctl --user enable aicore-invariants.service 2>/dev/null || true
+systemctl --user enable frank-overlay.service 2>/dev/null || true
 
 # Tier 3 — Autonomous
 systemctl --user enable aicore-genesis.service 2>/dev/null || true
@@ -1169,9 +1192,8 @@ systemctl --user start aicore-genesis.service 2>/dev/null || true
 systemctl --user start aicore-genesis-watchdog.service 2>/dev/null || true
 systemctl --user start aicore-entities.service 2>/dev/null || true
 
-# Start the overlay
-echo "  Starting Frank overlay..."
-nohup "$SCRIPT_DIR/ui/frank_overlay_launcher.sh" >/dev/null 2>&1 &
+# Start the overlay via systemd
+systemctl --user start frank-overlay.service 2>/dev/null || true
 
 # Count running services
 sleep 2
@@ -1202,7 +1224,7 @@ echo "    systemctl --user status aicore-core"
 echo "    journalctl --user -u aicore-core -f"
 echo
 echo "  Restart overlay:"
-echo "    $SCRIPT_DIR/ui/frank_overlay_launcher.sh"
+echo "    systemctl --user restart frank-overlay.service"
 echo
 echo "  Ports:"
 echo "    8091 Router | 8088 Core | 8101 Llama3 | 8102 Qwen (on-demand)"

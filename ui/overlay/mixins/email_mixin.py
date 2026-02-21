@@ -554,6 +554,11 @@ class EmailMixin:
             if result and result.get("ok"):
                 em = result.get("email", {})
                 full_body = em.get("body", "") or email_data.snippet or ""
+                # Enrich EmailData with to/cc from full read
+                if not email_data.to and em.get("to"):
+                    email_data.to = em["to"]
+                if not email_data.cc and em.get("cc"):
+                    email_data.cc = em["cc"]
         except Exception as e:
             LOG.warning(f"Email popup fetch error: {e}")
             full_body = email_data.snippet or "(Could not load email body)"
@@ -562,11 +567,16 @@ class EmailMixin:
         self._ui_call(lambda ed=email_data, fb=full_body: self._open_email_popup(ed, fb))
 
     def _do_email_send_worker(self, to: str = "", subject: str = "", body: str = "",
+                              cc: str = None, bcc: str = None,
                               attachments=None, in_reply_to: str = None,
                               references: str = None, **kwargs):
-        """Send email via toolbox (IO thread)."""
+        """Send email via toolbox (IO thread). Reports result back to popup."""
         try:
             payload = {"to": to, "subject": subject, "body": body}
+            if cc:
+                payload["cc"] = cc
+            if bcc:
+                payload["bcc"] = bcc
             if attachments:
                 payload["attachments"] = attachments
             if in_reply_to:
@@ -577,16 +587,20 @@ class EmailMixin:
             if result and result.get("ok"):
                 fallback = result.get("fallback")
                 if fallback == "thunderbird":
-                    self._ui_call(lambda: self._add_message(
-                        "Frank", "SMTP failed — opened in Thunderbird compose.", is_system=True))
+                    msg = "SMTP failed — opened in Thunderbird compose."
+                    self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
+                    self._ui_call(lambda: self._email_popup and self._email_popup.send_result(True, msg))
                 else:
-                    self._ui_call(lambda: self._add_message(
-                        "Frank", f"Email sent to {to}.", is_system=True))
+                    msg = f"Email sent to {to}."
+                    self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
+                    self._ui_call(lambda: self._email_popup and self._email_popup.send_result(True, msg))
             else:
                 error = (result or {}).get("error", "Send failed")
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Send error: {e}", is_system=True))
+                self._ui_call(lambda e=error: self._email_popup and self._email_popup.send_result(False, e))
         except Exception as e:
             self._ui_call(lambda err=e: self._add_message("Frank", f"Send failed: {err}", is_system=True))
+            self._ui_call(lambda err=e: self._email_popup and self._email_popup.send_result(False, str(err)))
 
     def _do_email_draft_worker(self, to: str = "", subject: str = "", body: str = "", **kwargs):
         """Save draft via toolbox (IO thread)."""
@@ -629,7 +643,8 @@ class EmailMixin:
     def _do_email_reply_draft_worker(self, sender: str = "", subject: str = "",
                                      body: str = "", reply_to: str = "",
                                      reply_subject: str = "", msg_id: str = "",
-                                     user_intent: str = "", **kwargs):
+                                     user_intent: str = "", reply_all: bool = False,
+                                     to: str = "", cc: str = "", **kwargs):
         """Generate AI reply draft via LLM based on user intent (IO thread)."""
         from overlay.services.core_api import _core_chat
 
@@ -659,6 +674,25 @@ class EmailMixin:
         except Exception as e:
             LOG.warning(f"AI reply draft failed: {e}")
 
+        # Build CC list for Reply All
+        reply_cc = ""
+        if reply_all:
+            # Collect all To + CC recipients except the original sender
+            all_addrs = []
+            for field in [to, cc]:
+                if field:
+                    all_addrs.extend(a.strip() for a in field.split(",") if a.strip())
+            # Remove the original sender from CC (they're in To)
+            sender_email = ""
+            if "<" in sender:
+                sender_email = sender.split("<")[1].split(">")[0].strip().lower()
+            else:
+                sender_email = sender.strip().lower()
+            reply_cc = ", ".join(
+                a for a in all_addrs
+                if sender_email not in a.lower()
+            )
+
         # Fill the popup compose view on main thread
         def _fill():
             if self._email_popup and self._email_popup.winfo_exists():
@@ -669,6 +703,7 @@ class EmailMixin:
                     ai_draft=ai_draft,
                     in_reply_to=msg_id,
                     references=msg_id,
+                    cc=reply_cc,
                 )
         self._ui_call(_fill)
 

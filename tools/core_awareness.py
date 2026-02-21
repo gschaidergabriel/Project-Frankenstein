@@ -96,8 +96,8 @@ FEATURE_PATTERNS = {
     "hue": ("Philips Hue", "Can control Hue lights", "smarthome", "extended", "Requires Hue Bridge on LAN"),
     "tasmota": ("Tasmota Devices", "Can control Tasmota plugs/devices", "smarthome", "extended", "HTTP API, LAN only"),
     # Email
-    "email_reader": ("Email Access", "Can read, list and summarize emails", "chat", "core", "IMAP via OAuth2, read-only"),
-    "email_mixin": ("Email Notifications", "Automatically notifies about new emails", "chat", "core", ""),
+    "email_reader": ("Email Access", "Can read, list, send, reply, forward, delete, spam, draft and manage emails", "chat", "core", "IMAP/SMTP via OAuth2, full read-write"),
+    "email_mixin": ("Email UI & Notifications", "Email popup with reply/reply-all/forward/compose, CC/BCC, attachments, new-email notifications", "chat", "core", ""),
     # Calendar
     "calendar_reader": ("Calendar Access", "Can read, create and delete Google Calendar events via CalDAV", "chat", "core", "CalDAV, requires OAuth2 token"),
     "calendar_mixin": ("Calendar Reminders", "Automatically reminds about upcoming events", "chat", "core", ""),

@@ -284,23 +284,26 @@ class EmailPopup(tk.Toplevel):
         row1.pack(fill="x", pady=(0, 4))
 
         self._make_button(row1, "REPLY", "#006400",
-                          command=self._on_reply).pack(side="left", padx=(0, 6))
-        self._make_button(row1, "COMPOSE", "#005577",
-                          command=self._on_compose_new).pack(side="left", padx=(0, 6))
-
-        read_label = "MARK UNREAD" if ed.read else "MARK READ"
-        self._make_button(row1, read_label, "#555500",
-                          command=self._on_toggle_read).pack(side="left", padx=(0, 6))
+                          command=self._on_reply).pack(side="left", padx=(0, 4))
+        self._make_button(row1, "REPLY ALL", "#005500",
+                          command=self._on_reply_all).pack(side="left", padx=(0, 4))
+        self._make_button(row1, "FORWARD", "#005577",
+                          command=self._on_forward).pack(side="left", padx=(0, 4))
         self._make_button(row1, "SPAM", "#8B8000",
-                          command=self._on_spam).pack(side="left", padx=(0, 6))
+                          command=self._on_spam).pack(side="left", padx=(0, 4))
         self._make_button(row1, "DELETE", "#8B0000",
-                          command=self._on_delete).pack(side="left", padx=(0, 6))
+                          command=self._on_delete).pack(side="left", padx=(0, 4))
 
         row2 = tk.Frame(actions, bg=COLORS["bg_elevated"])
         row2.pack(fill="x")
 
+        read_label = "MARK UNREAD" if ed.read else "MARK READ"
+        self._make_button(row2, read_label, "#555500",
+                          command=self._on_toggle_read).pack(side="left", padx=(0, 4))
+        self._make_button(row2, "COMPOSE", "#444444",
+                          command=self._on_compose_new).pack(side="left", padx=(0, 4))
         self._make_button(row2, "THUNDERBIRD", "#1E90FF",
-                          command=self._on_thunderbird).pack(side="left", padx=(0, 6))
+                          command=self._on_thunderbird).pack(side="left", padx=(0, 4))
         self._make_button(row2, "CLOSE", COLORS.get("neon_cyan", "#00fff9"),
                           fg_color=COLORS["bg_main"],
                           command=self.destroy).pack(side="left")
@@ -316,7 +319,7 @@ class EmailPopup(tk.Toplevel):
 
     def _build_compose_view(self, reply_to: str = "", reply_subject: str = "",
                             reply_body: str = "", in_reply_to: str = "",
-                            references: str = ""):
+                            references: str = "", cc: str = ""):
         self._clear_content()
         self._in_reply_to = in_reply_to
         self._references = references
@@ -330,36 +333,31 @@ class EmailPopup(tk.Toplevel):
         title = "REPLY" if reply_to else "COMPOSE"
         self._build_titlebar(main, f"MAIL // {title}")
 
-        # To field
+        # Form fields
         form = tk.Frame(main, bg=COLORS["bg_elevated"], padx=16, pady=10)
         form.pack(fill="x")
 
-        to_row = tk.Frame(form, bg=COLORS["bg_elevated"])
-        to_row.pack(fill="x", pady=2)
-        tk.Label(to_row, text="To:", bg=COLORS["bg_elevated"],
-                 fg=COLORS["text_muted"], font=_FONT_HEADER, width=9, anchor="w").pack(side="left")
-        self._to_entry = tk.Entry(
-            to_row, bg=COLORS["bg_main"], fg=COLORS["text_primary"],
-            font=_FONT, insertbackground=COLORS["neon_cyan"],
-            borderwidth=1, relief="solid", highlightcolor=COLORS["neon_cyan"],
-        )
-        self._to_entry.pack(side="left", fill="x", expand=True)
-        if reply_to:
-            self._to_entry.insert(0, reply_to)
+        def _make_field(parent, label, value=""):
+            row = tk.Frame(parent, bg=COLORS["bg_elevated"])
+            row.pack(fill="x", pady=2)
+            tk.Label(row, text=label, bg=COLORS["bg_elevated"],
+                     fg=COLORS["text_muted"], font=_FONT_HEADER, width=9, anchor="w").pack(side="left")
+            entry = tk.Entry(
+                row, bg=COLORS["bg_main"], fg=COLORS["text_primary"],
+                font=_FONT, insertbackground=COLORS["neon_cyan"],
+                borderwidth=1, relief="solid", highlightcolor=COLORS["neon_cyan"],
+            )
+            entry.pack(side="left", fill="x", expand=True)
+            if value:
+                entry.insert(0, value)
+            return entry
+
+        self._to_entry = _make_field(form, "To:", reply_to)
+        self._cc_entry = _make_field(form, "CC:", cc)
+        self._bcc_entry = _make_field(form, "BCC:")
 
         # Subject field
-        subj_row = tk.Frame(form, bg=COLORS["bg_elevated"])
-        subj_row.pack(fill="x", pady=2)
-        tk.Label(subj_row, text="Subject:", bg=COLORS["bg_elevated"],
-                 fg=COLORS["text_muted"], font=_FONT_HEADER, width=9, anchor="w").pack(side="left")
-        self._subject_entry = tk.Entry(
-            subj_row, bg=COLORS["bg_main"], fg=COLORS["text_primary"],
-            font=_FONT, insertbackground=COLORS["neon_cyan"],
-            borderwidth=1, relief="solid", highlightcolor=COLORS["neon_cyan"],
-        )
-        self._subject_entry.pack(side="left", fill="x", expand=True)
-        if reply_subject:
-            self._subject_entry.insert(0, reply_subject)
+        self._subject_entry = _make_field(form, "Subject:", reply_subject)
 
         # Separator
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
@@ -424,11 +422,13 @@ class EmailPopup(tk.Toplevel):
         )
         self._status_label.pack(fill="x")
 
-        # Focus the body or to field
+        # Focus: body for replies, To for new compose
         if reply_to:
             self._compose_text.focus_set()
         else:
             self._to_entry.focus_set()
+
+        self._sending = False
 
     # ── Attachment management ──────────────────────────────────────
 
@@ -466,9 +466,10 @@ class EmailPopup(tk.Toplevel):
         """Show reply intent prompt, then generate AI reply."""
         self._build_reply_intent_view()
 
-    def _build_reply_intent_view(self):
+    def _build_reply_intent_view(self, reply_all: bool = False):
         """Ask the user what they want to reply before generating."""
         self._clear_content()
+        self._reply_all = reply_all
         ed = self._email_data
 
         outer = tk.Frame(self, bg=COLORS["neon_cyan"], padx=2, pady=2)
@@ -573,6 +574,8 @@ class EmailPopup(tk.Toplevel):
             subject = f"Re: {subject}"
         body = self._full_body or ed.snippet or ""
 
+        reply_all = getattr(self, "_reply_all", False)
+
         self._show_status("Generating reply...", COLORS["neon_cyan"])
         self._dispatch(
             "email_reply_draft",
@@ -581,7 +584,31 @@ class EmailPopup(tk.Toplevel):
             reply_subject=subject,
             msg_id=ed.msg_id,
             user_intent=intent,
+            reply_all=reply_all,
+            to=getattr(ed, "to", ""),
+            cc=getattr(ed, "cc", ""),
         )
+
+    def _on_reply_all(self):
+        """Reply to all recipients."""
+        self._build_reply_intent_view(reply_all=True)
+
+    def _on_forward(self):
+        """Forward this email."""
+        ed = self._email_data
+        subject = ed.subject or ""
+        if not subject.lower().startswith("fwd:"):
+            subject = f"Fwd: {subject}"
+        body = self._full_body or ed.snippet or ""
+        from overlay.widgets.email_card import format_sender
+        fwd_body = (
+            f"\n\n--- Forwarded message ---\n"
+            f"From: {ed.sender}\n"
+            f"Date: {self._format_date(ed.date)}\n"
+            f"Subject: {ed.subject or '(kein Betreff)'}\n\n"
+            f"{body}"
+        )
+        self._build_compose_view(reply_subject=subject, reply_body=fwd_body)
 
     def _on_compose_new(self):
         """Switch to blank compose mode."""
@@ -624,6 +651,8 @@ class EmailPopup(tk.Toplevel):
         to = self._to_entry.get().strip()
         subject = self._subject_entry.get().strip()
         body = self._compose_text.get("1.0", "end-1c").strip()
+        cc = self._cc_entry.get().strip() if hasattr(self, "_cc_entry") else ""
+        bcc = self._bcc_entry.get().strip() if hasattr(self, "_bcc_entry") else ""
 
         if not to:
             self._show_status("Recipient (To) is required.", COLORS["error"])
@@ -634,19 +663,39 @@ class EmailPopup(tk.Toplevel):
             self._subject_entry.focus_set()
             return
 
+        # Check attachment sizes (25MB Gmail limit)
+        if self._attachments:
+            total_size = sum(Path(f).stat().st_size for f in self._attachments if Path(f).exists())
+            if total_size > 25 * 1024 * 1024:
+                mb = total_size // (1024 * 1024)
+                self._show_status(f"Attachments too large ({mb}MB). Gmail limit: 25MB.", COLORS["error"])
+                return
+
         self._show_status("Sending...", COLORS["neon_cyan"])
+        self._sending = True
 
         kwargs = {
             "to": to, "subject": subject, "body": body,
             "attachments": self._attachments if self._attachments else None,
         }
+        if cc:
+            kwargs["cc"] = cc
+        if bcc:
+            kwargs["bcc"] = bcc
         if hasattr(self, "_in_reply_to") and self._in_reply_to:
             kwargs["in_reply_to"] = self._in_reply_to
             kwargs["references"] = self._references
 
         self._dispatch("email_send", **kwargs)
-        self._show_status("Email sent!", COLORS["neon_green"])
-        self.after(1500, self.destroy)
+
+    def send_result(self, success: bool, message: str = ""):
+        """Called by the worker after send completes."""
+        self._sending = False
+        if success:
+            self._show_status(message or "Email sent!", COLORS["neon_green"])
+            self.after(1500, self.destroy)
+        else:
+            self._show_status(message or "Send failed!", COLORS["error"])
 
     def _on_save_draft(self):
         to = self._to_entry.get().strip()
@@ -683,7 +732,8 @@ class EmailPopup(tk.Toplevel):
 
     def fill_compose(self, reply_to: str, reply_subject: str,
                      reply_body: str, ai_draft: str,
-                     in_reply_to: str = "", references: str = ""):
+                     in_reply_to: str = "", references: str = "",
+                     cc: str = ""):
         """Switch to compose view with AI-generated reply pre-filled."""
         self._build_compose_view(
             reply_to=reply_to,
@@ -691,6 +741,7 @@ class EmailPopup(tk.Toplevel):
             reply_body=reply_body,
             in_reply_to=in_reply_to,
             references=references,
+            cc=cc,
         )
         # Insert AI draft at top of compose text (before quoted original)
         if ai_draft and hasattr(self, "_compose_text"):

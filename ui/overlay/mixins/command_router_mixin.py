@@ -898,10 +898,20 @@ class CommandRouterMixin:
             if folder == "INBOX" and not ("inbox" in low or "posteingang" in low):
                 folder = "[Gmail]/Spam"
             display = _FOLDER_DISPLAY.get(folder, folder)
-            # Safety: confirm batch deletion
+            # Get email count for confirmation
+            count_text = ""
+            try:
+                from overlay.services.toolbox import _toolbox_call
+                result = _toolbox_call("/email/list", {"folder": folder, "limit": 500}, timeout_s=10.0)
+                if result and result.get("ok"):
+                    n = result.get("count", 0)
+                    count_text = f" ({n} emails)" if n > 0 else " (empty)"
+            except Exception:
+                pass
+            # Safety: confirm batch deletion with count
             self._pending_email_delete = {"folder": folder, "delete_all": True, "user_msg": msg}
             self._add_message("Frank",
-                f"Should I really delete all emails in {display}? Reply with 'yes' or 'no'.",
+                f"Should I really delete all emails in {display}{count_text}? Reply with 'yes' or 'no'.",
                 is_system=True)
             return
 

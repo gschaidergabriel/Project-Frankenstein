@@ -2116,10 +2116,13 @@ class Handler(BaseHTTPRequestHandler):
             to = str(payload.get("to", ""))
             subject = str(payload.get("subject", ""))
             body = str(payload.get("body", ""))
+            cc = payload.get("cc") or None
+            bcc = payload.get("bcc") or None
             attachments = payload.get("attachments")  # list of file paths or None
             in_reply_to = payload.get("in_reply_to")
             references = payload.get("references")
             result = send_email(to=to, subject=subject, body=body,
+                                cc=cc, bcc=bcc,
                                 attachments=attachments, in_reply_to=in_reply_to,
                                 references=references)
             if "error" in result:

@@ -850,6 +850,8 @@ class MessageMixin:
                 read=em.get("read", True),
                 starred=em.get("starred", False),
                 folder=folder,
+                to=em.get("to", ""),
+                cc=em.get("cc", ""),
             )
             card = EmailCard(
                 scrollable_frame,

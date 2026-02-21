@@ -17,6 +17,8 @@ class EmailData:
     read: bool
     starred: bool
     folder: str = "INBOX"
+    to: str = ""
+    cc: str = ""
 
 
 def format_sender(from_header: str) -> str:

@@ -415,6 +415,7 @@ def list_emails(
         # Parse headers
         from_addr = _decode_header(msg.get("From", ""))
         to_addr = _decode_header(msg.get("To", ""))
+        cc_addr = _decode_header(msg.get("Cc", ""))
         subject = _decode_header(msg.get("Subject", ""))
         date_str = msg.get("Date", "")
         msg_id = msg.get("Message-ID", f"idx-{key}")
@@ -435,6 +436,7 @@ def list_emails(
             "idx": key,
             "from": _sanitize_subject(from_addr),  # reuse sanitizer for safety
             "to": _sanitize_subject(to_addr),
+            "cc": _HTML_TAG_RE.sub("", cc_addr)[:MAX_SUBJECT_CHARS] if cc_addr else "",
             "subject": _sanitize_subject(subject),
             "date": date_str,
             "timestamp": timestamp,
@@ -499,15 +501,24 @@ def read_email(
                 target_msg = m
                 break
     elif query:
-        # Search by sender name or subject (fuzzy)
+        # Search by sender, subject, or body content (fuzzy)
         query_lower = query.lower().strip()
-        for key in reversed(list(mbox.keys())):  # newest first
+        # First pass: search sender + subject (fast)
+        for key in reversed(list(mbox.keys())):
             m = mbox[key]
             from_h = _decode_header(m.get("From", "")).lower()
             subj_h = _decode_header(m.get("Subject", "")).lower()
             if query_lower in from_h or query_lower in subj_h:
                 target_msg = m
                 break
+        # Second pass: search body if not found in headers
+        if target_msg is None:
+            for key in reversed(list(mbox.keys())):
+                m = mbox[key]
+                body_h = _extract_text_body(m)[:1000].lower()
+                if query_lower in body_h:
+                    target_msg = m
+                    break
 
     if target_msg is None:
         mbox.close()
@@ -516,6 +527,7 @@ def read_email(
     # Extract full content
     from_addr = _decode_header(target_msg.get("From", ""))
     to_addr = _decode_header(target_msg.get("To", ""))
+    cc_addr = _decode_header(target_msg.get("Cc", ""))
     subject = _decode_header(target_msg.get("Subject", ""))
     date_str = target_msg.get("Date", "")
     body = _extract_text_body(target_msg)
@@ -533,6 +545,7 @@ def read_email(
     return {
         "from": _sanitize_subject(from_addr),
         "to": _sanitize_subject(to_addr),
+        "cc": _HTML_TAG_RE.sub("", cc_addr)[:MAX_SUBJECT_CHARS] if cc_addr else "",
         "subject": subj_clean,
         "date": date_str,
         "body": clean_body,
@@ -784,6 +797,7 @@ def _remove_from_local_mbox(folder: str, msg_id: str, profile: Optional[Path] = 
     """Remove a message from the local Thunderbird mbox file + invalidate .msf cache.
 
     This keeps Thunderbird's local view in sync after an IMAP delete/move.
+    Skips if Thunderbird currently holds a lock on the mbox.
     """
     try:
         if profile is None:
@@ -799,8 +813,20 @@ def _remove_from_local_mbox(folder: str, msg_id: str, profile: Optional[Path] = 
         if not mbox_path or not mbox_path.exists():
             return
 
+        # Skip if Thunderbird holds a dot-lock (avoid corruption)
+        lock_file = Path(str(mbox_path) + ".lock")
+        if lock_file.exists():
+            LOG.info(f"Thunderbird lock active on {folder}, skipping local mbox sync")
+            return
+
         mbox = mailbox.mbox(str(mbox_path))
-        mbox.lock()
+        try:
+            mbox.lock()
+        except mailbox.ExternalClashError:
+            LOG.info(f"Could not lock mbox {folder} (external lock), skipping sync")
+            mbox.close()
+            return
+
         try:
             keys_to_remove = []
             mid_clean = msg_id.strip("<>")
@@ -1015,6 +1041,8 @@ def send_email(
     to: str,
     subject: str,
     body: str,
+    cc: Optional[str] = None,
+    bcc: Optional[str] = None,
     attachments: Optional[List[str]] = None,
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
@@ -1027,6 +1055,8 @@ def send_email(
         to: Recipient email address
         subject: Email subject
         body: Plain text body
+        cc: CC recipients (comma-separated)
+        bcc: BCC recipients (comma-separated)
         attachments: List of file paths to attach
         in_reply_to: Message-ID header for threading (reply)
         references: References header for threading (reply)
@@ -1049,12 +1079,23 @@ def send_email(
     user = creds["user"]
     access_token = creds["access_token"]
 
+    # Check attachment sizes (Gmail limit: 25MB total)
+    if attachments:
+        total_size = 0
+        for filepath in attachments:
+            p = Path(filepath)
+            if p.exists():
+                total_size += p.stat().st_size
+        if total_size > 25 * 1024 * 1024:
+            return {"error": f"Attachments too large ({total_size // (1024*1024)}MB). Gmail limit is 25MB."}
+
     # Build MIME message
     msg = MIMEMultipart()
     msg["From"] = user
     msg["To"] = to
     msg["Subject"] = subject
-
+    if cc:
+        msg["Cc"] = cc
     if in_reply_to:
         msg["In-Reply-To"] = in_reply_to
         msg["References"] = references or in_reply_to
@@ -1077,6 +1118,13 @@ def send_email(
             except Exception as e:
                 LOG.warning(f"Failed to attach {filepath}: {e}")
 
+    # All recipients for SMTP envelope
+    all_recipients = [to]
+    if cc:
+        all_recipients.extend(addr.strip() for addr in cc.split(",") if addr.strip())
+    if bcc:
+        all_recipients.extend(addr.strip() for addr in bcc.split(",") if addr.strip())
+
     # Send via SMTP with XOAUTH2
     try:
         smtp = smtplib.SMTP("smtp.gmail.com", 587)
@@ -1088,7 +1136,7 @@ def send_email(
         auth_string = f"user={user}\x01auth=Bearer {access_token}\x01\x01"
         smtp.docmd("AUTH", "XOAUTH2 " + base64.b64encode(auth_string.encode()).decode())
 
-        smtp.sendmail(user, [to], msg.as_string())
+        smtp.sendmail(user, all_recipients, msg.as_string())
         smtp.quit()
 
         message_id = msg.get("Message-ID", "")

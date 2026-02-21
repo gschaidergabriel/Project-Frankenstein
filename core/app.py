@@ -830,6 +830,7 @@ class Handler(BaseHTTPRequestHandler):
                         "text": grounded_text,
                         "n_predict": max_tokens,
                         "system": identity,
+                        "temperature": 0.65,
                     }
                     if "force" in payload:
                         router_payload["force"] = payload.get("force")

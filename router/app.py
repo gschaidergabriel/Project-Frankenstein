@@ -122,6 +122,7 @@ class RouteRequest(BaseModel):
     force: Optional[str] = Field(default=None, description="force model: llama|qwen")
     n_predict: Optional[int] = Field(default=None, ge=16, le=4096)
     system: Optional[str] = Field(default=None, description="optional system prompt override")
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0, description="sampling temperature (default: 0.65 chat, 0.15 code)")
 
 class RouteResponse(BaseModel):
     ok: bool
@@ -478,12 +479,13 @@ def _llama_completion(
     n_predict: int,
     timeout_sec: float,
     stop: Optional[list[str]] = None,
+    temperature: float = 0.65,
 ) -> str:
     url = f"{base_url}{path}"
     payload: Dict[str, Any] = {
         "prompt": prompt,
         "n_predict": n_predict,
-        "temperature": 0.2,
+        "temperature": temperature,
         "repeat_penalty": 1.3,
         "repeat_last_n": 256,
         "top_p": 0.9,
@@ -640,8 +642,9 @@ def route(req: RouteRequest) -> RouteResponse:
     model = _pick_model(text, req.force)
     LOG.info(f"🎯 MODELL: {model} (force={req.force}, tokens={n_predict})")
 
-    # 1) decide prompts
+    # 1) decide prompts + temperature
     want_qwen = (model == "qwen")
+    temperature = req.temperature if req.temperature is not None else (0.15 if want_qwen else 0.65)
 
     # Use custom system prompt if provided, otherwise defaults
     qwen_sys = req.system if req.system else None
@@ -669,7 +672,7 @@ def route(req: RouteRequest) -> RouteResponse:
             cold = (_qwen_started_at > 0.0) and ((time.time() - _qwen_started_at) < QWEN_COLD_WINDOW_SEC)
             timeout = QWEN_HTTP_TIMEOUT_SEC if cold else max(LLAMA_HTTP_TIMEOUT_SEC, 35.0)
 
-            LOG.info("🔄 INFERENZ: qwen startet...")
+            LOG.info(f"🔄 INFERENZ: qwen startet... (temp={temperature})")
             out = _llama_completion(
                 QWEN_URL,
                 QWEN_COMPLETION_PATH,
@@ -677,6 +680,7 @@ def route(req: RouteRequest) -> RouteResponse:
                 n_predict,
                 timeout_sec=timeout,
                 stop=["<|im_end|>", "<|endoftext|>"],
+                temperature=temperature,
             )
             if not out.strip():
                 raise RuntimeError("qwen returned empty completion")
@@ -688,7 +692,7 @@ def route(req: RouteRequest) -> RouteResponse:
             return RouteResponse(ok=True, model="qwen", text=out, ts=_last_ts)
 
         # llama path
-        LOG.info("🔄 INFERENZ: llama startet...")
+        LOG.info(f"🔄 INFERENZ: llama startet... (temp={temperature})")
         out = _llama_completion(
             LLAMA_URL,
             LLAMA_COMPLETION_PATH,
@@ -696,6 +700,7 @@ def route(req: RouteRequest) -> RouteResponse:
             n_predict,
             timeout_sec=LLAMA_HTTP_TIMEOUT_SEC,
             stop=["<|eot_id|>", "</s>"],
+            temperature=temperature,
         )
         if not out.strip():
             raise RuntimeError("llama returned empty completion")
@@ -723,6 +728,7 @@ def route(req: RouteRequest) -> RouteResponse:
                     n_predict,
                     timeout_sec=LLAMA_HTTP_TIMEOUT_SEC,
                     stop=["<|eot_id|>", "</s>"],
+                    temperature=max(temperature, 0.5),
                 )
                 _last_model = "llama"
                 _last_ts = time.time()
@@ -760,13 +766,14 @@ def _llama_completion_stream(
     n_predict: int,
     timeout_sec: float,
     stop: Optional[list[str]] = None,
+    temperature: float = 0.65,
 ):
     """Generator yielding tokens from llama.cpp streaming endpoint."""
     url = f"{base_url}{path}"
     payload: Dict[str, Any] = {
         "prompt": prompt,
         "n_predict": n_predict,
-        "temperature": 0.2,
+        "temperature": temperature,
         "repeat_penalty": 1.3,
         "repeat_last_n": 256,
         "top_p": 0.9,
@@ -806,6 +813,7 @@ def route_stream(req: RouteRequest):
 
     model = _pick_model(text, req.force)
     want_qwen = (model == "qwen")
+    temperature = req.temperature if req.temperature is not None else (0.15 if want_qwen else 0.65)
 
     qwen_sys = req.system if req.system else None
     llama_sys = req.system if req.system else LLAMA_SYSTEM_PROMPT
@@ -830,11 +838,11 @@ def route_stream(req: RouteRequest):
         base_url, path, stop = LLAMA_URL, LLAMA_COMPLETION_PATH, ["<|eot_id|>", "</s>"]
         timeout = LLAMA_HTTP_TIMEOUT_SEC
 
-    LOG.info(f"🔄 STREAM [{model}]: '{text[:80]}...' (n_predict={n_predict})")
+    LOG.info(f"🔄 STREAM [{model}]: '{text[:80]}...' (n_predict={n_predict}, temp={temperature})")
 
     def generate():
         try:
-            for token in _llama_completion_stream(base_url, path, prompt, n_predict, timeout, stop):
+            for token in _llama_completion_stream(base_url, path, prompt, n_predict, timeout, stop, temperature=temperature):
                 yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
             yield f"data: {json.dumps({'content': '', 'stop': True, 'model': model})}\n\n"
         except Exception as e:

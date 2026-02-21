@@ -57,6 +57,7 @@ COMMANDS: List[Command] = [
     Command("/qrgen",    "QR Generate",     "Generate QR code",               "generate qr code for {data}", icon="Q", category="system"),
     Command("/network",   "Network",         "Network information",            "wifi info",            icon="W", category="system"),
     Command("/llm",       "LLM",             "Restart the LLM server",         "restart llm",          icon="L", category="system"),
+    Command("/restart",   "Restart",         "Restart all Frank services",     None,                   icon="R", category="system", action="system_restart"),
 
     # ── Apps & Games ──
     Command("/apps",      "Apps",            "List installed apps",            "list apps",            icon="A", category="apps"),

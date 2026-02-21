@@ -589,7 +589,7 @@ class EmailMixin:
                 if fallback == "thunderbird":
                     msg = "SMTP failed — opened in Thunderbird compose."
                     self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
-                    self._ui_call(lambda: self._email_popup and self._email_popup.send_result(True, msg))
+                    self._ui_call(lambda: self._email_popup and self._email_popup.send_result(True, msg, warning=True))
                 else:
                     msg = f"Email sent to {to}."
                     self._ui_call(lambda: self._add_message("Frank", msg, is_system=True))
@@ -676,10 +676,14 @@ class EmailMixin:
         def _save():
             try:
                 _toolbox_call("/email/config", config, timeout_s=10.0)
-                self._ui_call(lambda: self._add_message(
-                    "Frank",
-                    f"Mail settings saved: {config.get('account', 'auto')} ({config.get('provider', 'auto')})",
-                    is_system=True))
+                mode = config.get("mode", "thunderbird")
+                if mode == "manual":
+                    host = config.get("imap_host", "?")
+                    user = config.get("username", "?")
+                    msg = f"Mail settings saved: {user} via {host} (manual)"
+                else:
+                    msg = f"Mail settings saved: {config.get('account', 'auto')} ({config.get('provider', 'auto')})"
+                self._ui_call(lambda m=msg: self._add_message("Frank", m, is_system=True))
             except Exception as e:
                 self._ui_call(lambda: self._add_message(
                     "Frank", f"Failed to save mail settings: {e}", is_system=True))
@@ -817,6 +821,63 @@ class EmailMixin:
                 text = cut + "..."
 
         return text if text else "(empty)"
+
+    def _do_email_search_worker(self, query: str = "", folder: str = "INBOX", **kwargs):
+        """Search emails with operators and render as cards."""
+        self._ui_call(self._show_typing)
+
+        try:
+            from tools.email_reader import search_emails
+            results = search_emails(query=query, folder=folder, limit=20)
+
+            if results and results[0].get("error"):
+                error = results[0]["error"]
+                self._ui_call(self._hide_typing)
+                self._ui_call(lambda e=error: self._add_message("Frank", f"Search error: {e}", is_system=True))
+                return
+
+            if not results:
+                self._ui_call(self._hide_typing)
+                self._ui_call(lambda q=query: self._add_message(
+                    "Frank", f"No emails found for '{q}'.", is_system=True))
+                return
+
+            self._ui_call(self._hide_typing)
+            self._ui_call(lambda em=results, f=folder: self._render_email_list(em, f))
+
+        except Exception as e:
+            self._ui_call(self._hide_typing)
+            self._ui_call(lambda e=e: self._add_message("Frank", f"Search error: {e}", is_system=True))
+
+    def _do_email_thread_worker(self, subject: str = "", msg_id: str = "",
+                                folder: str = "INBOX", **kwargs):
+        """Fetch conversation thread and render as cards."""
+        self._ui_call(self._show_typing)
+
+        try:
+            from tools.email_reader import get_email_thread
+            results = get_email_thread(subject=subject, msg_id=msg_id, folder=folder, limit=20)
+
+            if results and results[0].get("error"):
+                error = results[0]["error"]
+                self._ui_call(self._hide_typing)
+                self._ui_call(lambda e=error: self._add_message("Frank", f"Thread error: {e}", is_system=True))
+                return
+
+            if not results:
+                self._ui_call(self._hide_typing)
+                self._ui_call(lambda: self._add_message(
+                    "Frank", "No thread found for this email.", is_system=True))
+                return
+
+            self._ui_call(self._hide_typing)
+            self._ui_call(lambda: self._add_message(
+                "Frank", f"Thread: {len(results)} emails found.", is_system=True))
+            self._ui_call(lambda em=results, f=folder: self._render_email_list(em, f))
+
+        except Exception as e:
+            self._ui_call(self._hide_typing)
+            self._ui_call(lambda e=e: self._add_message("Frank", f"Thread error: {e}", is_system=True))
 
     def _do_email_general_worker(self, user_msg: str = "", voice: bool = False):
         """Handle general email-related queries via LLM with email context."""

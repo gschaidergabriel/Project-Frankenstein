@@ -288,6 +288,40 @@ class UiMixin:
 
     def _on_mousewheel(self, event):
         try:
+            # Only scroll the chat if the cursor is actually over the chat area.
+            # Other scrollable regions (email list canvas, popups) handle their
+            # own scroll events — we must not steal them.
+            widget_under = event.widget
+            try:
+                widget_under = event.widget.winfo_containing(event.x_root, event.y_root)
+            except Exception:
+                pass
+            if widget_under is not None:
+                # Walk up the widget tree — if we hit a Canvas that is NOT
+                # our chat_canvas, the event belongs to that canvas (e.g.
+                # the email list).  Let it through without scrolling chat.
+                w = widget_under
+                while w is not None:
+                    if isinstance(w, tk.Canvas) and w is not self.chat_canvas:
+                        return  # belongs to another scrollable area
+                    if w is self.chat_canvas:
+                        break  # cursor is over our chat — handle it
+                    w = getattr(w, 'master', None)
+                else:
+                    # Widget is not inside chat_canvas at all.
+                    # Only scroll chat if it's inside the main overlay window
+                    # and not inside results_container (email list).
+                    rc = getattr(self, 'results_container', None)
+                    if rc is not None:
+                        try:
+                            wuc = widget_under
+                            while wuc is not None:
+                                if wuc is rc:
+                                    return  # inside email/results list
+                                wuc = getattr(wuc, 'master', None)
+                        except Exception:
+                            pass
+
             if event.num == 4:
                 self.chat_canvas.yview_scroll(-1, "units")
             elif event.num == 5:

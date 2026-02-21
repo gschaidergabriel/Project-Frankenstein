@@ -696,12 +696,37 @@ def _get_oauth2_access_token(refresh_token: str) -> Optional[str]:
 
 def _get_imap_credentials(profile: Optional[Path] = None) -> Optional[Dict[str, str]]:
     """
-    Extract IMAP credentials from Thunderbird's encrypted OAuth2 store.
-    Uses NSS to decrypt the refresh token, then exchanges it for an access token.
-    Returns {host, user, access_token, auth_method: "xoauth2"} or None.
+    Get IMAP/SMTP credentials.
+
+    Priority:
+    1. Manual credentials from email_config.json (mode=manual)
+    2. Thunderbird OAuth2 via NSS decryption (mode=thunderbird)
+
+    Returns {host, smtp_host, user, access_token|password, auth_method} or None.
     """
     global _oauth_cache, _oauth_cache_ts
 
+    # ── Manual credentials (entered via /mailconfig) ──
+    config = load_email_config()
+    if config.get("mode") == "manual":
+        user = config.get("username", "").strip()
+        password = config.get("password", "").strip()
+        imap_host = config.get("imap_host", "").strip()
+        smtp_host = config.get("smtp_host", "").strip()
+        if user and password and imap_host:
+            if not smtp_host:
+                smtp_host = imap_host.replace("imap.", "smtp.")
+            return {
+                "host": imap_host,
+                "imap_port": int(config.get("imap_port", 993)),
+                "smtp_host": smtp_host,
+                "smtp_port": int(config.get("smtp_port", 587)),
+                "user": user,
+                "password": password,
+                "auth_method": "password",
+            }
+
+    # ── Thunderbird OAuth2 (cached) ──
     # Return cached if still valid
     if _oauth_cache is not None and (time.time() - _oauth_cache_ts) < _OAUTH_CACHE_TTL:
         return _oauth_cache
@@ -807,28 +832,88 @@ except ImportError:
 _email_config_cache: Optional[Dict[str, Any]] = None
 
 
+# ── Credential encryption (machine-bound, at-rest) ─────────────────
+
+_email_fernet = None
+
+
+def _get_email_fernet():
+    """Get Fernet instance for email credential encryption.
+
+    Uses machine-id as seed so credentials are bound to this machine.
+    Falls back gracefully if cryptography is not available.
+    """
+    global _email_fernet
+    if _email_fernet is not None:
+        return _email_fernet
+    try:
+        import base64 as _b64
+        from cryptography.fernet import Fernet as _F
+        try:
+            mid = Path("/etc/machine-id").read_text().strip()
+        except Exception:
+            mid = "frank-fallback-machine-id"
+        key = _b64.urlsafe_b64encode(
+            hashlib.sha256(f"frank-email-cred-{mid}".encode()).digest()
+        )
+        _email_fernet = _F(key)
+        return _email_fernet
+    except ImportError:
+        LOG.warning("cryptography not available, credentials stored unencrypted")
+        return None
+
+
+def _encrypt_cred(plaintext: str) -> str:
+    """Encrypt a credential string for disk storage."""
+    f = _get_email_fernet()
+    if not f:
+        return plaintext
+    return f.encrypt(plaintext.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_cred(ciphertext: str) -> str:
+    """Decrypt a stored credential string."""
+    f = _get_email_fernet()
+    if not f:
+        return ciphertext
+    try:
+        return f.decrypt(ciphertext.encode("ascii")).decode("utf-8")
+    except Exception:
+        return ciphertext  # may be plaintext from before encryption was added
+
+
 def load_email_config() -> Dict[str, Any]:
-    """Load email config. Returns {"account": "auto", "provider": "auto"}."""
+    """Load email config. Decrypts credentials if encrypted."""
     global _email_config_cache
     if _email_config_cache is not None:
         return _email_config_cache
     if _EMAIL_CONFIG_FILE.exists():
         try:
-            _email_config_cache = json.loads(_EMAIL_CONFIG_FILE.read_text())
-            return _email_config_cache
+            data = json.loads(_EMAIL_CONFIG_FILE.read_text())
+            # Decrypt password if it was stored encrypted
+            if data.pop("_enc", False) and data.get("password"):
+                data["password"] = _decrypt_cred(data["password"])
+            _email_config_cache = data
+            return data
         except Exception:
             pass
-    return {"account": "auto", "provider": "auto"}
+    return {"mode": "thunderbird", "account": "auto", "provider": "auto"}
 
 
 def save_email_config(config: Dict[str, Any]) -> None:
-    """Save email config to disk."""
+    """Save email config to disk. Encrypts credentials before writing."""
     global _email_config_cache
     try:
+        to_save = dict(config)
+        # Encrypt password before writing to disk
+        if to_save.get("password"):
+            to_save["password"] = _encrypt_cred(to_save["password"])
+            to_save["_enc"] = True
         _EMAIL_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _EMAIL_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+        _EMAIL_CONFIG_FILE.write_text(json.dumps(to_save, indent=2))
+        # Cache the decrypted version for runtime use
         _email_config_cache = config
-        LOG.info(f"Email config saved: {config}")
+        LOG.info(f"Email config saved: mode={config.get('mode', 'thunderbird')}")
     except Exception as e:
         LOG.warning(f"Failed to save email config: {e}")
 
@@ -1059,7 +1144,7 @@ def delete_emails(
 
     try:
         # Connect
-        imap = imaplib.IMAP4_SSL(creds["host"])
+        imap = imaplib.IMAP4_SSL(creds["host"], port=int(creds.get("imap_port", 993)))
 
         # Authenticate via XOAUTH2 (Gmail OAuth2)
         if creds.get("auth_method") == "xoauth2":
@@ -1149,7 +1234,7 @@ def move_to_spam(
     spam_folder = _resolve_imap_folder("spam")
 
     try:
-        imap = imaplib.IMAP4_SSL(creds["host"])
+        imap = imaplib.IMAP4_SSL(creds["host"], port=int(creds.get("imap_port", 993)))
 
         if creds.get("auth_method") == "xoauth2":
             auth_string = f"user={creds['user']}\x01auth=Bearer {creds['access_token']}\x01\x01"
@@ -1247,10 +1332,9 @@ def send_email(
 
     creds = _get_imap_credentials(profile)
     if not creds:
-        return {"error": "SMTP credentials not found. Check Thunderbird profile."}
+        return {"error": "SMTP credentials not found. Configure email via /mailconfig."}
 
     user = creds["user"]
-    access_token = creds["access_token"]
 
     # Check attachment sizes (Gmail limit: 25MB total)
     if attachments:
@@ -1260,7 +1344,7 @@ def send_email(
             if p.exists():
                 total_size += p.stat().st_size
         if total_size > 25 * 1024 * 1024:
-            return {"error": f"Attachments too large ({total_size // (1024*1024)}MB). Gmail limit is 25MB."}
+            return {"error": f"Attachments too large ({total_size // (1024*1024)}MB). Limit is 25MB."}
 
     # Build MIME message
     msg = MIMEMultipart()
@@ -1301,14 +1385,18 @@ def send_email(
     # Send via SMTP with XOAUTH2
     try:
         smtp_host = creds.get("smtp_host", "smtp.gmail.com")
-        smtp = smtplib.SMTP(smtp_host, 587)
+        smtp_port = int(creds.get("smtp_port", 587))
+        smtp = smtplib.SMTP(smtp_host, smtp_port)
         smtp.ehlo()
         smtp.starttls()
         smtp.ehlo()
 
-        # XOAUTH2 auth string (same format as IMAP)
-        auth_string = f"user={user}\x01auth=Bearer {access_token}\x01\x01"
-        smtp.docmd("AUTH", "XOAUTH2 " + base64.b64encode(auth_string.encode()).decode())
+        # Authenticate based on method
+        if creds.get("auth_method") == "xoauth2":
+            auth_string = f"user={user}\x01auth=Bearer {creds['access_token']}\x01\x01"
+            smtp.docmd("AUTH", "XOAUTH2 " + base64.b64encode(auth_string.encode()).decode())
+        else:
+            smtp.login(user, creds["password"])
 
         smtp.sendmail(user, all_recipients, msg.as_string())
         smtp.quit()
@@ -1378,7 +1466,7 @@ def save_draft(
     drafts_folder = _resolve_imap_folder("drafts")
 
     try:
-        imap = imaplib.IMAP4_SSL(creds["host"])
+        imap = imaplib.IMAP4_SSL(creds["host"], port=int(creds.get("imap_port", 993)))
 
         if creds.get("auth_method") == "xoauth2":
             auth_string = f"user={creds['user']}\x01auth=Bearer {creds['access_token']}\x01\x01"
@@ -1434,7 +1522,7 @@ def toggle_read_status(
     imap_folder = _resolve_imap_folder(folder)
 
     try:
-        imap = imaplib.IMAP4_SSL(creds["host"])
+        imap = imaplib.IMAP4_SSL(creds["host"], port=int(creds.get("imap_port", 993)))
 
         if creds.get("auth_method") == "xoauth2":
             auth_string = f"user={creds['user']}\x01auth=Bearer {creds['access_token']}\x01\x01"
@@ -1473,6 +1561,370 @@ def toggle_read_status(
         return {"error": f"IMAP error: {e}"}
     except Exception as e:
         return {"error": f"Connection error: {e}"}
+
+
+# ── Email search ──────────────────────────────────────────────────
+
+def search_emails(
+    query: str,
+    folder: str = "INBOX",
+    limit: int = 20,
+    profile: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """Search emails with operators: from:, subject:, date:, or free text.
+
+    Supported operators:
+        from:name         - Search in From header
+        from:"full name"  - Quoted search in From header
+        subject:keyword   - Search in Subject header
+        date:today        - Today's emails
+        date:week         - Last 7 days
+        date:month        - Last 30 days
+        date:2024-01-15   - Specific date
+        Free text         - Search in all fields
+
+    Multiple operators can be combined: "from:john subject:meeting"
+    """
+    import re as _re
+    from datetime import datetime, timedelta
+
+    if profile is None:
+        profile = find_thunderbird_profile()
+    if not profile:
+        return [{"error": "Thunderbird profile not found"}]
+
+    imap_dir = _get_imap_dir(profile)
+    if not imap_dir:
+        return [{"error": "No IMAP directory found"}]
+
+    mbox_path = _folder_path(imap_dir, folder)
+    if not mbox_path:
+        return [{"error": f"Folder '{folder}' not found"}]
+
+    try:
+        mbox = mailbox.mbox(str(mbox_path))
+    except Exception as e:
+        return [{"error": f"mbox parse error: {e}"}]
+
+    # Parse operators from query
+    remaining = query
+    from_filter = None
+    subject_filter = None
+    date_start = None
+    date_end = None
+
+    # Extract from:"value" or from:value
+    m = _re.search(r'from:"([^"]+)"', remaining, _re.IGNORECASE)
+    if m:
+        from_filter = m.group(1).lower()
+        remaining = remaining[:m.start()] + remaining[m.end():]
+    else:
+        m = _re.search(r'from:(\S+)', remaining, _re.IGNORECASE)
+        if m:
+            from_filter = m.group(1).lower()
+            remaining = remaining[:m.start()] + remaining[m.end():]
+
+    # Extract subject:"value" or subject:value
+    m = _re.search(r'subject:"([^"]+)"', remaining, _re.IGNORECASE)
+    if m:
+        subject_filter = m.group(1).lower()
+        remaining = remaining[:m.start()] + remaining[m.end():]
+    else:
+        m = _re.search(r'subject:(\S+)', remaining, _re.IGNORECASE)
+        if m:
+            subject_filter = m.group(1).lower()
+            remaining = remaining[:m.start()] + remaining[m.end():]
+
+    # Extract date:value
+    m = _re.search(r'date:(\S+)', remaining, _re.IGNORECASE)
+    if m:
+        date_val = m.group(1).lower()
+        remaining = remaining[:m.start()] + remaining[m.end():]
+        now = datetime.now()
+        if date_val == "today":
+            date_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            date_end = now.timestamp()
+        elif date_val == "week":
+            date_start = (now - timedelta(days=7)).timestamp()
+            date_end = now.timestamp()
+        elif date_val == "month":
+            date_start = (now - timedelta(days=30)).timestamp()
+            date_end = now.timestamp()
+        else:
+            try:
+                d = datetime.strptime(date_val, "%Y-%m-%d")
+                date_start = d.timestamp()
+                date_end = (d + timedelta(days=1)).timestamp()
+            except ValueError:
+                pass
+
+    text_filter = remaining.strip().lower() or None
+
+    # Scan mbox (newest first, max 500 messages scanned)
+    results = []
+    keys = mbox.keys()
+    max_scan = min(len(keys), 500)
+    scan_keys = keys[-max_scan:] if max_scan < len(keys) else keys
+
+    for key in reversed(scan_keys):
+        try:
+            msg = mbox[key]
+        except Exception:
+            continue
+
+        # Skip deleted
+        moz_status = msg.get("X-Mozilla-Status", "0000")
+        try:
+            if int(moz_status, 16) & 0x0008:
+                continue
+        except (ValueError, TypeError):
+            pass
+
+        from_addr = _decode_header(msg.get("From", ""))
+        subject_h = _decode_header(msg.get("Subject", ""))
+        date_str = msg.get("Date", "")
+
+        try:
+            date_tuple = email.utils.parsedate_tz(date_str)
+            timestamp = email.utils.mktime_tz(date_tuple) if date_tuple else 0
+        except Exception:
+            timestamp = 0
+
+        # Apply filters
+        if from_filter and from_filter not in from_addr.lower():
+            continue
+        if subject_filter and subject_filter not in subject_h.lower():
+            continue
+        if date_start and (timestamp < date_start or timestamp > date_end):
+            continue
+        if text_filter:
+            combined = f"{from_addr} {subject_h}".lower()
+            if text_filter not in combined:
+                continue
+
+        flags = _parse_mozilla_status(moz_status)
+        to_addr = _decode_header(msg.get("To", ""))
+        cc_addr = _decode_header(msg.get("Cc", ""))
+        msg_id_h = msg.get("Message-ID", f"idx-{key}")
+        body = _extract_text_body(msg)
+        snippet = sanitize_email_content(body)[:MAX_SNIPPET_CHARS]
+
+        results.append({
+            "id": msg_id_h,
+            "idx": key,
+            "from": _sanitize_subject(from_addr),
+            "to": _sanitize_subject(to_addr),
+            "cc": _HTML_TAG_RE.sub("", cc_addr)[:MAX_SUBJECT_CHARS] if cc_addr else "",
+            "subject": _sanitize_subject(subject_h),
+            "date": date_str,
+            "timestamp": timestamp,
+            "snippet": snippet,
+            "read": flags["read"],
+            "replied": flags.get("replied", False),
+            "starred": flags.get("starred", False),
+        })
+
+        if len(results) >= limit:
+            break
+
+    mbox.close()
+    results.sort(key=lambda e: e["timestamp"], reverse=True)
+    return results
+
+
+# ── IMAP connection test ──────────────────────────────────────────
+
+def test_imap_connection(
+    host: str = "",
+    port: int = 993,
+    user: str = "",
+    password: str = "",
+    auth_method: str = "password",
+    profile: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Test IMAP connection with given or auto-detected credentials.
+
+    Returns {"ok": True, "folders": [...]} or {"error": "..."}
+    """
+    import imaplib
+
+    if not host:
+        creds = _get_imap_credentials(profile)
+        if not creds:
+            return {"error": "No credentials available. Configure via /mailconfig."}
+        host = creds["host"]
+        port = int(creds.get("imap_port", 993))
+        user = creds["user"]
+        if creds.get("auth_method") == "xoauth2":
+            auth_method = "xoauth2"
+            password = creds.get("access_token", "")
+        else:
+            password = creds.get("password", "")
+
+    if not host:
+        return {"error": "IMAP host is required."}
+
+    try:
+        imap = imaplib.IMAP4_SSL(host, port=port)
+
+        if auth_method == "xoauth2":
+            auth_string = f"user={user}\x01auth=Bearer {password}\x01\x01"
+            imap.authenticate("XOAUTH2", lambda _: auth_string.encode())
+        else:
+            imap.login(user, password)
+
+        # List folders
+        status, folder_data = imap.list()
+        folders = []
+        if status == "OK" and folder_data:
+            for item in folder_data:
+                if isinstance(item, bytes):
+                    decoded = item.decode("utf-8", errors="replace")
+                    parts = decoded.rsplit('"', 2)
+                    if len(parts) >= 2:
+                        fname = parts[-2].strip('" ')
+                        if fname:
+                            folders.append(fname)
+
+        imap.logout()
+        return {
+            "ok": True,
+            "message": f"Connected to {host}:{port} as {user}",
+            "folders": folders[:30],
+        }
+
+    except imaplib.IMAP4.error as e:
+        return {"error": f"IMAP auth failed: {e}"}
+    except ConnectionRefusedError:
+        return {"error": f"Connection refused: {host}:{port}"}
+    except TimeoutError:
+        return {"error": f"Timeout: {host}:{port}"}
+    except Exception as e:
+        return {"error": f"Connection failed: {e}"}
+
+
+# ── Email thread / conversation ────────────────────────────────────
+
+def get_email_thread(
+    subject: str = "",
+    msg_id: str = "",
+    folder: str = "INBOX",
+    limit: int = 20,
+    profile: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """Get all emails in a conversation thread.
+
+    Matches by normalized subject (strip Re:/Fwd:/AW:/WG:) and
+    References/In-Reply-To header chain.
+    Returns oldest first for conversation flow.
+    """
+    import re as _re
+
+    if profile is None:
+        profile = find_thunderbird_profile()
+    if not profile:
+        return [{"error": "Thunderbird profile not found"}]
+
+    imap_dir = _get_imap_dir(profile)
+    if not imap_dir:
+        return [{"error": "No IMAP directory found"}]
+
+    mbox_path = _folder_path(imap_dir, folder)
+    if not mbox_path:
+        return [{"error": f"Folder '{folder}' not found"}]
+
+    try:
+        mbox = mailbox.mbox(str(mbox_path))
+    except Exception as e:
+        return [{"error": f"mbox parse error: {e}"}]
+
+    def _normalize_subj(s):
+        return _re.sub(r'^(Re|Fwd|Fw|AW|WG)\s*:\s*', '', s, flags=_re.IGNORECASE).strip().lower()
+
+    target_subject = _normalize_subj(subject) if subject else ""
+    target_mid = msg_id.strip("<>") if msg_id else ""
+
+    thread_mids = set()
+    if target_mid:
+        thread_mids.add(target_mid)
+
+    results = []
+    keys = mbox.keys()
+
+    for key in keys:
+        try:
+            msg = mbox[key]
+        except Exception:
+            continue
+
+        moz_status = msg.get("X-Mozilla-Status", "0000")
+        try:
+            if int(moz_status, 16) & 0x0008:
+                continue
+        except (ValueError, TypeError):
+            pass
+
+        m_subject = _decode_header(msg.get("Subject", ""))
+        m_mid = (msg.get("Message-ID") or "").strip("<>")
+        m_refs = msg.get("References", "") or ""
+        m_reply_to = (msg.get("In-Reply-To") or "").strip("<>")
+
+        match = False
+
+        # Match by References/In-Reply-To chain
+        if target_mid:
+            if target_mid in m_refs or m_reply_to == target_mid or m_mid == target_mid:
+                match = True
+            for tid in thread_mids:
+                if tid in m_refs or m_reply_to == tid:
+                    match = True
+                    break
+
+        # Match by normalized subject
+        if not match and target_subject:
+            if _normalize_subj(m_subject) == target_subject:
+                match = True
+
+        if not match:
+            continue
+
+        if m_mid:
+            thread_mids.add(m_mid)
+
+        flags = _parse_mozilla_status(moz_status)
+        from_addr = _decode_header(msg.get("From", ""))
+        to_addr = _decode_header(msg.get("To", ""))
+        date_str = msg.get("Date", "")
+
+        try:
+            date_tuple = email.utils.parsedate_tz(date_str)
+            timestamp = email.utils.mktime_tz(date_tuple) if date_tuple else 0
+        except Exception:
+            timestamp = 0
+
+        body = _extract_text_body(msg)
+        snippet = sanitize_email_content(body)[:MAX_SNIPPET_CHARS]
+
+        results.append({
+            "id": msg.get("Message-ID", f"idx-{key}"),
+            "idx": key,
+            "from": _sanitize_subject(from_addr),
+            "to": _sanitize_subject(to_addr),
+            "subject": _sanitize_subject(m_subject),
+            "date": date_str,
+            "timestamp": timestamp,
+            "snippet": snippet,
+            "read": flags["read"],
+            "replied": flags.get("replied", False),
+            "starred": flags.get("starred", False),
+        })
+
+        if len(results) >= limit:
+            break
+
+    mbox.close()
+    results.sort(key=lambda e: e["timestamp"])
+    return results
 
 
 # ── CLI test ────────────────────────────────────────────────────────

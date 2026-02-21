@@ -313,6 +313,16 @@ class CommandRouterMixin:
             self._add_message("Frank", line, is_system=True)
             return
 
+        # ── Full System Restart Command ──
+        if low in ("restart frank", "frank restart", "restart system",
+                    "system restart", "neustart", "frank neustarten",
+                    "alles neustarten", "restart all", "restart everything",
+                    "/restart", "system neustart", "frank neu starten",
+                    "starte alles neu", "starte frank neu"):
+            self._add_message("Du", msg, is_user=True)
+            self._io_q.put(("system_restart", {}))
+            return
+
         # ── LLM Restart Command (no LLM call needed) ──
         if low in ("restart llm", "llm restart", "llm neustarten",
                     "/llm", "neustart llm", "llm neu starten"):
@@ -1294,3 +1304,75 @@ class CommandRouterMixin:
         task = "code.edit" if CODE_HINTS_RE.search(msg) else "chat.fast"
         max_tokens = 500 if task == "code.edit" else DEFAULT_MAX_TOKENS
         self._chat_q.put(("chat", {"msg": msg, "max_tokens": max_tokens, "timeout_s": DEFAULT_TIMEOUT_S, "task": task, "force": None}))
+
+    # ---------- System Restart Worker ----------
+    def _do_system_restart_worker(self):
+        """Restart all Frank backend services, then the overlay itself."""
+        import subprocess
+
+        self._ui_call(lambda: self._add_message(
+            "Frank", "Restarting all Frank services...", is_system=True))
+
+        # Discover active services
+        try:
+            r = subprocess.run(
+                ["systemctl", "--user", "list-units", "--type=service",
+                 "--state=active,activating", "--no-pager", "--plain", "--no-legend"],
+                capture_output=True, text=True, timeout=10,
+            )
+            services = []
+            for line in r.stdout.strip().split("\n"):
+                parts = line.strip().split()
+                if parts and (parts[0].startswith("aicore-") or parts[0].startswith("frank-")):
+                    services.append(parts[0])
+        except Exception:
+            services = []
+
+        if not services:
+            services = [
+                "aicore-router.service", "aicore-core.service",
+                "aicore-llama3-gpu.service", "aicore-toolboxd.service",
+                "aicore-webd.service", "aicore-modeld.service",
+                "aicore-desktopd.service", "aicore-consciousness.service",
+                "aicore-invariants.service", "aicore-asrs.service",
+                "aicore-genesis.service", "aicore-genesis-watchdog.service",
+                "aicore-entities.service", "aicore-gaming-mode.service",
+                "aicore-ingestd.service", "aicore-whisper-gpu.service",
+                "frank-overlay.service",
+            ]
+
+        # Split: backend first, overlay last
+        backend = [s for s in services if "frank-overlay" not in s]
+        has_overlay = any("frank-overlay" in s for s in services)
+
+        failed = []
+        succeeded = []
+
+        for svc in backend:
+            try:
+                r = subprocess.run(
+                    ["systemctl", "--user", "restart", svc],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if r.returncode == 0:
+                    succeeded.append(svc.replace(".service", ""))
+                else:
+                    failed.append(svc.replace(".service", ""))
+            except Exception:
+                failed.append(svc.replace(".service", ""))
+
+        status = f"Restarted {len(succeeded)}/{len(backend)} backend services."
+        if failed:
+            status += f"\nFailed: {', '.join(failed)}"
+
+        if has_overlay:
+            status += "\nRestarting overlay in 3s..."
+
+        self._ui_call(lambda s=status: self._add_message("Frank", s, is_system=True))
+
+        if has_overlay:
+            time.sleep(3)
+            subprocess.Popen(
+                ["systemctl", "--user", "restart", "frank-overlay.service"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )

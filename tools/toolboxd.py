@@ -2159,6 +2159,7 @@ class Handler(BaseHTTPRequestHandler):
             from email_reader import list_imap_accounts, load_email_config
             accounts = list_imap_accounts()
             config = load_email_config()
+            # Include password for popup pre-fill (localhost only)
             self._send(200, {"ok": True, "accounts": accounts, "config": config})
             return
 
@@ -2166,9 +2167,14 @@ class Handler(BaseHTTPRequestHandler):
             from email_reader import save_email_config, load_email_config
             if payload:
                 save_email_config(payload)
-                self._send(200, {"ok": True, "saved": payload})
+                safe = {k: v for k, v in payload.items() if k != "password"}
+                self._send(200, {"ok": True, "saved": safe})
             else:
-                self._send(200, {"ok": True, "config": load_email_config()})
+                config = load_email_config()
+                safe = {k: v for k, v in config.items() if k != "password"}
+                if config.get("password"):
+                    safe["has_password"] = True
+                self._send(200, {"ok": True, "config": safe})
             return
 
         # ── Calendar endpoints ────────────────────────────────────

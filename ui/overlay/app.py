@@ -310,6 +310,10 @@ class ChatOverlay(
         # Periodic monitor change check (resolution/display changes)
         self.after(60000, self._periodic_monitor_check)
 
+        # Overlay heartbeat for watchdog freeze detection
+        self._start_heartbeat()
+        LOG.info("Overlay heartbeat started")
+
         # Register SIGTERM/SIGINT handlers for graceful shutdown
         # MUST be after all init so cleanup can run properly
         self.register_signal_handlers()

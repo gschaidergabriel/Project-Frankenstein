@@ -93,17 +93,22 @@ MONITORED_SERVICES = {
 }
 
 CHECK_INTERVAL = 15  # Check every 15 seconds
+OVERLAY_FREEZE_THRESHOLD = 30  # Overlay heartbeat stale after 30s → frozen
 try:
     from config.paths import get_temp as _wd_get_temp, TEMP_FILES as _wd_temp_files
     HEALTH_FILE = _wd_get_temp("watchdog_health.json")
     USER_CLOSED_SIGNAL = _wd_temp_files.get("user_closed", _wd_get_temp("user_closed"))
     GAMING_LOCK = _wd_temp_files.get("gaming_lock", _wd_get_temp("gaming_lock"))
     MPC_LLAMA_PARKED = _wd_get_temp("mpc_llama_parked")
+    OVERLAY_HEARTBEAT = _wd_temp_files.get("overlay_heartbeat", _wd_get_temp("overlay_heartbeat"))
+    OVERLAY_LOCK = _wd_temp_files.get("overlay_lock", _wd_get_temp("overlay.lock"))
 except ImportError:
     HEALTH_FILE = Path("/tmp/frank/watchdog_health.json")
     USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
     GAMING_LOCK = Path("/tmp/frank/gaming_lock")
     MPC_LLAMA_PARKED = Path("/tmp/frank/mpc_llama_parked")
+    OVERLAY_HEARTBEAT = Path("/tmp/frank/overlay_heartbeat")
+    OVERLAY_LOCK = Path("/tmp/frank/overlay.lock")
 
 # ============================================================================
 # State tracking
@@ -364,6 +369,36 @@ def main():
                         else:
                             LOG.error(f"[{name}] Restart FAILED")
                             tracker.record_restart()
+
+            # ── Overlay freeze detection (heartbeat-based) ──
+            # The overlay writes a timestamp every 5s.  If the file is
+            # stale (>30s) but the systemd service is still "active",
+            # the Tk main loop is frozen.  Force-restart the overlay.
+            if "frank-overlay" in trackers and is_service_active("frank-overlay"):
+                if not USER_CLOSED_SIGNAL.exists() and not GAMING_LOCK.exists():
+                    try:
+                        if OVERLAY_HEARTBEAT.exists():
+                            last_ts = float(OVERLAY_HEARTBEAT.read_text().strip())
+                            age = time.time() - last_ts
+                            if age > OVERLAY_FREEZE_THRESHOLD:
+                                LOG.warning(
+                                    f"[frank-overlay] FREEZE DETECTED — heartbeat "
+                                    f"stale for {age:.0f}s, force-restarting overlay"
+                                )
+                                # Kill the frozen process tree first
+                                subprocess.run(
+                                    ["systemctl", "--user", "kill", "--signal=SIGKILL",
+                                     "frank-overlay"],
+                                    capture_output=True, timeout=5,
+                                )
+                                time.sleep(2)
+                                # Remove stale lock + heartbeat so restart succeeds
+                                OVERLAY_LOCK.unlink(missing_ok=True)
+                                OVERLAY_HEARTBEAT.unlink(missing_ok=True)
+                                restart_service("frank-overlay")
+                                trackers["frank-overlay"].record_restart()
+                    except (ValueError, OSError) as e:
+                        LOG.debug(f"Heartbeat read error: {e}")
 
             # Check for self-restart requests from Frank
             check_restart_requests(trackers)

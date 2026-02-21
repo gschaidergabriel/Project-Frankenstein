@@ -221,7 +221,8 @@ source "$VENV_INGESTD/bin/activate"
 pip install --upgrade pip -q
 pip install -q \
     faster-whisper uvicorn fastapi httpx Pillow lxml \
-    coloredlogs annotated-doc
+    coloredlogs annotated-doc \
+    python-multipart pypdf python-docx
 deactivate
 echo "  Done."
 

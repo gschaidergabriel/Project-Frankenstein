@@ -133,8 +133,9 @@ class EmailCard(tk.Frame):
         while w is not None:
             if isinstance(w, tk.Canvas):
                 w.yview_scroll(-1 if event.num == 4 else 1, "units")
-                return
+                return "break"
             w = getattr(w, 'master', None)
+        return "break"
 
     def _update_colors(self, bg_color, border_color):
         self.card.configure(bg=bg_color)

@@ -80,10 +80,7 @@ class EmailPopup(tk.Toplevel):
         # don't receive focus automatically from the window manager)
         self.bind("<Button-1>", self._force_focus, add=True)
 
-        # Grab mouse scroll events when pointer is inside popup
-        # to prevent them from propagating to the overlay underneath
-        self.bind("<Enter>", self._grab_scroll)
-        self.bind("<Leave>", self._release_scroll)
+        # Scroll events are handled per-widget (no global bind_all)
 
         if email_data:
             self._build_read_view()
@@ -96,47 +93,49 @@ class EmailPopup(tk.Toplevel):
     def _force_focus(self, event=None):
         """Force focus to popup and to the clicked widget if it accepts input."""
         self.focus_force()
+        # In reply-intent mode, ALWAYS redirect focus to the intent text field
+        # unless user clicked directly on a different editable widget (Entry/Text)
+        if hasattr(self, "_intent_text"):
+            try:
+                if self._intent_text.winfo_exists():
+                    clicked = event.widget if event else None
+                    # Only let focus go elsewhere if it's an editable Entry
+                    if isinstance(clicked, tk.Entry):
+                        clicked.focus_set()
+                    else:
+                        self._intent_text.focus_set()
+                    return
+            except Exception:
+                pass
         if event and event.widget:
             try:
                 w = event.widget
                 if isinstance(w, (tk.Text, tk.Entry)):
+                    # Don't focus disabled text widgets (preview)
+                    if isinstance(w, tk.Text):
+                        try:
+                            if w.cget("state") == "disabled":
+                                return
+                        except Exception:
+                            pass
                     w.focus_set()
             except Exception:
                 pass
 
-    def _grab_scroll(self, event=None):
-        """Bind scroll events globally when mouse enters popup."""
-        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            self.bind_all(seq, self._on_popup_scroll)
-
-    def _release_scroll(self, event=None):
-        """Unbind scroll capture when mouse leaves popup."""
-        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            self.unbind_all(seq)
-
-    def _on_popup_scroll(self, event):
-        """Route scroll events to the correct text widget inside popup."""
-        # Find which text widget the mouse is over
-        w = event.widget
-        try:
-            target = w.winfo_containing(event.x_root, event.y_root)
-        except Exception:
-            target = w
-        if isinstance(target, tk.Text):
+    def _bind_scroll_to_text(self, text_widget: tk.Text):
+        """Bind scroll events directly to a Text widget (no global bind_all)."""
+        def _scroll(event):
             if event.num == 4:
-                target.yview_scroll(-3, "units")
+                text_widget.yview_scroll(-3, "units")
             elif event.num == 5:
-                target.yview_scroll(3, "units")
+                text_widget.yview_scroll(3, "units")
             elif event.delta:
-                target.yview_scroll(-1 * (event.delta // 120), "units")
-        return "break"
+                text_widget.yview_scroll(-1 * (event.delta // 120), "units")
+            return "break"
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            text_widget.bind(seq, _scroll)
 
     def destroy(self):
-        # Release scroll bindings before destroying
-        try:
-            self._release_scroll()
-        except Exception:
-            pass
         if self._on_destroy:
             try:
                 self._on_destroy()
@@ -147,6 +146,9 @@ class EmailPopup(tk.Toplevel):
     # ── Shared helpers ─────────────────────────────────────────────
 
     def _clear_content(self):
+        # Remove intent_text ref so _force_focus doesn't redirect to dead widget
+        if hasattr(self, "_intent_text"):
+            del self._intent_text
         for w in self.winfo_children():
             w.destroy()
 
@@ -176,25 +178,34 @@ class EmailPopup(tk.Toplevel):
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._on_drag)
 
-    def _make_button(self, parent, text, bg_color, fg_color="#FFFFFF", command=None):
-        btn = tk.Label(
-            parent, text=f" {text} ", bg=bg_color, fg=fg_color,
-            font=_FONT_BOLD, padx=8, pady=4, cursor="hand2"
-        )
-        if command:
-            btn.bind("<Button-1>", lambda e: command())
-        btn.bind("<Enter>", lambda e: btn.configure(bg=self._lighten(bg_color)))
-        btn.bind("<Leave>", lambda e: btn.configure(bg=bg_color))
-        return btn
+    # ── Button styles ──
+    _BTN_BG = "#1a1a2e"
+    _BTN_BG_HOVER = "#282840"
+    _BTN_BORDER = "#333355"
 
-    @staticmethod
-    def _lighten(hex_color: str) -> str:
-        try:
-            r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
-            r, g, b = min(255, r + 30), min(255, g + 30), min(255, b + 30)
-            return f"#{r:02x}{g:02x}{b:02x}"
-        except Exception:
-            return hex_color
+    def _make_button(self, parent, text, fg_color="#aaaacc", command=None,
+                     bg_color=None, min_width=0):
+        """Create a uniform cyberpunk-styled action button.
+
+        All buttons share the same dark bg; only the text colour varies
+        to indicate function (green=positive, red=destructive, etc.).
+        """
+        bg = bg_color or self._BTN_BG
+        btn = tk.Frame(parent, bg=self._BTN_BORDER, padx=1, pady=1)
+        lbl = tk.Label(
+            btn, text=text, bg=bg, fg=fg_color,
+            font=_FONT_BOLD, padx=10, pady=4, cursor="hand2",
+        )
+        if min_width:
+            lbl.configure(width=min_width)
+        lbl.pack(fill="both", expand=True)
+        if command:
+            lbl.bind("<Button-1>", lambda e: command())
+        lbl.bind("<Enter>", lambda e: lbl.configure(bg=self._BTN_BG_HOVER))
+        lbl.bind("<Leave>", lambda e: lbl.configure(bg=bg))
+        # Store label ref for external access
+        btn._lbl = lbl
+        return btn
 
     def _start_drag(self, event):
         self._drag_x = event.x
@@ -250,10 +261,55 @@ class EmailPopup(tk.Toplevel):
                 fg=COLORS["text_primary"], font=_FONT_HEADER, anchor="w"
             ).pack(side="left", fill="x", expand=True)
 
-        # Separator
+        # Separator (below header)
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
 
-        # Body section (scrollable text)
+        # ── Pack bottom elements FIRST so they are always visible ──
+
+        # Status bar (very bottom)
+        self._status_label = tk.Label(
+            main, text="", bg=COLORS["bg_main"], fg=COLORS["text_muted"],
+            font=_FONT_SMALL, anchor="w", padx=12
+        )
+        self._status_label.pack(side="bottom", fill="x")
+
+        # Action bar
+        actions = tk.Frame(main, bg=COLORS["bg_elevated"], padx=10, pady=8)
+        actions.pack(side="bottom", fill="x")
+
+        # Row 1: primary communication actions
+        row1 = tk.Frame(actions, bg=COLORS["bg_elevated"])
+        row1.pack(fill="x", pady=(0, 4))
+
+        self._make_button(row1, "REPLY", fg_color="#00cc88",
+                          command=self._on_reply).pack(side="left", padx=2)
+        self._make_button(row1, "FORWARD", fg_color="#44aadd",
+                          command=self._on_forward).pack(side="left", padx=2)
+        self._make_button(row1, "COMPOSE", fg_color="#8899bb",
+                          command=self._on_compose_new).pack(side="left", padx=2)
+        self._make_button(row1, "THREAD", fg_color="#aa88cc",
+                          command=self._on_thread).pack(side="left", padx=2)
+        read_label = "MARK UNREAD" if ed.read else "MARK READ"
+        self._make_button(row1, read_label, fg_color="#8899bb",
+                          command=self._on_toggle_read).pack(side="left", padx=2)
+
+        # Row 2: destructive + utility
+        row2 = tk.Frame(actions, bg=COLORS["bg_elevated"])
+        row2.pack(fill="x")
+
+        self._make_button(row2, "SPAM", fg_color="#ccaa33",
+                          command=self._on_spam).pack(side="left", padx=2)
+        self._make_button(row2, "DELETE", fg_color="#dd4444",
+                          command=self._on_delete).pack(side="left", padx=2)
+        self._make_button(row2, "THUNDERBIRD", fg_color="#5588cc",
+                          command=self._on_thunderbird).pack(side="left", padx=2)
+        self._make_button(row2, "CLOSE", fg_color=COLORS.get("neon_cyan", "#00fff9"),
+                          command=self.destroy).pack(side="right", padx=2)
+
+        # Separator above actions
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
+
+        # ── Body section fills remaining space (packed LAST) ──
         body_frame = tk.Frame(main, bg=COLORS["bg_main"])
         body_frame.pack(fill="both", expand=True)
 
@@ -272,46 +328,7 @@ class EmailPopup(tk.Toplevel):
         body_content = self._full_body or self._email_data.snippet or ""
         self._body_text.insert("1.0", body_content)
         self._body_text.configure(state="disabled")
-
-        # Separator
-        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
-
-        # Action bar
-        actions = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=8)
-        actions.pack(fill="x")
-
-        row1 = tk.Frame(actions, bg=COLORS["bg_elevated"])
-        row1.pack(fill="x", pady=(0, 4))
-
-        self._make_button(row1, "REPLY", "#006400",
-                          command=self._on_reply).pack(side="left", padx=(0, 4))
-        self._make_button(row1, "FORWARD", "#005577",
-                          command=self._on_forward).pack(side="left", padx=(0, 4))
-        self._make_button(row1, "SPAM", "#8B8000",
-                          command=self._on_spam).pack(side="left", padx=(0, 4))
-        self._make_button(row1, "DELETE", "#8B0000",
-                          command=self._on_delete).pack(side="left", padx=(0, 4))
-
-        row2 = tk.Frame(actions, bg=COLORS["bg_elevated"])
-        row2.pack(fill="x")
-
-        read_label = "MARK UNREAD" if ed.read else "MARK READ"
-        self._make_button(row2, read_label, "#555500",
-                          command=self._on_toggle_read).pack(side="left", padx=(0, 4))
-        self._make_button(row2, "COMPOSE", "#444444",
-                          command=self._on_compose_new).pack(side="left", padx=(0, 4))
-        self._make_button(row2, "THUNDERBIRD", "#1E90FF",
-                          command=self._on_thunderbird).pack(side="left", padx=(0, 4))
-        self._make_button(row2, "CLOSE", COLORS.get("neon_cyan", "#00fff9"),
-                          fg_color=COLORS["bg_main"],
-                          command=self.destroy).pack(side="left")
-
-        # Status bar
-        self._status_label = tk.Label(
-            main, text="", bg=COLORS["bg_main"], fg=COLORS["text_muted"],
-            font=_FONT_SMALL, anchor="w", padx=12
-        )
-        self._status_label.pack(fill="x")
+        self._bind_scroll_to_text(self._body_text)
 
     # ── COMPOSE VIEW ───────────────────────────────────────────────
 
@@ -357,10 +374,61 @@ class EmailPopup(tk.Toplevel):
         # Subject field
         self._subject_entry = _make_field(form, "Subject:", reply_subject)
 
-        # Separator
+        # Separator (below form)
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
 
-        # Body text area
+        # ── Pack bottom elements FIRST so they are always visible ──
+
+        # Status bar (very bottom)
+        self._status_label = tk.Label(
+            main, text="", bg=COLORS["bg_main"], fg=COLORS["text_muted"],
+            font=_FONT_SMALL, anchor="w", padx=12
+        )
+        self._status_label.pack(side="bottom", fill="x")
+
+        # Action bar
+        actions = tk.Frame(main, bg=COLORS["bg_elevated"], padx=10, pady=8)
+        actions.pack(side="bottom", fill="x")
+
+        self._make_button(actions, "SEND", fg_color="#00cc88",
+                          command=self._on_send).pack(side="left", padx=2)
+        self._make_button(actions, "SAVE DRAFT", fg_color="#ccaa33",
+                          command=self._on_save_draft).pack(side="left", padx=2)
+        self._make_button(actions, "CLOSE", fg_color=COLORS.get("neon_cyan", "#00fff9"),
+                          command=self.destroy).pack(side="right", padx=2)
+
+        # Separator above actions
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
+
+        # Attachments section
+        attach_frame = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=6)
+        attach_frame.pack(side="bottom", fill="x")
+
+        attach_header = tk.Frame(attach_frame, bg=COLORS["bg_elevated"])
+        attach_header.pack(fill="x")
+        tk.Label(attach_header, text="Attachments:", bg=COLORS["bg_elevated"],
+                 fg=COLORS["text_muted"], font=_FONT_SMALL).pack(side="left")
+        self._make_button(attach_header, "+ ADD", fg_color="#8899bb",
+                          command=self._on_add_attachment).pack(side="right")
+
+        # Scrollable attachment list (max 80px height)
+        self._attach_canvas = tk.Canvas(
+            attach_frame, bg=COLORS["bg_elevated"],
+            highlightthickness=0, height=0,
+        )
+        self._attach_list_frame = tk.Frame(self._attach_canvas, bg=COLORS["bg_elevated"])
+        self._attach_canvas.create_window(
+            (0, 0), window=self._attach_list_frame, anchor="nw", tags="attach_win"
+        )
+        self._attach_list_frame.bind("<Configure>", self._on_attach_list_configure)
+        self._attach_canvas.bind("<Configure>", lambda e: self._attach_canvas.itemconfig(
+            "attach_win", width=e.width))
+        self._attach_canvas.pack(fill="x")
+
+        # Separator above attachments
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
+
+        # ── Body text fills remaining space (packed LAST) ──
         body_frame = tk.Frame(main, bg=COLORS["bg_main"])
         body_frame.pack(fill="both", expand=True)
 
@@ -377,48 +445,11 @@ class EmailPopup(tk.Toplevel):
         scrollbar.pack(side="right", fill="y")
         self._compose_text.pack(side="left", fill="both", expand=True)
 
+        self._bind_scroll_to_text(self._compose_text)
+
         if reply_body:
             self._compose_text.insert("1.0", f"\n\n--- Original ---\n{reply_body}")
             self._compose_text.mark_set("insert", "1.0")
-
-        # Separator
-        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
-
-        # Attachments section
-        attach_frame = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=6)
-        attach_frame.pack(fill="x")
-
-        attach_header = tk.Frame(attach_frame, bg=COLORS["bg_elevated"])
-        attach_header.pack(fill="x")
-        tk.Label(attach_header, text="Attachments:", bg=COLORS["bg_elevated"],
-                 fg=COLORS["text_muted"], font=_FONT_SMALL).pack(side="left")
-        self._make_button(attach_header, "+ ADD", "#333333",
-                          command=self._on_add_attachment).pack(side="right")
-
-        self._attach_list_frame = tk.Frame(attach_frame, bg=COLORS["bg_elevated"])
-        self._attach_list_frame.pack(fill="x")
-
-        # Separator
-        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
-
-        # Action bar
-        actions = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=8)
-        actions.pack(fill="x")
-
-        self._make_button(actions, "SEND", "#006400",
-                          command=self._on_send).pack(side="left", padx=(0, 6))
-        self._make_button(actions, "SAVE DRAFT", "#555500",
-                          command=self._on_save_draft).pack(side="left", padx=(0, 6))
-        self._make_button(actions, "CLOSE", COLORS.get("neon_cyan", "#00fff9"),
-                          fg_color=COLORS["bg_main"],
-                          command=self.destroy).pack(side="left")
-
-        # Status bar
-        self._status_label = tk.Label(
-            main, text="", bg=COLORS["bg_main"], fg=COLORS["text_muted"],
-            font=_FONT_SMALL, anchor="w", padx=12
-        )
-        self._status_label.pack(fill="x")
 
         # Focus: body for replies, To for new compose
         if reply_to:
@@ -458,6 +489,20 @@ class EmailPopup(tk.Toplevel):
             self._attachments.remove(filepath)
             self._refresh_attachment_list()
 
+    _ATTACH_MAX_H = 80
+
+    def _on_attach_list_configure(self, event=None):
+        """Resize attachment canvas to fit content, max 80px."""
+        if not hasattr(self, '_attach_canvas'):
+            return
+        try:
+            self._attach_canvas.configure(scrollregion=self._attach_canvas.bbox("all"))
+            req_h = self._attach_list_frame.winfo_reqheight()
+            h = min(req_h, self._ATTACH_MAX_H) if req_h > 0 else 0
+            self._attach_canvas.configure(height=h)
+        except tk.TclError:
+            pass
+
     # ── Read view actions ──────────────────────────────────────────
 
     def _on_reply(self):
@@ -490,45 +535,28 @@ class EmailPopup(tk.Toplevel):
 
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
 
-        # Show original email body snippet (scrollable, for context)
-        body_preview = self._full_body or ed.snippet or ""
-        if body_preview:
-            preview_frame = tk.Frame(main, bg=COLORS["bg_main"])
-            preview_frame.pack(fill="both", expand=True)
-            tk.Label(preview_frame, text="Original:", bg=COLORS["bg_main"],
-                     fg=COLORS["text_muted"], font=_FONT_SMALL,
-                     anchor="w").pack(fill="x", padx=16, pady=(8, 0))
-            preview_text = tk.Text(
-                preview_frame, bg=COLORS["bg_main"], fg=COLORS["text_secondary"],
-                font=_FONT_SMALL, wrap="word", borderwidth=0,
-                highlightthickness=0, padx=16, pady=4, height=8,
-            )
-            preview_text.pack(fill="both", expand=True)
-            preview_text.insert("1.0", body_preview[:2000])
-            preview_text.configure(state="disabled")
+        # ── Pack bottom elements FIRST ──
 
-        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
-
-        # Chat-like input section at the bottom
-        input_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=10)
-        input_section.pack(fill="x", side="bottom")
-
-        # Status bar at very bottom
+        # Status bar (very bottom)
         self._status_label = tk.Label(
-            input_section, text="Enter = Absenden  |  Shift+Enter = Neue Zeile",
+            main, text="Enter = Absenden  |  Shift+Enter = Neue Zeile",
             bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
-            font=_FONT_SMALL, anchor="w"
+            font=_FONT_SMALL, anchor="w", padx=12
         )
-        self._status_label.pack(fill="x", side="bottom", pady=(4, 0))
+        self._status_label.pack(side="bottom", fill="x")
 
         # Buttons row
-        btn_row = tk.Frame(input_section, bg=COLORS["bg_elevated"])
-        btn_row.pack(fill="x", side="bottom", pady=(6, 0))
+        btn_row = tk.Frame(main, bg=COLORS["bg_elevated"], padx=10, pady=6)
+        btn_row.pack(side="bottom", fill="x")
 
-        self._make_button(btn_row, "GENERATE REPLY", "#006400",
-                          command=self._on_generate_reply).pack(side="left", padx=(0, 6))
-        self._make_button(btn_row, "BACK", "#333333",
-                          command=self._build_read_view).pack(side="left")
+        self._make_button(btn_row, "GENERATE REPLY", fg_color="#00cc88",
+                          command=self._on_generate_reply).pack(side="left", padx=2)
+        self._make_button(btn_row, "BACK", fg_color="#8899bb",
+                          command=self._build_read_view).pack(side="left", padx=2)
+
+        # Chat input section
+        input_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=10)
+        input_section.pack(side="bottom", fill="x")
 
         # Instruction label
         tk.Label(input_section, text="Was soll Frank antworten?",
@@ -547,10 +575,45 @@ class EmailPopup(tk.Toplevel):
             padx=10, pady=8,
         )
         self._intent_text.pack(fill="x")
-        self._intent_text.focus_set()
 
         # Bind Enter to generate (Shift+Enter for newline)
         self._intent_text.bind("<Return>", self._on_intent_enter)
+
+        # Bind click on intent text to grab focus (overrideredirect fix)
+        self._intent_text.bind("<Button-1>", self._focus_intent, add=True)
+
+        # Separator above input
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
+
+        # ── Body preview fills remaining space ──
+        body_preview = self._full_body or ed.snippet or ""
+        if body_preview:
+            preview_frame = tk.Frame(main, bg=COLORS["bg_main"])
+            preview_frame.pack(fill="both", expand=True)
+            tk.Label(preview_frame, text="Original:", bg=COLORS["bg_main"],
+                     fg=COLORS["text_muted"], font=_FONT_SMALL,
+                     anchor="w").pack(fill="x", padx=16, pady=(8, 0))
+            preview_text = tk.Text(
+                preview_frame, bg=COLORS["bg_main"], fg=COLORS["text_secondary"],
+                font=_FONT_SMALL, wrap="word", borderwidth=0,
+                highlightthickness=0, padx=16, pady=4, height=8,
+            )
+            preview_text.pack(fill="both", expand=True)
+            preview_text.insert("1.0", body_preview[:2000])
+            preview_text.configure(state="disabled", takefocus=False)
+            self._bind_scroll_to_text(preview_text)
+
+        # Force focus to intent text with short delay (overrideredirect needs this)
+        self.after(100, self._focus_intent)
+
+    def _focus_intent(self, event=None):
+        """Force keyboard focus to the reply intent text widget."""
+        if hasattr(self, "_intent_text"):
+            try:
+                self.focus_force()
+                self._intent_text.focus_set()
+            except Exception:
+                pass
 
     def _on_intent_enter(self, event):
         """Enter generates reply, Shift+Enter inserts newline."""
@@ -586,6 +649,17 @@ class EmailPopup(tk.Toplevel):
             to=getattr(ed, "to", ""),
             cc=getattr(ed, "cc", ""),
         )
+
+    def _on_thread(self):
+        """Show conversation thread for this email."""
+        ed = self._email_data
+        self._dispatch(
+            "email_thread",
+            subject=ed.subject or "",
+            msg_id=ed.msg_id or "",
+            folder=ed.folder,
+        )
+        self._show_status("Loading thread...", COLORS["neon_cyan"])
 
     def _on_reply_all(self):
         """Reply to all recipients."""
@@ -666,7 +740,7 @@ class EmailPopup(tk.Toplevel):
             total_size = sum(Path(f).stat().st_size for f in self._attachments if Path(f).exists())
             if total_size > 25 * 1024 * 1024:
                 mb = total_size // (1024 * 1024)
-                self._show_status(f"Attachments too large ({mb}MB). Gmail limit: 25MB.", COLORS["error"])
+                self._show_status(f"Attachments too large ({mb}MB). Limit: 25MB.", COLORS["error"])
                 return
 
         self._show_status("Sending...", COLORS["neon_cyan"])
@@ -686,10 +760,12 @@ class EmailPopup(tk.Toplevel):
 
         self._dispatch("email_send", **kwargs)
 
-    def send_result(self, success: bool, message: str = ""):
+    def send_result(self, success: bool, message: str = "", warning: bool = False):
         """Called by the worker after send completes."""
         self._sending = False
-        if success:
+        if warning:
+            self._show_status(message or "SMTP failed — opened in Thunderbird.", "#FFD700")
+        elif success:
             self._show_status(message or "Email sent!", COLORS["neon_green"])
             self.after(1500, self.destroy)
         else:

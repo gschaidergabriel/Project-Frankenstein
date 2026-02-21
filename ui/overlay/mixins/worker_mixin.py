@@ -152,6 +152,10 @@ class WorkerMixin:
                     self._do_email_reply_draft_worker(**arg)
                 elif kind == "email_settings":
                     self._do_email_settings_worker(**arg)
+                elif kind == "email_search":
+                    self._do_email_search_worker(**arg)
+                elif kind == "email_thread":
+                    self._do_email_thread_worker(**arg)
                 # Calendar operations
                 elif kind == "calendar_today":
                     self._do_calendar_today_worker(**arg)
@@ -248,6 +252,9 @@ class WorkerMixin:
                 # Notifications
                 elif kind == "notification_check":
                     self._do_notification_check_worker()
+                # System restart
+                elif kind == "system_restart":
+                    self._do_system_restart_worker()
             except Exception as e:
                 self._ui_call(lambda err=e: self._add_message("Error", str(err), is_system=True))
             finally:
@@ -304,6 +311,29 @@ class WorkerMixin:
 
         # Schedule next poll (faster polling for better responsiveness)
         self.after(30, self._poll_ui_queue)
+
+    # ── Overlay Heartbeat (for watchdog) ──
+
+    _HEARTBEAT_INTERVAL_MS = 5000  # 5 seconds
+
+    def _start_heartbeat(self):
+        """Start periodic heartbeat writes for the overlay watchdog."""
+        self._write_heartbeat()
+
+    def _write_heartbeat(self):
+        """Write current timestamp to heartbeat file."""
+        try:
+            try:
+                from config.paths import TEMP_FILES
+                hb_path = TEMP_FILES["overlay_heartbeat"]
+            except (ImportError, KeyError):
+                from pathlib import Path
+                hb_path = Path("/tmp/frank/overlay_heartbeat")
+            hb_path.parent.mkdir(parents=True, exist_ok=True)
+            hb_path.write_text(str(time.time()))
+        except Exception:
+            pass
+        self.after(self._HEARTBEAT_INTERVAL_MS, self._write_heartbeat)
 
     def _ui_call(self, callback: "Callable[[], None]"):
         """Thread-safe way to schedule UI updates from worker threads."""

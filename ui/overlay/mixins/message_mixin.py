@@ -772,9 +772,10 @@ class MessageMixin:
         """Render clickable email cards with REAL metadata (no LLM)."""
         from overlay.widgets.email_card import EmailCard, EmailData
 
-        # Store for instant removal on delete/spam
+        # Store for instant removal on delete/spam + "diese mails" context
         self._current_email_list = list(emails)
         self._current_email_folder = folder
+        self._last_email_notification_folder = folder
 
         self._clear_results()
         if not emails:
@@ -815,6 +816,27 @@ class MessageMixin:
         close_btn.pack(side="right")
         close_btn.bind("<Button-1>", lambda e: self._clear_results())
 
+        # Search bar
+        search_frame = tk.Frame(self.results_container, bg=COLORS["bg_main"])
+        search_frame.pack(fill="x", pady=(0, 4))
+
+        search_entry = tk.Entry(
+            search_frame, bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
+            insertbackground=COLORS["neon_cyan"], font=("Consolas", 9),
+            relief="flat", highlightbackground=COLORS["text_muted"],
+            highlightcolor=COLORS["neon_cyan"], highlightthickness=1,
+        )
+        search_entry.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        search_entry.bind("<Return>", lambda e, f=folder: self._io_q.put(
+            ("email_search", {"query": search_entry.get().strip(), "folder": f})
+        ) if search_entry.get().strip() else None)
+
+        tk.Label(
+            search_frame, text="from: subject: date:",
+            bg=COLORS["bg_main"], fg=COLORS["text_muted"],
+            font=("Consolas", 7)
+        ).pack(side="right")
+
         # Scrollable frame for email cards
         canvas = tk.Canvas(self.results_container, bg=COLORS["bg_main"], highlightthickness=0, height=280)
         scrollbar = tk.Scrollbar(self.results_container, orient="vertical", command=canvas.yview)
@@ -828,11 +850,15 @@ class MessageMixin:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=390)
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Mouse wheel scrolling (canvas-local to avoid conflicts with chat scroll)
-        def _email_mousewheel(event):
+        # Mouse wheel scrolling — bind to canvas and surrounding widgets
+        def _email_scroll(event):
             canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
-        canvas.bind("<Button-4>", _email_mousewheel)
-        canvas.bind("<Button-5>", _email_mousewheel)
+            return "break"
+
+        for _sw in (canvas, scrollbar, header_frame, header, close_btn,
+                    self.results_container, search_frame, search_entry):
+            _sw.bind("<Button-4>", _email_scroll)
+            _sw.bind("<Button-5>", _email_scroll)
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -859,6 +885,14 @@ class MessageMixin:
                 on_click=lambda ed=email_data: self._io_q.put(("email_popup", {"email_data": ed})),
             )
             card.pack(fill="x", pady=1)
+
+        # Bind scroll to ALL child widgets recursively (gaps, inner frames, labels)
+        def _bind_scroll_recursive(widget):
+            widget.bind("<Button-4>", _email_scroll)
+            widget.bind("<Button-5>", _email_scroll)
+            for child in widget.winfo_children():
+                _bind_scroll_recursive(child)
+        _bind_scroll_recursive(scrollable_frame)
 
     def _show_email_in_chat(self, email_data):
         """Instant email detail: show metadata in chat + action bar below. No LLM, 0ms."""

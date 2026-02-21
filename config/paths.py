@@ -209,4 +209,7 @@ TEMP_FILES = {
 
     # Icons cache
     "icons_dir": TEMP_DIR / "icons",
+
+    # Overlay watchdog
+    "overlay_heartbeat": TEMP_DIR / "overlay_heartbeat",
 }

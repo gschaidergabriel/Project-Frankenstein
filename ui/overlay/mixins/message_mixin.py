@@ -155,7 +155,7 @@ class MessageMixin:
             from overlay.constants import DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_S
             self._add_message("Du", msg, is_user=True)
             self._chat_q.put(("chat", {
-                "msg": msg, "max_tokens": DEFAULT_MAX_TOKENS,
+                "msg": msg, "max_tokens": 256,
                 "timeout_s": DEFAULT_TIMEOUT_S, "task": "chat.fast", "force": None
             }))
         except Exception as e:

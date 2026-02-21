@@ -829,11 +829,11 @@ class ChatMixin:
             text = "\n".join(parts)
             LOG.info(f"Context truncated: {estimated_tokens} -> {_estimate_tokens(text)} tokens")
 
-        # Calculate dynamic response tokens - NEVER truncate responses
-        # Use more tokens for response when input is smaller
-        dynamic_max_tokens = _calculate_response_tokens(text)
-        if dynamic_max_tokens > max_tokens:
-            LOG.debug(f"Increasing max_tokens: {max_tokens} -> {dynamic_max_tokens} (dynamic based on input)")
+        # Calculate dynamic response tokens — respects policy cap
+        # Prevents casual chat from getting 1000+ tokens (= verbose essays)
+        dynamic_max_tokens = _calculate_response_tokens(text, policy_max=max_tokens)
+        if dynamic_max_tokens != max_tokens:
+            LOG.debug(f"Response tokens adjusted: {max_tokens} -> {dynamic_max_tokens} (context-aware)")
             max_tokens = dynamic_max_tokens
 
         LOG.debug(f"Sending: task={task}, force={force or 'llama'}, text_len={len(text)}, tokens~{_estimate_tokens(text)}, max_response={max_tokens}")

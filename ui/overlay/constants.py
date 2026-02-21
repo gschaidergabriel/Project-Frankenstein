@@ -322,7 +322,7 @@ DEFAULT_MAX_TOKENS = int(os.environ.get("AICORE_CHAT_MAX_TOKENS", "1500"))  # In
 # Using 400s to ensure complete responses for long requests.
 DEFAULT_TIMEOUT_S = int(os.environ.get("AICORE_CHAT_TIMEOUT_S", "400"))
 LLM_CONTEXT_SIZE = 4096  # Current llama/qwen server context size
-MIN_RESPONSE_TOKENS = 800  # Minimum tokens reserved for response
+MIN_RESPONSE_TOKENS = 200  # Minimum tokens reserved for response (keeps Frank concise)
 
 # Directories Frank should NOT access (use canonical absolute paths only)
 # Frank can now read his own system files for self-awareness

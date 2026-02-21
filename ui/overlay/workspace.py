@@ -121,15 +121,14 @@ def build_workspace(
 
     # --- Self-knowledge (Grounding anchors — prevents confabulation) ---
     lines.append(
-        "Self-knowledge: Gaming=sleep(Overlay+LLM+Wallpaper off), "
-        "Wallpaper=GLSL-plasma-sphere(NOT neural-net), "
-        "Voice=HeyFrank+Whisper+Piper, "
+        "Self-knowledge: Gaming=sleep(Overlay+LLM off), "
+        "Voice=Push-to-Talk+Whisper+Piper, "
         "VCB=local-LLaVA-500/day, "
         "Personality=E-PQ-5vectors, "
         "Ego=HW-to-body-mapping, "
-        "Titan=episodic-memory, "
-        "WorldExp=causal-patterns, "
+        "Memory=persistent(chat_memory.db+titan.db+world_experience.db), "
         "Genesis=idea-ecosystem, "
+        "Email=IMAP/Thunderbird(read+send+reply+search), "
         "Consciousness=perception+experience-space+attention+goals+idle-thinking+mood"
     )
 
@@ -163,7 +162,9 @@ def build_workspace(
     # Grounding anchor — placed last so it's closest to generation point.
     # 7B models follow instructions better when they appear near the end.
     lines.append(
-        "RULE: Only reference data explicitly provided above. "
+        "RULE: Be brief (1-3 sentences). No essays, no poetry, no monologues. "
+        "Match the user's energy — casual input gets casual output. "
+        "Only reference data explicitly provided above. "
         "Never simulate actions (*opens…*, *checks…*). "
         "Never invent counts, stats, or events."
     )

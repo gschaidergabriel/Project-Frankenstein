@@ -72,17 +72,16 @@ def _truncate_to_token_limit(text: str, max_tokens: int = MAX_SAFE_TOKENS) -> st
     return truncated + "\n[...gekürzt...]"
 
 
-def _calculate_response_tokens(input_text: str) -> int:
+def _calculate_response_tokens(input_text: str, policy_max: int = 256) -> int:
     """
     Calculate available tokens for response based on input size.
 
     LLM context = input_tokens + output_tokens (4096 total)
-    We want responses to NEVER be truncated, so we dynamically allocate
-    as many tokens as possible for the response.
+    Returns min(policy_max, available) — NEVER exceeds the task policy cap.
+    This prevents casual chat from getting 1000+ tokens (= verbose essays).
     """
     input_tokens = _estimate_tokens(input_text)
     # Available = Total context - Input - Safety margin
-    # Using 4096 as actual server context (verified: --ctx-size 4096)
     available = LLM_CONTEXT_SIZE - input_tokens - 50  # 50 token safety margin
-    # Minimum 1000 tokens for response, cap at 2000 to prevent timeouts
-    return max(1000, min(available, 2000))
+    # Never exceed policy cap — this is what keeps Frank concise
+    return max(MIN_RESPONSE_TOKENS, min(available, policy_max))

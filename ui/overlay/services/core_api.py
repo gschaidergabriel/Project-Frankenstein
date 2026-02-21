@@ -58,6 +58,7 @@ def _core_chat_stream(
         "text": text,
         "n_predict": int(max_tokens),
         "system": identity,
+        "temperature": 0.65,
     }
     if force:
         payload["force"] = force

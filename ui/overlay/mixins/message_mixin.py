@@ -750,9 +750,31 @@ class MessageMixin:
 
     # ---------- Email Cards ----------
 
+    def _remove_email_from_list(self, msg_id: str = None, idx: int = None):
+        """Remove a single email from the currently displayed list and re-render."""
+        if not hasattr(self, "_current_email_list") or not self._current_email_list:
+            return
+        before = len(self._current_email_list)
+        if msg_id:
+            self._current_email_list = [
+                e for e in self._current_email_list
+                if e.get("id") != msg_id and e.get("id", "").strip("<>") != msg_id.strip("<>")
+            ]
+        if idx is not None:
+            self._current_email_list = [
+                e for e in self._current_email_list if e.get("idx") != idx
+            ]
+        if len(self._current_email_list) < before:
+            folder = getattr(self, "_current_email_folder", "INBOX")
+            self._render_email_list(self._current_email_list, folder)
+
     def _render_email_list(self, emails: list, folder: str = "INBOX"):
         """Render clickable email cards with REAL metadata (no LLM)."""
         from overlay.widgets.email_card import EmailCard, EmailData
+
+        # Store for instant removal on delete/spam
+        self._current_email_list = list(emails)
+        self._current_email_folder = folder
 
         self._clear_results()
         if not emails:

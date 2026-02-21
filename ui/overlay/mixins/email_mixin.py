@@ -448,11 +448,10 @@ class EmailMixin:
 
     def _do_email_spam_worker(self, folder: str = "INBOX", msg_id: str = None, query: str = None):
         """Move a single email to spam via toolbox."""
-        self._ui_call(self._show_typing)
-
-        # Track locally so list refresh hides it immediately
+        # Immediately remove from displayed list (UI-first)
         if msg_id:
             self._deleted_msg_ids.add(msg_id)
+            self._ui_call(lambda mid=msg_id: self._remove_email_from_list(msg_id=mid))
 
         try:
             payload = {"folder": folder}
@@ -462,25 +461,10 @@ class EmailMixin:
                 payload["query"] = query
 
             result = _toolbox_call("/email/spam", payload, timeout_s=15.0)
-            self._ui_call(self._hide_typing)
 
             if not result or not result.get("ok"):
                 error = (result or {}).get("error", "Move to spam failed")
-                if msg_id:
-                    self._deleted_msg_ids.discard(msg_id)  # rollback on failure
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
-                return
-
-            moved = result.get("moved", 0)
-            if moved > 0:
-                self._ui_call(lambda: self._add_message("Frank", "Email moved to spam.", is_system=True))
-            else:
-                if msg_id:
-                    self._deleted_msg_ids.discard(msg_id)
-                self._ui_call(lambda: self._add_message("Frank", "Email not found.", is_system=True))
-
-            # Refresh email list
-            self._do_email_list_cards_worker(folder=folder)
 
         except Exception as e:
             self._ui_call(self._hide_typing)
@@ -488,11 +472,10 @@ class EmailMixin:
 
     def _do_email_delete_single_worker(self, folder: str = "INBOX", msg_id: str = None, query: str = None):
         """Delete a single email via toolbox."""
-        self._ui_call(self._show_typing)
-
-        # Track locally so list refresh hides it immediately
+        # Immediately remove from displayed list (UI-first)
         if msg_id:
             self._deleted_msg_ids.add(msg_id)
+            self._ui_call(lambda mid=msg_id: self._remove_email_from_list(msg_id=mid))
 
         try:
             payload = {"folder": folder}
@@ -502,25 +485,10 @@ class EmailMixin:
                 payload["query"] = query
 
             result = _toolbox_call("/email/delete", payload, timeout_s=15.0)
-            self._ui_call(self._hide_typing)
 
             if not result or not result.get("ok"):
                 error = (result or {}).get("error", "Delete failed")
-                if msg_id:
-                    self._deleted_msg_ids.discard(msg_id)  # rollback on failure
                 self._ui_call(lambda e=error: self._add_message("Frank", f"Error: {e}", is_system=True))
-                return
-
-            deleted = result.get("deleted", 0)
-            if deleted > 0:
-                self._ui_call(lambda: self._add_message("Frank", "Email deleted.", is_system=True))
-            else:
-                if msg_id:
-                    self._deleted_msg_ids.discard(msg_id)
-                self._ui_call(lambda: self._add_message("Frank", "Email not found.", is_system=True))
-
-            # Refresh email list
-            self._do_email_list_cards_worker(folder=folder)
 
         except Exception as e:
             self._ui_call(self._hide_typing)

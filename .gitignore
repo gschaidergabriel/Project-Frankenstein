@@ -10,37 +10,32 @@ build/
 venv/
 .venv/
 
-# Database temp files
+# Databases — contain user data, never commit
+database/
+*.db
 *.db-shm
 *.db-wal
+*.db-journal
 *.db.backup
 *.sqlite
 *.sqlite3
-
-# Sensitive databases (never commit)
-database/passwords.db
-
-# Frank's databases (tracked — events, vectors, personality)
-!database/*.db
-!database/invariants/*.db
-
-# Root-level DBs (tracked — consciousness & world model)
-!consciousness.db
 
 # Runtime state
 *.lock
 *.pid
 logs/
 
-# User configuration (generated, may contain personal data)
-gateway/config.json
-
-# Secrets and credentials
+# Environment and secrets
+.env
 *.secret
 *.key
 *.pem
 credentials/
 tokens/
+
+# User configuration (generated, may contain personal data)
+gateway/config.json
+configs/paths.json
 
 # IDE
 .vscode/
@@ -92,6 +87,3 @@ tests/ui test/baseline/
 
 # System info (machine-specific)
 system_info.json
-
-# world_experience.db tracked at root level
-!world_experience.db

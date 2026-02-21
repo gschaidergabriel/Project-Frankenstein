@@ -703,6 +703,30 @@ class EmailMixin:
             on_action=lambda action, **kw: self._io_q.put((action, kw)),
         )
 
+    def _open_compose_intent_popup(self, to_hint: str = ""):
+        """Open compose popup in intent mode (MUST run on main thread)."""
+        if self._email_popup is not None:
+            try:
+                self._email_popup.destroy()
+            except Exception:
+                pass
+            self._email_popup = None
+
+        from overlay.widgets.email_popup import EmailPopup
+        popup = EmailPopup(
+            self,
+            email_data=None,
+            on_destroy=self._on_email_popup_destroyed,
+            on_action=lambda action, **kw: self._io_q.put((action, kw)),
+        )
+        popup.show_compose_intent(to_hint=to_hint)
+        self._email_popup = popup
+
+    def _do_email_compose_intent_worker(self, user_msg: str = "",
+                                        to_hint: str = "", **kwargs):
+        """Open compose popup with intent chat view (IO thread)."""
+        self._ui_call(lambda: self._open_compose_intent_popup(to_hint=to_hint))
+
     def _do_email_popup_worker(self, email_data=None, **kwargs):
         """Fetch full email body and open popup (IO thread)."""
         if email_data is None:
@@ -969,6 +993,65 @@ class EmailMixin:
                     in_reply_to=msg_id,
                     references=msg_id,
                     cc=reply_cc,
+                )
+        self._ui_call(_fill)
+
+    def _do_email_compose_draft_worker(self, user_intent: str = "",
+                                       to_hint: str = "", **kwargs):
+        """Generate AI email draft from user intent for new compose (IO thread)."""
+        from overlay.services.core_api import _core_chat
+
+        prompt = (
+            f"[Identity: {self._FRANK_EMAIL_IDENTITY}]\n\n"
+            f"Write a NEW email based on the user's instructions.\n\n"
+            f"USER WANTS TO WRITE:\n{user_intent}\n\n"
+            f"RULES:\n"
+            f"- Output the email in this exact format:\n"
+            f"  SUBJECT: <subject line>\n"
+            f"  ---\n"
+            f"  <email body>\n"
+            f"- Same language as the user's instructions above.\n"
+            f"- No translations, no '(Translation: ...)', no English version.\n"
+            f"- No notes, no 'Note that...', no explanations of what you wrote.\n"
+            f"- No disclaimers, no meta-commentary, no AI references.\n"
+            f"- Write as the user in first person. Natural human tone.\n"
+            f"- Just the subject line and body, nothing else."
+        )
+
+        ai_subject = ""
+        ai_body = ""
+        try:
+            res = _core_chat(prompt, max_tokens=600, timeout_s=60,
+                             task="chat.fast", force="llama")
+            if res and res.get("ok"):
+                raw = (res.get("text") or "").strip()
+                # Parse SUBJECT: ... --- ... body format
+                if "---" in raw:
+                    header, body_part = raw.split("---", 1)
+                    for line in header.strip().splitlines():
+                        if line.upper().startswith("SUBJECT:"):
+                            ai_subject = line.split(":", 1)[1].strip()
+                            break
+                    ai_body = body_part.strip()
+                else:
+                    # Fallback: first line as subject, rest as body
+                    lines = raw.splitlines()
+                    if lines:
+                        first = lines[0]
+                        if first.upper().startswith("SUBJECT:"):
+                            ai_subject = first.split(":", 1)[1].strip()
+                            ai_body = "\n".join(lines[1:]).strip()
+                        else:
+                            ai_body = raw
+        except Exception as e:
+            LOG.warning(f"AI compose draft failed: {e}")
+
+        def _fill():
+            if self._email_popup and self._email_popup.winfo_exists():
+                self._email_popup.fill_compose_new(
+                    to=to_hint,
+                    subject=ai_subject,
+                    ai_draft=ai_body,
                 )
         self._ui_call(_fill)
 

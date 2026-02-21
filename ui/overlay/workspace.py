@@ -160,6 +160,14 @@ def build_workspace(
     if not lines:
         return ""
 
+    # Grounding anchor — placed last so it's closest to generation point.
+    # 7B models follow instructions better when they appear near the end.
+    lines.append(
+        "RULE: Only reference data explicitly provided above. "
+        "Never simulate actions (*opens…*, *checks…*). "
+        "Never invent counts, stats, or events."
+    )
+
     return "[INNER_WORLD]\n" + "\n".join(lines) + "\n[/INNER_WORLD]"
 
 

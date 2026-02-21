@@ -781,6 +781,138 @@ class EmailPopup(tk.Toplevel):
         self._email_data = None
         self._build_compose_view()
 
+    # ── Compose intent (AI-assisted new email) ────────────────────
+
+    def show_compose_intent(self, to_hint: str = ""):
+        """Public entry point: switch to compose intent view."""
+        self._build_compose_intent_view(to_hint=to_hint)
+
+    def _build_compose_intent_view(self, to_hint: str = ""):
+        """Ask user what they want to write, then have Frank generate it."""
+        self._clear_content()
+        self._compose_to_hint = to_hint
+
+        outer = tk.Frame(self, bg=COLORS["neon_cyan"], padx=2, pady=2)
+        outer.pack(fill="both", expand=True)
+        main = tk.Frame(outer, bg=COLORS["bg_main"])
+        main.pack(fill="both", expand=True)
+
+        self._build_titlebar(main, "COMPOSE // What do you want to write?")
+
+        # Optional recipient hint
+        if to_hint:
+            ctx = tk.Frame(main, bg=COLORS["bg_elevated"], padx=16, pady=8)
+            ctx.pack(fill="x")
+            tk.Label(ctx, text=f"To: {to_hint}", bg=COLORS["bg_elevated"],
+                     fg=COLORS["text_muted"], font=_FONT_SMALL, anchor="w").pack(anchor="w")
+            tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
+
+        # ── Pack bottom elements FIRST ──
+
+        # Status bar (very bottom)
+        self._status_label = tk.Label(
+            main, text="Enter = Generate  |  Shift+Enter = New line  |  Skip = Blank compose",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+            font=_FONT_SMALL, anchor="w", padx=12
+        )
+        self._status_label.pack(side="bottom", fill="x")
+
+        # Buttons row
+        btn_row = tk.Frame(main, bg=COLORS["bg_elevated"], padx=10, pady=6)
+        btn_row.pack(side="bottom", fill="x")
+
+        self._make_button(btn_row, "GENERATE EMAIL", fg_color="#00cc88",
+                          command=self._on_generate_compose).pack(side="left", padx=2)
+        self._make_button(btn_row, "SKIP (BLANK)", fg_color="#8899bb",
+                          command=lambda: self._build_compose_view(
+                              reply_to=to_hint)).pack(side="left", padx=2)
+        self._make_button(btn_row, "CLOSE", fg_color="#8899bb",
+                          command=self.destroy).pack(side="right", padx=2)
+
+        # Chat input section
+        input_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=10)
+        input_section.pack(side="bottom", fill="x")
+
+        # Instruction label
+        tk.Label(input_section, text="Describe the email you want Frank to write:",
+                 bg=COLORS["bg_elevated"], fg=COLORS["neon_cyan"],
+                 font=_FONT_BOLD, anchor="w").pack(fill="x", pady=(0, 6))
+
+        # User intent text area
+        intent_border = tk.Frame(input_section, bg=COLORS["neon_cyan"], padx=1, pady=1)
+        intent_border.pack(fill="x")
+
+        self._intent_text = tk.Text(
+            intent_border, bg="#1a1a2e", fg="#ffffff",
+            font=_FONT_BODY, wrap="word", borderwidth=0,
+            highlightthickness=0,
+            insertbackground=COLORS["neon_cyan"], height=4,
+            padx=10, pady=8,
+        )
+        self._intent_text.pack(fill="x")
+
+        # Bind Enter to generate (Shift+Enter for newline)
+        self._intent_text.bind("<Return>", self._on_compose_intent_enter)
+        self._intent_text.bind("<Button-1>", self._focus_intent, add=True)
+
+        # Separator above input
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
+
+        # ── Tips / help text fills remaining space ──
+        tips_frame = tk.Frame(main, bg=COLORS["bg_main"])
+        tips_frame.pack(fill="both", expand=True)
+        tips = (
+            "Examples:\n\n"
+            "  'Write a formal email to my boss about taking vacation next week'\n\n"
+            "  'Kurze Mail an den Support, mein Paket ist nicht angekommen'\n\n"
+            "  'Thank you note to the team for the successful launch'\n\n"
+            "  'Beschwerde an den Vermieter wegen der kaputten Heizung'"
+        )
+        tips_text = tk.Text(
+            tips_frame, bg=COLORS["bg_main"], fg=COLORS["text_secondary"],
+            font=_FONT_SMALL, wrap="word", borderwidth=0,
+            highlightthickness=0, padx=16, pady=12, height=8,
+        )
+        tips_text.pack(fill="both", expand=True)
+        tips_text.insert("1.0", tips)
+        tips_text.configure(state="disabled", takefocus=False)
+
+        # Force focus to intent text
+        self.after(100, self._focus_intent)
+        self.after(300, self._focus_intent)
+
+    def _on_compose_intent_enter(self, event):
+        """Enter generates email, Shift+Enter inserts newline."""
+        if event.state & 0x1:  # Shift held
+            return  # let default handler insert newline
+        self._on_generate_compose()
+        return "break"
+
+    def _on_generate_compose(self):
+        """Send user intent to LLM for new email generation."""
+        intent = self._intent_text.get("1.0", "end-1c").strip()
+        if not intent:
+            self._show_status("Please describe the email you want to write.", COLORS["error"])
+            return
+
+        to_hint = getattr(self, "_compose_to_hint", "")
+        self._show_status("Generating email...", COLORS["neon_cyan"])
+        self._dispatch(
+            "email_compose_draft",
+            user_intent=intent,
+            to_hint=to_hint,
+        )
+
+    def fill_compose_new(self, to: str = "", subject: str = "",
+                         ai_draft: str = ""):
+        """Switch to compose view with AI-generated new email pre-filled."""
+        self._build_compose_view(reply_to=to, reply_subject=subject)
+        # Insert AI draft into compose text
+        if ai_draft and hasattr(self, "_compose_text"):
+            # Cursor is at 1.0, signature may be below — insert draft at top
+            self._compose_text.insert("1.0", ai_draft)
+            self._compose_text.mark_set("insert", "1.0")
+
     def _on_toggle_read(self):
         ed = self._email_data
         new_read = not ed.read

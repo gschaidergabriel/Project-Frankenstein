@@ -148,6 +148,10 @@ class WorkerMixin:
                     self._do_email_toggle_read_worker(**arg)
                 elif kind == "email_compose":
                     self._do_email_compose_worker(**arg)
+                elif kind == "email_compose_intent":
+                    self._do_email_compose_intent_worker(**arg)
+                elif kind == "email_compose_draft":
+                    self._do_email_compose_draft_worker(**arg)
                 elif kind == "email_reply_draft":
                     self._do_email_reply_draft_worker(**arg)
                 elif kind == "email_settings":

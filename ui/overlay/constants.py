@@ -812,6 +812,18 @@ EMAIL_DELETE_RE = re.compile(
     r"(lösch|loesch|delete|entfern|remove|weg mit|räum|raeum|leere?|clear|clean).{0,30}(e-?mails?|mails?|nachrichten|messages?|spam|posteingang|inbox|papierkorb|trash|diese|this|these)\b",
     re.IGNORECASE,
 )
+# Compose new email (bilingual DE+EN) — /compose, "write an email", "schreib eine mail"
+EMAIL_COMPOSE_RE = re.compile(
+    r"^/compose\b"
+    r"|^/newmail\b"
+    r"|^/neue?\s*mail\b"
+    r"|(schreib|verfass|erstell|mach|write|compose|draft|send).{0,20}(eine?\s+)?(neue?\s+)?(e-?mail|mail|nachricht|message)\b"
+    r"|(neue?\s+)?(e-?mail|mail|nachricht|message)\s+(schreiben|verfassen|erstellen|machen|write|compose|draft)"
+    r"|mail\s+an\s+\S+"
+    r"|email\s+to\s+\S+",
+    re.IGNORECASE,
+)
+
 # General email intent (catches anything email-related that other patterns missed)
 EMAIL_GENERAL_RE = re.compile(
     r"\b(e-?mails?|mails?|posteingang|inbox|spam|thunderbird|postfach|mailbox|nachrichten.{0,5}(lesen|zeig|lösch|check|read|show|delete))\b",

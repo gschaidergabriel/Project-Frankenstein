@@ -38,7 +38,7 @@ from overlay.constants import (
     URL_FETCH_RE, RSS_FEED_RE, NEWS_RE,
     USER_NAME_RE,
     EMAIL_LIST_RE, EMAIL_READ_RE, EMAIL_READ_LATEST_RE, EMAIL_UNREAD_RE,
-    EMAIL_DELETE_RE, EMAIL_GENERAL_RE,
+    EMAIL_DELETE_RE, EMAIL_COMPOSE_RE, EMAIL_GENERAL_RE,
     CALENDAR_TODAY_RE, CALENDAR_WEEK_RE, CALENDAR_CREATE_RE,
     CALENDAR_DELETE_RE, CALENDAR_LIST_RE, CALENDAR_GENERAL_RE,
     CONTACTS_LIST_RE, CONTACTS_SEARCH_RE, CONTACTS_CREATE_RE,
@@ -899,6 +899,16 @@ class CommandRouterMixin:
             "[Gmail]/Wichtig": "Important",
             "[Gmail]/Alle Nachrichten": "All Mail",
         }
+
+        # Compose new email — /compose, "write an email to X", "schreib eine mail"
+        if EMAIL_COMPOSE_RE.search(low):
+            self._add_message("Du", msg, is_user=True)
+            # Try to extract recipient from message (e.g., "mail an john@example.com")
+            import re as _re
+            _to_match = _re.search(r"(?:an|to|für|for)\s+(\S+@\S+)", msg, _re.IGNORECASE)
+            _to_hint = _to_match.group(1) if _to_match else ""
+            self._io_q.put(("email_compose_intent", {"user_msg": msg, "to_hint": _to_hint}))
+            return
 
         em = EMAIL_DELETE_RE.search(low)
         if em:

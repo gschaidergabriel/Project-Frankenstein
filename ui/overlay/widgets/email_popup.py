@@ -436,47 +436,67 @@ class EmailPopup(tk.Toplevel):
 
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
 
-        # Instruction
-        tk.Label(main, text="Beschreib kurz was Frank antworten soll:",
-                 bg=COLORS["bg_main"], fg=COLORS["text_primary"],
-                 font=_FONT, anchor="w", padx=16, pady=(12, 4)).pack(fill="x")
+        # Show original email body snippet (scrollable, for context)
+        body_preview = self._full_body or ed.snippet or ""
+        if body_preview:
+            preview_frame = tk.Frame(main, bg=COLORS["bg_main"])
+            preview_frame.pack(fill="both", expand=True)
+            tk.Label(preview_frame, text="Original:", bg=COLORS["bg_main"],
+                     fg=COLORS["text_muted"], font=_FONT_SMALL,
+                     anchor="w").pack(fill="x", padx=16, pady=(8, 0))
+            preview_text = tk.Text(
+                preview_frame, bg=COLORS["bg_main"], fg=COLORS["text_secondary"],
+                font=_FONT_SMALL, wrap="word", borderwidth=0,
+                highlightthickness=0, padx=16, pady=4, height=8,
+            )
+            preview_text.pack(fill="both", expand=True)
+            preview_text.insert("1.0", body_preview[:2000])
+            preview_text.configure(state="disabled")
 
-        # User intent text area
-        intent_frame = tk.Frame(main, bg=COLORS["bg_main"], padx=16)
-        intent_frame.pack(fill="both", expand=True, pady=(0, 8))
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
+
+        # Chat-like input section at the bottom
+        input_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=10)
+        input_section.pack(fill="x", side="bottom")
+
+        # Status bar at very bottom
+        self._status_label = tk.Label(
+            input_section, text="Enter = Absenden  |  Shift+Enter = Neue Zeile",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+            font=_FONT_SMALL, anchor="w"
+        )
+        self._status_label.pack(fill="x", side="bottom", pady=(4, 0))
+
+        # Buttons row
+        btn_row = tk.Frame(input_section, bg=COLORS["bg_elevated"])
+        btn_row.pack(fill="x", side="bottom", pady=(6, 0))
+
+        self._make_button(btn_row, "GENERATE REPLY", "#006400",
+                          command=self._on_generate_reply).pack(side="left", padx=(0, 6))
+        self._make_button(btn_row, "BACK", "#333333",
+                          command=self._build_read_view).pack(side="left")
+
+        # Instruction label
+        tk.Label(input_section, text="Was soll Frank antworten?",
+                 bg=COLORS["bg_elevated"], fg=COLORS["neon_cyan"],
+                 font=_FONT_BOLD, anchor="w").pack(fill="x", pady=(0, 6))
+
+        # User intent text area — clearly visible with cyan border
+        intent_border = tk.Frame(input_section, bg=COLORS["neon_cyan"], padx=1, pady=1)
+        intent_border.pack(fill="x")
 
         self._intent_text = tk.Text(
-            intent_frame, bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
-            font=_FONT_BODY, wrap="word", borderwidth=1, relief="solid",
-            highlightthickness=1, highlightcolor=COLORS["neon_cyan"],
-            insertbackground=COLORS["neon_cyan"], height=5,
-            padx=12, pady=8,
+            intent_border, bg="#1a1a2e", fg="#ffffff",
+            font=_FONT_BODY, wrap="word", borderwidth=0,
+            highlightthickness=0,
+            insertbackground=COLORS["neon_cyan"], height=4,
+            padx=10, pady=8,
         )
-        self._intent_text.pack(fill="both", expand=True)
+        self._intent_text.pack(fill="x")
         self._intent_text.focus_set()
 
         # Bind Enter to generate (Shift+Enter for newline)
         self._intent_text.bind("<Return>", self._on_intent_enter)
-
-        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
-
-        # Buttons
-        actions = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=8)
-        actions.pack(fill="x")
-
-        self._make_button(actions, "GENERATE REPLY", "#006400",
-                          command=self._on_generate_reply).pack(side="left", padx=(0, 6))
-        self._make_button(actions, "BACK", COLORS.get("neon_cyan", "#00fff9"),
-                          fg_color=COLORS["bg_main"],
-                          command=self._build_read_view).pack(side="left")
-
-        # Status
-        self._status_label = tk.Label(
-            main, text="Enter = Generate  |  Shift+Enter = Neue Zeile",
-            bg=COLORS["bg_main"], fg=COLORS["text_muted"],
-            font=_FONT_SMALL, anchor="w", padx=12
-        )
-        self._status_label.pack(fill="x")
 
     def _on_intent_enter(self, event):
         """Enter generates reply, Shift+Enter inserts newline."""

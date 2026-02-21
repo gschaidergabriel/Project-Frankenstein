@@ -148,8 +148,8 @@ def sanitize_email_content(raw_text: str, max_chars: int = MAX_BODY_CHARS) -> st
     """
     Sanitize email content for safe display / LLM consumption.
 
-    Strips HTML, scripts, data URIs, base64 blocks, injection patterns,
-    and newsletter boilerplate.  Truncates to max_chars.
+    Strips HTML, scripts, data URIs, base64 blocks, tracking URLs,
+    injection patterns, and newsletter boilerplate.  Truncates to max_chars.
     """
     if not raw_text:
         return ""
@@ -163,7 +163,7 @@ def sanitize_email_content(raw_text: str, max_chars: int = MAX_BODY_CHARS) -> st
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"</(p|div|tr|li|h[1-6]|blockquote|section|article|header|footer)>",
                   "\n\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<(hr)\s*/?>", "\n---\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<(hr)\s*/?>", "\n", text, flags=re.IGNORECASE)
 
     # 3. Remove all remaining HTML tags
     text = _HTML_TAG_RE.sub(" ", text)
@@ -174,30 +174,62 @@ def sanitize_email_content(raw_text: str, max_chars: int = MAX_BODY_CHARS) -> st
     # 4. Remove data: URIs
     text = _DATA_URI_RE.sub("", text)
 
-    # 5. Remove long base64 blocks
+    # 5. Remove long base64 blocks and [base64-removed] artifacts
     text = _BASE64_BLOCK_RE.sub("", text)
+    text = re.sub(r"\[base64-removed\]", "", text, flags=re.IGNORECASE)
 
-    # 6. Remove orphan Unicode control chars / zero-width / replacement chars
-    text = re.sub(r"[\u200b\u200c\u200d\u200e\u200f\ufeff\u00ad\u2028\u2029\ufffd]", "", text)
+    # 6. Remove long URLs (tracking links, unsubscribe, etc.) — 80+ chars
+    text = re.sub(r"https?://\S{80,}", "", text)
+    # Remove lines that are primarily a URL (line = optional whitespace + URL)
+    text = re.sub(r"^\s*https?://\S+\s*$", "", text, flags=re.MULTILINE)
 
-    # 7. Remove newsletter boilerplate lines
+    # 7. Remove Unicode junk: control chars, zero-width, replacement, box-drawing, misc symbols
     text = re.sub(
-        r"^.{0,5}(view\s+(in|this)\s+(browser|email|online)"
-        r"|unsubscribe|manage\s+preferences"
+        r"[\u200b\u200c\u200d\u200e\u200f\ufeff\u00ad\u2028\u2029\ufffd"
+        r"\u25a0-\u25ff"       # geometric shapes (■ □ ▪ ▫ etc.)
+        r"\u2500-\u257f"       # box drawing (─ │ ┌ etc.)
+        r"\u2580-\u259f"       # block elements (▀ ▄ █ etc.)
+        r"\u00a0"              # non-breaking space → remove
+        r"\u3000"              # ideographic space
+        r"]", "", text
+    )
+
+    # 8. Remove separator lines (dashes, equals, underscores, dots)
+    text = re.sub(r"^[\s\-=_.·•*]{5,}$", "", text, flags=re.MULTILINE)
+
+    # 9. Remove newsletter / footer boilerplate lines
+    text = re.sub(
+        r"^.{0,10}("
+        r"view\s+(in|this)\s+(browser|email|online)"
+        r"|unsubscribe"
+        r"|manage\s+(your\s+)?preferences"
         r"|click\s+here\s+to\s+(view|read|unsubscribe)"
         r"|open\s+in\s+(your\s+)?browser"
         r"|having\s+trouble\s+viewing"
         r"|email\s+not\s+displaying"
         r"|add\s+us\s+to\s+your\s+address\s+book"
         r"|to\s+view\s+this\s+email\s+as\s+a\s+web\s*page"
+        r"|diese\s+e-?mail\s+ist\s+an\s+.+\s+gerichtet"
+        r"|erfahren\s+sie.*warum\s+wir\s+dies"
+        r"|you\s+are\s+receiving\s+this"
+        r"|this\s+(email|message)\s+(was|is)\s+sent\s+to"
+        r"|powered\s+by"
+        r"|copyright\s+\d{4}"
+        r"|all\s+rights\s+reserved"
+        r"|privacy\s+policy"
+        r"|terms\s+of\s+(service|use)"
+        r"|no\s+longer\s+wish\s+to\s+receive"
+        r"|update\s+your\s+preferences"
+        r"|email\s+preferences"
+        r"|sent\s+(to|from)\s+\S+@\S+"
         r").*$",
         "", text, flags=re.IGNORECASE | re.MULTILINE,
     )
 
-    # 8. Remove orphan numbers on their own line (tracking pixel widths etc.)
+    # 10. Remove orphan numbers on their own line (tracking pixel widths etc.)
     text = re.sub(r"^\s*\d{1,4}\s*$", "", text, flags=re.MULTILINE)
 
-    # 9. Remove injection patterns (line by line)
+    # 11. Remove injection patterns (line by line)
     lines = text.split("\n")
     clean_lines = []
     for line in lines:
@@ -207,14 +239,14 @@ def sanitize_email_content(raw_text: str, max_chars: int = MAX_BODY_CHARS) -> st
             clean_lines.append(line)
     text = "\n".join(clean_lines)
 
-    # 10. Collapse whitespace
+    # 12. Collapse whitespace
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     # Strip each line
     text = "\n".join(line.strip() for line in text.split("\n"))
     text = text.strip()
 
-    # 11. Truncate
+    # 13. Truncate
     if len(text) > max_chars:
         text = text[:max_chars] + "\n[... truncated]"
 

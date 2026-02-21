@@ -139,8 +139,8 @@ class IOWorkersMixin:
 
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=10,
-                stderr=subprocess.DEVNULL,
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True, timeout=10,
             )
             raw = proc.stdout.strip()
             results = [line for line in raw.split("\n") if line][:20]

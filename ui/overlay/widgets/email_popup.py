@@ -100,7 +100,12 @@ class EmailPopup(tk.Toplevel):
         self.focus_force()
 
     def _force_focus(self, event=None):
-        """Force focus to popup and to the clicked widget if it accepts input."""
+        """Force focus to popup and to the clicked widget if it accepts input.
+
+        overrideredirect windows don't get focus from the WM, so we must
+        aggressively grab it on every click.
+        """
+        self.lift()
         self.focus_force()
         # In reply-intent mode, ALWAYS redirect focus to the intent text field
         # unless user clicked directly on a different editable widget (Entry/Text)
@@ -110,9 +115,9 @@ class EmailPopup(tk.Toplevel):
                     clicked = event.widget if event else None
                     # Only let focus go elsewhere if it's an editable Entry
                     if isinstance(clicked, tk.Entry):
-                        clicked.focus_set()
+                        clicked.focus_force()
                     else:
-                        self._intent_text.focus_set()
+                        self._intent_text.focus_force()
                     return
             except Exception:
                 pass
@@ -127,7 +132,7 @@ class EmailPopup(tk.Toplevel):
                                 return
                         except Exception:
                             pass
-                    w.focus_set()
+                    w.focus_force()
             except Exception:
                 pass
 
@@ -430,6 +435,9 @@ class EmailPopup(tk.Toplevel):
             entry.pack(side="left", fill="x", expand=True)
             if value:
                 entry.insert(0, value)
+            # overrideredirect fix: force focus on click
+            entry.bind("<Button-1>", lambda e, w=entry: (
+                self.focus_force(), w.focus_force()), add=True)
             return entry
 
         self._to_entry = _make_field(form, "To:", reply_to)
@@ -512,8 +520,25 @@ class EmailPopup(tk.Toplevel):
 
         self._bind_scroll_to_text(self._compose_text)
 
+        # overrideredirect fix: force focus on click
+        self._compose_text.bind("<Button-1>", lambda e: (
+            self.focus_force(), self._compose_text.focus_force()), add=True)
+
+        # Load signature from email config
+        sig_text = ""
+        try:
+            from tools.email_reader import load_email_config
+            sig = load_email_config().get("signature", "")
+            if sig:
+                sig_text = f"\n\n-- \n{sig}"
+        except Exception:
+            pass
+
         if reply_body:
-            self._compose_text.insert("1.0", f"\n\n--- Original ---\n{reply_body}")
+            self._compose_text.insert("1.0", f"{sig_text}\n\n--- Original ---\n{reply_body}")
+            self._compose_text.mark_set("insert", "1.0")
+        elif sig_text:
+            self._compose_text.insert("1.0", sig_text)
             self._compose_text.mark_set("insert", "1.0")
 
         # Focus: body for replies, To for new compose
@@ -668,15 +693,19 @@ class EmailPopup(tk.Toplevel):
             preview_text.configure(state="disabled", takefocus=False)
             self._bind_scroll_to_text(preview_text)
 
-        # Force focus to intent text with short delay (overrideredirect needs this)
+        # Force focus to intent text with delays (overrideredirect needs this)
         self.after(100, self._focus_intent)
+        self.after(300, self._focus_intent)
 
     def _focus_intent(self, event=None):
         """Force keyboard focus to the reply intent text widget."""
         if hasattr(self, "_intent_text"):
             try:
+                if not self._intent_text.winfo_exists():
+                    return
+                self.lift()
                 self.focus_force()
-                self._intent_text.focus_set()
+                self._intent_text.focus_force()
             except Exception:
                 pass
 

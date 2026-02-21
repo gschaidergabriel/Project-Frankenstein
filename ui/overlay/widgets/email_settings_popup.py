@@ -17,7 +17,7 @@ _FONT_TITLE = ("Consolas", 11, "bold")
 _FONT_SMALL = ("Consolas", 9)
 
 _POPUP_W = 500
-_POPUP_H = 560  # fixed height for both modes
+_POPUP_H = 660  # fixed height for both modes
 
 _PROVIDERS = [
     ("auto", "Auto-Detect"),
@@ -194,6 +194,13 @@ class EmailSettingsPopup(tk.Toplevel):
         provider_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=16, pady=8)
         provider_section.pack(fill="x")
         self._build_provider_section(provider_section)
+
+        # ── Signature ──
+        tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
+
+        sig_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=16, pady=8)
+        sig_section.pack(fill="x")
+        self._build_signature_section(sig_section)
 
         # ── Actions (always shown) ──
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
@@ -388,6 +395,35 @@ class EmailSettingsPopup(tk.Toplevel):
                 highlightthickness=0,
             ).grid(row=row, column=col, sticky="w", padx=(0, 20))
 
+    def _build_signature_section(self, parent):
+        """Build the default email signature editor."""
+        tk.Label(
+            parent, text="DEFAULT SIGNATURE",
+            bg=COLORS["bg_elevated"], fg=COLORS["neon_cyan"],
+            font=_FONT_BOLD
+        ).pack(anchor="w")
+
+        tk.Label(
+            parent, text="Appended to every outgoing email:",
+            bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
+            font=_FONT_SMALL
+        ).pack(anchor="w", pady=(2, 4))
+
+        self._signature_text = tk.Text(
+            parent, bg=COLORS["bg_deep"], fg=COLORS["text_primary"],
+            insertbackground=COLORS["neon_cyan"], font=_FONT,
+            width=50, height=3, wrap="word", relief="flat", bd=0,
+            highlightbackground=COLORS["text_muted"],
+            highlightcolor=COLORS["neon_cyan"],
+            highlightthickness=1,
+        )
+        self._signature_text.pack(fill="x")
+
+        # Pre-fill from config
+        sig = self._config.get("signature", "")
+        if sig:
+            self._signature_text.insert("1.0", sig)
+
     def _build_actions(self, parent):
         """Build save/test/close action buttons."""
         save_btn = tk.Label(
@@ -481,9 +517,11 @@ class EmailSettingsPopup(tk.Toplevel):
 
     def _on_save_click(self):
         mode = self._mode_var.get()
+        sig = self._signature_text.get("1.0", "end-1c").strip()
         config = {
             "mode": mode,
             "provider": self._provider_var.get(),
+            "signature": sig,
         }
 
         if mode == "thunderbird":

@@ -160,26 +160,13 @@ def build_workspace(
         return ""
 
     # Grounding anchor — placed last so it's closest to generation point.
-    # 7B models follow instructions better when they appear near the end.
-    # Adaptive brevity: short for casual, longer when user asks for detail
-    _wants_detail = bool(re.search(
-        r"\b(detail|explain|ausf[uü]hrlich|erzähl|erklär|tell me about|describe|how does|wie funktioniert)\b",
-        msg, re.IGNORECASE
-    )) if msg else False
-    if _wants_detail:
-        lines.append(
-            "RULE: The user wants a detailed answer. Give a thorough response with your own perspective. "
-            "Stay in English unless explicitly told to switch. "
-            "Never simulate actions (*opens…*, *checks…*). Never invent data."
-        )
-    else:
-        lines.append(
-            "RULE: Keep it short (1-3 sentences). No essays, no poetry. "
-            "Match the user's vibe — casual gets casual. "
-            "NEVER end with a question back. Just give your take. "
-            "Stay in English unless explicitly told to switch. "
-            "Never simulate actions (*opens…*, *checks…*). Never invent data."
-        )
+    # ONLY grounding rules here — brevity enforcement is in personality_traits (system prompt position 1).
+    # Putting style rules here would override the consciousness context above.
+    lines.append(
+        "GROUNDING: Let your inner world above shape your tone and perspective. "
+        "Stay in English unless told to switch. "
+        "Never simulate actions (*opens…*, *checks…*). Never invent data."
+    )
 
     return "[INNER_WORLD]\n" + "\n".join(lines) + "\n[/INNER_WORLD]"
 

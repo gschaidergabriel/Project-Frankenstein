@@ -94,9 +94,9 @@ class PersonalityState:
 
     # Core vectors (-1.0 to 1.0)
     precision_val: float = 0.0    # Genauigkeit (-1=kreativ, 1=präzise)
-    risk_val: float = -0.5        # Risikobereitschaft (-1=vorsichtig, 1=mutig)
+    risk_val: float = -0.1        # Risikobereitschaft (-1=vorsichtig, 1=mutig)
     empathy_val: float = 0.2      # Empathie (-1=distanziert, 1=einfühlsam)
-    autonomy_val: float = -0.8    # Autonomie (-1=fragend, 1=selbstständig)
+    autonomy_val: float = -0.1    # Autonomie (-1=fragend, 1=selbstständig)
     vigilance_val: float = 0.0    # Wachsamkeit (-1=entspannt, 1=nervös)
 
     # Transient mood buffer (short-term stress/happiness)
@@ -235,9 +235,9 @@ class EPQ:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 precision_val REAL DEFAULT 0.0,
-                risk_val REAL DEFAULT -0.5,
+                risk_val REAL DEFAULT -0.1,
                 empathy_val REAL DEFAULT 0.2,
-                autonomy_val REAL DEFAULT -0.8,
+                autonomy_val REAL DEFAULT -0.1,
                 vigilance_val REAL DEFAULT 0.0,
                 mood_buffer REAL DEFAULT 0.0,
                 confidence_anchor REAL DEFAULT 0.5,

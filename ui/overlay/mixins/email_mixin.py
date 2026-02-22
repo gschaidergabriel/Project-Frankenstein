@@ -933,34 +933,31 @@ class EmailMixin:
                                      user_intent: str = "", reply_all: bool = False,
                                      to: str = "", cc: str = "", **kwargs):
         """Generate AI reply draft via LLM based on user intent (IO thread)."""
-        from overlay.services.core_api import _core_chat
+        from overlay.services.core_api import _router_generate
 
         # Extract only the informational content from the email body
         # Strip boilerplate, signatures, quoted text, and keep it short
         body_clean = self._extract_email_essence(body, max_chars=600)
 
         prompt = (
-            f"[Identity: {self._FRANK_EMAIL_IDENTITY}]\n\n"
             f"Write an email reply based on the user's instructions.\n\n"
             f"ORIGINAL EMAIL:\n"
             f"From: {sender}\n"
             f"Subject: {subject}\n"
             f"Content:\n{body_clean}\n\n"
             f"USER WANTS TO REPLY WITH:\n{user_intent}\n\n"
-            f"CRITICAL RULES:\n"
+            f"RULES:\n"
             f"- Output ONLY the email reply body. NOTHING ELSE.\n"
-            f"- Write in THE SAME LANGUAGE the user used above. "
-            f"If user wrote in English, reply in English. If German, reply in German.\n"
-            f"- No translations, no '(Translation: ...)'.\n"
-            f"- No notes, no 'Note that...', no 'Please note:', no parenthetical remarks.\n"
-            f"- No disclaimers, no meta-commentary, no AI references, no role explanations.\n"
-            f"- No signature blocks (signatures are added automatically).\n"
+            f"- Write in THE SAME LANGUAGE the user used above.\n"
+            f"- No translations, no notes, no disclaimers, no meta-commentary.\n"
+            f"- No signature blocks (added automatically).\n"
             f"- Write as the user in first person. Just the reply text, then STOP."
         )
 
         ai_draft = ""
         try:
-            res = _core_chat(prompt, max_tokens=600, timeout_s=60, task="chat.fast", force="llama")
+            res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
+                                   max_tokens=600, timeout_s=60)
             if res and res.get("ok"):
                 ai_draft = self._clean_ai_email_draft(
                     (res.get("text") or "").strip()
@@ -1004,33 +1001,29 @@ class EmailMixin:
     def _do_email_compose_draft_worker(self, user_intent: str = "",
                                        to_hint: str = "", **kwargs):
         """Generate AI email draft from user intent for new compose (IO thread)."""
-        from overlay.services.core_api import _core_chat
+        from overlay.services.core_api import _router_generate
 
         prompt = (
-            f"[Identity: {self._FRANK_EMAIL_IDENTITY}]\n\n"
             f"Write a NEW email based on the user's instructions.\n\n"
             f"USER WANTS TO WRITE:\n{user_intent}\n\n"
             f"FORMAT (strict):\n"
             f"SUBJECT: <subject line>\n"
             f"---\n"
             f"<email body text>\n\n"
-            f"CRITICAL RULES:\n"
-            f"- Write the email in THE SAME LANGUAGE the user used above. "
-            f"If user wrote in English, write in English. If German, write in German.\n"
+            f"RULES:\n"
+            f"- Write in THE SAME LANGUAGE the user used above.\n"
             f"- Output ONLY the SUBJECT line and email body. NOTHING ELSE.\n"
-            f"- No translations, no '(Translation: ...)'.\n"
-            f"- No notes, no 'Note that...', no 'Please note:', no parenthetical remarks.\n"
-            f"- No disclaimers, no meta-commentary, no AI references, no role explanations.\n"
-            f"- No signature blocks (signatures are added automatically).\n"
+            f"- No translations, no notes, no disclaimers, no meta-commentary.\n"
+            f"- No signature blocks (added automatically).\n"
             f"- Write as the user in first person. Natural human tone.\n"
-            f"- STOP after the email body. Do not add anything after it."
+            f"- STOP after the email body."
         )
 
         ai_subject = ""
         ai_body = ""
         try:
-            res = _core_chat(prompt, max_tokens=600, timeout_s=60,
-                             task="chat.fast", force="llama")
+            res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
+                                   max_tokens=600, timeout_s=60)
             if res and res.get("ok"):
                 raw = (res.get("text") or "").strip()
                 # Parse SUBJECT: ... --- ... body format

@@ -37,6 +37,33 @@ def _core_chat(
     return _http_post_json(CORE_BASE + "/chat", payload, timeout_s=float(timeout_s) + 10.0)
 
 
+def _router_generate(
+    text: str,
+    system: str,
+    max_tokens: int = 600,
+    timeout_s: float = 60,
+    force: str = "llama",
+    temperature: float = 0.7,
+) -> Dict[str, Any]:
+    """Send directly to router with a custom system prompt, bypassing core.
+
+    Used for email drafting and other tasks where the Frank persona must be
+    replaced by a task-specific identity (e.g. uncensored ghostwriter).
+    """
+    payload: Dict[str, Any] = {
+        "text": text,
+        "system": system,
+        "n_predict": int(max_tokens),
+        "temperature": temperature,
+    }
+    if force:
+        payload["force"] = force
+    return _http_post_json(
+        ROUTER_BASE + "/route", payload,
+        timeout_s=float(timeout_s) + 10.0,
+    )
+
+
 def _core_chat_stream(
     text: str,
     max_tokens: int = DEFAULT_MAX_TOKENS,

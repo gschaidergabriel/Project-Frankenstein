@@ -297,16 +297,7 @@ def build_system_prompt(
         except ImportError:
             pass  # Self-knowledge module not available
 
-    # Inject user name if known (persistent across sessions)
-    try:
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-        from tools.user_profile import get_user_name
-        user_name = get_user_name()
-        if user_name:
-            parts.insert(1, f"The user's name is {user_name}. Address them by name occasionally.")
-    except Exception:
-        pass
+    # User name injection handled by workspace.py — not duplicated here
 
     # CRITICAL: Inject sandbox awareness
     # Frank MUST always know if he's in sandbox or production mode

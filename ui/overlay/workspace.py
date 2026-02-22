@@ -253,7 +253,7 @@ def _build_environment(user_name: str, skill_ctx: str) -> str:
     parts: List[str] = []
 
     if user_name:
-        parts.append(f"Talking to {user_name} (use name sparingly, not every reply)")
+        parts.append(f"Talking to {user_name} (do NOT start replies with their name — only use it rarely for emphasis)")
 
     if skill_ctx:
         clean = _clean_ctx(skill_ctx, max_len=120)

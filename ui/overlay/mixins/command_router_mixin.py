@@ -1324,73 +1324,410 @@ class CommandRouterMixin:
         self._chat_q.put(("chat", {"msg": msg, "max_tokens": max_tokens, "timeout_s": DEFAULT_TIMEOUT_S, "task": task, "force": None}))
 
     # ---------- System Restart Worker ----------
+
+    # Dependency-ordered restart waves. Each wave runs in parallel,
+    # next wave starts only after the previous one finishes.
+    # Wave 0: standalone / LLM servers (no Frank deps, can all start together)
+    # Wave 1: router (foundation for core)
+    # Wave 2: core (needs router)
+    # Wave 3: everything that needs core+router
+    # Wave 4: overlay + watchdog (last)
+    _RESTART_WAVES = [
+        # Wave 0 — standalone services (all parallel)
+        [
+            "aicore-llama3-gpu", "aicore-qwen-gpu", "aicore-whisper-gpu",
+            "aicore-modeld", "aicore-toolboxd", "aicore-webd",
+            "aicore-desktopd", "aicore-ingestd",
+            "aicore-genesis", "aicore-genesis-watchdog",
+            "aicore-invariants", "aicore-fas",
+        ],
+        # Wave 1 — router
+        ["aicore-router"],
+        # Wave 2 — core (requires router)
+        ["aicore-core"],
+        # Wave 3 — services depending on core+router (all parallel)
+        [
+            "aicore-consciousness", "aicore-entities", "aicore-asrs",
+            "aicore-gaming-mode", "aicore-atlas", "aicore-mirror",
+            "aicore-muse", "aicore-therapist",
+        ],
+        # Wave 4 — overlay + watchdog (last)
+        ["frank-overlay", "frank-watchdog"],
+    ]
+
+    _WAVE_LABELS = [
+        "LLMs + standalone",
+        "Router",
+        "Core",
+        "Daemons",
+        "Overlay + Watchdog",
+    ]
+
+    def _build_restart_status_bubble(self, lines: list):
+        """Build a colored restart status bubble from a list of (text, tag) tuples.
+
+        Used both for the live restart display and for showing the result
+        after the overlay restarts (from the saved restart_result.json).
+        """
+        import tkinter as tk
+        from overlay.constants import COLORS
+
+        bubble_bg = "#0a0f14"
+        border_color = COLORS["neon_cyan"]
+
+        frame = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
+        frame.pack(fill="x", anchor="w")
+
+        container = tk.Frame(frame, bg=COLORS["bg_chat"])
+        container.pack(fill="x", padx=(8, 28), pady=4)
+
+        bubble = tk.Frame(container, bg=bubble_bg)
+        bubble.pack(anchor="w", fill="x", expand=True)
+
+        border_stripe = tk.Frame(bubble, bg=border_color, width=3)
+        border_stripe.pack(side="left", fill="y")
+
+        content = tk.Frame(bubble, bg=bubble_bg, padx=12, pady=8)
+        content.pack(side="left", fill="both", expand=True)
+
+        header = tk.Label(
+            content, text="\u25c6 SYSTEM RESTART",
+            bg=bubble_bg, fg=COLORS["neon_cyan"],
+            font=("Consolas", 9, "bold"), anchor="w",
+        )
+        header.pack(anchor="w", pady=(0, 4))
+
+        tw = tk.Text(
+            content, bg=bubble_bg, fg=COLORS["text_system"],
+            font=("Consolas", 9), wrap="word", bd=0,
+            highlightthickness=0, padx=0, pady=0,
+            cursor="arrow", state="disabled",
+            height=max(1, len(lines)),
+        )
+        tw.pack(fill="x", expand=True)
+
+        # Color tags
+        tw.tag_configure("ok", foreground="#00cc44")
+        tw.tag_configure("fail", foreground="#ff4444")
+        tw.tag_configure("wave", foreground=COLORS["neon_cyan"])
+        tw.tag_configure("status", foreground="#e0e0e0")
+        tw.tag_configure("dim", foreground="#505050")
+        tw.tag_configure("warn", foreground="#ffaa00")
+        tw.tag_configure("done", foreground=COLORS["neon_cyan"], font=("Consolas", 9, "bold"))
+
+        # Fill with content
+        tw.configure(state="normal")
+        for i, (line, tag) in enumerate(lines):
+            if i > 0:
+                tw.insert("end", "\n")
+            tw.insert("end", line, tag)
+        tw.configure(state="disabled")
+
+        # Force scroll to bottom
+        self.messages_frame.update_idletasks()
+        self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+        self.chat_canvas.yview_moveto(1.0)
+
+        return tw
+
+    def _check_restart_result(self):
+        """Check if a restart just completed and show the result summary."""
+        import json as _json
+        try:
+            from config.paths import get_temp as _get_temp
+            result_file = _get_temp("restart_result.json")
+        except ImportError:
+            from pathlib import Path
+            result_file = Path("/tmp/frank/restart_result.json")
+
+        if not result_file.exists():
+            return False
+
+        try:
+            data = _json.loads(result_file.read_text())
+            result_file.unlink(missing_ok=True)
+
+            # Only show if recent (< 2 minutes)
+            if time.time() - data.get("ts", 0) > 120:
+                return False
+
+            lines = [tuple(l) for l in data.get("lines", [])]
+            if not lines:
+                return False
+
+            # Replace last line ("Restarting overlay...") with completion
+            if lines and lines[-1][0].startswith("Restarting overlay"):
+                lines[-1] = ("Overlay restarted", "done")
+
+            self._build_restart_status_bubble(lines)
+            return True
+        except Exception as e:
+            LOG.warning(f"Failed to load restart result: {e}")
+            result_file.unlink(missing_ok=True)
+            return False
+
     def _do_system_restart_worker(self):
-        """Restart all Frank backend services, then the overlay itself."""
+        """Restart all Frank services in dependency order with parallel waves and retry."""
         import subprocess
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        self._ui_call(lambda: self._add_message(
-            "Frank", "Restarting all Frank services...", is_system=True))
+        # ── Live restart bubble: one bubble, dynamically updated ──
+        restart_lines = []    # list of (text, tag) tuples
+        text_widget = [None]  # mutable ref for the Text widget
 
-        # Discover active services
+        def _build_live_bubble():
+            tw = self._build_restart_status_bubble(restart_lines)
+            text_widget[0] = tw
+
+        def _refresh_bubble():
+            tw = text_widget[0]
+            if tw is None:
+                return
+            tw.configure(state="normal")
+            tw.delete("1.0", "end")
+            for i, (line, tag) in enumerate(restart_lines):
+                if i > 0:
+                    tw.insert("end", "\n")
+                tw.insert("end", line, tag)
+            tw.configure(height=max(1, len(restart_lines)), state="disabled")
+            self.messages_frame.update_idletasks()
+            self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+            # Force scroll during restart — always stay at bottom
+            self.chat_canvas.yview_moveto(1.0)
+            self.update_idletasks()
+
+        def _append(text: str, tag: str = "status"):
+            restart_lines.append((text, tag))
+            self._ui_call(_refresh_bubble)
+
+        def _update_last(text: str, tag: str = "status"):
+            if restart_lines:
+                restart_lines[-1] = (text, tag)
+            else:
+                restart_lines.append((text, tag))
+            self._ui_call(_refresh_bubble)
+
+        # ── Step 0: Clear signals and spawn failsafe ──
+        try:
+            from tools.self_restart import USER_CLOSED_SIGNAL
+            USER_CLOSED_SIGNAL.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        failsafe_proc = None
+        try:
+            failsafe_proc = subprocess.Popen(
+                ["bash", "-c",
+                 "sleep 90 && "
+                 "systemctl --user is-active frank-overlay.service >/dev/null 2>&1 || "
+                 "systemctl --user restart frank-overlay.service"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass
+
+        # Create the bubble on the UI thread
+        self._ui_call(_build_live_bubble)
+        time.sleep(0.1)
+
+        _append("Restarting all Frank services...", "wave")
+
+        try:
+            self._do_system_restart_waves(_append, _update_last)
+        except Exception as e:
+            LOG.error(f"Restart worker error: {e}", exc_info=True)
+            _append(f"ERROR: {e}", "fail")
+
+        # ── Save restart result for the new overlay instance ──
+        _append("Restarting overlay...", "dim")
+        try:
+            import json as _json
+            from config.paths import get_temp as _get_temp
+            result_file = _get_temp("restart_result.json")
+            result_file.write_text(_json.dumps({
+                "lines": restart_lines,
+                "ts": time.time(),
+            }))
+        except Exception as e:
+            LOG.warning(f"Failed to save restart result: {e}")
+
+        time.sleep(2)
+
+        # Cancel the dead-man's switch
+        if failsafe_proc:
+            try:
+                import os as _os, signal as _sig
+                _os.killpg(failsafe_proc.pid, _sig.SIGKILL)
+            except Exception:
+                try:
+                    failsafe_proc.kill()
+                except Exception:
+                    pass
+
+        # Release singleton lock
+        try:
+            from overlay.constants import _release_singleton_lock
+            _release_singleton_lock()
+        except Exception:
+            pass
+
+        try:
+            from tools.self_restart import USER_CLOSED_SIGNAL
+            USER_CLOSED_SIGNAL.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        subprocess.Popen(
+            ["systemctl", "--user", "restart", "frank-overlay.service"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+    def _do_system_restart_waves(self, _append, _update_last):
+        """Execute the restart waves with live status updates."""
+        import subprocess
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # Discover installed services
+        installed = set()
         try:
             r = subprocess.run(
-                ["systemctl", "--user", "list-units", "--type=service",
-                 "--state=active,activating", "--no-pager", "--plain", "--no-legend"],
+                ["systemctl", "--user", "list-unit-files", "--type=service",
+                 "--no-pager", "--plain", "--no-legend"],
                 capture_output=True, text=True, timeout=10,
             )
-            services = []
             for line in r.stdout.strip().split("\n"):
                 parts = line.strip().split()
                 if parts and (parts[0].startswith("aicore-") or parts[0].startswith("frank-")):
-                    services.append(parts[0])
+                    installed.add(parts[0].replace(".service", ""))
         except Exception:
-            services = []
+            installed = None
 
-        if not services:
-            services = [
-                "aicore-router.service", "aicore-core.service",
-                "aicore-llama3-gpu.service", "aicore-toolboxd.service",
-                "aicore-webd.service", "aicore-modeld.service",
-                "aicore-desktopd.service", "aicore-consciousness.service",
-                "aicore-invariants.service", "aicore-asrs.service",
-                "aicore-genesis.service", "aicore-genesis-watchdog.service",
-                "aicore-entities.service", "aicore-gaming-mode.service",
-                "aicore-ingestd.service", "aicore-whisper-gpu.service",
-                "frank-overlay.service",
-            ]
+        def _short(svc: str) -> str:
+            return svc.replace("aicore-", "").replace("frank-", "")
 
-        # Split: backend first, overlay last
-        backend = [s for s in services if "frank-overlay" not in s]
-        has_overlay = any("frank-overlay" in s for s in services)
-
-        failed = []
-        succeeded = []
-
-        for svc in backend:
+        def _restart_one(svc: str) -> tuple:
+            unit = f"{svc}.service"
             try:
                 r = subprocess.run(
-                    ["systemctl", "--user", "restart", svc],
-                    capture_output=True, text=True, timeout=30,
+                    ["systemctl", "--user", "restart", unit],
+                    capture_output=True, text=True, timeout=45,
                 )
                 if r.returncode == 0:
-                    succeeded.append(svc.replace(".service", ""))
-                else:
-                    failed.append(svc.replace(".service", ""))
+                    return (svc, True, "")
+                return (svc, False, (r.stderr or r.stdout or "unknown")[:120])
+            except subprocess.TimeoutExpired:
+                return (svc, False, "timeout")
+            except Exception as e:
+                return (svc, False, str(e)[:120])
+
+        def _is_active(svc: str) -> bool:
+            try:
+                r = subprocess.run(
+                    ["systemctl", "--user", "is-active", f"{svc}.service"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                return r.stdout.strip() == "active"
             except Exception:
-                failed.append(svc.replace(".service", ""))
+                return False
 
-        status = f"Restarted {len(succeeded)}/{len(backend)} backend services."
-        if failed:
-            status += f"\nFailed: {', '.join(failed)}"
+        all_ok = []
+        all_failed = []
+        total_services = 0
 
-        if has_overlay:
-            status += "\nRestarting overlay in 3s..."
+        for wave_idx, wave in enumerate(self._RESTART_WAVES):
+            label = self._WAVE_LABELS[wave_idx] if wave_idx < len(self._WAVE_LABELS) else f"Wave {wave_idx}"
 
-        self._ui_call(lambda s=status: self._add_message("Frank", s, is_system=True))
+            if installed is not None:
+                wave_services = [s for s in wave if s in installed]
+            else:
+                wave_services = list(wave)
 
-        if has_overlay:
-            time.sleep(3)
-            subprocess.Popen(
-                ["systemctl", "--user", "restart", "frank-overlay.service"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+            if not wave_services:
+                continue
+
+            # Skip overlay — handle at the end
+            is_overlay_wave = any("frank-overlay" in s for s in wave_services)
+            if is_overlay_wave:
+                wave_services = [s for s in wave_services if "frank-overlay" not in s]
+                if not wave_services:
+                    continue
+
+            total_services += len(wave_services)
+
+            # Wave header + placeholder result line
+            _append(f"[{wave_idx+1}/5] {label}", "wave")
+            _append(f"  ...", "dim")
+
+            wave_ok = []
+            wave_fail = []
+
+            with ThreadPoolExecutor(max_workers=len(wave_services)) as pool:
+                futures = {pool.submit(_restart_one, s): s for s in wave_services}
+                for fut in as_completed(futures, timeout=90):
+                    svc, ok, err = fut.result()
+                    short = _short(svc)
+                    if ok:
+                        all_ok.append(svc)
+                        wave_ok.append(short)
+                    else:
+                        all_failed.append((svc, err))
+                        wave_fail.append(short)
+                    # Live update the result line
+                    done = len(wave_ok) + len(wave_fail)
+                    total = len(wave_services)
+                    parts = [f"\u2713 {s}" for s in wave_ok] + [f"\u2717 {s}" for s in wave_fail]
+                    _update_last(f"  {', '.join(parts)} [{done}/{total}]",
+                                 "ok" if not wave_fail else "warn")
+
+            # Final compact wave result
+            parts = [f"\u2713 {s}" for s in wave_ok] + [f"\u2717 {s}" for s in wave_fail]
+            _update_last(f"  {', '.join(parts)}", "ok" if not wave_fail else "warn")
+
+            # Verify critical services
+            critical = [s for s in wave_services if s in ("aicore-router", "aicore-core")]
+            for svc in critical:
+                if any(f[0] == svc for f in all_failed):
+                    continue
+                time.sleep(1)
+                if not _is_active(svc):
+                    _append(f"  \u23f3 waiting for {_short(svc)}...", "warn")
+                    time.sleep(3)
+                    if not _is_active(svc):
+                        _update_last(f"  \u2717 {_short(svc)} not ready", "fail")
+                        LOG.error(f"Critical service {svc} still not active")
+                    else:
+                        _update_last(f"  \u2713 {_short(svc)} ready", "ok")
+
+        # ── Retry failed services ──
+        if all_failed:
+            retry_list = [svc for svc, _err in all_failed]
+            _append(f"Retrying {len(retry_list)} failed...", "warn")
+            time.sleep(2)
+            still_failed = []
+            retry_ok = []
+            with ThreadPoolExecutor(max_workers=max(1, len(retry_list))) as pool:
+                futures = {pool.submit(_restart_one, s): s for s in retry_list}
+                for fut in as_completed(futures, timeout=60):
+                    svc, ok, err = fut.result()
+                    short = _short(svc)
+                    if ok:
+                        all_ok.append(svc)
+                        retry_ok.append(short)
+                    else:
+                        still_failed.append(svc)
+                    parts = [f"\u2713 {s}" for s in retry_ok] + [f"\u2717 {_short(s)}" for s in still_failed]
+                    _update_last(f"  {', '.join(parts)}", "ok" if not still_failed else "warn")
+
+            all_failed_names = still_failed
+        else:
+            all_failed_names = []
+
+        # ── Separator + final status ──
+        _append("\u2500" * 28, "dim")
+        if all_failed_names:
+            short_fails = ", ".join(_short(s) for s in all_failed_names)
+            _append(f"{len(all_ok)}/{total_services} OK \u2502 Failed: {short_fails}", "warn")
+        else:
+            _append(f"{len(all_ok)}/{total_services} services restarted \u2713", "done")

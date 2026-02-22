@@ -233,6 +233,7 @@ def _check_chat_silence() -> bool:
 
 def _check_not_gaming() -> bool:
     """Return True if NOT gaming."""
+    # Primary check: gaming mode state file (covers all game types)
     try:
         try:
             from config.paths import get_temp
@@ -242,21 +243,25 @@ def _check_not_gaming() -> bool:
         if state_file.exists():
             data = json.loads(state_file.read_text())
             if data.get("active", False):
-                LOG.debug("Gate FAIL: Gaming mode active")
+                LOG.debug("Gate FAIL: Gaming mode active (%s)",
+                          data.get("game_name", "unknown"))
                 return False
     except Exception:
         pass
 
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", "steamapps/common"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            LOG.debug("Gate FAIL: Steam game running")
-            return False
-    except Exception:
-        pass
+    # Fallback: check for game processes directly (in case daemon isn't running)
+    _game_indicators = ["steamapps/common", "OldUnreal/UT", "lutris-wrapper"]
+    for pattern in _game_indicators:
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", pattern],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                LOG.debug("Gate FAIL: Game process detected (%s)", pattern)
+                return False
+        except Exception:
+            pass
 
     return True
 

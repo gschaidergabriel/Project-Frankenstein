@@ -446,3 +446,12 @@ class ChatOverlay(
             LOG.warning(f"Deferred load: canvas width check failed: {e}")
         if not self._load_chat_history():
             self._add_message("Frank", "Hey! Was kann ich fuer dich tun?", is_system=False)
+
+        # Show restart result if overlay was just restarted by /restart
+        try:
+            if self._check_restart_result():
+                # Delayed force-scroll: Tk needs a frame to finalize geometry
+                self.after(100, lambda: self.chat_canvas.yview_moveto(1.0))
+                self.after(500, lambda: self.chat_canvas.yview_moveto(1.0))
+        except Exception as e:
+            LOG.debug(f"Restart result check: {e}")

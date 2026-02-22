@@ -55,51 +55,92 @@ try:
 except ImportError:
     LOCK_FILE = Path("/tmp/frank/overlay.lock")
 
+def _release_singleton_lock():
+    """Release the singleton lock explicitly (for use before restart)."""
+    global _singleton_lock_fd
+    try:
+        if _singleton_lock_fd is not None:
+            import fcntl
+            fcntl.flock(_singleton_lock_fd.fileno(), fcntl.LOCK_UN)
+            _singleton_lock_fd.close()
+            _singleton_lock_fd = None
+    except Exception:
+        pass
+    try:
+        LOCK_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+_singleton_lock_fd = None
+
 def _check_singleton() -> bool:
     """
     Check if another instance is running.
     Returns True if we can proceed, False if another instance exists.
+
+    Uses 'a+' mode to avoid truncating the PID file before the lock
+    is acquired (open('w') would destroy the PID of the holding process).
     """
     import fcntl
+    import time as _time
 
-    try:
-        # Try to acquire exclusive lock
-        lock_fd = open(LOCK_FILE, 'w')
-        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write our PID
-        lock_fd.write(str(os.getpid()))
-        lock_fd.flush()
-
-        # Keep the file descriptor open (don't close it!)
-        # Store globally so it doesn't get garbage collected
+    def _try_lock() -> bool:
         global _singleton_lock_fd
-        _singleton_lock_fd = lock_fd
+        try:
+            lock_fd = open(LOCK_FILE, 'a+')
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
-        LOG.info(f"Singleton lock acquired (PID {os.getpid()})")
+            # Lock acquired — truncate and write our PID
+            lock_fd.seek(0)
+            lock_fd.truncate()
+            lock_fd.write(str(os.getpid()))
+            lock_fd.flush()
+
+            _singleton_lock_fd = lock_fd
+            LOG.info(f"Singleton lock acquired (PID {os.getpid()})")
+            return True
+        except (IOError, OSError):
+            try:
+                lock_fd.close()
+            except Exception:
+                pass
+            return False
+
+    # First attempt
+    if _try_lock():
         return True
 
-    except (IOError, OSError) as e:
-        # Lock failed — check if the holding process is still alive
+    # Lock held — check who holds it
+    try:
+        existing_pid = LOCK_FILE.read_text().strip()
+    except Exception:
+        existing_pid = ""
+
+    if existing_pid and existing_pid.isdigit():
+        pid = int(existing_pid)
         try:
-            existing_pid = LOCK_FILE.read_text().strip()
-            if existing_pid and existing_pid.isdigit():
-                pid = int(existing_pid)
-                try:
-                    os.kill(pid, 0)  # Signal 0 = check if alive
-                except ProcessLookupError:
-                    # Process is dead — stale lock. Remove and retry.
-                    LOG.warning(f"Stale lock from dead PID {pid}, reclaiming")
-                    LOCK_FILE.unlink(missing_ok=True)
-                    return _check_singleton()  # Retry once
-                except PermissionError:
-                    pass  # Process exists but we can't signal it
-            LOG.error(f"Another instance is already running (PID {existing_pid})")
-        except OSError:
-            LOG.error("Another instance is already running (could not read PID)")
-        except Exception as ex:
-            LOG.error(f"Another instance is already running (error reading PID: {ex})")
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            # Process is dead — stale lock, remove and retry
+            LOG.warning(f"Stale lock from dead PID {pid}, reclaiming")
+            LOCK_FILE.unlink(missing_ok=True)
+            return _try_lock()
+        except PermissionError:
+            pass  # Process exists but we can't signal it
+        LOG.error(f"Another instance is already running (PID {pid})")
         return False
+
+    # PID is empty/missing — likely a restart race. Wait briefly and retry.
+    LOG.warning("Lock held but PID unknown — waiting for previous instance to exit...")
+    for _ in range(6):
+        _time.sleep(0.5)
+        if _try_lock():
+            return True
+
+    LOG.error("Another instance is still holding the lock after 3s wait")
+    return False
 
 import tkinter as tk
 from tkinter import filedialog, font as tkfont

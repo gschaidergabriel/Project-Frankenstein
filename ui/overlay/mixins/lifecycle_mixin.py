@@ -122,6 +122,13 @@ class LifecycleMixin:
         except Exception:
             pass
 
+        # Release singleton lock BEFORE destroying Tk (ensures new instance can start)
+        try:
+            from overlay.constants import _release_singleton_lock
+            _release_singleton_lock()
+        except Exception:
+            pass
+
         self._stop_layout_controller()
         if hasattr(self, '_genesis_watcher'):
             self._genesis_watcher.stop()

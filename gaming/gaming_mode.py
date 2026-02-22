@@ -3,10 +3,9 @@
 """
 Gaming Mode Daemon
 
-Monitors for Steam games and automatically:
+Monitors for games (Steam, native, Wine/Proton, Lutris, etc.) and automatically:
 - Stops heavy LLM services to free RAM
 - Keeps a lightweight LLM for basic voice commands
-- Shows mini Frank overlay
 - Restarts everything when game closes
 """
 
@@ -36,26 +35,47 @@ LOG = logging.getLogger("gaming_mode")
 # Configuration
 CONFIG = {
     "check_interval": 1,  # seconds between game checks
-    "steam_game_patterns": [
-        # Common Steam game process patterns
-        r"\.x86_64$",
-        r"\.x86$",
-        r"wine.*\.exe",
-        r"proton.*\.exe",
-        r"steamapps/common",
-    ],
     "heavy_services": [
-        # Services to stop during gaming (PIDs will be found dynamically)
         {"name": "llama-8101", "port": 8101, "pattern": "llama-server.*8101"},
         {"name": "llama-8102", "port": 8102, "pattern": "llama-server.*8102"},
     ],
-    "keep_services": [
-        # Services to keep running
-        "toolboxd",
-        "ollama",
-    ],
-    "gaming_llm_model": "tinyllama",  # Small model for gaming mode
+    "keep_services": ["toolboxd", "ollama"],
+    "gaming_llm_model": "tinyllama",
     "ollama_url": "http://localhost:11434",
+}
+
+# Directories where games are commonly installed (case-insensitive match on cmdline)
+GAME_DIRS = [
+    "steamapps/common",
+    "OldUnreal/UT2004",
+    "OldUnreal/UnrealTournament",
+    "OldUnreal/Unreal",
+    ".local/share/lutris",
+    "Games/",
+    "GOG Games/",
+    ".wine/drive_c/",
+    ".local/share/bottles/",
+    ".local/share/itch/apps/",
+]
+
+# Known game binary names (matched as word boundaries in cmdline, case-insensitive)
+# These are matched with \b word boundaries to avoid false positives
+KNOWN_GAME_BINARIES = [
+    r"\but2004-bin\b", r"\but2004\b", r"\but-bin\b",
+    r"\bunrealtournament\b", r"\bucc-bin\b",
+    r"\bxonotic\b", r"\bopenarena\b", r"\bquake[23]?\b",
+    r"\bsupertuxkart\b", r"\b0ad\b", r"\bwesnoth\b",
+    r"\bminecraft-launcher\b", r"java.*minecraft",
+    r"\bdosbox\b", r"\bretroarch\b", r"\bmednafen\b",
+    r"\blutris-wrapper\b",
+]
+
+# Process cmdline patterns to SKIP (helpers, installers, not games)
+SKIP_PATTERNS = {
+    "steamlinuxruntime", "proton", "steamworks", "steam_app_0",
+    "pressure-vessel", "steam-runtime", "compatibilitytools",
+    "install-ut", "install-unreal", "aria2c", "curl", "wget",
+    "bash /tmp/", "7z", "tar ", "unshield",
 }
 
 # State
@@ -134,45 +154,64 @@ class GamingModeState:
         self._shutdown_event.clear()
 
 
-def get_steam_games() -> List[dict]:
-    """Find running Steam game processes."""
+def get_running_games() -> List[dict]:
+    """Find running game processes (Steam, native, Wine, Lutris, etc.)."""
+    import re as _re
     games = []
-    # Skip runtime/helper folders - not actual games
-    skip_names = {"steamlinuxruntime", "proton", "steamworks", "steam_app_0"}
     try:
-        # Get all processes
         result = subprocess.run(
             ["ps", "aux"], capture_output=True, text=True, timeout=5
         )
-
         for line in result.stdout.split("\n"):
-            lower = line.lower()
-            # Check if this looks like a Steam game
-            if "steamapps/common" not in lower:
-                continue
             parts = line.split(None, 10)
             if len(parts) < 11:
                 continue
-            pid = int(parts[1])
+            try:
+                pid = int(parts[1])
+            except ValueError:
+                continue  # skip header line
             cmd = parts[10]
-            # Extract ALL game folder names from the full command line
-            import re as _re
-            folders = _re.findall(r"steamapps/common/([^/]+)", cmd, _re.IGNORECASE)
-            for folder in folders:
-                folder_clean = folder.strip("'\" ")
-                if not folder_clean:
-                    continue
-                # Skip runtimes and helpers
-                if any(s in folder_clean.lower() for s in skip_names):
-                    continue
-                games.append({
-                    "pid": pid,
-                    "name": folder_clean,
-                    "cmd": cmd[:100]
-                })
-                break  # Take first real game folder per process
+            lower = cmd.lower()
+
+            # Skip helper/runtime processes
+            if any(s in lower for s in SKIP_PATTERNS):
+                continue
+
+            game_name = None
+
+            # 1. Steam games: extract folder name from steamapps/common/GameName/
+            m = _re.search(r"steamapps/common/([^/]+)", cmd, _re.IGNORECASE)
+            if m:
+                game_name = m.group(1).strip("'\" ")
+
+            # 2. Known game directories (non-Steam)
+            if not game_name:
+                for gdir in GAME_DIRS:
+                    if gdir.lower() == "steamapps/common":
+                        continue  # already handled above
+                    if gdir.lower() in lower:
+                        # Extract the next path component after the game dir
+                        pattern = _re.escape(gdir) + r"([^/]+)"
+                        dm = _re.search(pattern, cmd, _re.IGNORECASE)
+                        if dm:
+                            game_name = dm.group(1).strip("'\" ")
+                        else:
+                            game_name = gdir.split("/")[0]
+                        break
+
+            # 3. Known game binary names (word-boundary regex)
+            if not game_name:
+                for binary in KNOWN_GAME_BINARIES:
+                    bm = _re.search(binary, lower)
+                    if bm:
+                        game_name = bm.group(0)
+                        break
+
+            if game_name:
+                games.append({"pid": pid, "name": game_name, "cmd": cmd[:100]})
+
     except Exception as e:
-        LOG.error(f"Error getting Steam games: {e}")
+        LOG.error(f"Error detecting games: {e}")
 
     # Deduplicate by game name (keep first PID)
     seen = set()
@@ -542,10 +581,17 @@ def is_process_running(pid: int) -> bool:
         return False
 
 
+_GAME_WM_CLASSES = [
+    "steam_app_", "dota", "csgo", "hl2", "unity", "unreal",
+    "ut2004", "unrealtournament", "xonotic", "openarena",
+    "quake", "supertuxkart", "0ad", "wesnoth", "retroarch",
+    "wine", "lutris", "minecraft",
+]
+
+
 def has_game_window() -> bool:
-    """Check if any game window is visible (steam_app_*, fullscreen game, etc.)."""
+    """Check if any game window is visible (Steam, native, Wine, etc.)."""
     try:
-        # Check all windows for steam_app_ WM_CLASS
         result = subprocess.run(
             ["wmctrl", "-l"], capture_output=True, text=True, timeout=3
         )
@@ -559,10 +605,7 @@ def has_game_window() -> bool:
                     capture_output=True, text=True, timeout=2
                 )
                 cls = cls_result.stdout.lower()
-                if "steam_app_" in cls:
-                    return True
-                # Also detect common game engine windows
-                if any(g in cls for g in ["dota", "csgo", "hl2", "unity", "unreal"]):
+                if any(g in cls for g in _GAME_WM_CLASSES):
                     return True
             except Exception:
                 pass
@@ -627,7 +670,7 @@ def daemon_loop():
     # If we crashed while in gaming mode, clean up
     if state.active:
         LOG.info("Recovering from previous gaming mode state...")
-        games = get_steam_games()
+        games = get_running_games()
         pid_alive = state.game_pid and is_process_running(state.game_pid)
         game_window = has_game_window()
         steam_running = is_steam_client_running()
@@ -642,7 +685,7 @@ def daemon_loop():
 
     while True:
         try:
-            games = get_steam_games()
+            games = get_running_games()
 
             if state.active:
                 # ENFORCE: Frank must ALWAYS be off during gaming
@@ -691,7 +734,7 @@ def daemon_loop():
                 game_detected = bool(games) or has_game_window()
 
                 if game_detected:
-                    game = games[0] if games else {"pid": 0, "name": "Steam Game", "cmd": ""}
+                    game = games[0] if games else {"pid": 0, "name": "Unknown Game", "cmd": ""}
                     entry_grace_counter += 1
                     if entry_grace_counter == 1:
                         entry_grace_game = game

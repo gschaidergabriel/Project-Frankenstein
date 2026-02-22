@@ -1035,8 +1035,8 @@ class ConsciousnessDaemon:
         return 0.0
 
     def _is_gaming_active(self) -> bool:
-        """Check if gaming mode is active or Steam game is running."""
-        # Check gaming_mode_state.json
+        """Check if gaming mode is active or a game is running."""
+        # Primary: gaming mode state file (covers all game types)
         try:
             try:
                 from config.paths import get_temp as _cs_get_temp
@@ -1049,16 +1049,17 @@ class ConsciousnessDaemon:
                     return True
         except Exception:
             pass
-        # Check for Steam game processes
-        try:
-            result = subprocess.run(
-                ["pgrep", "-f", "steamapps/common"],
-                capture_output=True, text=True, timeout=2,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return True
-        except Exception:
-            pass
+        # Fallback: check for game processes directly
+        for pattern in ["steamapps/common", "OldUnreal/UT", "lutris-wrapper"]:
+            try:
+                result = subprocess.run(
+                    ["pgrep", "-f", pattern],
+                    capture_output=True, text=True, timeout=2,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return True
+            except Exception:
+                pass
         return False
 
     def _user_became_active(self) -> bool:

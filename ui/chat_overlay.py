@@ -26,12 +26,16 @@ if _gaming_lock.exists():
         _daemon_active = False
 
     if _daemon_active:
+        # Check state file for active gaming (covers all game types)
+        _game_running = False
         try:
-            _g = _sp.run(["pgrep", "-f", "SteamLaunch AppId|reaper SteamLaunch"],
-                         capture_output=True, text=True, timeout=5)
-            _game_running = _g.returncode == 0
+            _state_path = Path("/tmp/gaming_mode_state.json")
+            if _state_path.exists():
+                import json as _json_gm
+                _gm_data = _json_gm.loads(_state_path.read_text())
+                _game_running = _gm_data.get("active", False)
         except Exception:
-            _game_running = False
+            pass
 
         if _game_running:
             print("[Frank] Gaming mode active (daemon running + game detected) - refusing to start",

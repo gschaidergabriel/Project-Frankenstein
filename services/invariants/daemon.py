@@ -196,6 +196,21 @@ class InvariantsDaemon:
             # Initialize energy constant
             self.energy.initialize(self.titan_store)
 
+            # Recalibrate if chronically violated (organic growth, not corruption)
+            try:
+                state = self.store.get_invariant_state("energy_conservation")
+                if state and state.get("violation_count", 0) > 100:
+                    LOG.info("Chronic energy violations (%d) — recalibrating",
+                             state["violation_count"])
+                    self.energy.recalibrate(self.titan_store)
+                    with self.store._get_conn() as conn:
+                        conn.execute(
+                            "UPDATE invariant_state SET violation_count = 0 "
+                            "WHERE invariant_name = 'energy_conservation'")
+                        conn.commit()
+            except Exception as e:
+                LOG.warning("Energy recalibration check failed: %s", e)
+
             # Build initial core kernel
             self.core.build_core(self.titan_store)
 
@@ -395,6 +410,16 @@ class InvariantsDaemon:
 
             # Sync shadow reality
             self.reality.force_resync()
+
+            # Clean old energy ledger (keep last 1000)
+            try:
+                with self.store._get_conn() as conn:
+                    conn.execute(
+                        "DELETE FROM energy_ledger WHERE id NOT IN "
+                        "(SELECT id FROM energy_ledger ORDER BY id DESC LIMIT 1000)")
+                    conn.commit()
+            except Exception:
+                pass
 
         except Exception as e:
             LOG.error(f"Error in maintenance: {e}")

@@ -65,7 +65,7 @@ STATE_DIR = AICORE_DATA / "state"
 DB_PATHS = {
     "frank": DB_DIR / "frank.db",
     "titan": DB_DIR / "titan.db",
-    "titan_shadow": DB_DIR / "titan_shadow.db",
+    # titan_shadow is managed by invariants subsystem at INVARIANTS_DIR/titan_shadow.db
     "consciousness": DB_DIR / "consciousness.db",
     "world_experience": DB_DIR / "world_experience.db",
     "chat_memory": DB_DIR / "chat_memory.db",

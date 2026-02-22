@@ -706,6 +706,7 @@ class AffectLinker:
         self.db_path = db_path
         self.affects: Dict[str, AffectDefinition] = dict(self.DEFAULT_AFFECTS)
         self._ensure_tables()
+        self._seed_default_affects()
         self._load_custom_affects()
 
     def _ensure_tables(self):
@@ -728,6 +729,22 @@ class AffectLinker:
             conn.close()
         except Exception as e:
             LOG.warning(f"Could not ensure tables: {e}")
+
+    def _seed_default_affects(self):
+        """Persist DEFAULT_AFFECTS into DB (INSERT OR IGNORE = idempotent)."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            for aid, a in self.DEFAULT_AFFECTS.items():
+                conn.execute(
+                    "INSERT OR IGNORE INTO affect_definitions "
+                    "(id, event_pattern, emotion, reason, intensity, created_at, trigger_count) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (a.id, a.event_pattern, a.emotion.value, a.reason,
+                     a.intensity, a.created_at.isoformat(), a.trigger_count))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            LOG.warning(f"Could not seed default affects: {e}")
 
     def _load_custom_affects(self):
         """Lädt benutzerdefinierte Affekte aus DB."""

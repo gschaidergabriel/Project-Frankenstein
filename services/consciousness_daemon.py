@@ -299,10 +299,36 @@ class ConsciousnessDaemon:
         # --- Workspace update counter (for periodic ego auto-training) ---
         self._ws_update_count: int = 0
 
+        # --- World Experience Bridge: mood tracking ---
+        self._prev_mood_val: float = 0.0
+
         # Init
         self._ensure_schema()
         self._load_latest_state()
         LOG.info("ConsciousnessDaemon initialized (db=%s)", self.db_path)
+
+    # ── World Experience Bridge ────────────────────────────────────────
+
+    def _observe_world(self, cause_name: str, effect_name: str,
+                       cause_type: str = "cognitive", effect_type: str = "cognitive",
+                       relation: str = "triggers", evidence: float = 0.1,
+                       metadata_cause: dict = None, metadata_effect: dict = None):
+        """Fire-and-forget observation to world experience daemon.
+
+        Non-blocking, never crashes the host. Lazy import to avoid
+        circular dependencies (services/ -> tools/ is safe).
+        """
+        try:
+            from tools.world_experience_daemon import get_daemon
+            get_daemon().observe(
+                cause_name=cause_name, effect_name=effect_name,
+                cause_type=cause_type, effect_type=effect_type,
+                relation=relation, evidence=evidence,
+                metadata_cause=metadata_cause,
+                metadata_effect=metadata_effect,
+            )
+        except Exception:
+            pass  # Never crash consciousness for world experience
 
     # ── Database ──────────────────────────────────────────────────────
 
@@ -847,6 +873,18 @@ class ConsciousnessDaemon:
         )
         conn.commit()
 
+        # World Experience: report significant mood shifts
+        delta = mood_value - self._prev_mood_val
+        if abs(delta) > 0.15:
+            effect = "personality.positive_shift" if delta > 0 else "personality.negative_shift"
+            self._observe_world(
+                "consciousness.mood", effect,
+                cause_type="affective", effect_type="personality",
+                relation="shifts", evidence=0.2,
+                metadata_effect={"delta": round(delta, 3), "source": source},
+            )
+        self._prev_mood_val = mood_value
+
     def _get_mood_trajectory_summary(self) -> str:
         """Generate a compact mood trajectory summary for prompt injection."""
         conn = self._get_conn()
@@ -1209,6 +1247,12 @@ class ConsciousnessDaemon:
                     mood_after=mood_before,  # Will be updated next mood poll
                 )
                 LOG.info("Idle thought [%s]: %s", prompt_question[:30], result[:80])
+                # World Experience: idle thought observed
+                self._observe_world(
+                    "consciousness.idle_thought", "consciousness.reflection",
+                    relation="generates", evidence=0.1,
+                    metadata_effect={"trigger": "idle", "prompt": prompt_question[:50]},
+                )
                 # Extract goals from every 5th idle thought
                 self._idle_think_count += 1
                 if self._idle_think_count % 5 == 0:
@@ -1398,6 +1442,16 @@ class ConsciousnessDaemon:
                 self._fire_reflection_epq_event(combined, chosen_cat)
             except Exception as e:
                 LOG.debug("Reflection→E-PQ bridge failed: %s", e)
+
+            # World Experience: deep reflection observed
+            self._observe_world(
+                "consciousness.deep_reflection", "personality.growth",
+                cause_type="cognitive", effect_type="personality",
+                relation="influences", evidence=0.3,
+                metadata_cause={"category": chosen_cat},
+                metadata_effect={"mood_before": mood_before,
+                                 "mood_after": self._current_workspace.mood_value},
+            )
 
             # Track counters
             self._last_deep_reflect_ts = time.time()
@@ -1676,6 +1730,13 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("Recursive reflection→E-PQ bridge failed: %s", e)
 
+            # World Experience: recursive self-awareness
+            self._observe_world(
+                "consciousness.recursive_reflect", "personality.self_awareness",
+                cause_type="cognitive", effect_type="personality",
+                relation="deepens", evidence=0.4,
+            )
+
             # ── Track counters ──
             self._last_recursive_reflect_ts = time.time()
             self._recursive_reflect_count += 1
@@ -1814,6 +1875,24 @@ class ConsciousnessDaemon:
 
         conn.commit()
 
+        # World Experience: prediction outcomes
+        recent = conn.execute(
+            "SELECT surprise FROM predictions WHERE resolved = 1 "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if recent and recent["surprise"] is not None:
+            surprise_val = recent["surprise"]
+            if surprise_val < 0.3:
+                self._observe_world(
+                    "consciousness.prediction", "consciousness.prediction_success",
+                    relation="validates", evidence=0.3,
+                )
+            elif surprise_val > 0.7:
+                self._observe_world(
+                    "consciousness.prediction", "consciousness.prediction_failure",
+                    relation="invalidates", evidence=0.2,
+                )
+
     def get_surprise_level(self) -> float:
         """Get average recent surprise level (0-1)."""
         conn = self._get_conn()
@@ -1887,6 +1966,13 @@ class ConsciousnessDaemon:
 
         conn.commit()
         LOG.info("Memory consolidation complete")
+
+        # World Experience: consolidation event
+        self._observe_world(
+            "consciousness.consolidation", "memory.long_term",
+            cause_type="cognitive", effect_type="memory",
+            relation="consolidates", evidence=0.3,
+        )
 
     def consolidate_conversation(self, messages: List[Dict[str, str]]):
         """Consolidate a conversation into short-term memory."""
@@ -2467,6 +2553,18 @@ class ConsciousnessDaemon:
         if annotation != "familiar" and annotation != "steady":
             LOG.info("Experience: %s (novelty=%.2f, sim_prev=%.2f)",
                      annotation, novelty, sim_prev)
+
+        # World Experience: report significant experience transitions
+        if annotation in ("novel", "drift", "recurring_daily"):
+            self._observe_world(
+                "consciousness.experience",
+                f"consciousness.{annotation}",
+                cause_type="perceptual", effect_type="cognitive",
+                relation="triggers" if annotation != "recurring_daily" else "reinforces",
+                evidence=0.3 if annotation in ("novel", "drift") else 0.2,
+                metadata_effect={"novelty": round(novelty, 3),
+                                 "similarity_prev": round(sim_prev, 3)},
+            )
 
     # ══════════════════════════════════════════════════════════════════
     # MODULE 3: Attention Controller (AST)

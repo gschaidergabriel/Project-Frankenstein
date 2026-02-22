@@ -96,11 +96,27 @@ class TripleReality:
 
     def _initialize_shadows(self):
         """Initialize shadow and validator databases."""
-        # Create shadow if it doesn't exist or is empty
+        # Create shadow if it doesn't exist, is empty, or has no tables
+        shadow_needs_init = False
         if not self.shadow_path.exists() or self.shadow_path.stat().st_size == 0:
-            if self.primary_path.exists():
-                LOG.info("Initializing shadow reality from primary")
-                shutil.copy2(self.primary_path, self.shadow_path)
+            shadow_needs_init = True
+        else:
+            try:
+                conn = sqlite3.connect(str(self.shadow_path))
+                tables = conn.execute(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table'"
+                ).fetchone()[0]
+                conn.close()
+                if tables == 0:
+                    shadow_needs_init = True
+                    LOG.warning("Shadow DB exists but has no tables — reinitializing")
+            except Exception:
+                shadow_needs_init = True
+
+        if shadow_needs_init and self.primary_path.exists():
+            self.shadow_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(self.primary_path, self.shadow_path)
+            LOG.info("Initialized shadow from primary: %s", self.shadow_path)
 
         # Create validator if it doesn't exist
         if not self.validator_path.exists():

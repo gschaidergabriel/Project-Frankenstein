@@ -40,6 +40,24 @@ from overlay.context_builder import (
 )
 from overlay.services.system_control import SYSTEM_CONTROL_AVAILABLE, sc_process
 
+
+# ── World Experience: Observation Bridge ──────────────────────────
+def _observe_chat_world(cause_name: str, effect_name: str,
+                        cause_type: str = "social", effect_type: str = "cognitive",
+                        relation: str = "triggers", evidence: float = 0.2,
+                        **meta):
+    """Fire-and-forget world experience observation from chat."""
+    try:
+        from tools.world_experience_daemon import get_daemon
+        get_daemon().observe(
+            cause_name=cause_name, effect_name=effect_name,
+            cause_type=cause_type, effect_type=effect_type,
+            relation=relation, evidence=evidence,
+            metadata_effect=meta if meta else None,
+        )
+    except Exception:
+        pass
+
 # ── Consciousness Stream: Output-Feedback-Loop ──
 _CONSCIOUSNESS_AVAILABLE = False
 _consciousness_daemon = None
@@ -892,6 +910,11 @@ class ChatMixin:
                 except Exception:
                     pass
 
+                # World Experience: user interaction observation
+                _observe_chat_world(
+                    "user.chat", "consciousness.attention_shift", evidence=0.2,
+                )
+
                 # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
                 try:
                     if _response_analyzer and reply and reply != "(empty)":
@@ -1028,6 +1051,9 @@ class ChatMixin:
                 process_event(_evt, {"source": "ui", "voice": voice}, sentiment=_sentiment)
         except Exception:
             pass
+
+        # World Experience: user interaction observation
+        _observe_chat_world("user.chat", "consciousness.attention_shift", evidence=0.2)
 
         # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
         try:

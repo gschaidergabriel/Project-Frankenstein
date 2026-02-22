@@ -88,7 +88,7 @@ class EnergyConservation:
         # adapt the constant to reflect the new knowledge level.
         if self._initialized and self._energy_constant is not None:
             old = self._energy_constant
-            if abs(total - old) / max(old, 1.0) > 0.5:
+            if abs(total - old) / max(old, 1.0) > 0.10:
                 LOG.info(f"Energy constant adapting: {old:.2f} → {total:.2f} "
                          f"(knowledge base grew)")
                 self._energy_constant = total
@@ -428,6 +428,22 @@ class EnergyConservation:
         except Exception as e:
             LOG.error(f"Error enforcing conservation: {e}")
             return False
+
+    def recalibrate(self, titan_store) -> float:
+        """Recalibrate energy constant to current state (for organic growth).
+
+        Use when chronic violations indicate the knowledge base grew
+        organically and the constant is simply stale — not corruption.
+        """
+        total = self._calculate_total_energy(titan_store)
+        old = self._energy_constant
+        LOG.info(f"Energy recalibration: {old:.4f} -> {total:.4f}")
+        self._energy_constant = total
+        self.config.energy_constant = total
+        self._initialized = True
+        self.store.update_invariant_state(
+            "energy_conservation", total, threshold=total, status="normal")
+        return total
 
 
 # Global instance

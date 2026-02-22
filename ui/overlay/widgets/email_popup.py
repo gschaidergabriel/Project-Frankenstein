@@ -467,6 +467,12 @@ class EmailPopup(tk.Toplevel):
                           command=self._on_send).pack(side="left", padx=2)
         self._make_button(actions, "SAVE DRAFT", fg_color="#ccaa33",
                           command=self._on_save_draft).pack(side="left", padx=2)
+        # BACK button — return to compose intent to regenerate
+        if getattr(self, "_compose_from_intent", False):
+            self._make_button(actions, "BACK", fg_color="#8899bb",
+                              command=lambda: self._build_compose_intent_view(
+                                  to_hint=getattr(self, "_compose_to_hint", "")
+                              )).pack(side="left", padx=2)
         self._make_button(actions, "CLOSE", fg_color=COLORS.get("neon_cyan", "#00fff9"),
                           command=self.destroy).pack(side="right", padx=2)
 
@@ -925,6 +931,7 @@ class EmailPopup(tk.Toplevel):
     def fill_compose_new(self, to: str = "", subject: str = "",
                          ai_draft: str = ""):
         """Switch to compose view with AI-generated new email pre-filled."""
+        self._compose_from_intent = True
         self._build_compose_view(reply_to=to, reply_subject=subject)
         # Insert AI draft into compose text
         if ai_draft and hasattr(self, "_compose_text"):

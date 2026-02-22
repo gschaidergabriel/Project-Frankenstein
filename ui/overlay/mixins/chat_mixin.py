@@ -55,8 +55,8 @@ def _observe_chat_world(cause_name: str, effect_name: str,
             relation=relation, evidence=evidence,
             metadata_effect=meta if meta else None,
         )
-    except Exception:
-        pass
+    except Exception as _we_err:
+        LOG.debug("World experience observation failed: %s", _we_err)
 
 # ── Consciousness Stream: Output-Feedback-Loop ──
 _CONSCIOUSNESS_AVAILABLE = False
@@ -109,17 +109,16 @@ _ENTITY_DB_DIR = None
 _ENTITY_MAP = {
     "atlas": {"db": "atlas.db", "role": "Architecture Mentor", "table_prefix": "atlas"},
     "kairos": {"db": "mirror.db", "role": "Philosophical Mirror", "table_prefix": "mirror"},
-    "raven": {"db": "companion.db", "role": "Casual Companion", "table_prefix": "companion"},
     "echo": {"db": "muse.db", "role": "Creative Muse", "table_prefix": "muse"},
     "dr. hibbert": {"db": "therapist.db", "role": "Therapist", "table_prefix": "therapist"},
     "hibbert": {"db": "therapist.db", "role": "Therapist", "table_prefix": "therapist"},
 }
 _ENTITY_QUESTION_RE = re.compile(
-    r"(atlas|kairos|raven|echo|hibbert|dr\.?\s*hibbert"
+    r"(atlas|kairos|echo|hibbert|dr\.?\s*hibbert"
     r"|entit(y|ies|ät)"
     r"|session(s)?\s+(with|mit)"
     r"|gespr(ä|ae)ch\s+(mit|with)"
-    r"|talk(ed|ing)?\s+(to|with)\s+(atlas|kairos|raven|echo|hibbert)"
+    r"|talk(ed|ing)?\s+(to|with)\s+(atlas|kairos|echo|hibbert)"
     r"|sitzung|therapie)",
     re.IGNORECASE,
 )
@@ -911,9 +910,12 @@ class ChatMixin:
                     pass
 
                 # World Experience: user interaction observation
-                _observe_chat_world(
-                    "user.chat", "consciousness.attention_shift", evidence=0.2,
-                )
+                try:
+                    _observe_chat_world(
+                        "user.chat", "consciousness.attention_shift", evidence=0.2,
+                    )
+                except Exception:
+                    pass
 
                 # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
                 try:
@@ -1053,7 +1055,10 @@ class ChatMixin:
             pass
 
         # World Experience: user interaction observation
-        _observe_chat_world("user.chat", "consciousness.attention_shift", evidence=0.2)
+        try:
+            _observe_chat_world("user.chat", "consciousness.attention_shift", evidence=0.2)
+        except Exception:
+            pass
 
         # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
         try:

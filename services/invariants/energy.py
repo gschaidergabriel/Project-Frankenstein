@@ -435,15 +435,21 @@ class EnergyConservation:
         Use when chronic violations indicate the knowledge base grew
         organically and the constant is simply stale — not corruption.
         """
-        total = self._calculate_total_energy(titan_store)
-        old = self._energy_constant
-        LOG.info(f"Energy recalibration: {old:.4f} -> {total:.4f}")
-        self._energy_constant = total
-        self.config.energy_constant = total
-        self._initialized = True
-        self.store.update_invariant_state(
-            "energy_conservation", total, threshold=total, status="normal")
-        return total
+        try:
+            total = self._calculate_total_energy(titan_store)
+            old = self._energy_constant or 0.0
+            LOG.info("Energy recalibration: %.4f -> %.4f", old, total)
+            # Update DB first, then in-memory (so partial failure doesn't
+            # leave inconsistent state)
+            self.store.update_invariant_state(
+                "energy_conservation", total, threshold=total, status="normal")
+            self._energy_constant = total
+            self.config.energy_constant = total
+            self._initialized = True
+            return total
+        except Exception as e:
+            LOG.error("Energy recalibration failed: %s", e)
+            return self._energy_constant or 0.0
 
 
 # Global instance

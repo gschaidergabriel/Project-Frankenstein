@@ -734,17 +734,19 @@ class AffectLinker:
         """Persist DEFAULT_AFFECTS into DB (INSERT OR IGNORE = idempotent)."""
         try:
             conn = sqlite3.connect(self.db_path)
-            for aid, a in self.DEFAULT_AFFECTS.items():
-                conn.execute(
-                    "INSERT OR IGNORE INTO affect_definitions "
-                    "(id, event_pattern, emotion, reason, intensity, created_at, trigger_count) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (a.id, a.event_pattern, a.emotion.value, a.reason,
-                     a.intensity, a.created_at.isoformat(), a.trigger_count))
-            conn.commit()
-            conn.close()
+            try:
+                for aid, a in self.DEFAULT_AFFECTS.items():
+                    conn.execute(
+                        "INSERT OR IGNORE INTO affect_definitions "
+                        "(id, event_pattern, emotion, reason, intensity, created_at, trigger_count) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (a.id, a.event_pattern, a.emotion.value, a.reason,
+                         a.intensity, a.created_at.isoformat(), a.trigger_count))
+                conn.commit()
+            finally:
+                conn.close()
         except Exception as e:
-            LOG.warning(f"Could not seed default affects: {e}")
+            LOG.warning("Could not seed default affects: %s", e)
 
     def _load_custom_affects(self):
         """Lädt benutzerdefinierte Affekte aus DB."""

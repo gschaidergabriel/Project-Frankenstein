@@ -300,7 +300,8 @@ class ConsciousnessDaemon:
         self._ws_update_count: int = 0
 
         # --- World Experience Bridge: mood tracking ---
-        self._prev_mood_val: float = 0.0
+        self._prev_mood_val: Optional[float] = None  # None = first recording, skip spurious delta
+        self._last_observed_prediction_id: int = 0
 
         # Init
         self._ensure_schema()
@@ -327,8 +328,8 @@ class ConsciousnessDaemon:
                 metadata_cause=metadata_cause,
                 metadata_effect=metadata_effect,
             )
-        except Exception:
-            pass  # Never crash consciousness for world experience
+        except Exception as _we_err:
+            LOG.debug("_observe_world failed: %s", _we_err)
 
     # ── Database ──────────────────────────────────────────────────────
 
@@ -873,16 +874,17 @@ class ConsciousnessDaemon:
         )
         conn.commit()
 
-        # World Experience: report significant mood shifts
-        delta = mood_value - self._prev_mood_val
-        if abs(delta) > 0.15:
-            effect = "personality.positive_shift" if delta > 0 else "personality.negative_shift"
-            self._observe_world(
-                "consciousness.mood", effect,
-                cause_type="affective", effect_type="personality",
-                relation="shifts", evidence=0.2,
-                metadata_effect={"delta": round(delta, 3), "source": source},
-            )
+        # World Experience: report significant mood shifts (skip first recording)
+        if self._prev_mood_val is not None:
+            delta = mood_value - self._prev_mood_val
+            if abs(delta) > 0.15:
+                effect = "personality.positive_shift" if delta > 0 else "personality.negative_shift"
+                self._observe_world(
+                    "consciousness.mood", effect,
+                    cause_type="affective", effect_type="personality",
+                    relation="shifts", evidence=0.2,
+                    metadata_effect={"delta": round(delta, 3), "source": source},
+                )
         self._prev_mood_val = mood_value
 
     def _get_mood_trajectory_summary(self) -> str:
@@ -1875,12 +1877,14 @@ class ConsciousnessDaemon:
 
         conn.commit()
 
-        # World Experience: prediction outcomes
+        # World Experience: prediction outcomes (only newly resolved)
         recent = conn.execute(
-            "SELECT surprise FROM predictions WHERE resolved = 1 "
-            "ORDER BY id DESC LIMIT 1"
+            "SELECT id, surprise FROM predictions WHERE resolved = 1 "
+            "AND id > ? ORDER BY id DESC LIMIT 1",
+            (self._last_observed_prediction_id,)
         ).fetchone()
         if recent and recent["surprise"] is not None:
+            self._last_observed_prediction_id = recent["id"]
             surprise_val = recent["surprise"]
             if surprise_val < 0.3:
                 self._observe_world(

@@ -26,6 +26,7 @@ If 3x divergence at same point:
 import hashlib
 import json
 import logging
+import os
 import random
 import shutil
 import sqlite3
@@ -103,40 +104,46 @@ class TripleReality:
         else:
             try:
                 conn = sqlite3.connect(str(self.shadow_path))
-                tables = conn.execute(
-                    "SELECT count(*) FROM sqlite_master WHERE type='table'"
-                ).fetchone()[0]
-                conn.close()
-                if tables == 0:
-                    shadow_needs_init = True
-                    LOG.warning("Shadow DB exists but has no tables — reinitializing")
+                try:
+                    tables = conn.execute(
+                        "SELECT count(*) FROM sqlite_master WHERE type='table'"
+                    ).fetchone()[0]
+                    if tables == 0:
+                        shadow_needs_init = True
+                        LOG.warning("Shadow DB exists but has no tables — reinitializing")
+                finally:
+                    conn.close()
             except Exception:
                 shadow_needs_init = True
 
         if shadow_needs_init and self.primary_path.exists():
             self.shadow_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(self.primary_path, self.shadow_path)
+            # Atomic copy: write to tmp then rename (prevents corruption on crash)
+            tmp_path = self.shadow_path.with_suffix('.tmp')
+            shutil.copy2(self.primary_path, tmp_path)
+            os.replace(str(tmp_path), str(self.shadow_path))
             LOG.info("Initialized shadow from primary: %s", self.shadow_path)
 
         # Create validator if it doesn't exist
         if not self.validator_path.exists():
             LOG.info("Initializing validator reality")
-            # Validator starts empty - it only observes
             self.validator_path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(str(self.validator_path))
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS observations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    primary_hash TEXT NOT NULL,
-                    shadow_hash TEXT NOT NULL,
-                    distance REAL NOT NULL,
-                    is_convergent INTEGER NOT NULL,
-                    region_id TEXT
-                )
-            """)
-            conn.commit()
-            conn.close()
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS observations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        primary_hash TEXT NOT NULL,
+                        shadow_hash TEXT NOT NULL,
+                        distance REAL NOT NULL,
+                        is_convergent INTEGER NOT NULL,
+                        region_id TEXT
+                    )
+                """)
+                conn.commit()
+            finally:
+                conn.close()
 
     def sync_shadow(self, operation: Dict):
         """
@@ -488,7 +495,9 @@ class TripleReality:
             # For now, just resync shadow to primary
             # A full implementation would restore both from backup
             if self.primary_path.exists():
-                shutil.copy2(self.primary_path, self.shadow_path)
+                tmp_path = self.shadow_path.with_suffix('.tmp')
+                shutil.copy2(self.primary_path, tmp_path)
+                os.replace(str(tmp_path), str(self.shadow_path))
                 LOG.info("Rolled back shadow to primary state")
 
             # Reseed random generators
@@ -504,7 +513,9 @@ class TripleReality:
         """Force resync shadow to primary."""
         try:
             if self.primary_path.exists():
-                shutil.copy2(self.primary_path, self.shadow_path)
+                tmp_path = self.shadow_path.with_suffix('.tmp')
+                shutil.copy2(self.primary_path, tmp_path)
+                os.replace(str(tmp_path), str(self.shadow_path))
                 LOG.info("Force resynced shadow to primary")
 
                 # Reset divergence counts

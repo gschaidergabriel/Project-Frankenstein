@@ -1073,7 +1073,7 @@ class MirrorAgent:
         _has_summary = summary and "without summary" not in summary.lower()
         _short = ""
         if _has_summary:
-            _short = " ".join(summary.split()[:15])
+            _short = " ".join(summary.split()[:25])
             if not _short.endswith("."):
                 _short += " …"
         summary_msg = (

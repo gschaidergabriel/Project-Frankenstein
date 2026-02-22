@@ -203,7 +203,6 @@ _ENTITY_LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs"
 _ENTITY_PREFIX_MAP = {
     "kairos": "mirror_kairos",
     "hibbert": "therapist_hibbert",
-    "raven": "companion_raven",
     "atlas": "atlas_atlas",
     "echo": "muse_echo",
 }

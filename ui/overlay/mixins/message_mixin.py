@@ -103,6 +103,15 @@ class MessageMixin:
         self.update_idletasks()
         self.update()
 
+    def _update_user_bubbles(self, new_name: str):
+        """Update sender label on all existing user bubbles (live rename)."""
+        try:
+            for child in self.messages_frame.winfo_children():
+                if isinstance(child, MessageBubble) and getattr(child, '_is_user', False):
+                    child.update_sender_text(new_name)
+        except Exception as e:
+            LOG.debug(f"Bubble rename error: {e}")
+
     def _add_image(self, image_source, caption: str = "", is_user: bool = False):
         """Add an image bubble to the chat.
 

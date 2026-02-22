@@ -4,6 +4,7 @@ Extracted from chat_overlay_monolith.py lines ~4463-4878.
 Plain mixin class; all `self.*` references resolve at runtime via MRO.
 """
 
+import os
 import tkinter as tk
 from tkinter import filedialog
 from overlay.constants import COLORS, LOG, FRANK_IDENTITY, DND_AVAILABLE, DND_FILES
@@ -274,17 +275,31 @@ class UiMixin:
     # ---- Canvas / scroll helpers ----
 
     def _on_frame_configure(self, event):
-        # Defer scrollregion updates during drag to prevent scroll-jumping
-        # while bubbles are reflowing. The width update still flows through
-        # _on_canvas_configure so bubbles resize live with the window edge.
-        if getattr(self, '_resize_edge', None):
+        # Suppress scrollregion updates during drag AND during post-resize settle
+        if getattr(self, '_resize_edge', None) or getattr(self, '_resize_settling', False):
             return
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
 
     def _on_canvas_configure(self, event):
-        # Always sync messages_frame width to canvas — this makes bubbles
-        # stick to the right edge and reflow seamlessly during drag.
+        # During resize drag: batch via after_idle (one reflow per event-loop
+        # cycle instead of per-pixel — tight batching, no fixed delay)
+        if getattr(self, '_resize_edge', None):
+            self._pending_canvas_w = event.width
+            if not getattr(self, '_canvas_reflow_pending', False):
+                self._canvas_reflow_pending = True
+                self.after_idle(self._do_canvas_reflow)
+            return
         self.chat_canvas.itemconfig(self.canvas_window, width=event.width)
+
+    def _do_canvas_reflow(self):
+        """Batched canvas width sync during resize drag."""
+        self._canvas_reflow_pending = False
+        w = getattr(self, '_pending_canvas_w', None)
+        if w:
+            try:
+                self.chat_canvas.itemconfig(self.canvas_window, width=w)
+            except Exception:
+                pass
 
     def _on_mousewheel(self, event):
         try:
@@ -339,6 +354,7 @@ class UiMixin:
     def _init_resize(self):
         """Initialize east-edge resize for DOCK panel."""
         self._resize_edge = None
+        self._resize_settling = False
         self._resize_start_x = 0
         self._resize_start_width = 0
         self._last_strut_update = 0.0
@@ -370,46 +386,185 @@ class UiMixin:
         if self._resize_edge:
             self._resize_start_x = event.x_root
             self._resize_start_width = self.winfo_width()
+            # Save scroll state: at-bottom flag + bubble anchor for mid-scroll
+            self._resize_was_at_bottom = False
+            self._resize_scroll_anchor = None
+            self._resize_scroll_offset = 0
+            try:
+                yv = self.chat_canvas.yview()
+                if yv[1] >= 0.95:
+                    self._resize_was_at_bottom = True
+                else:
+                    # Anchor the bottom-visible bubble (where user is reading)
+                    vp_h = self.chat_canvas.winfo_height()
+                    bottom_y = self.chat_canvas.canvasy(vp_h)
+                    for child in reversed(self.messages_frame.winfo_children()):
+                        cy = child.winfo_y()
+                        ch = child.winfo_height()
+                        if cy + ch <= bottom_y and ch > 0:
+                            self._resize_scroll_anchor = child
+                            # How far from bubble-bottom to viewport-bottom
+                            self._resize_scroll_offset = bottom_y - (cy + ch)
+                            break
+            except Exception:
+                pass
+            # Save desktop icon positions before resize (safety net)
+            self._save_desktop_icons()
 
     def _on_resize_drag(self, event):
-        """Handle east-edge width resize with live strut update.
+        """Handle east-edge width resize with live strut updates.
 
-        Position and height stay fixed. Adjacent maximized windows
-        resize smoothly as the strut changes during drag.
+        Updates strut via ctypes/Xlib (~60fps) so the WM pushes
+        windows smoothly as the overlay grows/shrinks.
         """
         if not self._resize_edge:
             return
         dx = event.x_root - self._resize_start_x
         min_w = self.minsize()[0]
         new_w = max(min_w, self._resize_start_width + dx)
-        # Enforce max width (leave room for apps)
         new_w = min(new_w, BSNConstants.FRANK_MAX_WIDTH)
         self.geometry(f"{int(new_w)}x{self.winfo_height()}+{getattr(self, '_dock_x', 0)}+{getattr(self, '_workarea_y', 0)}")
-        # Live strut update — maximized windows adjust in real-time
-        # Throttled to ~20fps to avoid subprocess lag
+        # Live strut update (~60fps via ctypes Xlib, no subprocess)
         import time as _t
         now = _t.time()
-        if now - self._last_strut_update > 0.05 and hasattr(self, '_update_strut'):
+        if now - self._last_strut_update > 0.016:
             self._last_strut_update = now
-            self._update_strut()
+            self._update_strut_for_width(int(new_w))
 
     def _on_resize_end(self, event):
-        """End resize and finalize strut + scroll region."""
-        if self._resize_edge == "e":
-            if hasattr(self, '_update_strut'):
-                self._update_strut()
+        """End resize: final strut + flush deferred reflows."""
+        if not self._resize_edge:
+            return
         self._resize_edge = None
-        # Scrollregion update after bubble remeasurements settle
-        self.after(200, self._finalize_resize_layout)
-
-    def _finalize_resize_layout(self):
-        """Deferred scrollregion update after resize settles."""
+        self._resize_settling = True  # Suppress frame_configure until scroll restored
+        # Flush any pending canvas reflow immediately
+        self._canvas_reflow_pending = False
         try:
-            self.chat_canvas.configure(
-                scrollregion=self.chat_canvas.bbox("all"))
-            self._smart_scroll()
+            cw = self.chat_canvas.winfo_width()
+            if cw > 1:
+                self.chat_canvas.itemconfig(self.canvas_window, width=cw)
         except Exception:
             pass
+        # Final authoritative strut update
+        self._update_strut()
+        # Atomic: remeasure + scrollregion + scroll restore in one step
+        self.after(80, self._settle_after_resize)
+        # Restore desktop icon positions (safety net for DING)
+        self.after(500, self._restore_desktop_icons)
+
+    def _update_strut_for_width(self, overlay_w: int):
+        """Update strut reservation for a specific overlay width.
+
+        Called during resize drag to keep the WM informed in real-time.
+        """
+        try:
+            from overlay.dock_hints import set_strut_partial
+            xid = getattr(self, '_dock_xid', self.winfo_id())
+            dock_x = getattr(self, '_dock_x', 66)
+            left_total = dock_x + overlay_w
+            mon = get_primary_monitor()
+            set_strut_partial(xid, left_total, 0, mon["height"] - 1)
+        except Exception:
+            pass
+
+    def _save_desktop_icons(self):
+        """Save desktop icon positions via GIO metadata before resize."""
+        import subprocess
+        self._saved_icon_positions = {}
+        try:
+            desktop_dir = subprocess.run(
+                ["xdg-user-dir", "DESKTOP"],
+                capture_output=True, text=True, timeout=2,
+            ).stdout.strip()
+            if not desktop_dir or not os.path.isdir(desktop_dir):
+                return
+            for entry in os.listdir(desktop_dir):
+                fpath = os.path.join(desktop_dir, entry)
+                try:
+                    result = subprocess.run(
+                        ["gio", "info", "-a", "metadata::nautilus-icon-position", fpath],
+                        capture_output=True, text=True, timeout=2,
+                    )
+                    for line in result.stdout.split("\n"):
+                        if "metadata::nautilus-icon-position" in line:
+                            pos = line.split(":", 2)[-1].strip()
+                            if pos:
+                                self._saved_icon_positions[fpath] = pos
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _restore_desktop_icons(self):
+        """Restore desktop icon positions via GIO metadata after resize."""
+        import subprocess
+        saved = getattr(self, '_saved_icon_positions', {})
+        if not saved:
+            return
+        for fpath, pos in saved.items():
+            try:
+                subprocess.Popen(
+                    ["gio", "set", "-t", "string", fpath,
+                     "metadata::nautilus-icon-position", pos],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+        self._saved_icon_positions = {}
+
+    def _settle_after_resize(self):
+        """Atomic post-resize: remeasure bubbles + update scrollregion + restore scroll.
+
+        All in one callback so no intermediate frame_configure can cause jumps.
+        """
+        import tkinter as _tk
+        from overlay.widgets.message_bubble import MessageBubble
+        try:
+            # 1. Remeasure all bubble heights
+            for child in self.messages_frame.winfo_children():
+                if isinstance(child, MessageBubble):
+                    tw = getattr(child, '_text_widget', None)
+                    if tw is None:
+                        continue
+                    try:
+                        dl = tw.count("1.0", "end", "displaylines")
+                        if dl:
+                            h = dl[0] if isinstance(dl, tuple) else dl
+                            tw.configure(height=max(1, h))
+                    except _tk.TclError:
+                        pass
+
+            # 2. Let Tk process the height changes
+            self.update_idletasks()
+
+            # 3. Update scrollregion
+            self.chat_canvas.configure(
+                scrollregion=self.chat_canvas.bbox("all"))
+
+            # 4. Restore scroll position
+            if getattr(self, '_resize_was_at_bottom', False):
+                # Was at bottom → stay at bottom
+                self.chat_canvas.yview_moveto(1.0)
+            else:
+                # Anchor bottom-visible bubble to same viewport position
+                anchor = getattr(self, '_resize_scroll_anchor', None)
+                if anchor is not None and anchor.winfo_exists():
+                    vp_h = self.chat_canvas.winfo_height()
+                    new_cy = anchor.winfo_y()
+                    new_ch = anchor.winfo_height()
+                    offset = getattr(self, '_resize_scroll_offset', 0)
+                    # Target: bubble-bottom + offset = viewport-bottom
+                    target_bottom = new_cy + new_ch + offset
+                    target_top = max(0, target_bottom - vp_h)
+                    bbox = self.chat_canvas.bbox("all")
+                    if bbox and bbox[3] > 0:
+                        self.chat_canvas.yview_moveto(target_top / bbox[3])
+            self._resize_scroll_anchor = None
+        except Exception:
+            pass
+        finally:
+            # 5. Un-suppress frame_configure
+            self._resize_settling = False
 
     # ---- Key bindings ----
 

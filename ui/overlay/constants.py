@@ -774,14 +774,16 @@ USB_STORAGE_RE = re.compile(
 
 # User name introduction detection
 USER_NAME_RE = re.compile(
-    r"(?:mein|my)\s+name\s+(?:ist|is|lautet|wäre|waere)\s+"
+    r"(?:mein|my)\s+(?:\w+\s+)?name\s+(?:ist|is|lautet|wäre|waere)\s+"
     r"|ich\s+bin\s+(?:die|der|das)?\s*[A-Z\u00C0-\u024F]"
     r"|ich\s+hei(?:ss|ß)e\s+"
     r"|(?:nenn|ruf|call)\s+mich\s+"
     r"|sag\s+.+?\s+zu\s+mir"
     r"|(?:der\s+)?(?:user|benutzer|nutzer)\s+(?:ist|heisst|heißt)\s+"
     r"|(?:du\s+)?(?:kannst|darfst|sollst)\s+mich\s+.+?\s+nennen"
-    r"|(?:i'm|i\s+am|call\s+me)\s+[A-Z]",
+    r"|(?:i'm|i\s+am|call\s+me)\s+[A-Z]"
+    r"|(?:change|änder|aender|wechsl|switch)\s+(?:my|mein(?:en)?)\s+(?:\w+\s+)?name(?:n)?\s+(?:to|zu|auf|in)\s+"
+    r"|(?:rename\s+me|nenn\s+mich\s+(?:jetzt|ab\s+jetzt|nun))\s+",
     re.IGNORECASE | re.UNICODE,
 )
 

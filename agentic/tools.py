@@ -568,12 +568,12 @@ class ToolRegistry:
 
         self.register(Tool(
             name="entity_sessions",
-            description="List past sessions with Frank's entities (Kairos, Dr. Hibbert, Raven, Atlas, Echo). Use to recall what was discussed.",
+            description="List past sessions with Frank's entities (Kairos, Dr. Hibbert, Atlas, Echo). Use to recall what was discussed.",
             category=ToolCategory.MEMORY,
             risk_level=0.0,
             endpoint="/entity/sessions",
             parameters=[
-                ToolParameter("entity", "string", "Entity name filter: kairos, hibbert, raven, atlas, echo, or 'all'", required=False, default="all"),
+                ToolParameter("entity", "string", "Entity name filter: kairos, hibbert, atlas, echo, or 'all'", required=False, default="all"),
                 ToolParameter("limit", "integer", "Max sessions to return", required=False, default=10),
             ],
         ))

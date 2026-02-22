@@ -83,7 +83,7 @@ Learns cause-effect patterns from system observations through Bayesian inference
 10 tables tracking workspace snapshots, mood trajectory, reflections, predictions, experience vectors, attention log, perceptual events, and goals. This is the persistent substrate of Frank's inner life.
 
 **Entity Memory**
-Each of the 5 autonomous entities (Dr. Hibbert, Kairos, Raven, Atlas, Echo) has its own database tracking session history, observations about Frank, and persistent entity state.
+Each of the 4 autonomous entities (Dr. Hibbert, Kairos, Atlas, Echo) has its own database tracking session history, observations about Frank, and persistent entity state.
 
 ## What Frank Can Actually Do
 
@@ -173,7 +173,6 @@ Both support hot-reload — type "skill reload" in the chat or hit the API.
 |--------|------|
 | **Dr. Hibbert** | Therapist — emotional patterns, CBT-style support (3x daily) |
 | **Kairos** | Philosopher — Socratic questioning, challenges lazy reasoning |
-| **Raven** | Friend — humor, opinions, just hanging out |
 | **Atlas** | Mentor — architecture, capabilities, planning |
 | **Echo** | Muse — poetry, imagery, "what if" scenarios |
 

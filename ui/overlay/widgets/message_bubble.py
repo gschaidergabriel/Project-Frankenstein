@@ -167,7 +167,13 @@ class MessageBubble(tk.Frame):
             border_color = COLORS["neon_cyan"]
             align = "e"
             sender_color = COLORS["neon_cyan"]
-            sender_text = "USER"
+            # Show stored user name if available, otherwise "USER"
+            try:
+                from tools.user_profile import get_user_name
+                _uname = get_user_name()
+            except Exception:
+                _uname = None
+            sender_text = _uname.upper() if _uname else "USER"
             sender_icon = "\u25b6"
         else:
             bubble_bg = COLORS["bg_ai_msg"]
@@ -205,7 +211,7 @@ class MessageBubble(tk.Frame):
         content.pack(side="left", fill="both", expand=True)
 
         # Sender label with cyberpunk styling (monospace, uppercase)
-        sender_label = tk.Label(
+        self._sender_label = tk.Label(
             content,
             text=f"{sender_icon} {sender_text}",
             bg=bubble_bg,
@@ -213,7 +219,8 @@ class MessageBubble(tk.Frame):
             font=("Consolas", 9, "bold"),
             anchor="w"
         )
-        sender_label.pack(anchor="w", pady=(0, 4))
+        self._sender_label.pack(anchor="w", pady=(0, 4))
+        self._sender_icon = sender_icon
 
         # Message text - SELECTABLE with right-click copy + markdown rendering
         self._create_message_text(content, message, text_color, bubble_bg, border_color)
@@ -225,6 +232,14 @@ class MessageBubble(tk.Frame):
         # Action bar for Frank messages (not user, not system)
         if not is_user and not is_system:
             self._build_action_bar(content, bubble_bg)
+
+    def update_sender_text(self, new_name: str):
+        """Update the sender label text (e.g. after user name change)."""
+        if self._is_user and hasattr(self, '_sender_label'):
+            try:
+                self._sender_label.configure(text=f"{self._sender_icon} {new_name.upper()}")
+            except Exception:
+                pass
 
     def _add_terminal_cursor(self, parent, bg_color):
         """Add a subtle blinking green terminal cursor after Frank's message."""
@@ -393,17 +408,20 @@ class MessageBubble(tk.Frame):
 
         def _on_width_change(event):
             if event.width == text_widget._prev_width:
-                return  # only width changes trigger remeasure, avoids loops
+                return
             text_widget._prev_width = event.width
+            # Skip during active overlay drag — final remeasure on drag end
+            try:
+                if getattr(text_widget.winfo_toplevel(), '_resize_edge', None):
+                    return
+            except Exception:
+                pass
             _tid = getattr(text_widget, '_resize_after', None)
             if _tid:
                 try:
                     text_widget.after_cancel(_tid)
                 except (ValueError, tk.TclError):
                     pass
-            # 150ms debounce: during window resize many Configure events fire
-            # in quick succession. Wait for them to settle before the expensive
-            # displaylines recalculation.
             text_widget._resize_after = text_widget.after(150, _remeasure_height)
 
         text_widget.bind("<Configure>", _on_width_change)

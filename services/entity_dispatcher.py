@@ -13,7 +13,6 @@ Replaces individual systemd timers with a single persistent service that:
 Entities:
   therapist  (Dr. Hibbert)   — 3 sessions/day
   mirror     (Kairos)        — 1 session/day
-  companion  (Raven)         — 1 session/day
   atlas      (Atlas)         — 1 session/day
   muse       (Echo)          — 1 session/day
 
@@ -68,7 +67,6 @@ LOG = logging.getLogger("entity_dispatcher")
 DAILY_QUOTAS: dict[str, int] = {
     "therapist": 3,
     "mirror":    1,
-    "companion": 1,
     "atlas":     1,
     "muse":      1,
 }
@@ -76,7 +74,6 @@ DAILY_QUOTAS: dict[str, int] = {
 ENTITY_MODULES: dict[str, str] = {
     "therapist": "ext.therapist_agent",
     "mirror":    "ext.mirror_agent",
-    "companion": "ext.companion_agent",
     "atlas":     "ext.atlas_agent",
     "muse":      "ext.muse_agent",
 }
@@ -84,7 +81,6 @@ ENTITY_MODULES: dict[str, str] = {
 ENTITY_DISPLAY: dict[str, str] = {
     "therapist": "Dr. Hibbert",
     "mirror":    "Kairos",
-    "companion": "Raven",
     "atlas":     "Atlas",
     "muse":      "Echo",
 }
@@ -92,7 +88,6 @@ ENTITY_DISPLAY: dict[str, str] = {
 PID_FILES: dict[str, Path] = {
     "therapist": RUNTIME_DIR / "therapist_agent.pid",
     "mirror":    RUNTIME_DIR / "mirror_agent.pid",
-    "companion": RUNTIME_DIR / "companion_agent.pid",
     "atlas":     RUNTIME_DIR / "atlas_agent.pid",
     "muse":      RUNTIME_DIR / "muse_agent.pid",
 }

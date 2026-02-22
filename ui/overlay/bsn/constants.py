@@ -143,7 +143,7 @@ class BSNConstants:
     """Constants for the layout system."""
     # Frank Constraints
     FRANK_MIN_WIDTH = 340      # Minimum for usable UI
-    FRANK_MAX_WIDTH = 700      # Maximum width (leave room for apps)
+    FRANK_MAX_WIDTH = 520      # Maximum width (leave room for apps)
     FRANK_MIN_HEIGHT = 500     # Title + Messages + Input
     FRANK_DEFAULT_WIDTH = 420  # Default width
 

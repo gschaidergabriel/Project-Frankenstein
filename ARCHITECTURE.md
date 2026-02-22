@@ -603,7 +603,6 @@ traits:     {novelty, complexity, risk, impact}
 |--------|-------------|------|-------------|
 | therapist | Dr. Hibbert | Psychological introspection | 3 sessions |
 | mirror | Kairos | Self-reflection, temporal awareness | 1 session |
-| companion | Raven | Social engagement | 1 session |
 | atlas | Atlas | Knowledge, planning | 1 session |
 | muse | Echo | Creative inspiration | 1 session |
 
@@ -753,7 +752,6 @@ GitHub intelligence and code analysis.
 | `atlas.db` | Atlas entity | sessions, session_messages, frank_observations, topics, atlas_state |
 | `muse.db` | Echo entity | sessions, session_messages, frank_observations, topics, muse_state |
 | `mirror.db` | Kairos entity | sessions, session_messages, frank_observations, topics, mirror_state |
-| `companion.db` | Raven entity | sessions, session_messages, frank_observations, topics, companion_state |
 | `invariants/invariants.db` | Physics enforcement | energy_ledger, entropy_history, convergence_checkpoints, core_kernel, quarantine, metrics_history, invariant_state |
 | `invariants/titan_shadow.db` | Shadow reality (mirrors titan.db) | Same as titan.db |
 | `invariants/titan_validator.db` | Reality validation | observations |
@@ -801,7 +799,6 @@ GitHub intelligence and code analysis.
 | `aicore-atlas` | On-demand | Atlas entity |
 | `aicore-muse` | On-demand | Echo entity |
 | `aicore-mirror` | On-demand | Kairos entity |
-| `aicore-companion` | On-demand | Raven entity |
 
 ---
 

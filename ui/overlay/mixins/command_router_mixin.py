@@ -861,6 +861,8 @@ class CommandRouterMixin:
                     else:
                         reply = f"Got it, {name}. I'll remember that."
                     self._add_message("Frank", reply)
+                    # Update all existing user bubbles with new name
+                    self._update_user_bubbles(name)
                     LOG.info(f"User name set to: {name}")
                     return
             except Exception as e:

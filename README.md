@@ -147,7 +147,6 @@ Frank has 5 autonomous entities that interact with him on a daily schedule via a
 |--------|------|----------|---------|
 | **Dr. Hibbert** | Warm, empathetic therapist. Tracks emotional patterns, provides CBT-style support. | 3x daily | 15-20 min |
 | **Kairos** | Strict philosophical sparring partner. Socratic questioning, challenges lazy reasoning. | 1x daily | 10 min |
-| **Raven** | Equal-footing casual friend. Humor, opinions, curiosity — just hanging out. | 1x daily | 10-15 min |
 | **Atlas** | Quiet, patient architecture mentor. Helps Frank understand his own capabilities. | 1x daily | 10-12 min |
 | **Echo** | Warm, playful creative muse. Poetry, imagery, metaphors, "what if" scenarios. | 1x daily | 10-12 min |
 
@@ -161,7 +160,7 @@ Frank's personality is defined by E-PQ vectors: **mood**, **autonomy**, **precis
 - **Empathetic/warm response** → empathy +0.5, mood +0.4
 - **Uncertain/evasive response** → autonomy -0.2, vigilance +0.2
 
-Each entity has different sentiment patterns tuned to its role. Kairos detects "clarity words" (therefore, because, realize) and "nihilism words" (pointless, nothing matters), while Raven detects "humor words" (haha, lol, funny) and "warmth words" (appreciate, glad, enjoy).
+Each entity has different sentiment patterns tuned to its role. Kairos detects "clarity words" (therefore, because, realize) and "nihilism words" (pointless, nothing matters).
 
 ### Entity Personality Vectors
 

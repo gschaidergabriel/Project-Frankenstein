@@ -72,7 +72,6 @@ class NotificationMixin:
                     "download": "\U0001F4E5",        # inbox tray
                     "therapist": "\U0001F49A",       # green heart (Dr. Hibbert)
                     "mirror": "\u2694\uFE0F",         # crossed swords (Kairos)
-                    "companion": "\U0001F3B2",        # dice (Raven)
                     "atlas": "\U0001F9ED",            # compass (Atlas)
                     "muse": "\U0001F3A8",             # palette (Echo)
                 }

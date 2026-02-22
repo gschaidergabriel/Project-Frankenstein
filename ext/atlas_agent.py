@@ -123,7 +123,6 @@ Toolboxd:8096 (skills/tools) | Voice:8197
 |--------|------|----------|
 | Dr. Hibbert | Therapist, CBT-style emotional support | 3x daily |
 | Kairos | Philosophical sparring, Socratic questioning | 1x daily |
-| Raven | Casual friend, humor, equal-footing hangout | 1x daily |
 | Atlas | Architecture mentor, knows Frank's capabilities | 1x daily |
 | Echo | Creative muse, poetry, imagery, what-if scenarios | 1x daily |
 
@@ -139,7 +138,7 @@ Rapport is monotonically non-decreasing.
 - Source: <AICORE_ROOT>/
 - Data: ~/.local/share/frank/
 - Models: ~/aicore/var/lib/aicore/models/
-- Entity DBs: ~/.local/share/frank/db/{therapist,mirror,companion,atlas,muse}.db
+- Entity DBs: ~/.local/share/frank/db/{therapist,mirror,atlas,muse}.db
 """
 
 # ---------------------------------------------------------------------------
@@ -291,10 +290,10 @@ def _clean_response(text: str) -> str:
     if not text:
         return ""
     text = re.sub(
-        r"^(Claude|Companion|Assistant|Atlas|Raven|Friend|Antwort|Response|Mentor):\s*",
+        r"^(Claude|Assistant|Atlas|Friend|Antwort|Response|Mentor):\s*",
         "", text, flags=re.IGNORECASE)
     text = re.sub(
-        r"^\*\*(Claude|Frank|Atlas|Raven|Companion|Friend|Mentor)\*\*:?\s*",
+        r"^\*\*(Claude|Frank|Atlas|Friend|Mentor)\*\*:?\s*",
         "", text, flags=re.IGNORECASE)
     text = re.sub(r"\n*\(Note:.*?\)\s*$", "", text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(r"\n*\(Hinweis:.*?\)\s*$", "", text, flags=re.IGNORECASE | re.DOTALL)
@@ -1173,7 +1172,7 @@ class AtlasAgent:
         _has_summary = summary and "without summary" not in summary.lower()
         _short = ""
         if _has_summary:
-            _short = " ".join(summary.split()[:15])
+            _short = " ".join(summary.split()[:25])
             if not _short.endswith("."):
                 _short += " …"
         summary_msg = (

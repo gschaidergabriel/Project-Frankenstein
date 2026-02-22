@@ -738,7 +738,7 @@ Always natural language, never raw metrics:
 ## Layer 8: Entity Memory (5 Persistent Agents)
 
 ### Location
-- **Databases**: `therapist.db`, `atlas.db`, `muse.db`, `mirror.db`, `companion.db`
+- **Databases**: `therapist.db`, `atlas.db`, `muse.db`, `mirror.db`
 
 ### Shared Schema (per entity)
 
@@ -1065,7 +1065,6 @@ Old messages archived (retention: 30 days)
 | `atlas.db` | Atlas entity | sessions, session_messages, frank_observations, atlas_state | Per session |
 | `muse.db` | Echo (Muse) entity | sessions, session_messages, frank_observations, muse_state | Per session |
 | `mirror.db` | Kairos (Mirror) entity | sessions, session_messages, frank_observations, mirror_state | Per session |
-| `companion.db` | Raven entity | sessions, session_messages, frank_observations, companion_state | Per session |
 | `e_sir.db` | Self-improvement audit trail | audit_log, snapshots, genesis_tools | On action |
 | `system_bridge.db` | Hardware state history | drivers, driver_observations | On change |
 | `akam_cache.db` | Knowledge cache | validated_claims, research_sessions | On research |

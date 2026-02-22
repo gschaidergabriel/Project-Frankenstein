@@ -61,7 +61,6 @@ GPU_MAX_LOAD = 0.50
 PID_FILE = RUNTIME_DIR / "muse_agent.pid"
 THERAPIST_PID_FILE = RUNTIME_DIR / "therapist_agent.pid"
 MIRROR_PID_FILE = RUNTIME_DIR / "mirror_agent.pid"
-COMPANION_PID_FILE = RUNTIME_DIR / "companion_agent.pid"
 ATLAS_PID_FILE = RUNTIME_DIR / "atlas_agent.pid"
 
 
@@ -82,7 +81,6 @@ def _check_no_other_agents() -> bool:
     """Return True if NO other agent session is running (prevent overlap)."""
     for name, pid_file in [("Dr. Hibbert", THERAPIST_PID_FILE),
                             ("Kairos", MIRROR_PID_FILE),
-                            ("Raven", COMPANION_PID_FILE),
                             ("Atlas", ATLAS_PID_FILE)]:
         if pid_file.exists():
             try:

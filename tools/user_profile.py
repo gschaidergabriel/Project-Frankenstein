@@ -80,9 +80,9 @@ def get_user_profile() -> Dict[str, Any]:
 
 # Patterns that introduce a name (German + English, fuzzy)
 _NAME_PATTERNS = [
-    # "mein name ist Alex" / "mein name is Alex"
+    # "mein name ist Alex" / "my new name is Alex"
     re.compile(
-        r"(?:mein|my)\s+name\s+(?:ist|is|lautet|wäre|waere)\s+(.+)",
+        r"(?:mein|my)\s+(?:\w+\s+)?name\s+(?:ist|is|lautet|wäre|waere)\s+(.+)",
         re.IGNORECASE,
     ),
     # "ich bin Alex" / "ich bin die Laura" / "ich bin der Max"
@@ -118,6 +118,16 @@ _NAME_PATTERNS = [
     # English: "I'm Alex" / "I am Alex" / "call me Alex"
     re.compile(
         r"(?:i'm|i\s+am|call\s+me)\s+(.+)",
+        re.IGNORECASE,
+    ),
+    # "change my name to Alex" / "ändere meinen namen zu Alex"
+    re.compile(
+        r"(?:change|änder|aender|wechsl|switch)\s+(?:my|mein(?:en)?)\s+(?:\w+\s+)?name(?:n)?\s+(?:to|zu|auf|in)\s+(.+)",
+        re.IGNORECASE,
+    ),
+    # "rename me to Alex" / "nenn mich jetzt Alex"
+    re.compile(
+        r"rename\s+me\s+(?:to\s+)?(.+)",
         re.IGNORECASE,
     ),
 ]

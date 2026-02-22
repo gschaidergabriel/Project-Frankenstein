@@ -128,6 +128,7 @@ class ChatOverlay(
 
         self.geometry(f"{BSNConstants.FRANK_DEFAULT_WIDTH}x{frank_h}+{wa_x}+{wa_y}")
         self.minsize(BSNConstants.FRANK_MIN_WIDTH, BSNConstants.FRANK_MIN_HEIGHT)
+        self.maxsize(BSNConstants.FRANK_MAX_WIDTH, mon["height"])
         self.configure(bg=COLORS["bg_main"])
 
         # Set DOCK type on client window BEFORE mapping (Mutter reads it on MapRequest).
@@ -339,6 +340,28 @@ class ChatOverlay(
             LOG.warning("Pre-map DOCK setup failed: %s — falling back to topmost", e)
             self.attributes("-topmost", True)
 
+    def _enforce_dock_width(self):
+        """Force overlay width back to default (prevents Tk content expansion).
+
+        Mutter ignores Tk's wm_geometry for DOCK windows but respects
+        xdotool windowsize, so we use that as the authoritative resize.
+        """
+        try:
+            import subprocess
+            frank_h = self.winfo_height()
+            target_w = BSNConstants.FRANK_DEFAULT_WIDTH
+            # Tk geometry (best-effort, Mutter may ignore)
+            self.geometry(f"{target_w}x{frank_h}+{self._dock_x}+{self._workarea_y}")
+            self.update_idletasks()
+            # xdotool resize (Mutter respects this)
+            xid = getattr(self, '_dock_xid', None) or self.winfo_id()
+            subprocess.Popen(
+                ["xdotool", "windowsize", str(xid), str(target_w), str(frank_h)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            LOG.debug("Width enforcement failed: %s", e)
+
     def _update_strut(self):
         """Update strut reservation based on current Frank width."""
         try:
@@ -402,6 +425,8 @@ class ChatOverlay(
         self.after(200, self._draw_status_dot)
         # Load chat history AFTER window is visible and has real dimensions.
         self.after(200, self._deferred_load_history)
+        # Re-apply strut after history loading (window may have resized)
+        self.after(2000, self._update_strut)
 
     def _deferred_load_history(self):
         """Load chat history after window is visible."""

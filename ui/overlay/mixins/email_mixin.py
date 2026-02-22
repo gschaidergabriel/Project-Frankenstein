@@ -956,8 +956,13 @@ class EmailMixin:
 
         ai_draft = ""
         try:
+            # Try qwen first (uncensored), fall back to llama
             res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
-                                   max_tokens=600, timeout_s=60)
+                                   max_tokens=600, timeout_s=90, force="qwen")
+            if not (res and res.get("ok") and res.get("text", "").strip()):
+                # Qwen unavailable, try llama
+                res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
+                                       max_tokens=600, timeout_s=60, force="llama")
             if res and res.get("ok"):
                 ai_draft = self._clean_ai_email_draft(
                     (res.get("text") or "").strip()
@@ -1022,8 +1027,12 @@ class EmailMixin:
         ai_subject = ""
         ai_body = ""
         try:
+            # Try qwen first (uncensored), fall back to llama
             res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
-                                   max_tokens=600, timeout_s=60)
+                                   max_tokens=600, timeout_s=90, force="qwen")
+            if not (res and res.get("ok") and res.get("text", "").strip()):
+                res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
+                                       max_tokens=600, timeout_s=60, force="llama")
             if res and res.get("ok"):
                 raw = (res.get("text") or "").strip()
                 # Parse SUBJECT: ... --- ... body format

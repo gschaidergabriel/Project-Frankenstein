@@ -375,12 +375,12 @@ else
     echo "[10/14] Downloading LLM models..."
     mkdir -p "$MODELS_DIR"
 
-    LLAMA_URL="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+    LLAMA_URL="https://huggingface.co/mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF/resolve/main/meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf"
     QWEN_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
 
     download_file "$LLAMA_URL" \
-        "$MODELS_DIR/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf" \
-        "Llama 3.1 8B (Q4_K_M, ~4.9 GB)"
+        "$MODELS_DIR/Meta-Llama-3.1-8B-Instruct-abliterated-Q4_K_M.gguf" \
+        "Llama 3.1 8B abliterated (Q4_K_M, ~4.6 GB)"
 
     download_file "$QWEN_URL" \
         "$MODELS_DIR/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
@@ -509,7 +509,7 @@ WorkingDirectory=$LLAMA_DIR
 ${GPU_ENV_LINE:+$GPU_ENV_LINE}
 ExecStart=$LLAMA_SERVER \\
     --host 127.0.0.1 --port 8101 \\
-    --model $MODELS_DIR/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \\
+    --model $MODELS_DIR/Meta-Llama-3.1-8B-Instruct-abliterated-Q4_K_M.gguf \\
     --ctx-size 4096 $LLAMA_GPU_FLAGS \\
     --parallel 1 --threads 8 --threads-batch 8
 Restart=always

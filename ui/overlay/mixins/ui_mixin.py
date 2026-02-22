@@ -166,13 +166,13 @@ class UiMixin:
         # File actions area (initially hidden)
         self.file_actions_container = tk.Frame(main, bg=COLORS["bg_main"])
 
-        # Input area
-        input_area = tk.Frame(main, bg=COLORS["bg_main"])
-        input_area.pack(fill="x", padx=10, pady=6)
+        # Input area (saved as self for pack ordering in results_container)
+        self._input_area = tk.Frame(main, bg=COLORS["bg_main"])
+        self._input_area.pack(fill="x", padx=10, pady=6)
 
         # Attach button (visible border with + symbol)
         self.attach_btn = ModernButton(
-            input_area,
+            self._input_area,
             text="+",
             command=self._on_attach,
             width=34,
@@ -185,7 +185,7 @@ class UiMixin:
 
         # Push-to-Talk microphone button (visible border)
         self.ptt_btn = ModernButton(
-            input_area,
+            self._input_area,
             text="MIC",  # Text instead of emoji for better visibility
             command=lambda: None,  # We use bind for press/release
             width=34,
@@ -205,14 +205,14 @@ class UiMixin:
         self._ptt_recording = False
 
         # Entry (ChatGPT-style growing text input)
-        self.entry = ModernEntry(input_area)
+        self.entry = ModernEntry(self._input_area)
         self.entry.pack(side="left", fill="both", expand=True, padx=(0, 6))
         # NOTE: Don't auto-focus - wait for user to click on overlay
         # This prevents stealing focus from other applications
 
         # Send button
         self.send_btn = ModernButton(
-            input_area,
+            self._input_area,
             text="\u25b6",
             command=self._on_send,
             width=34,

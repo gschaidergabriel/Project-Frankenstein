@@ -373,9 +373,9 @@ class EmailMixin:
 
     # ── Card-based workers (NO LLM for metadata) ───────────────────
 
-    _EMAIL_DISPLAY_LIMIT = 100
+    _EMAIL_DISPLAY_LIMIT = 25
 
-    def _do_email_list_cards_worker(self, folder: str = "INBOX", limit: int = 100, **kwargs):
+    def _do_email_list_cards_worker(self, folder: str = "INBOX", limit: int = 50, **kwargs):
         """Fetch ALL emails and render as clickable cards. Unread first (colored), read after (gray)."""
         self._ui_call(self._show_typing)
 
@@ -647,15 +647,16 @@ class EmailMixin:
                 }))
                 ed.read = True
 
-                # Update local list and re-render with email moved to "read" section
+                # Update internal list only (no re-render — avoids
+                # destroying/rebuilding 100 cards just to move one from
+                # "unread" to "read" section).  Next "show mails" will
+                # reflect the correct state.
                 if hasattr(self, "_current_email_list") and self._current_email_list:
                     for e in self._current_email_list:
                         mid = e.get("id", "")
                         if mid and (mid == ed.msg_id or mid.strip("<>") == (ed.msg_id or "").strip("<>")):
                             e["read"] = True
                             break
-                    folder = getattr(self, "_current_email_folder", "INBOX")
-                    self._render_email_list(self._current_email_list, folder)
 
     def _open_email_popup(self, email_data, full_body: str = "", attachments=None):
         """Open email popup window (MUST run on main thread)."""
@@ -940,18 +941,21 @@ class EmailMixin:
         body_clean = self._extract_email_essence(body, max_chars=600)
 
         prompt = (
-            f"Write an email reply based on the user's instructions.\n\n"
-            f"ORIGINAL EMAIL:\n"
-            f"From: {sender}\n"
-            f"Subject: {subject}\n"
-            f"Content:\n{body_clean}\n\n"
-            f"USER WANTS TO REPLY WITH:\n{user_intent}\n\n"
-            f"RULES:\n"
-            f"- Output ONLY the email reply body. NOTHING ELSE.\n"
-            f"- Write in THE SAME LANGUAGE the user used above.\n"
-            f"- No translations, no notes, no disclaimers, no meta-commentary.\n"
-            f"- No signature blocks (added automatically).\n"
-            f"- Write as the user in first person. Just the reply text, then STOP."
+            f"CONTEXT: Replying to an email from {sender} about: {subject}\n"
+            f"Original message summary:\n{body_clean}\n\n"
+            f"INSTRUCTION: Write a polite email reply that expresses the following idea:\n"
+            f'"{user_intent}"\n\n'
+            f"IMPORTANT: The text above in quotes is an INSTRUCTION describing what to say. "
+            f"You must REPHRASE it as a proper, natural email. "
+            f"Do NOT output the instruction text itself.\n\n"
+            f"Example — if instruction is 'sage ihm dass ich morgen komme':\n"
+            f"WRONG: sage ihm dass ich morgen komme\n"
+            f"RIGHT: Hallo, vielen Dank für deine Nachricht. Ich werde morgen vorbeikommen.\n\n"
+            f"Write in the SAME LANGUAGE as the instruction. "
+            f"Output ONLY the email body text. STOP after the last content sentence.\n"
+            f"Do NOT add any closing/greeting like 'Mit freundlichen Grüßen', 'Best regards', "
+            f"'LG', 'MfG', 'Viele Grüße', etc. Do NOT add any name or '[Your Name]'. "
+            f"The signature is added automatically — just write the message content."
         )
 
         ai_draft = ""
@@ -962,6 +966,13 @@ class EmailMixin:
                 ai_draft = self._clean_ai_email_draft(
                     (res.get("text") or "").strip()
                 )
+                # Safety: if LLM echoed the intent verbatim, reject it
+                if ai_draft and user_intent:
+                    intent_norm = user_intent.strip().lower()
+                    draft_norm = ai_draft.strip().lower()
+                    if draft_norm == intent_norm:
+                        LOG.warning("LLM echoed user intent verbatim — forcing rephrase")
+                        ai_draft = ""
         except Exception as e:
             LOG.warning(f"AI reply draft failed: {e}")
 
@@ -1015,8 +1026,10 @@ class EmailMixin:
             f"- Output ONLY the SUBJECT line and email body. NOTHING ELSE.\n"
             f"- No translations, no notes, no disclaimers, no meta-commentary.\n"
             f"- No signature blocks (added automatically).\n"
+            f"- No closing greetings like 'Mit freundlichen Grüßen', 'Best regards', "
+            f"'LG', 'MfG', 'Viele Grüße' etc. No name or '[Your Name]'.\n"
             f"- Write as the user in first person. Natural human tone.\n"
-            f"- STOP after the email body."
+            f"- STOP after the last content sentence. The signature is appended automatically."
         )
 
         ai_subject = ""
@@ -1024,8 +1037,10 @@ class EmailMixin:
         try:
             res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
                                    max_tokens=600, timeout_s=60, force="llama")
+            LOG.info(f"Compose draft LLM response ok={res.get('ok') if res else 'None'}")
             if res and res.get("ok"):
                 raw = (res.get("text") or "").strip()
+                LOG.info(f"Compose draft raw (first 200): {raw[:200]!r}")
                 # Parse SUBJECT: ... --- ... body format
                 if "---" in raw:
                     header, body_part = raw.split("---", 1)
@@ -1047,16 +1062,37 @@ class EmailMixin:
 
                 # Post-processing: strip LLM-injected junk
                 ai_body = self._clean_ai_email_draft(ai_body)
+
+                # Safety: reject ONLY if LLM returned the intent nearly verbatim
+                if ai_body and user_intent:
+                    intent_norm = user_intent.strip().lower()
+                    draft_norm = ai_body.strip().lower()
+                    # Only reject exact match (not startswith — LLM may reuse words)
+                    if draft_norm == intent_norm:
+                        LOG.warning("Compose: LLM echoed user intent verbatim — rejecting")
+                        ai_body = ""
+                        ai_subject = ""
         except Exception as e:
             LOG.warning(f"AI compose draft failed: {e}")
 
         def _fill():
             if self._email_popup and self._email_popup.winfo_exists():
-                self._email_popup.fill_compose_new(
-                    to=to_hint,
-                    subject=ai_subject,
-                    ai_draft=ai_body,
-                )
+                if ai_body:
+                    self._email_popup.fill_compose_new(
+                        to=to_hint,
+                        subject=ai_subject,
+                        ai_draft=ai_body,
+                    )
+                else:
+                    # LLM failed — open blank compose so user can write
+                    LOG.warning("Compose: no usable AI draft, opening blank compose")
+                    self._email_popup.fill_compose_new(
+                        to=to_hint, subject="", ai_draft="",
+                    )
+                    self._email_popup._show_status(
+                        "AI draft failed — please write manually.",
+                        "#ff4444",
+                    )
         self._ui_call(_fill)
 
     @staticmethod
@@ -1065,6 +1101,12 @@ class EmailMixin:
         import re
         if not text:
             return text
+
+        # Remove LLM preamble like "Here is the email reply:\n\n"
+        text = re.sub(
+            r"^(?:Here is|Here's|Below is|Hier ist|Hier die|The reply)[^\n]*:?\s*\n+",
+            "", text, flags=re.IGNORECASE,
+        )
 
         # Remove LLM-generated signature blocks (-- \n... at end)
         text = re.sub(r"\n--\s*\n.*$", "", text, flags=re.DOTALL)
@@ -1075,6 +1117,26 @@ class EmailMixin:
         # Remove trailing "---" separator and anything after it (meta-comments)
         text = re.sub(r"\n---\s*\n.*$", "", text, flags=re.DOTALL)
 
+        # Remove LLM-generated closing greetings + placeholder names at the end.
+        # Catches patterns like:
+        #   Mit freundlichen Grüßen,\n[Your Name]
+        #   Best regards,\nJohn
+        #   LG\n[Name]
+        text = re.sub(
+            r"\n\s*(?:Mit freundlichen Grüßen|Freundliche Grüße|Viele Grüße|"
+            r"Beste Grüße|Herzliche Grüße|MfG|LG|Best regards|Kind regards|"
+            r"Regards|Sincerely|Best|Cheers|Liebe Grüße)"
+            r"[,.]?\s*\n\s*\[?(?:Your Name|Dein Name|Name|Ihr Name)\]?\s*$",
+            "", text, flags=re.IGNORECASE,
+        )
+        # Also catch standalone closing lines (greeting + optional comma, nothing after)
+        text = re.sub(
+            r"\n\s*(?:Mit freundlichen Grüßen|Freundliche Grüße|Viele Grüße|"
+            r"Beste Grüße|Herzliche Grüße|MfG|LG|Best regards|Kind regards|"
+            r"Regards|Sincerely|Best|Cheers|Liebe Grüße)[,.]?\s*$",
+            "", text, flags=re.IGNORECASE,
+        )
+
         # Remove lines that are pure LLM meta-commentary
         lines = text.split("\n")
         cleaned = []
@@ -1084,6 +1146,9 @@ class EmailMixin:
             if low.startswith(("note:", "please note:", "hinweis:", "(note",
                                "(please note", "(hinweis", "translation:",
                                "(translation")):
+                continue
+            # Skip standalone placeholder name lines
+            if re.match(r"^\s*\[?(your name|dein name|ihr name|name)\]?\s*$", low):
                 continue
             cleaned.append(line)
         text = "\n".join(cleaned)

@@ -567,7 +567,8 @@ class MessageMixin:
         if not results:
             return
 
-        self.results_container.pack(fill="x", padx=15, pady=(0, 5))
+        self.results_container.pack(fill="x", padx=15, pady=(0, 5),
+                                    before=self._input_area)
 
         # Header with close button
         header_frame = tk.Frame(self.results_container, bg=COLORS["bg_main"])
@@ -665,7 +666,8 @@ class MessageMixin:
         if not results:
             return
 
-        self.results_container.pack(fill="x", padx=15, pady=(0, 5))
+        self.results_container.pack(fill="x", padx=15, pady=(0, 5),
+                                    before=self._input_area)
 
         # Header with Matrix-green styling
         header_frame = tk.Frame(self.results_container, bg=COLORS["darknet_bg"])
@@ -777,23 +779,38 @@ class MessageMixin:
             folder = getattr(self, "_current_email_folder", "INBOX")
             self._render_email_list(self._current_email_list, folder)
 
-    def _render_email_list(self, emails: list, folder: str = "INBOX"):
-        """Render clickable email cards with REAL metadata (no LLM)."""
+    _EMAIL_CARD_PAGE = 25  # cards per page (keep low for memory)
+
+    def _render_email_list(self, emails: list, folder: str = "INBOX",
+                           show_all: bool = False):
+        """Render clickable email cards with REAL metadata (no LLM).
+
+        Scroll handling is delegated to EmailCard._on_scroll (no recursive
+        binding needed).  Only renders _EMAIL_CARD_PAGE cards unless
+        show_all=True; a "load more" button lets user expand.
+        """
         from overlay.widgets.email_card import EmailCard, EmailData
 
         # Sort: unread first, then read (newest first within each group)
         emails = sorted(emails, key=lambda e: (e.get("read", True), -e.get("timestamp", 0)))
 
-        # Store for instant removal on delete/spam + "diese mails" context
+        # Store full list for load-more and context
         self._current_email_list = list(emails)
         self._current_email_folder = folder
         self._last_email_notification_folder = folder
+
+        # Limit cards rendered to avoid OOM on memory-constrained systems
+        if not show_all and len(emails) > self._EMAIL_CARD_PAGE:
+            render_emails = emails[:self._EMAIL_CARD_PAGE]
+        else:
+            render_emails = emails
 
         self._clear_results()
         if not emails:
             return
 
-        self.results_container.pack(fill="x", padx=15, pady=(0, 5))
+        # ── Build everything BEFORE making container visible ──
+        # (prevents incremental/slow rendering visible to user)
 
         # Header with count and close button
         header_frame = tk.Frame(self.results_container, bg=COLORS["bg_main"])
@@ -864,15 +881,11 @@ class MessageMixin:
         scrollbar = tk.Scrollbar(self.results_container, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg=COLORS["bg_main"])
 
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=390)
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Mouse wheel scrolling — bind to canvas and surrounding widgets
+        # Mouse wheel scrolling on canvas-level widgets
+        # (EmailCard._on_scroll handles propagation from card children)
         def _email_scroll(event):
             canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
             return "break"
@@ -885,8 +898,8 @@ class MessageMixin:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Create EmailCard for each email
-        for em in emails:
+        # Create EmailCards (limited to render_emails for memory safety)
+        for em in render_emails:
             email_data = EmailData(
                 idx=em.get("idx", 0),
                 msg_id=em.get("id", ""),
@@ -908,13 +921,30 @@ class MessageMixin:
             )
             card.pack(fill="x", pady=1)
 
-        # Bind scroll to ALL child widgets recursively (gaps, inner frames, labels)
-        def _bind_scroll_recursive(widget):
-            widget.bind("<Button-4>", _email_scroll)
-            widget.bind("<Button-5>", _email_scroll)
-            for child in widget.winfo_children():
-                _bind_scroll_recursive(child)
-        _bind_scroll_recursive(scrollable_frame)
+        # "Load more" button if there are more emails than rendered
+        if len(emails) > len(render_emails):
+            more_count = len(emails) - len(render_emails)
+            load_more = tk.Label(
+                scrollable_frame, text=f"  ▼  {more_count} more emails  ▼  ",
+                bg=COLORS["bg_elevated"], fg=COLORS["neon_cyan"],
+                font=("Consolas", 9, "bold"), cursor="hand2", pady=6,
+            )
+            load_more.pack(fill="x", pady=(4, 2))
+            load_more.bind("<Button-1>", lambda e, f=folder: self._render_email_list(
+                self._current_email_list, f, show_all=True))
+            load_more.bind("<Enter>", lambda e: load_more.configure(bg=COLORS["bg_highlight"]))
+            load_more.bind("<Leave>", lambda e: load_more.configure(bg=COLORS["bg_elevated"]))
+
+        # Bind Configure for scrollregion updates
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        # Make container visible with correct pack position
+        # (before=_input_area ensures it doesn't end up off-screen)
+        self.results_container.pack(fill="x", padx=15, pady=(0, 5),
+                                    before=self._input_area)
 
     def _show_email_overflow_notification(self, shown: int, total: int, folder: str):
         """Show a styled notification card when there are more emails than the display limit."""
@@ -1096,7 +1126,8 @@ class MessageMixin:
 
         # Show compact action bar in results_container
         self._clear_results()
-        self.results_container.pack(fill="x", padx=15, pady=(0, 3))
+        self.results_container.pack(fill="x", padx=15, pady=(0, 3),
+                                    before=self._input_area)
 
         actions_frame = tk.Frame(self.results_container, bg=COLORS["bg_main"])
         actions_frame.pack(fill="x")

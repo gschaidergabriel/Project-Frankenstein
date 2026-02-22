@@ -245,6 +245,13 @@ class ModernEntry(tk.Frame):
                 root._io_q.put(("email_settings", {}))
             return
 
+        if command.action == "email_compose_intent":
+            root = self.winfo_toplevel()
+            if hasattr(root, '_io_q'):
+                self._set_text("")
+                root._io_q.put(("email_compose_intent", {"user_msg": "", "to_hint": ""}))
+            return
+
         if command.action == "system_restart":
             root = self.winfo_toplevel()
             if hasattr(root, '_io_q'):

@@ -797,21 +797,13 @@ class EmailPopup(tk.Toplevel):
         main = tk.Frame(outer, bg=COLORS["bg_main"])
         main.pack(fill="both", expand=True)
 
-        self._build_titlebar(main, "COMPOSE // What do you want to write?")
-
-        # Optional recipient hint
-        if to_hint:
-            ctx = tk.Frame(main, bg=COLORS["bg_elevated"], padx=16, pady=8)
-            ctx.pack(fill="x")
-            tk.Label(ctx, text=f"To: {to_hint}", bg=COLORS["bg_elevated"],
-                     fg=COLORS["text_muted"], font=_FONT_SMALL, anchor="w").pack(anchor="w")
-            tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(fill="x")
+        self._build_titlebar(main, "COMPOSE // AI-Assisted Email")
 
         # ── Pack bottom elements FIRST ──
 
         # Status bar (very bottom)
         self._status_label = tk.Label(
-            main, text="Enter = Generate  |  Shift+Enter = New line  |  Skip = Blank compose",
+            main, text="Enter = Generate  |  Shift+Enter = New line",
             bg=COLORS["bg_elevated"], fg=COLORS["text_muted"],
             font=_FONT_SMALL, anchor="w", padx=12
         )
@@ -832,6 +824,11 @@ class EmailPopup(tk.Toplevel):
         # Chat input section
         input_section = tk.Frame(main, bg=COLORS["bg_elevated"], padx=12, pady=10)
         input_section.pack(side="bottom", fill="x")
+
+        # Optional recipient hint above input
+        if to_hint:
+            tk.Label(input_section, text=f"To: {to_hint}", bg=COLORS["bg_elevated"],
+                     fg=COLORS["neon_cyan"], font=_FONT_SMALL, anchor="w").pack(fill="x", pady=(0, 4))
 
         # Instruction label
         tk.Label(input_section, text="Describe the email you want Frank to write:",
@@ -858,24 +855,46 @@ class EmailPopup(tk.Toplevel):
         # Separator above input
         tk.Frame(main, bg=COLORS["neon_cyan"], height=1).pack(side="bottom", fill="x")
 
-        # ── Tips / help text fills remaining space ──
-        tips_frame = tk.Frame(main, bg=COLORS["bg_main"])
-        tips_frame.pack(fill="both", expand=True)
-        tips = (
-            "Examples:\n\n"
-            "  'Write a formal email to my boss about taking vacation next week'\n\n"
-            "  'Kurze Mail an den Support, mein Paket ist nicht angekommen'\n\n"
-            "  'Thank you note to the team for the successful launch'\n\n"
-            "  'Beschwerde an den Vermieter wegen der kaputten Heizung'"
+        # ── Professional info panel fills remaining space ──
+        info_frame = tk.Frame(main, bg=COLORS["bg_main"], padx=20, pady=16)
+        info_frame.pack(fill="both", expand=True)
+
+        # Header
+        tk.Label(info_frame, text="Collaborative Email Drafting",
+                 bg=COLORS["bg_main"], fg=COLORS["neon_cyan"],
+                 font=("Consolas", 12, "bold"), anchor="w").pack(fill="x", pady=(0, 10))
+
+        # Description
+        desc = tk.Label(
+            info_frame,
+            text=(
+                "Describe what you need in plain language and Frank will\n"
+                "draft the email for you. You can review, edit, and send\n"
+                "the result — Frank writes, you decide."
+            ),
+            bg=COLORS["bg_main"], fg=COLORS["text_primary"],
+            font=_FONT, anchor="w", justify="left",
         )
-        tips_text = tk.Text(
-            tips_frame, bg=COLORS["bg_main"], fg=COLORS["text_secondary"],
-            font=_FONT_SMALL, wrap="word", borderwidth=0,
-            highlightthickness=0, padx=16, pady=12, height=8,
-        )
-        tips_text.pack(fill="both", expand=True)
-        tips_text.insert("1.0", tips)
-        tips_text.configure(state="disabled", takefocus=False)
+        desc.pack(fill="x", pady=(0, 14))
+
+        # Example box with accent border
+        ex_border = tk.Frame(info_frame, bg="#00cc88", padx=1, pady=1)
+        ex_border.pack(fill="x", pady=(0, 14))
+        ex_inner = tk.Frame(ex_border, bg=COLORS["bg_elevated"], padx=12, pady=8)
+        ex_inner.pack(fill="x")
+        tk.Label(ex_inner, text="EXAMPLE", bg=COLORS["bg_elevated"],
+                 fg="#00cc88", font=_FONT_SMALL, anchor="w").pack(fill="x")
+        tk.Label(ex_inner,
+                 text='"Polite follow-up to the client about the invoice\nthat was due last Friday"',
+                 bg=COLORS["bg_elevated"], fg=COLORS["text_primary"],
+                 font=("Consolas", 10, "italic"), anchor="w", justify="left",
+                 ).pack(fill="x", pady=(4, 0))
+
+        # Disclaimer
+        tk.Label(info_frame,
+                 text="The generated draft is always editable before sending.",
+                 bg=COLORS["bg_main"], fg=COLORS["text_muted"],
+                 font=_FONT_SMALL, anchor="w").pack(fill="x", side="bottom")
 
         # Force focus to intent text
         self.after(100, self._focus_intent)

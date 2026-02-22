@@ -33,6 +33,7 @@ COMMANDS: List[Command] = [
     Command("/rss",       "RSS Feed",        "Read an RSS feed",               "rss {url}",            icon="R", category="search"),
 
     # ── Communication ──
+    Command("/compose",   "Compose",         "Write a new email with AI",      None,                   icon="C", category="comm", action="email_compose_intent"),
     Command("/emails",    "Emails",          "List recent emails",             "list emails",          icon="E", category="comm"),
     Command("/email",     "Read email",      "Read specific email",            "read email {query}",   icon="E", category="comm"),
     Command("/mailconfig","Mail Settings",   "Configure email provider",       None,                   icon="M", category="comm", action="email_settings"),

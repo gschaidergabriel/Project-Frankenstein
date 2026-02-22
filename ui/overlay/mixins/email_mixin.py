@@ -945,21 +945,24 @@ class EmailMixin:
             f"Subject: {subject}\n"
             f"Content:\n{body_clean}\n\n"
             f"USER WANTS TO REPLY WITH:\n{user_intent}\n\n"
-            f"RULES:\n"
+            f"CRITICAL RULES:\n"
             f"- Output ONLY the email reply body. NOTHING ELSE.\n"
-            f"- Same language as the user's instructions above.\n"
-            f"- No translations, no '(Translation: ...)', no English version.\n"
-            f"- No notes, no 'Note that...', no explanations of what you wrote.\n"
-            f"- No disclaimers, no meta-commentary, no AI references.\n"
-            f"- No headers, no signatures, no greetings like 'Dear...' unless asked.\n"
-            f"- Write as the user in first person. Just the reply text, stop."
+            f"- Write in THE SAME LANGUAGE the user used above. "
+            f"If user wrote in English, reply in English. If German, reply in German.\n"
+            f"- No translations, no '(Translation: ...)'.\n"
+            f"- No notes, no 'Note that...', no 'Please note:', no parenthetical remarks.\n"
+            f"- No disclaimers, no meta-commentary, no AI references, no role explanations.\n"
+            f"- No signature blocks (signatures are added automatically).\n"
+            f"- Write as the user in first person. Just the reply text, then STOP."
         )
 
         ai_draft = ""
         try:
             res = _core_chat(prompt, max_tokens=600, timeout_s=60, task="chat.fast", force="llama")
             if res and res.get("ok"):
-                ai_draft = (res.get("text") or "").strip()
+                ai_draft = self._clean_ai_email_draft(
+                    (res.get("text") or "").strip()
+                )
         except Exception as e:
             LOG.warning(f"AI reply draft failed: {e}")
 
@@ -1005,17 +1008,20 @@ class EmailMixin:
             f"[Identity: {self._FRANK_EMAIL_IDENTITY}]\n\n"
             f"Write a NEW email based on the user's instructions.\n\n"
             f"USER WANTS TO WRITE:\n{user_intent}\n\n"
-            f"RULES:\n"
-            f"- Output the email in this exact format:\n"
-            f"  SUBJECT: <subject line>\n"
-            f"  ---\n"
-            f"  <email body>\n"
-            f"- Same language as the user's instructions above.\n"
-            f"- No translations, no '(Translation: ...)', no English version.\n"
-            f"- No notes, no 'Note that...', no explanations of what you wrote.\n"
-            f"- No disclaimers, no meta-commentary, no AI references.\n"
+            f"FORMAT (strict):\n"
+            f"SUBJECT: <subject line>\n"
+            f"---\n"
+            f"<email body text>\n\n"
+            f"CRITICAL RULES:\n"
+            f"- Write the email in THE SAME LANGUAGE the user used above. "
+            f"If user wrote in English, write in English. If German, write in German.\n"
+            f"- Output ONLY the SUBJECT line and email body. NOTHING ELSE.\n"
+            f"- No translations, no '(Translation: ...)'.\n"
+            f"- No notes, no 'Note that...', no 'Please note:', no parenthetical remarks.\n"
+            f"- No disclaimers, no meta-commentary, no AI references, no role explanations.\n"
+            f"- No signature blocks (signatures are added automatically).\n"
             f"- Write as the user in first person. Natural human tone.\n"
-            f"- Just the subject line and body, nothing else."
+            f"- STOP after the email body. Do not add anything after it."
         )
 
         ai_subject = ""
@@ -1043,6 +1049,9 @@ class EmailMixin:
                             ai_body = "\n".join(lines[1:]).strip()
                         else:
                             ai_body = raw
+
+                # Post-processing: strip LLM-injected junk
+                ai_body = self._clean_ai_email_draft(ai_body)
         except Exception as e:
             LOG.warning(f"AI compose draft failed: {e}")
 
@@ -1054,6 +1063,37 @@ class EmailMixin:
                     ai_draft=ai_body,
                 )
         self._ui_call(_fill)
+
+    @staticmethod
+    def _clean_ai_email_draft(text: str) -> str:
+        """Post-process LLM email draft: strip injected signatures, disclaimers, meta-text."""
+        import re
+        if not text:
+            return text
+
+        # Remove LLM-generated signature blocks (-- \n... at end)
+        text = re.sub(r"\n--\s*\n.*$", "", text, flags=re.DOTALL)
+
+        # Remove parenthetical disclaimers like "(Please note: I'm following...)"
+        text = re.sub(r"\n?\((?:Please note|Note|Hinweis|Bitte beachten)[^)]*\)\s*$", "", text, flags=re.IGNORECASE)
+
+        # Remove trailing "---" separator and anything after it (meta-comments)
+        text = re.sub(r"\n---\s*\n.*$", "", text, flags=re.DOTALL)
+
+        # Remove lines that are pure LLM meta-commentary
+        lines = text.split("\n")
+        cleaned = []
+        for line in lines:
+            low = line.strip().lower()
+            # Skip lines that are obviously meta
+            if low.startswith(("note:", "please note:", "hinweis:", "(note",
+                               "(please note", "(hinweis", "translation:",
+                               "(translation")):
+                continue
+            cleaned.append(line)
+        text = "\n".join(cleaned)
+
+        return text.strip()
 
     @staticmethod
     def _extract_email_essence(body: str, max_chars: int = 600) -> str:

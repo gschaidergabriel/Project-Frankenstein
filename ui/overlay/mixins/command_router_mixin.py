@@ -1316,7 +1316,7 @@ class CommandRouterMixin:
         if task == "code.edit":
             max_tokens = 500
         elif re.search(r"\b(detail|explain|ausf[uü]hrlich|erzähl|erklär|tell me about|describe|how does|wie funktioniert)\b", msg, re.IGNORECASE):
-            max_tokens = 400
+            max_tokens = 600
         else:
             max_tokens = 150
         self._chat_q.put(("chat", {"msg": msg, "max_tokens": max_tokens, "timeout_s": DEFAULT_TIMEOUT_S, "task": task, "force": None}))

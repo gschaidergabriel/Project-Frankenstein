@@ -267,31 +267,37 @@ def stop_heavy_services(state: GamingModeState):
 
 
 def restart_services(state: GamingModeState):
-    """Restart previously stopped services using systemctl."""
+    """Restart previously stopped services using systemctl (parallel)."""
     LOG.info("Restarting services via systemctl...")
 
+    def _restart_one(name: str):
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "unmask", name],
+                capture_output=True, text=True, timeout=5
+            )
+            result = subprocess.run(
+                ["systemctl", "--user", "start", name],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                LOG.info(f"Restarted {name}")
+            else:
+                LOG.warning(f"Could not restart {name}: {result.stderr}")
+        except Exception as e:
+            LOG.error(f"Error restarting {name}: {e}")
+
+    threads = []
     for service in state.stopped_services:
         name = service.get("name", "")
         stype = service.get("type", "")
+        if stype == "systemd" and name:
+            t = threading.Thread(target=_restart_one, args=(name,), daemon=True)
+            t.start()
+            threads.append(t)
 
-        if stype == "systemd":
-            try:
-                LOG.info(f"Restarting {name}...")
-                # Unmask first (was masked during gaming to prevent Restart=always)
-                subprocess.run(
-                    ["systemctl", "--user", "unmask", name],
-                    capture_output=True, text=True, timeout=10
-                )
-                result = subprocess.run(
-                    ["systemctl", "--user", "start", name],
-                    capture_output=True, text=True, timeout=30
-                )
-                if result.returncode == 0:
-                    LOG.info(f"Restarted {name}")
-                else:
-                    LOG.warning(f"Could not restart {name}: {result.stderr}")
-            except Exception as e:
-                LOG.error(f"Error restarting {name}: {e}")
+    for t in threads:
+        t.join(timeout=15)
 
     state.stopped_services = []
     state.save()
@@ -419,33 +425,33 @@ def start_main_frank():
     """Remove all blocker files and start the Frank overlay.
 
     Tries systemd first (preferred), falls back to direct Popen.
-    Verifies the overlay is actually running afterwards.
     """
     LOG.info("Starting main Frank overlay...")
     _clear_all_start_blockers()
 
-    # Also reset-failed in case systemd marked the unit as failed
+    # Reset-failed + start in one go (no need to wait between)
     try:
         subprocess.run(
             ["systemctl", "--user", "reset-failed", "frank-overlay.service"],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=3
         )
     except Exception:
         pass
 
     # Attempt 1: systemd (preferred — proper lifecycle management)
-    _clear_all_start_blockers()  # ensure cleared right before start
+    _clear_all_start_blockers()
     try:
         result = subprocess.run(
             ["systemctl", "--user", "start", "frank-overlay.service"],
-            capture_output=True, text=True, timeout=15
+            capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
             LOG.info("Frank overlay start command sent (systemd)")
-            if _verify_frank_running(8.0):
+            # Quick verify (3s) — overlay starts in ~2s, no need to wait 8
+            if _verify_frank_running(3.0):
                 LOG.info("Frank overlay verified running (systemd)")
                 return
-            LOG.warning("Frank overlay started via systemd but not running after 8s")
+            LOG.warning("Frank overlay started via systemd but not running after 3s")
         else:
             LOG.warning(f"systemd start failed ({result.returncode}): {result.stderr.strip()}")
     except Exception as e:

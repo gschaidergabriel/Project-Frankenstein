@@ -32,39 +32,37 @@ class WindowWatcher:
         self._stable_counts = {}   # win_id → consecutive cycles at same position
         self._frank_right_cache = (0, 0)  # (value, timestamp)
         while self.running:
+            # Completely pause during gaming mode — no wmctrl/xprop/xdotool
+            # calls that anti-cheat systems could flag as suspicious
+            if self.controller.is_gaming_mode():
+                time.sleep(2)
+                continue
+
             try:
                 result = subprocess.run(
                     ["wmctrl", "-lG"],
                     capture_output=True, text=True, timeout=2
                 )
                 current = set()
-                windows_geo = []
+                win_info = {}  # win_id → (desktop, title)
                 for line in result.stdout.strip().split('\n'):
                     if not line:
                         continue
                     parts = line.split(None, 8)
                     if len(parts) >= 8:
-                        win_id = parts[0]
-                        current.add(win_id)
-                        try:
-                            windows_geo.append((
-                                win_id, parts[1],
-                                int(parts[2]), int(parts[3]),
-                                int(parts[4]), int(parts[5]),
-                                parts[7] if len(parts) > 7 else ""
-                            ))
-                        except (ValueError, IndexError):
-                            pass
+                        current.add(parts[0])
+                        win_info[parts[0]] = (parts[1], parts[7] if len(parts) > 7 else "")
 
                 new_windows = current - self.known_windows
                 for win_id in new_windows:
-                    self._handle_new_window(win_id)
+                    desktop, title = win_info.get(win_id, ("0", ""))
+                    self._handle_new_window(win_id, desktop, title)
                 self.known_windows = current
 
             except Exception as e:
                 LOG.error(f"BSN: WindowWatcher error: {e}")
 
-            time.sleep(0.1)
+            time.sleep(0.5)
 
     def _get_frank_right(self) -> int:
         """Get Frank's actual right edge in wmctrl coordinates (cached 1s)."""
@@ -204,24 +202,42 @@ class WindowWatcher:
         except Exception:
             return set()
 
-    def _handle_new_window(self, win_id: str):
-        """Handles a new window."""
+    def _handle_new_window(self, win_id: str, desktop: str = "0", title: str = ""):
+        """Handles a new window.
+
+        Uses wmctrl-provided desktop/title for fast filtering (no xprop/xdotool).
+        Only falls back to subprocess probes for windows that pass the fast checks.
+        """
+        tl = title.lower()
+
         # Gaming Mode Check
         if self.controller.is_gaming_mode():
             LOG.debug(f"BSN: Gaming mode - ignoring {win_id}")
             return
 
         # Skip sticky windows (desktop=-1): Steam client, desktop overlays, etc.
-        if self._is_sticky_window(win_id):
+        if desktop == "-1":
             LOG.debug(f"BSN: Sticky window (desktop=-1) - ignoring {win_id}")
             return
 
-        # Skip Frank itself
-        if self._is_frank_window(win_id):
-            LOG.debug(f"BSN: Frank window - ignoring {win_id}")
+        # Skip Frank / wallpaper by title (no subprocess needed)
+        if "f.r.a.n.k" in tl or "neural core" in tl or "cybercore" in tl:
+            LOG.debug(f"BSN: Frank/wallpaper - ignoring {win_id}")
             return
 
-        # Skip windows on secondary monitors
+        # Skip known game patterns by title (no subprocess probing!)
+        game_patterns = [
+            "steam_app_", "unreal", "godot", "unity",
+            "proton", "wine", "lutris", "dosbox", "retroarch",
+            "oldunreal", "ut2004", "ut2003", "unrealtournament",
+            "dota", "counter-strike", "factorio", "minecraft", "terraria",
+        ]
+        for gp in game_patterns:
+            if gp in tl:
+                LOG.info(f"BSN: Game window '{title[:30]}' - ignoring {win_id}")
+                return
+
+        # Skip windows on secondary monitors (needs xdotool - safe, not a game)
         if self._is_on_secondary_monitor(win_id):
             LOG.debug(f"BSN: Secondary monitor - ignoring {win_id}")
             return
@@ -231,17 +247,8 @@ class WindowWatcher:
             LOG.debug(f"BSN: Dialog detected - ignoring {win_id}")
             return
 
-        # Skip games (completely excluded from positioning)
-        if self._is_game(win_id):
-            LOG.info(f"BSN: Game window detected - ignoring {win_id}")
-            return
+        LOG.info(f"BSN: New window detected: {win_id} '{title[:40]}'")
 
-        # Skip Wallpaper (FRANK NEURAL CORE)
-        if self._is_wallpaper(win_id):
-            LOG.debug(f"BSN: Wallpaper window - ignoring {win_id}")
-            return
-
-        LOG.info(f"BSN: New window detected: {win_id}")
 
         # Brief wait for window to be renderable
         time.sleep(0.05)

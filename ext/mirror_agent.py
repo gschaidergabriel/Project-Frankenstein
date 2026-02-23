@@ -500,6 +500,26 @@ def _write_chat_message(role: str, sender: str, text: str,
         LOG.error("Failed to write chat message: %s", e)
 
 
+def _first_sentences(text: str, n: int = 2) -> str:
+    """Return the first *n* complete sentences from *text*."""
+    import re
+    text = re.sub(r"^(Here is a.*?:|Summary:?)\s*\n?", "", text.strip(), flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text.strip())
+    raw = re.split(r"(?<=[.!?])\s+", text)
+    parts, buf = [], ""
+    for r in raw:
+        buf = (buf + " " + r).strip() if buf else r
+        if len(buf.split()) >= 5:
+            parts.append(buf)
+            buf = ""
+    if buf:
+        if parts:
+            parts[-1] += " " + buf
+        else:
+            parts.append(buf)
+    return " ".join(parts[:n]).strip()
+
+
 def _write_overlay_notification(sender: str, body: str, session_id: str):
     """Write a notification JSON for real-time overlay pickup."""
     try:
@@ -1071,11 +1091,7 @@ class MirrorAgent:
         elapsed_min = int((time.time() - start_time) / 60)
         topics_str_chat = ", ".join(topics) if topics else "general"
         _has_summary = summary and "without summary" not in summary.lower()
-        _short = ""
-        if _has_summary:
-            _short = " ".join(summary.split()[:25])
-            if not _short.endswith("."):
-                _short += " …"
+        _short = _first_sentences(summary, 2) if _has_summary else ""
         summary_msg = (
             f"[Entity Session] {MIRROR_NAME} — {elapsed_min} min, "
             f"{turn} Turns. Themen: {topics_str_chat}."

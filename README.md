@@ -7,7 +7,7 @@
 
 Built by one person in 2 months with zero programming experience. [Read the full story.](ABOUT.md)
 
-**[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)**
+**[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)**
 
 A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ services on your machine — voice interaction, agentic task execution, autonomous entities, a dynamic personality engine, and more — all powered by local LLMs with zero cloud dependencies.
 
@@ -19,8 +19,8 @@ A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ serv
 - **GPU Auto-Detection** — NVIDIA (CUDA), AMD (Vulkan), Intel (Vulkan), CPU fallback
 - **Chat Overlay** — Always-on-top tkinter overlay with streaming responses and message persistence
 - **Voice I/O** — Push-to-talk STT via whisper.cpp, TTS via Piper (German/Thorsten) and Kokoro (English/am_fenrir)
-- **Agentic Execution** — Multi-step task planning with tool use, filesystem access, and approval gates
-- **Plugin System** — Native Python skills and OpenClaw (LLM-mediated) plugins with hot-reload
+- **Agentic Execution** — Multi-step task planning with 34 tools, approval gates, and Firejail sandbox (see below)
+- **Plugin System** — 25 skills: 3 native Python + 22 OpenClaw (LLM-mediated) with hot-reload
 - **Desktop Automation** — App launcher, screenshot analysis, window management via xdotool/wmctrl
 - **Personality Engine** — E-PQ 5-vector personality, ego-construct (hardware→body mapping), self-knowledge
 - **Consciousness Stream** — 10-thread daemon: Global Workspace (GWT), attention controller (AST), perception loop (200ms), experience space (64-dim), goals, deep reflection, predictions, mood trajectory
@@ -208,21 +208,80 @@ ext/<name>_agent.py         — Session flow, LLM calls, sentiment analysis, E-P
 services/<name>_scheduler.py — Idle-gated entry point (gate checks → agent)
 ```
 
+## Agentic Mode
+
+Frank can autonomously execute multi-step tasks using 34 registered tools. The agent loop runs up to 20 iterations with planning, replanning on failure, and user approval for risky actions.
+
+| Category | Tools | Examples |
+|----------|-------|---------|
+| **Filesystem** | `fs_list`, `fs_read`, `fs_write`, `fs_move`, `fs_copy`, `fs_backup`, `doc_read` | Read PDFs, organize files, create reports |
+| **System** | `sys_summary`, `sys_mem`, `sys_disk`, `sys_temps`, `sys_cpu`, `sys_os`, `sys_network`, `sys_usb*`, `sys_services` | Monitor hardware, manage USB devices |
+| **Desktop** | `desktop_screenshot`, `desktop_open_url` | Take screenshots, open URLs |
+| **Apps** | `app_list`, `app_search`, `app_open`, `app_close` | Launch and manage applications |
+| **Steam** | `steam_list`, `steam_search`, `steam_launch`, `steam_close` | Browse and launch games |
+| **Web** | `web_search`, `web_fetch` | DuckDuckGo search, fetch and parse pages |
+| **Memory** | `memory_search`, `memory_store`, `entity_sessions`, `entity_session_read`, `entity_sessions_search` | Search memories, recall entity conversations |
+| **Code** | `code_execute`, `bash_execute` | Run Python/bash in Firejail sandbox |
+
+**Safety guardrails:**
+- File deletion is **permanently disabled** — `fs_delete` removed from registry, `rm`/`rmdir`/`unlink`/`shred` blocked in bash, `os.remove`/`shutil.rmtree`/`Path.unlink` blocked in Python
+- High-risk tools (write, execute, move) require user approval via overlay popup
+- Bash commands run in Firejail sandbox (512 MB memory limit, 30s CPU limit, network restricted)
+- 35+ regex patterns block destructive commands (fork bombs, disk writes, pipe-to-shell)
+
+## Use Cases
+
+Frank's capabilities span three user levels. See [USECASES.md](USECASES.md) for the full catalog with details and limitations.
+
+| Level | Examples |
+|-------|---------|
+| **Everyday** | Chat with memory, weather, timers, recipes, meal plans, social media content, calendar, email, notes, todos, Steam gaming |
+| **Power User** | PDF/DOCX analysis, business plans, agentic multi-step tasks, web research, desktop automation, USB management, proactive notifications |
+| **IT Expert** | Code review, shell commands, systemd services, security audits, Docker, git workflows, network monitoring, log analysis, regex, cron jobs |
+
+**5 things only Frank can do** (no cloud AI has these):
+1. **Think between conversations** — Consciousness daemon reflects autonomously after 20 min silence, stores thoughts for next chat
+2. **Process sensitive data locally** — PDFs, contracts, financials never leave your hardware, while building a persistent causal knowledge base
+3. **Evolve personality over months** — E-PQ vectors shift measurably through user interaction + daily entity conversations
+4. **Self-improve with safety net** — Genesis breeds idea organisms, proposes improvements, ASRS monitors 24h with automatic rollback
+5. **Feel its hardware** — Ego-construct maps CPU load to "strain", low latency to "clarity", errors to "pain" — changes response behavior
+
 ## Skills / Plugins
 
-Frank supports two plugin formats with hot-reload:
+Frank supports two plugin formats with hot-reload. 25 skills installed (3 native + 22 OpenClaw).
 
 **Native Python skills** — `.py` files with a `SKILL` dict and `run()` function:
-- `timer.py` — Countdown timer with desktop notification
-- `deep_work.py` — Pomodoro focus sessions with statistics
-- `weather.py` — Weather information
+| Skill | What it does |
+|-------|-------------|
+| `timer` | Countdown timer with desktop notification |
+| `deep_work` | Pomodoro focus sessions with progress bar and statistics |
+| `weather` | Live weather from wttr.in (no API key) |
 
 **OpenClaw skills** — `SKILL.md` with YAML frontmatter, executed via LLM:
-- `conventional-commits` — Git commit message formatting
-- `essence-distiller` — Text summarization and extraction
-- `regex-helper` — Regex pattern generation
-- `summarize` — Document summarization
-- `sysadmin` — System administration tasks
+| Skill | What it does |
+|-------|-------------|
+| `summarize` | Text/article summarization (core statement + key points + conclusion) |
+| `sysadmin` | Linux system diagnostics — CPU, RAM, disk, services, logs |
+| `code-review` | Code review for correctness, security, performance |
+| `shell-explain` | Explain shell commands or build them from natural language |
+| `git-workflow` | Branching, merge conflicts, cherry-pick, bisect |
+| `conventional-commits` | Generate Conventional Commits messages from diffs |
+| `docker-helper` | Dockerfile/docker-compose creation and debugging |
+| `security-audit` | System security audit — ports, SSH, permissions, firewall |
+| `log-analyzer` | Interpret stack traces, journalctl, dmesg, OOM kills |
+| `regex-helper` | Build regex from natural language, explain existing patterns |
+| `cron-helper` | Create cron jobs and systemd timers |
+| `systemd-helper` | Create and debug systemd service/timer units |
+| `json-yaml-helper` | Validate, repair, convert JSON/YAML/TOML |
+| `http-tester` | Build curl commands, debug REST APIs |
+| `translate-helper` | German/English translation with technical context |
+| `markdown-helper` | Markdown formatting and table generation |
+| `essence-distiller` | Deep critical analysis — thesis, arguments, fallacies, assumptions |
+| `content-repurpose` | One post → X thread, LinkedIn, Instagram, TikTok, newsletter |
+| `product-research` | Structured product/tool comparison reports |
+| `doc-assistant` | PDF/DOCX analysis — summarize, extract clauses, find deadlines |
+| `meal-planner` | Recipe ideas, weekly meal plans, combined grocery lists |
+| `business-plan` | Full business plan from idea analysis + market research |
 
 ```bash
 # Reload skills at runtime

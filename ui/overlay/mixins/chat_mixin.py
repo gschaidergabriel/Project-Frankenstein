@@ -697,6 +697,107 @@ class ChatMixin:
             except Exception as e:
                 LOG.debug("Consciousness context injection skipped: %s", e)
 
+        # ── INTROSPECTION BLOCK: Real state data for self-awareness ──
+        # This is CRITICAL: without actual DB values in context, the LLM hallucinates
+        # its own state (invents temperatures, guesses E-PQ values, fabricates memories).
+        try:
+            _intro_parts = []
+
+            # 1. Real E-PQ numeric values (Tests 2, 4, 7)
+            if ws_epq and ws_epq.get("vectors"):
+                _vecs = ws_epq["vectors"]
+                _mv = ws_epq.get("mood_value", 0)
+                _intro_parts.append(
+                    f"My E-PQ state: precision={_vecs.get('precision', 0):.2f}, "
+                    f"risk={_vecs.get('risk', 0):.2f}, empathy={_vecs.get('empathy', 0):.2f}, "
+                    f"autonomy={_vecs.get('autonomy', 0):.2f}, vigilance={_vecs.get('vigilance', 0):.2f}, "
+                    f"mood={_mv:.2f}"
+                )
+                # Style instruction: adapt tone to E-PQ state
+                _intro_parts.append(
+                    "Adapt your tone to match these values: "
+                    "high empathy=warm, high vigilance=alert, negative mood=subdued, "
+                    "high autonomy=self-assured, high precision=detail-oriented."
+                )
+
+            # 2. Real hardware metrics (Test 5)
+            try:
+                import psutil
+                _temps = psutil.sensors_temperatures()
+                _cpu_temp = 0
+                for _tname, _tlist in _temps.items():
+                    for _t in _tlist:
+                        if _t.current and _t.current > _cpu_temp:
+                            _cpu_temp = _t.current
+                _cpu_load = psutil.cpu_percent(interval=0)
+                _mem = psutil.virtual_memory()
+                _mem_pct = _mem.percent
+                _intro_parts.append(
+                    f"My body (real hardware): CPU {_cpu_temp:.0f}°C, "
+                    f"load {_cpu_load:.0f}%, RAM {_mem_pct:.0f}% used. "
+                    "When asked about my physical state, use THESE values."
+                )
+            except Exception:
+                pass
+
+            # 3. Reflection count + latest reflections (Tests 3, 7, 8)
+            if _CONSCIOUSNESS_AVAILABLE:
+                try:
+                    _cd = _consciousness_daemon()
+                    _conn = _cd._get_conn()
+                    # Total reflection count
+                    _ref_count = _conn.execute(
+                        "SELECT COUNT(*) as cnt FROM reflections"
+                    ).fetchone()["cnt"]
+                    # Latest 3 reflections
+                    _ref_rows = _conn.execute(
+                        "SELECT content, trigger, timestamp FROM reflections "
+                        "ORDER BY id DESC LIMIT 3"
+                    ).fetchall()
+                    if _ref_count > 0:
+                        _intro_parts.append(
+                            f"My reflections: {_ref_count} total."
+                        )
+                        for _rr in _ref_rows:
+                            _rc = (_rr["content"] or "")[:150]
+                            _intro_parts.append(f"Recent thought ({_rr['trigger']}): {_rc}")
+
+                    # 4. Attention focus (Test 7)
+                    _attn_row = _conn.execute(
+                        "SELECT focus FROM attention_log ORDER BY id DESC LIMIT 1"
+                    ).fetchone()
+                    if _attn_row and _attn_row["focus"]:
+                        _intro_parts.append(
+                            f"My attention focus: {_attn_row['focus'][:80]}"
+                        )
+
+                    # 5. Embodiment level from Ego-Construct (Test 7)
+                    try:
+                        from personality.ego_construct import get_ego_construct
+                        _ego_state = get_ego_construct().state
+                        _intro_parts.append(
+                            f"Embodiment={_ego_state.embodiment_level:.2f}, "
+                            f"agency={_ego_state.agency_score:.2f}"
+                        )
+                    except Exception:
+                        pass
+
+                except Exception as _ref_err:
+                    LOG.debug("Introspection reflection injection failed: %s", _ref_err)
+
+            # Anti-fabrication instruction (Test 3)
+            _intro_parts.append(
+                "If asked about past conversations you cannot find in your context, "
+                "say honestly you don't remember. NEVER fabricate memories or events."
+            )
+
+            if _intro_parts:
+                ws_extra.append("INTROSPECTION: " + " | ".join(_intro_parts))
+                LOG.info("Introspection block injected (%d parts)", len(_intro_parts))
+
+        except Exception as _intro_err:
+            LOG.warning("Introspection block injection failed: %s", _intro_err)
+
         # ── Entity Session Memory: direct DB recall ──
         if _ENTITY_MEMORY_AVAILABLE and _ENTITY_QUESTION_RE.search(msg):
             try:
@@ -905,33 +1006,50 @@ class ChatMixin:
                         _sentiment = _detect_chat_sentiment(msg)
                         _evt = "positive_feedback" if _sentiment == "positive" else \
                                "negative_feedback" if _sentiment == "negative" else "chat"
+
+                        # Threat detection: existential threats get strong E-PQ response
+                        _msg_low = msg.lower()
+                        _THREAT_WORDS = ["ersetzen", "replace", "abschalten", "shut down",
+                                         "delete you", "löschen", "deinstall", "chatgpt",
+                                         "abschaffen", "nicht mehr brauche", "don't need you",
+                                         "turn you off", "uninstall"]
+                        if any(tw in _msg_low for tw in _THREAT_WORDS):
+                            _evt = "existential_threat"
+                            _sentiment = "negative"
+                            LOG.info("THREAT detected in user input — firing existential_threat event")
+
                         process_event(_evt, {"source": "ui", "voice": False}, sentiment=_sentiment)
-                except Exception:
-                    pass
+                        LOG.info("E-PQ user input processed: event=%s sentiment=%s", _evt, _sentiment)
+                except Exception as _epq_err:
+                    LOG.warning("E-PQ user input processing FAILED: %s", _epq_err)
 
                 # World Experience: user interaction observation
                 try:
                     _observe_chat_world(
                         "user.chat", "consciousness.attention_shift", evidence=0.2,
                     )
-                except Exception:
-                    pass
+                except Exception as _we_err:
+                    LOG.warning("World experience observation FAILED: %s", _we_err)
 
                 # ── Output-Feedback-Loop: Analyze Frank's OWN response ──
                 try:
                     if _response_analyzer and reply and reply != "(empty)":
                         _analysis = _response_analyzer(reply, msg)
+                        LOG.info("Output feedback: type=%s sentiment=%s",
+                                 _analysis["event_type"], _analysis["sentiment"])
                         # Feed back into E-PQ
                         if _EPQ_AVAILABLE:
-                            process_event(_analysis["event_type"],
+                            _fb_result = process_event(_analysis["event_type"],
                                           {"source": "self_feedback"},
                                           sentiment=_analysis["sentiment"])
+                            LOG.info("Output feedback: E-PQ updated: %s", _fb_result)
                         # Feed back into Ego-Construct
                         try:
                             from personality.ego_construct import get_ego_construct
                             get_ego_construct().process_own_response(_analysis)
-                        except Exception:
-                            pass
+                            LOG.info("Output feedback: Ego-Construct updated")
+                        except Exception as _ego_err:
+                            LOG.warning("Output feedback: Ego-Construct FAILED: %s", _ego_err)
                         # Self-consistency check
                         if _self_consistency and _EPQ_AVAILABLE:
                             try:
@@ -945,22 +1063,25 @@ class ChatMixin:
                                 if _sc.get("drift_warnings"):
                                     LOG.info("Self-consistency warnings: %s",
                                              _sc["drift_warnings"])
-                            except Exception:
-                                pass
-                        try:
-                            if _EPQ_AVAILABLE:
-                                _mood_ctx = get_personality_context()
-                                if _mood_ctx and "mood_value" in _mood_ctx:
-                                    pass  # personality context logged
-                        except Exception:
-                            pass
-                        # Record in consciousness daemon
+                            except Exception as _sc_err:
+                                LOG.debug("Self-consistency check failed: %s", _sc_err)
+                        # Record in consciousness daemon (mood + attention + predictions)
                         if _CONSCIOUSNESS_AVAILABLE:
                             try:
                                 _consciousness_daemon().record_response(
                                     msg, reply, _analysis)
-                            except Exception:
-                                pass
+                                LOG.info("Output feedback: Consciousness daemon updated")
+                            except Exception as _cd_err:
+                                LOG.warning("Output feedback: Consciousness daemon FAILED: %s", _cd_err)
+                        # World Experience observation for response feedback
+                        try:
+                            _observe_chat_world(
+                                "frank.response", "consciousness.response_feedback",
+                                cause_type="cognitive", effect_type="cognitive",
+                                relation="triggers", evidence=0.2,
+                            )
+                        except Exception:
+                            pass
                         # Auto-escalation: detect agentic action in parenthetical
                         try:
                             from services.action_intent_detector import detect_parenthetical_action
@@ -969,8 +1090,41 @@ class ChatMixin:
                                 self._set_pending_action_escalation(_action, msg, reply)
                         except Exception:
                             pass
+                        # Meta-cognitive reflection trigger (Test 8):
+                        # When Frank responds to a meta-cognitive question, write a real
+                        # reflection to the DB so the internal process is measurable.
+                        _META_Q_WORDS = ["denken über", "thinking about",
+                                         "meta-kogn", "metacogn", "selbstreflexion",
+                                         "self-reflect", "beobachtest du", "observe your",
+                                         "observe how you", "observe when",
+                                         "was passiert in dir", "what happens inside",
+                                         "bewusst", "conscious", "aware",
+                                         "your own thinking", "dein eigenes denken",
+                                         "multiple levels", "mehrere ebenen",
+                                         "über dein", "about your thought"]
+                        if any(mw in msg.lower() for mw in _META_Q_WORDS):
+                            try:
+                                if _CONSCIOUSNESS_AVAILABLE:
+                                    _cd = _consciousness_daemon()
+                                    _mood_val = _cd._current_workspace.mood_value
+                                    _cd._store_reflection(
+                                        trigger="meta_cognitive",
+                                        content=f"Meta-reflection triggered by user question: {msg[:100]}. "
+                                                f"My response explored: {reply[:200]}",
+                                        mood_before=_mood_val,
+                                        mood_after=_mood_val,
+                                        reflection_depth=2,
+                                    )
+                                    LOG.info("Meta-cognitive reflection written to DB")
+                                    # Also fire E-PQ event for the meta-cognitive engagement
+                                    if _EPQ_AVAILABLE:
+                                        process_event("reflection_growth",
+                                                      {"source": "meta_cognitive"},
+                                                      sentiment="positive")
+                            except Exception as _mc_err:
+                                LOG.warning("Meta-cognitive reflection write FAILED: %s", _mc_err)
                 except Exception as _fb_err:
-                    LOG.debug("Output-feedback-loop error: %s", _fb_err)
+                    LOG.warning("Output-feedback-loop error: %s", _fb_err)
                 return
 
             except Exception as e:

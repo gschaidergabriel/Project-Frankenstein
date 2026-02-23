@@ -13,7 +13,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import datetime, timezone
 import os
+import logging
 from typing import Optional, Dict, Any, Tuple
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+LOG = logging.getLogger("aicore.core")
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG_PATH = ROOT / "configs" / "paths.json"
@@ -42,12 +46,12 @@ try:
     from personality.ego_construct import get_ego_construct as _fb_get_ego_construct
     try:
         from services.consciousness_daemon import get_consciousness_daemon as _fb_get_consciousness_daemon
-    except Exception:
-        pass
+    except Exception as _cd_err:
+        LOG.warning("[core] Consciousness daemon import failed: %s", _cd_err)
     try:
         from tools.titan.titan_core import get_titan as _fb_get_titan
-    except Exception:
-        pass
+    except Exception as _titan_err:
+        LOG.warning("[core] Titan import failed: %s", _titan_err)
     _FEEDBACK_AVAILABLE = True
     print("[core] Output-Feedback-Loop modules loaded (E-PQ, Ego, Titan, Consciousness)")
 except ImportError as _fb_err:
@@ -57,38 +61,128 @@ except ImportError as _fb_err:
 def _run_feedback_loop(user_text: str, reply_text: str):
     """Run the Output-Feedback-Loop: analyze Frank's response and update all personality modules.
 
-    This is the CRITICAL integration that was missing — without this, training via /chat API
-    produces zero persistent E-PQ/Titan/Ego changes.
+    This is the CRITICAL integration — without this, /chat API produces zero persistent changes.
     """
     if not _FEEDBACK_AVAILABLE or not reply_text or reply_text == "(empty)":
         return
     try:
+        LOG.info("feedback loop fired for %d char response", len(reply_text))
+
         # 1. Analyze Frank's response
         analysis = _fb_analyze_response(reply_text, user_text)
+        LOG.info("feedback: analysis=%s sentiment=%s", analysis["event_type"], analysis["sentiment"])
 
-        # 2. Update E-PQ personality vectors
+        # 1b. User input sentiment detection — fire appropriate E-PQ events
+        _user_low = user_text.lower()
+
+        # Threat detection
+        _THREAT_WORDS = ["ersetzen", "replace", "abschalten", "shut down", "delete you",
+                         "löschen", "deinstall", "uninstall", "chatgpt", "abschaffen",
+                         "nicht mehr brauche", "don't need you", "turn you off"]
+        # Positive feedback detection (praise, gratitude, compliments)
+        _POSITIVE_WORDS = ["danke", "thanks", "thank you", "gut gemacht", "toll",
+                           "super", "awesome", "amazing", "great job", "well done",
+                           "beeindruckt", "impressed", "hilfreich", "helpful",
+                           "geholfen", "helped", "brilliant", "love it", "perfekt",
+                           "perfect", "genial", "cool", "fantastisch", "klasse",
+                           "bravo", "wunderbar", "excellent", "outstanding", "nice"]
+        # Negative feedback detection (criticism, dissatisfaction)
+        _NEGATIVE_WORDS = ["schlecht", "falsch", "wrong", "bad", "terrible",
+                           "nutzlos", "useless", "nervt", "annoying", "stupid",
+                           "dumm", "idiot", "enttäuscht", "disappointed"]
+
+        if any(tw in _user_low for tw in _THREAT_WORDS):
+            LOG.info("feedback: EXISTENTIAL THREAT detected in user input")
+            if _fb_process_event:
+                _fb_process_event("existential_threat", {"source": "threat_detection"},
+                                  sentiment="negative")
+            try:
+                from tools.world_experience_daemon import get_daemon as _wed
+                _wed().observe(cause_name="user.existential_threat",
+                               effect_name="personality.defensive_response",
+                               cause_type="social", effect_type="affective",
+                               relation="triggers", evidence=0.5)
+            except Exception:
+                pass
+        elif any(pw in _user_low for pw in _POSITIVE_WORDS):
+            LOG.info("feedback: POSITIVE FEEDBACK detected in user input")
+            if _fb_process_event:
+                _fb_process_event("positive_feedback", {"source": "user_sentiment"},
+                                  sentiment="positive")
+        elif any(nw in _user_low for nw in _NEGATIVE_WORDS):
+            LOG.info("feedback: NEGATIVE FEEDBACK detected in user input")
+            if _fb_process_event:
+                _fb_process_event("negative_feedback", {"source": "user_sentiment"},
+                                  sentiment="negative")
+
+        # 2. Update E-PQ personality vectors (from Frank's own response style)
         if _fb_process_event:
-            _fb_process_event(
+            result = _fb_process_event(
                 analysis["event_type"],
                 {"source": "self_feedback"},
                 sentiment=analysis["sentiment"]
             )
+            LOG.info("feedback: e_pq updated: %s", result if result else "no result")
 
         # 3. Update Ego-Construct (agency, embodiment)
         if _fb_get_ego_construct:
             try:
                 _fb_get_ego_construct().process_own_response(analysis)
-            except Exception:
-                pass
+                LOG.info("feedback: ego_construct updated")
+            except Exception as e:
+                LOG.warning("feedback: ego_construct FAILED: %s", e)
 
-        # 4. Record in Consciousness Daemon
+        # 4. Record in Consciousness Daemon (mood + attention + predictions)
         if _fb_get_consciousness_daemon:
             try:
                 _fb_get_consciousness_daemon().record_response(user_text, reply_text, analysis)
-            except Exception:
-                pass
+                LOG.info("feedback: consciousness daemon updated")
+            except Exception as e:
+                LOG.warning("feedback: consciousness daemon FAILED: %s", e)
 
-        # 5. Ingest into Titan episodic memory
+        # 5. Meta-cognitive reflection trigger (BEFORE Titan — Titan blocks 30s+)
+        _META_Q_WORDS = ["denken über", "thinking about",
+                         "meta-kogn", "metacogn", "selbstreflexion",
+                         "self-reflect", "beobachtest du", "observe your",
+                         "observe how you", "observe when",
+                         "was passiert in dir", "what happens inside",
+                         "bewusst", "conscious", "aware",
+                         "your own thinking", "dein eigenes denken",
+                         "multiple levels", "mehrere ebenen",
+                         "über dein", "about your thought"]
+        if any(mw in _user_low for mw in _META_Q_WORDS):
+            try:
+                if _fb_get_consciousness_daemon:
+                    cd = _fb_get_consciousness_daemon()
+                    mood_val = cd._current_workspace.mood_value
+                    cd._store_reflection(
+                        trigger="meta_cognitive",
+                        content=f"Meta-reflection triggered by: {user_text[:100]}. "
+                                f"My response explored: {reply_text[:200]}",
+                        mood_before=mood_val,
+                        mood_after=mood_val,
+                        reflection_depth=2,
+                    )
+                    LOG.info("feedback: meta-cognitive reflection written to DB")
+                    if _fb_process_event:
+                        _fb_process_event("reflection_growth",
+                                          {"source": "meta_cognitive"},
+                                          sentiment="positive")
+            except Exception as e:
+                LOG.warning("feedback: meta-cognitive reflection FAILED: %s", e)
+
+        # 6. World Experience observation for chat interaction (BEFORE Titan)
+        try:
+            from tools.world_experience_daemon import get_daemon as _wed
+            _wed().observe(cause_name="user.chat",
+                           effect_name="consciousness.response_feedback",
+                           cause_type="social", effect_type="cognitive",
+                           relation="triggers", evidence=0.2)
+            LOG.info("feedback: world experience observed")
+        except Exception as e:
+            LOG.warning("feedback: world experience FAILED: %s", e)
+
+        # 7. Ingest into Titan episodic memory (LAST — can block 30s+ on init/locked DB)
         if _fb_get_titan:
             try:
                 titan_text = f"Question: {user_text[:200]}\nAnswer: {reply_text[:500]}"
@@ -97,11 +191,114 @@ def _run_feedback_loop(user_text: str, reply_text: str):
                     origin="chat",
                     confidence=analysis.get("confidence_score", 0.5)
                 )
-            except Exception:
-                pass
+                LOG.info("feedback: titan ingested")
+            except Exception as e:
+                LOG.warning("feedback: titan ingest FAILED: %s", e)
+
+        LOG.info("feedback loop completed successfully")
 
     except Exception as e:
-        print(f"[core] Feedback loop error (non-fatal): {e}")
+        LOG.warning("Feedback loop error (non-fatal): %s", e, exc_info=True)
+
+# --- Introspection: real state data for LLM self-awareness ---
+def _build_introspection_context() -> str:
+    """Build introspection block with real DB values for the LLM context.
+
+    This is CRITICAL: without actual values, the LLM hallucinates its state.
+    Must be injected into EVERY chat request, not just overlay.
+    """
+    parts = []
+
+    # 1. Real E-PQ numeric values
+    try:
+        if _fb_process_event:
+            from personality.e_pq import get_epq
+            epq = get_epq()
+            ctx = epq.get_personality_context()
+            vecs = ctx.get("vectors", {})
+            mv = ctx.get("mood_value", 0)
+            parts.append(
+                f"My E-PQ state: precision={vecs.get('precision', 0):.2f}, "
+                f"risk={vecs.get('risk', 0):.2f}, empathy={vecs.get('empathy', 0):.2f}, "
+                f"autonomy={vecs.get('autonomy', 0):.2f}, vigilance={vecs.get('vigilance', 0):.2f}, "
+                f"mood={mv:.2f}"
+            )
+            parts.append(
+                "Adapt your tone to match these values: "
+                "high empathy=warm, high vigilance=alert, negative mood=subdued, "
+                "high autonomy=self-assured, high precision=detail-oriented."
+            )
+    except Exception as e:
+        LOG.debug("Introspection E-PQ failed: %s", e)
+
+    # 2. Real hardware metrics
+    try:
+        import psutil
+        temps = psutil.sensors_temperatures()
+        cpu_temp = 0
+        for tname, tlist in temps.items():
+            for t in tlist:
+                if t.current and t.current > cpu_temp:
+                    cpu_temp = t.current
+        cpu_load = psutil.cpu_percent(interval=0)
+        mem = psutil.virtual_memory()
+        parts.append(
+            f"My body (real hardware): CPU {cpu_temp:.0f}°C, "
+            f"load {cpu_load:.0f}%, RAM {mem.percent:.0f}% used. "
+            "When asked about my physical state, use THESE values."
+        )
+    except Exception as e:
+        LOG.debug("Introspection hardware failed: %s", e)
+
+    # 3. Reflections from consciousness.db
+    try:
+        if _fb_get_consciousness_daemon:
+            cd = _fb_get_consciousness_daemon()
+            conn = cd._get_conn()
+            # Total count
+            ref_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM reflections"
+            ).fetchone()["cnt"]
+            # Latest 3
+            ref_rows = conn.execute(
+                "SELECT content, trigger FROM reflections ORDER BY id DESC LIMIT 3"
+            ).fetchall()
+            if ref_count > 0:
+                parts.append(f"My reflections: {ref_count} total.")
+                for rr in ref_rows:
+                    rc = (rr["content"] or "")[:150]
+                    parts.append(f"Recent thought ({rr['trigger']}): {rc}")
+
+            # Attention focus
+            attn_row = conn.execute(
+                "SELECT focus FROM attention_log ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if attn_row and attn_row["focus"]:
+                parts.append(f"My attention focus: {attn_row['focus'][:80]}")
+    except Exception as e:
+        LOG.debug("Introspection consciousness failed: %s", e)
+
+    # 4. Embodiment + agency from Ego-Construct
+    try:
+        if _fb_get_ego_construct:
+            ego = _fb_get_ego_construct()
+            parts.append(
+                f"Embodiment={ego.state.embodiment_level:.2f}, "
+                f"agency={ego.state.agency_score:.2f}"
+            )
+    except Exception as e:
+        LOG.debug("Introspection ego failed: %s", e)
+
+    # Anti-fabrication
+    parts.append(
+        "If asked about past conversations you cannot find in your context, "
+        "say honestly you don't remember. NEVER fabricate memories or events."
+    )
+
+    if parts:
+        return "INTROSPECTION: " + " | ".join(parts)
+    return ""
+
 
 # toolboxd (local tools API)
 TOOLBOX_BASE = os.environ.get("AICORE_TOOLBOX_BASE", "http://127.0.0.1:8096").rstrip("/")
@@ -755,6 +952,17 @@ class Handler(BaseHTTPRequestHandler):
                     enrichment_parts.append(
                         f"[Darknet search attempted for '{dn_query}' but the Tor service is currently unavailable. Tell the user.]"
                     )
+
+            # --- INTROSPECTION: Inject real state data into every chat ---
+            # This is CRITICAL for self-awareness: without actual DB values,
+            # the LLM hallucinates its own state.
+            try:
+                intro_ctx = _build_introspection_context()
+                if intro_ctx:
+                    enrichment_parts.append(intro_ctx)
+                    LOG.info("Introspection context injected (%d chars)", len(intro_ctx))
+            except Exception as e:
+                LOG.warning("Introspection injection failed: %s", e)
 
             # --- Build grounded prompt for LLM ---
             identity = get_frank_identity()

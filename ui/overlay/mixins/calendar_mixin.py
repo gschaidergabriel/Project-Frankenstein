@@ -533,7 +533,7 @@ class CalendarMixin:
                     self._ui_call(lambda: self._add_message("Frank", "Could not understand appointment details. Please try again.", is_system=True))
                     return
 
-            title = details.get("title", "Appointment")
+            title = details.get("title") or "Appointment"
             date = details.get("date", today)
             start_time = details.get("start_time", "09:00")
             end_time = details.get("end_time", "")

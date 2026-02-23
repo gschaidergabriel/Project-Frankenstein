@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -24,7 +25,15 @@ def _toolbox_call(endpoint: str, payload: Dict[str, Any], timeout_s: float = 5.0
     url = TOOLBOX_BASE + endpoint
     try:
         return _http_post_json(url, payload, timeout_s=timeout_s)
-    except Exception:
+    except Exception as exc:
+        # Try to extract JSON error body from HTTP error responses
+        msg = str(exc)
+        if msg.startswith("HTTP "):
+            try:
+                json_part = msg.split(": ", 1)[1]
+                return json.loads(json_part)
+            except Exception:
+                pass
         return None
 
 

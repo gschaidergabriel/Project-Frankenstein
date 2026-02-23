@@ -150,6 +150,9 @@ def build_workspace(
                                 "[Eigenes Wissen]", "[Mein Gedaechtnis", "[Ich erinnere",
                                 "[Entity session memory")):
                 max_l = min(500, b_titan)
+            elif part.startswith("INTROSPECTION:"):
+                # Introspection block contains real DB state — do not truncate
+                max_l = 900
             else:
                 max_l = 200
             clean = _clean_ctx(part, max_len=max_l)

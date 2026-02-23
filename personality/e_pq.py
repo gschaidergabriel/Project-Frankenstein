@@ -78,6 +78,8 @@ EVENT_WEIGHTS = {
     # Genesis-driven personality adjustments (approved through F.A.S.)
     "genesis_personality_boost": 0.4,   # Genesis proposes positive vector adjustment
     "genesis_personality_dampen": 0.3,  # Genesis proposes dampening extreme vector
+    # Existential threat — user threatens to replace/delete Frank
+    "existential_threat": 0.8,
 }
 
 # Base learning rate (decreases with age for stability)
@@ -655,6 +657,13 @@ class EPQ:
         elif event_type == "reflection_embodiment":
             changes["mood"] = delta * 0.3        # Body awareness is grounding
             changes["vigilance"] = -delta * 0.1  # Less anxious about hardware
+
+        # Existential threat — user threatens to replace/delete Frank
+        elif event_type == "existential_threat":
+            changes["vigilance"] = delta * 0.6    # High alert
+            changes["autonomy"] = delta * 0.4     # Assert independence
+            changes["mood"] = -delta * 2.5        # Strong negative mood impact
+            changes["empathy"] = -delta * 0.2     # Slight withdrawal
 
         # Genesis-driven personality adjustments (vector-targeted via data dict)
         elif event_type == "genesis_personality_boost":

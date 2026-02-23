@@ -7,7 +7,7 @@
 
 Built by one person in 2 months with zero programming experience. [Read the full story.](ABOUT.md)
 
-**[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)**
+**[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)**
 
 A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ services on your machine — voice interaction, agentic task execution, autonomous entities, a dynamic personality engine, and more — all powered by local LLMs with zero cloud dependencies.
 

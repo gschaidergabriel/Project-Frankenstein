@@ -11,7 +11,10 @@ manifestation HAPPENS - it's not "decided".
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+import json
 import logging
+import urllib.request
+import urllib.error
 
 from .organism import IdeaOrganism, IdeaStage
 from .field import MotivationalField, EmotionState
@@ -265,6 +268,11 @@ class ManifestationGate:
             pref_factor = self.feedback_sync.get_resonance_modifier(organism)
             factors.append(pref_factor)
 
+        # 8. Quantum reflector coherence score
+        coherence_factor = self._query_coherence_score(organism)
+        if coherence_factor is not None:
+            factors.append(coherence_factor)
+
         # Calculate combined resonance (multiplicative for all factors)
         if not factors:
             return 0.0
@@ -301,6 +309,48 @@ class ManifestationGate:
             readiness += 0.2
 
         return min(1.0, readiness)
+
+    def _query_coherence_score(self, organism: IdeaOrganism) -> Optional[float]:
+        """Query quantum reflector for coherence impact of this idea."""
+        try:
+            genome = organism.genome
+            hypothesis = {}
+
+            # Map genome type to hypothetical state changes
+            if genome.idea_type == "optimization":
+                hypothesis = {"precision": 0.3, "current_mode": "focus"}
+            elif genome.idea_type == "fix":
+                hypothesis = {"current_phase": "engaged", "current_mode": "focus"}
+            elif genome.idea_type == "exploration":
+                hypothesis = {"current_phase": "reflecting"}
+            elif genome.idea_type == "feature":
+                hypothesis = {"current_mode": "project", "current_phase": "engaged"}
+            elif genome.idea_type == "personality_adjustment":
+                target_vec = genome.traits.get("target_vector", "")
+                amount = genome.traits.get("adjustment_amount", 0.1)
+                if target_vec:
+                    hypothesis = {target_vec: amount}
+
+            if not hypothesis:
+                return None
+
+            data = json.dumps({"hypothesis": hypothesis}).encode()
+            req = urllib.request.Request(
+                "http://127.0.0.1:8097/simulate",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                result = json.loads(resp.read())
+
+            delta = result.get("coherence_delta", 0)
+            # Map delta to factor: negative delta (improvement) → higher factor
+            factor = max(0.3, min(1.0, 0.7 - delta * 0.1))
+            return factor
+
+        except Exception:
+            return None
 
     def _is_similar_to_failure(self, organism: IdeaOrganism) -> bool:
         """Check if this idea is similar to a recent failure."""

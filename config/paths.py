@@ -90,6 +90,7 @@ DB_PATHS = {
     "mirror": DB_DIR / "mirror.db",
     "atlas": DB_DIR / "atlas.db",
     "muse": DB_DIR / "muse.db",
+    "quantum_reflector": DB_DIR / "quantum_reflector.db",
 }
 
 # State files (JSON)

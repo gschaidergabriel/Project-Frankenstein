@@ -2651,7 +2651,25 @@ class ConsciousnessDaemon:
         except Exception:
             pass
 
-        # Source 6: Idle curiosity (low baseline)
+        # Source 6: Coherence signal from quantum reflector
+        try:
+            import urllib.request
+            with urllib.request.urlopen("http://127.0.0.1:8097/energy", timeout=1) as _qr_resp:
+                _qr_data = json.loads(_qr_resp.read())
+            _qr_gap = abs(_qr_data.get("gap", 0))
+            if _qr_gap > 2.0:
+                _coh_hint = _qr_data.get("optimal_state", {})
+                _coh_label = _coh_hint.get("phase", "?") if isinstance(_coh_hint, dict) else "?"
+                candidates.append(AttentionSource(
+                    name="coherence_signal",
+                    focus=f"epistemic gap={_qr_gap:.1f} (optimal: {_coh_label})",
+                    salience=min(0.6, 0.2 + _qr_gap * 0.05),
+                    timestamp=now,
+                ))
+        except Exception:
+            pass
+
+        # Source 7: Idle curiosity (low baseline)
         if not candidates or all(c.salience < 0.2 for c in candidates):
             candidates.append(AttentionSource(
                 name="idle_curiosity",

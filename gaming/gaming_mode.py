@@ -596,24 +596,29 @@ _GAME_WM_CLASSES = [
 
 
 def has_game_window() -> bool:
-    """Check if any game window is visible (Steam, native, Wine, etc.)."""
+    """Check if any game process is running (process-only, no X11 probing).
+
+    Uses /proc cmdline scanning instead of wmctrl/xprop to avoid
+    triggering anti-cheat systems (TCC, EAC, etc.) that detect
+    X11 window inspection on game windows.
+    """
+    import os
+    game_proc_patterns = [
+        "steam_app_", "steamapps/common/", ".exe",
+        "proton", "wine", "lutris",
+        "dosbox", "retroarch",
+        "oldunreal", "ut2004", "unrealtournament",
+        "dota", "factorio", "minecraft",
+    ]
     try:
-        result = subprocess.run(
-            ["wmctrl", "-l"], capture_output=True, text=True, timeout=3
-        )
-        for line in result.stdout.strip().split("\n"):
-            if not line:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
                 continue
-            win_id = line.split()[0]
             try:
-                cls_result = subprocess.run(
-                    ["xprop", "-id", win_id, "WM_CLASS"],
-                    capture_output=True, text=True, timeout=2
-                )
-                cls = cls_result.stdout.lower()
-                if any(g in cls for g in _GAME_WM_CLASSES):
+                cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", errors="ignore").lower()
+                if any(g in cmdline for g in game_proc_patterns):
                     return True
-            except Exception:
+            except (PermissionError, FileNotFoundError, ProcessLookupError):
                 pass
     except Exception:
         pass
@@ -621,23 +626,8 @@ def has_game_window() -> bool:
 
 
 def is_steam_foreground() -> bool:
-    """Check if Steam client is the active/foreground window."""
-    try:
-        result = subprocess.run(
-            ["xdotool", "getactivewindow"],
-            capture_output=True, text=True, timeout=2
-        )
-        win_id = result.stdout.strip()
-        if not win_id:
-            return False
-        cls_result = subprocess.run(
-            ["xprop", "-id", win_id, "WM_CLASS"],
-            capture_output=True, text=True, timeout=2
-        )
-        cls = cls_result.stdout.lower()
-        return "steam" in cls
-    except Exception:
-        return False
+    """Check if Steam client is running (process-only, no X11 probing)."""
+    return is_steam_client_running()
 
 
 def is_steam_client_running() -> bool:

@@ -315,6 +315,27 @@ class ToolExecutor:
                 error="No code provided",
             )
 
+        # HARD GUARDRAIL: Block all Python delete operations
+        import re
+        _PY_DELETE_PATTERNS = [
+            (r"\bos\.remove\b", "os.remove"),
+            (r"\bos\.unlink\b", "os.unlink"),
+            (r"\bos\.rmdir\b", "os.rmdir"),
+            (r"\bos\.removedirs\b", "os.removedirs"),
+            (r"\bshutil\.rmtree\b", "shutil.rmtree"),
+            (r"\.unlink\s*\(", "Path.unlink()"),
+            (r"\.rmdir\s*\(", "Path.rmdir()"),
+            (r"\bsend2trash\b", "send2trash"),
+        ]
+        for pattern, desc in _PY_DELETE_PATTERNS:
+            if re.search(pattern, code):
+                return ToolResult(
+                    tool_name="code_execute",
+                    success=False,
+                    data={},
+                    error=f"HARD GUARDRAIL: {desc} blocked. Frank darf keine Dateien loeschen.",
+                )
+
         # Write to temp file
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
@@ -384,40 +405,30 @@ class ToolExecutor:
         # catching destructive patterns the LLM might generate.
         import re
 
-        # Paths that must NEVER be targets of recursive delete / overwrite.
-        # Covers root, entire home, aicore installation, and dotfiles.
-        _home = str(Path.home())
-        _PROTECTED_PATH_LITERALS = [
-            "/", "/home", _home,
-            f"{_home}/.ssh", f"{_home}/.gnupg", f"{_home}/.config",
-            f"{_home}/.local", f"{_home}/aicore",
-            f"{_home}/.bashrc", f"{_home}/.profile",
+        # ============================================================
+        # HARD GUARDRAIL: Frank must NEVER delete anything.
+        # This blocks ALL delete operations regardless of path.
+        # ============================================================
+        _DELETE_PATTERNS = [
+            (r"\brm\b", "rm command (all deletion blocked)"),
+            (r"\brmdir\b", "rmdir command (all deletion blocked)"),
+            (r"\bunlink\b", "unlink command (all deletion blocked)"),
+            (r"\bshred\b", "shred command (all deletion blocked)"),
+            (r"\btruncate\b.*--size\s*0", "truncate to zero (deletion equivalent)"),
+            (r"\bfind\b.*-delete\b", "find with -delete (all deletion blocked)"),
+            (r"\bfind\b.*-exec\s+rm\b", "find with -exec rm (all deletion blocked)"),
+            (r"\bxargs\s+rm\b", "xargs rm (all deletion blocked)"),
         ]
-
-        # Check for rm/shred/find-delete targeting protected paths
-        for ppath in _PROTECTED_PATH_LITERALS:
-            escaped = re.escape(ppath)
-            # rm -rf <path>, rm -r <path>, rm <path>
-            if re.search(rf"\brm\s+(-[a-zA-Z]*\s+)*{escaped}(\s|$|;|&|\|)", command):
+        for pattern, desc in _DELETE_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
                 return ToolResult(
-                    tool_name="bash_execute", success=False, data={},
-                    error=f"Blocked: recursive delete on protected path {ppath}",
-                )
-            # shred <path>
-            if re.search(rf"\bshred\b.*{escaped}", command):
-                return ToolResult(
-                    tool_name="bash_execute", success=False, data={},
-                    error=f"Blocked: shred on protected path {ppath}",
+                    tool_name="bash_execute",
+                    success=False,
+                    data={},
+                    error=f"HARD GUARDRAIL: {desc}. Frank darf keine Dateien loeschen.",
                 )
 
         dangerous_patterns = [
-            # rm with root or home-relative destruction
-            (r"rm\s+(-[a-zA-Z]*\s+)*[/]($|\s|;)", "rm with root path"),
-            (r"rm\s+(-[a-zA-Z]*\s+)*~", "rm targeting home directory"),
-            (r"rm\s+(-[a-zA-Z]*\s+)*\$HOME", "rm targeting $HOME"),
-            (r"rm\s+(-[a-zA-Z]*\s+)*\$\{?HOME\}?", "rm targeting ${HOME}"),
-            (r"rm\s+(-[a-zA-Z]*\s+)+\*", "rm -rf with wildcard"),
-            (r"rm\s+(-[a-zA-Z]*\s+)*\.", "rm targeting current directory"),
             # Filesystem destruction
             (r"\bmkfs\b", "mkfs filesystem format"),
             (r"\bdd\s+if=", "dd disk write"),
@@ -430,17 +441,10 @@ class ToolExecutor:
             (r"(curl|wget)[^|]*\|\s*python", "pipe download to python"),
             (r"(curl|wget)[^|]*\|\s*perl", "pipe download to perl"),
             # Partition / disk tools
-            (r"\bshred\s+.*\s+/", "shred on root"),
             (r"\bfdisk\s+/dev/", "fdisk partition edit"),
             (r"\bparted\s+/dev/", "parted partition edit"),
             # Dangerous eval / exec patterns
             (r"\beval\s+.*\$", "eval with variable expansion"),
-            (r"python[23]?\s+(-c\s+['\"].*shutil\.rmtree|.*os\.remove)", "python destructive command"),
-            # find with -delete or -exec rm
-            (r"\bfind\b.*-delete\b", "find with -delete"),
-            (r"\bfind\b.*-exec\s+rm\b", "find with -exec rm"),
-            # xargs rm
-            (r"\bxargs\s+rm\b", "xargs rm"),
             # Overwrite critical files via redirection
             (r">\s*/etc/", "overwrite /etc files"),
             (r">\s*~/\.", "overwrite dotfiles via redirect"),

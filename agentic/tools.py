@@ -251,17 +251,9 @@ class ToolRegistry:
             ],
         ))
 
-        self.register(Tool(
-            name="fs_delete",
-            description="Delete a file or directory. USE WITH CAUTION.",
-            category=ToolCategory.FILESYSTEM,
-            risk_level=0.8,
-            requires_approval=True,
-            endpoint="/fs/delete",
-            parameters=[
-                ToolParameter("path", "string", "Path to delete", required=True),
-            ],
-        ))
+        # fs_delete intentionally REMOVED — hard guardrail.
+        # Frank must NEVER delete files or directories via agentic mode.
+        # Users can still delete files manually outside of Frank.
 
         self.register(Tool(
             name="fs_backup",

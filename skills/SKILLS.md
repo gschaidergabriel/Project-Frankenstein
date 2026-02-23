@@ -18,14 +18,15 @@ Skills come in two formats:
 | **Uninstallable** | No (protected) | Yes |
 | **Marketplace** | N/A | ClawHub integration |
 
-### Installed Skills (20)
+### Installed Skills (25)
 
 **Native (3):** `weather`, `timer`, `deep_work`
 
-**OpenClaw (17):** `summarize`, `sysadmin`, `essence-distiller`, `conventional-commits`,
+**OpenClaw (22):** `summarize`, `sysadmin`, `essence-distiller`, `conventional-commits`,
 `regex-helper`, `code-review`, `shell-explain`, `git-workflow`, `json-yaml-helper`,
 `log-analyzer`, `http-tester`, `docker-helper`, `security-audit`, `cron-helper`,
-`translate-helper`, `markdown-helper`, `systemd-helper`
+`translate-helper`, `markdown-helper`, `systemd-helper`, `content-repurpose`,
+`product-research`, `doc-assistant`, `meal-planner`, `business-plan`
 
 ---
 

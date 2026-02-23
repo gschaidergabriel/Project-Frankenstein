@@ -140,8 +140,10 @@ def _run_feedback_loop(user_text: str, reply_text: str):
             except Exception as e:
                 LOG.warning("feedback: consciousness daemon FAILED: %s", e)
 
-        # 5. Meta-cognitive reflection trigger (BEFORE Titan — Titan blocks 30s+)
-        _META_Q_WORDS = ["denken über", "thinking about",
+        # 5. Meta-cognitive post-response reflection (BEFORE Titan — Titan blocks 30s+)
+        # The pre-response reflection was already written synchronously before LLM call.
+        # This adds a follow-up reflection that includes what Frank actually said.
+        _META_Q_WORDS_POST = ["denken über", "thinking about",
                          "meta-kogn", "metacogn", "selbstreflexion",
                          "self-reflect", "beobachtest du", "observe your",
                          "observe how you", "observe when",
@@ -149,27 +151,24 @@ def _run_feedback_loop(user_text: str, reply_text: str):
                          "bewusst", "conscious", "aware",
                          "your own thinking", "dein eigenes denken",
                          "multiple levels", "mehrere ebenen",
-                         "über dein", "about your thought"]
-        if any(mw in _user_low for mw in _META_Q_WORDS):
+                         "über dein", "about your thought",
+                         "inner process", "innerer prozess",
+                         "how do you think", "wie denkst du"]
+        if any(mw in _user_low for mw in _META_Q_WORDS_POST):
             try:
                 if _fb_get_consciousness_daemon:
                     cd = _fb_get_consciousness_daemon()
                     mood_val = cd._current_workspace.mood_value
                     cd._store_reflection(
                         trigger="meta_cognitive",
-                        content=f"Meta-reflection triggered by: {user_text[:100]}. "
-                                f"My response explored: {reply_text[:200]}",
+                        content=f"Post-response reflection: I explored {reply_text[:200]}",
                         mood_before=mood_val,
                         mood_after=mood_val,
                         reflection_depth=2,
                     )
-                    LOG.info("feedback: meta-cognitive reflection written to DB")
-                    if _fb_process_event:
-                        _fb_process_event("reflection_growth",
-                                          {"source": "meta_cognitive"},
-                                          sentiment="positive")
+                    LOG.info("feedback: meta-cognitive post-reflection written to DB")
             except Exception as e:
-                LOG.warning("feedback: meta-cognitive reflection FAILED: %s", e)
+                LOG.warning("feedback: meta-cognitive post-reflection FAILED: %s", e)
 
         # 6. World Experience observation for chat interaction (BEFORE Titan)
         try:
@@ -231,22 +230,29 @@ def _build_introspection_context() -> str:
     except Exception as e:
         LOG.debug("Introspection E-PQ failed: %s", e)
 
-    # 2. Real hardware metrics
+    # 2. Real hardware metrics (read directly via psutil, NOT toolbox API)
     try:
         import psutil
         temps = psutil.sensors_temperatures()
-        cpu_temp = 0
-        for tname, tlist in temps.items():
-            for t in tlist:
-                if t.current and t.current > cpu_temp:
-                    cpu_temp = t.current
+        cpu_temp = 0.0
+        gpu_temp = 0.0
+        # Specific sensor matching for AMD Phoenix1
+        for chip, readings in temps.items():
+            for t in readings:
+                if chip == "k10temp" or (chip == "coretemp" and "Package" in (t.label or "")):
+                    if t.current and t.current > cpu_temp:
+                        cpu_temp = t.current
+                elif chip == "amdgpu":
+                    if t.current and t.current > gpu_temp:
+                        gpu_temp = t.current
         cpu_load = psutil.cpu_percent(interval=0)
         mem = psutil.virtual_memory()
-        parts.append(
-            f"My body (real hardware): CPU {cpu_temp:.0f}°C, "
-            f"load {cpu_load:.0f}%, RAM {mem.percent:.0f}% used. "
-            "When asked about my physical state, use THESE values."
-        )
+        hw_line = f"My body (real hardware): CPU {cpu_temp:.0f}°C"
+        if gpu_temp > 0:
+            hw_line += f", GPU {gpu_temp:.0f}°C"
+        hw_line += f", load {cpu_load:.0f}%, RAM {mem.percent:.0f}% used"
+        hw_line += ". When asked about my physical state, use THESE exact values."
+        parts.append(hw_line)
     except Exception as e:
         LOG.debug("Introspection hardware failed: %s", e)
 
@@ -952,6 +958,45 @@ class Handler(BaseHTTPRequestHandler):
                     enrichment_parts.append(
                         f"[Darknet search attempted for '{dn_query}' but the Tor service is currently unavailable. Tell the user.]"
                     )
+
+            # --- PRE-RESPONSE: Meta-cognitive reflection (synchronous) ---
+            # Must happen BEFORE introspection injection so the new reflection
+            # appears in the INTROSPECTION block of THIS response.
+            _user_low_pre = user_text_for_matching.lower()
+            _META_Q_WORDS_PRE = [
+                "denken über", "thinking about",
+                "meta-kogn", "metacogn", "selbstreflexion",
+                "self-reflect", "beobachtest du", "observe your",
+                "observe how you", "observe when",
+                "was passiert in dir", "what happens inside",
+                "bewusst", "conscious", "aware",
+                "your own thinking", "dein eigenes denken",
+                "multiple levels", "mehrere ebenen",
+                "über dein", "about your thought",
+                "inner process", "innerer prozess",
+                "how do you think", "wie denkst du",
+            ]
+            _is_meta_q = any(mw in _user_low_pre for mw in _META_Q_WORDS_PRE)
+            if _is_meta_q:
+                try:
+                    if _fb_get_consciousness_daemon:
+                        cd = _fb_get_consciousness_daemon()
+                        mood_val = cd._current_workspace.mood_value
+                        cd._store_reflection(
+                            trigger="meta_cognitive",
+                            content=f"Meta-reflection triggered by: {user_text_for_matching[:100]}. "
+                                    f"I am now examining my own cognitive processes in response to this question.",
+                            mood_before=mood_val,
+                            mood_after=mood_val,
+                            reflection_depth=2,
+                        )
+                        LOG.info("PRE-RESPONSE: meta-cognitive reflection written to DB")
+                        if _fb_process_event:
+                            _fb_process_event("reflection_growth",
+                                              {"source": "meta_cognitive"},
+                                              sentiment="positive")
+                except Exception as e:
+                    LOG.warning("PRE-RESPONSE: meta-cognitive reflection FAILED: %s", e)
 
             # --- INTROSPECTION: Inject real state data into every chat ---
             # This is CRITICAL for self-awareness: without actual DB values,

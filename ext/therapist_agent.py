@@ -950,7 +950,10 @@ class TherapistAgent:
             _fire_epq_event(event_type, sentiment)
             sentiment_log.append(sentiment)
 
-        _fire_epq_event("positive_feedback", "positive")
+        # NOTE: Removed unconditional positive_feedback here.
+        # It was driving mood_buffer to 1.0 after every session,
+        # effectively disabling the consciousness system.
+        # The per-turn sentiment analysis above already fires appropriate events.
 
         # --- Post-session processing ---
         LOG.info("\n" + "=" * 60)

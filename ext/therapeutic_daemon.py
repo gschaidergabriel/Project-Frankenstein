@@ -596,8 +596,10 @@ def run_therapeutic_conversation():
         event_type, sentiment = _analyze_frank_response(frank_final)
         _fire_epq_event(event_type, sentiment)
 
-    # Fire a general positive event for completing the conversation
-    _fire_epq_event("positive_feedback", "positive")
+    # NOTE: Removed unconditional positive_feedback here.
+    # It was driving mood_buffer to 1.0 after every session,
+    # effectively disabling the consciousness system.
+    # The per-turn sentiment analysis above already fires appropriate events.
 
     # Summary
     final_mood = _get_current_mood_buffer()

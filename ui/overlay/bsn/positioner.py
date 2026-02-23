@@ -76,41 +76,23 @@ class WindowPositioner:
         LOG.debug(f"BSN: Frank adjustment skipped (DOCK mode, action={action})")
 
     def _position_app_aggressive(self, win_id: str, geometry: dict):
-        """Positions app with multi-stage escalation.
-
-        Stage 1: Immediate wmctrl + xdotool (aggressive from the start)
-        Stage 2: Verify + retry if needed (100ms)
-        Stage 3: Force retry with both tools (300ms)
-        Stage 4: Final enforcement + bounds check (600ms)
-        """
+        """Positions app: unmaximize + single wmctrl move/resize, verify once."""
         x, y = geometry["x"], geometry["y"]
         w, h = geometry["width"], geometry["height"]
 
         def _do_position():
             LOG.debug(f"BSN: Positioning {win_id} to {w}x{h} at ({x},{y})")
 
-            # Stage 1: Aggressive immediate positioning (both tools at once)
-            self._force_position(win_id, x, y, w, h)
+            # Stage 1: unmaximize + wmctrl position
+            self._wmctrl_position(win_id, x, y, w, h)
 
-            # Stage 2: Quick verify + retry
-            time.sleep(0.1)
+            # Stage 2: verify after 150ms, one retry if needed
+            time.sleep(0.15)
             if not self._verify_position(win_id, x):
-                LOG.debug(f"BSN: Stage 2 retry for {win_id}")
-                self._wmctrl_position(win_id, x, y, w, h)
-
-            # Stage 3: Force retry if still wrong
-            time.sleep(0.2)
-            if not self._verify_position(win_id, x):
-                LOG.debug(f"BSN: Stage 3 FORCE for {win_id}")
+                LOG.debug(f"BSN: Retry for {win_id}")
                 self._force_position(win_id, x, y, w, h)
-
-            # Stage 4: Final verification + primary monitor bounds
-            time.sleep(0.3)
-            if self._verify_position(win_id, x):
-                LOG.info(f"BSN: Window {win_id} positioned successfully")
             else:
-                LOG.warning(f"BSN: Window {win_id} positioning may have failed")
-            self._enforce_primary_bounds(win_id, x, y, w, h)
+                LOG.info(f"BSN: Window {win_id} positioned successfully")
 
         threading.Thread(target=_do_position, daemon=True).start()
 

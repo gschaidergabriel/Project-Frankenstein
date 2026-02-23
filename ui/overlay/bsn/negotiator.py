@@ -1,3 +1,4 @@
+import subprocess
 from overlay.bsn.constants import BSNConstants, get_primary_monitor
 from overlay.constants import LOG
 
@@ -34,7 +35,24 @@ class SpaceNegotiator:
             LOG.debug(f"BSN: Using primary monitor bounds: {self.screen_w}x{self.screen_h}+{self.screen_x}+{self.screen_y}")
 
     def get_frank_geometry(self) -> dict:
-        """Current Frank geometry."""
+        """Current Frank geometry from wmctrl (WM coordinates, not Tk)."""
+        try:
+            result = subprocess.run(
+                ["wmctrl", "-lG"], capture_output=True, text=True, timeout=2
+            )
+            for line in result.stdout.strip().split('\n'):
+                if "F.R.A.N.K" in line:
+                    p = line.split(None, 8)
+                    if len(p) >= 6:
+                        return {
+                            "x": int(p[2]),
+                            "y": int(p[3]),
+                            "width": int(p[4]),
+                            "height": int(p[5]),
+                        }
+        except Exception as e:
+            LOG.debug(f"BSN: wmctrl frank lookup failed: {e}")
+        # Fallback to Tk coordinates
         return {
             "x": self.overlay.winfo_x(),
             "y": self.overlay.winfo_y(),
@@ -64,7 +82,8 @@ class SpaceNegotiator:
     def _try_keep_frank(self, frank: dict) -> dict:
         """Strategy 1: Frank stays, app fits beside it."""
         frank_right = frank["x"] + frank["width"]
-        available_w = self.screen_w - frank_right - BSNConstants.GAP
+        mon_right = self.screen_x + self.screen_w
+        available_w = mon_right - frank_right - BSNConstants.GAP
 
         if available_w >= BSNConstants.APP_MIN_WIDTH:
             return {
@@ -80,7 +99,7 @@ class SpaceNegotiator:
             }
 
         # Check left of Frank (right of dock)
-        dock_x = BSNConstants.DOCK_WIDTH
+        dock_x = self.screen_x + BSNConstants.DOCK_WIDTH
         available_left = frank["x"] - dock_x - BSNConstants.GAP
         if available_left >= BSNConstants.APP_MIN_WIDTH:
             return {
@@ -101,7 +120,7 @@ class SpaceNegotiator:
         """Strategy 5: Emergency for very small screens."""
         LOG.warning(f"BSN EMERGENCY: Screen too small ({self.screen_w}x{self.screen_h})")
 
-        dock_x = BSNConstants.DOCK_WIDTH
+        dock_x = self.screen_x + BSNConstants.DOCK_WIDTH
         frank = {
             "x": dock_x,
             "y": BSNConstants.PANEL_HEIGHT,
@@ -110,7 +129,8 @@ class SpaceNegotiator:
         }
 
         frank_right = dock_x + BSNConstants.FRANK_MIN_WIDTH
-        app_w = max(100, self.screen_w - frank_right - BSNConstants.GAP)
+        mon_right = self.screen_x + self.screen_w
+        app_w = max(100, mon_right - frank_right - BSNConstants.GAP)
 
         return {
             "success": True,

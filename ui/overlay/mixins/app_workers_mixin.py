@@ -204,7 +204,7 @@ class AppWorkersMixin:
 
         def _check():
             try:
-                launched, status = steam.verify_game_launched(game, timeout=20.0)
+                launched, status = steam.verify_game_launched(game, timeout=45.0)
                 if not launched:
                     # Game didn't appear — notify user
                     self._ui_call(

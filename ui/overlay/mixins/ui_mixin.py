@@ -386,6 +386,8 @@ class UiMixin:
         if self._resize_edge:
             self._resize_start_x = event.x_root
             self._resize_start_width = self.winfo_width()
+            # Cache windows touching right edge for sticky push
+            self._sticky_windows = self._find_sticky_windows()
             # Save scroll state: at-bottom flag + bubble anchor for mid-scroll
             self._resize_was_at_bottom = False
             self._resize_scroll_anchor = None
@@ -415,7 +417,8 @@ class UiMixin:
         """Handle east-edge width resize with live strut updates.
 
         Updates strut via ctypes/Xlib (~60fps) so the WM pushes
-        windows smoothly as the overlay grows/shrinks.
+        windows smoothly as the overlay grows/shrinks.  Also pushes
+        windows that touch the old right edge (sticky resize).
         """
         if not self._resize_edge:
             return
@@ -423,7 +426,13 @@ class UiMixin:
         min_w = self.minsize()[0]
         new_w = max(min_w, self._resize_start_width + dx)
         new_w = min(new_w, BSNConstants.FRANK_MAX_WIDTH)
-        self.geometry(f"{int(new_w)}x{self.winfo_height()}+{getattr(self, '_dock_x', 0)}+{getattr(self, '_workarea_y', 0)}")
+
+        dock_x = getattr(self, '_dock_x', 0)
+        old_w = self.winfo_width()
+        delta = int(new_w) - old_w
+
+        self.geometry(f"{int(new_w)}x{self.winfo_height()}+{dock_x}+{getattr(self, '_workarea_y', 0)}")
+
         # Live strut update (~60fps via ctypes Xlib, no subprocess)
         import time as _t
         now = _t.time()
@@ -466,6 +475,57 @@ class UiMixin:
             set_strut_partial(xid, left_total, 0, mon["height"] - 1)
         except Exception:
             pass
+
+    def _find_sticky_windows(self) -> list:
+        """Snapshot windows touching Frank's right edge. Called once at resize start.
+
+        Returns [(win_id_decimal, y), ...] for windows whose x is near the strut boundary.
+        """
+        import subprocess
+        dock_x = getattr(self, '_dock_x', 66)
+        frank_right = dock_x + self.winfo_width()
+        sticky = []
+        try:
+            result = subprocess.run(
+                ["wmctrl", "-lG"], capture_output=True, text=True, timeout=1
+            )
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split(None, 8)
+                if len(parts) < 8:
+                    continue
+                if parts[1] == "-1":
+                    continue
+                title = (parts[7] if len(parts) > 7 else "").lower()
+                if "f.r.a.n.k" in title or "neural core" in title or "cybercore" in title:
+                    continue
+                try:
+                    win_x = int(parts[2])
+                    win_y = int(parts[3])
+                    if abs(win_x - frank_right) < 20:
+                        win_id_dec = str(int(parts[0], 16))
+                        sticky.append((win_id_dec, win_y))
+                except (ValueError, Exception):
+                    pass
+        except Exception:
+            pass
+        if sticky:
+            LOG.debug(f"BSN: Sticky windows cached: {len(sticky)}")
+        return sticky
+
+    def _move_sticky_windows(self, new_right: int):
+        """Move cached sticky windows to the new right edge. Fire-and-forget, no blocking."""
+        import subprocess
+        new_x = new_right + 2
+        for win_id_dec, win_y in self._sticky_windows:
+            try:
+                subprocess.Popen(
+                    ["xdotool", "windowmove", win_id_dec, str(new_x), str(win_y)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
 
     def _save_desktop_icons(self):
         """Save desktop icon positions via GIO metadata before resize."""

@@ -66,15 +66,20 @@ class LayoutController:
             LOG.error(f"BSN: Failed to apply geometry: {e}")
 
     def handle_new_window(self, win_id: str):
-        """Called when a new window is detected."""
-        try:
-            layout = self.negotiator.negotiate()
+        """Called when a new window is detected.
 
-            if layout["success"]:
-                LOG.info(f"BSN: Layout negotiated - frank_action={layout['frank_action']}")
-                self.positioner.apply_layout(layout, win_id)
-            else:
-                LOG.error("BSN: Layout negotiation failed!")
+        Simply maximizes the window. The WM strut ensures it fills
+        the space right of Frank. Maximized windows are natively sticky —
+        they follow strut changes automatically when Frank resizes.
+        """
+        try:
+            LOG.info(f"BSN: Maximizing {win_id} (strut-aware)")
+            import subprocess
+            # Maximize — the WM respects the strut and places it right of Frank
+            subprocess.run([
+                "wmctrl", "-i", "-r", win_id,
+                "-b", "add,maximized_vert,maximized_horz"
+            ], capture_output=True, timeout=2)
         except Exception as e:
             LOG.error(f"BSN: Error handling new window: {e}")
 
@@ -93,55 +98,70 @@ class LayoutController:
     # ---------- Startup overlap avoidance ----------
 
     def _startup_avoid_overlap(self):
-        """At startup, reposition existing windows that overlap Frank's strut area.
+        """At startup, gently snap existing windows out of Frank's strut area.
 
-        In DOCK mode, Frank is fixed and has a strut reservation. Windows that
-        were opened before Frank started may still be in the strut zone.
+        Uses a simple xdotool windowmove — no unmaximize, no multi-stage
+        positioning, no resize.  Just nudge the x coordinate.
         """
         import time
         time.sleep(3.5)  # Wait for ADI profile + strut to be fully set
 
         try:
+            # Get Frank's real right edge from wmctrl
+            frank_right = 0
             env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
-            frank_right = self.overlay.winfo_x() + self.overlay.winfo_width()
-
             result = subprocess.run(
-                ["wmctrl", "-l"], capture_output=True, text=True, timeout=3, env=env,
+                ["wmctrl", "-lG"], capture_output=True, text=True, timeout=3, env=env,
             )
+            for line in result.stdout.strip().split("\n"):
+                if "F.R.A.N.K" in line:
+                    p = line.split(None, 8)
+                    if len(p) >= 6:
+                        frank_right = int(p[2]) + int(p[4])
+                        break
+
+            if not frank_right:
+                LOG.info("BSN: Startup overlap check — Frank not found in wmctrl")
+                return
+
+            snapped = 0
             for line in result.stdout.strip().split("\n"):
                 if not line:
                     continue
-                parts = line.split(None, 4)
-                if len(parts) < 5:
+                parts = line.split(None, 8)
+                if len(parts) < 8:
                     continue
                 win_id = parts[0]
                 desktop = parts[1]
-                title = (parts[4] if len(parts) > 4 else "").lower()
+                title = (parts[7] if len(parts) > 7 else "").lower()
 
                 if desktop == "-1":
                     continue
                 if "f.r.a.n.k" in title or "neural core" in title or "cybercore" in title:
                     continue
 
-                # Check if window overlaps Frank's strut zone
                 try:
-                    geo_result = subprocess.run(
-                        ["xdotool", "getwindowgeometry", "--shell", win_id],
-                        capture_output=True, text=True, timeout=2, env=env,
-                    )
-                    geo = {}
-                    for gline in geo_result.stdout.strip().split("\n"):
-                        if "=" in gline:
-                            k, v = gline.split("=", 1)
-                            geo[k] = int(v)
-                    win_x = geo.get("X", 9999)
-                    if win_x < frank_right:
-                        # Window overlaps Frank — trigger BSN layout
-                        LOG.info(f"BSN: Startup — window '{parts[4][:40]}' overlaps strut, repositioning")
-                        self.handle_new_window(win_id)
-                except Exception:
+                    win_x = int(parts[2])
+                    win_y = int(parts[3])
+                    win_w = int(parts[4])
+                    # Skip windows on secondary monitors
+                    from overlay.bsn.constants import get_primary_monitor
+                    _pm = get_primary_monitor()
+                    _primary_right = _pm["x"] + _pm["width"]
+                    if win_x >= _primary_right:
+                        continue
+                    if win_x < frank_right and win_w > 50:
+                        new_x = frank_right + 2
+                        LOG.info(f"BSN: Startup snap '{title[:30]}' x={win_x} → x={new_x}")
+                        subprocess.run(
+                            ["xdotool", "windowmove", str(int(win_id, 16)),
+                             str(new_x), str(win_y)],
+                            capture_output=True, timeout=2, env=env,
+                        )
+                        snapped += 1
+                except (ValueError, Exception):
                     pass
 
-            LOG.info("BSN: Startup overlap check complete")
+            LOG.info(f"BSN: Startup overlap check complete ({snapped} snapped)")
         except Exception as e:
             LOG.warning(f"BSN: Startup overlap avoidance error: {e}")

@@ -436,31 +436,70 @@ def install_game(appid: str, name: str = "") -> Tuple[bool, str]:
         return False, f"Error installing: {e}"
 
 
-def verify_game_launched(game: SteamGame, timeout: float = 20.0) -> Tuple[bool, str]:
+def _game_search_names(game: SteamGame) -> List[str]:
+    """Build a list of names/patterns to search for in process lists and window classes.
+
+    Steam games can appear as:
+    - steamapps/common/<install_dir>/...
+    - steam_app_<appid> (WM_CLASS for Proton/Wine games)
+    - <game_name_slug> (native Linux games, e.g. "dota2" for "Dota 2")
+    - gameoverlayui <appid> (Steam overlay attached to the game)
+    """
+    names = []
+    # install_dir from ACF (e.g. "dota 2 beta", "Counter-Strike Global Offensive")
+    if game.install_dir:
+        names.append(game.install_dir.lower())
+    # appid patterns
+    names.append(f"steam_app_{game.appid}")
+    names.append(f"appid {game.appid}")
+    names.append(f"rungameid/{game.appid}")
+    # Slug: "Dota 2" → "dota2", "Counter-Strike 2" → "counterstrike2"
+    slug = re.sub(r"[^a-z0-9]", "", game.name.lower())
+    if slug and slug not in names:
+        names.append(slug)
+    # Also try name without trailing numbers for series (e.g. "dota")
+    slug_no_num = slug.rstrip("0123456789")
+    if slug_no_num and len(slug_no_num) >= 3 and slug_no_num not in names:
+        names.append(slug_no_num)
+    return names
+
+
+def verify_game_launched(game: SteamGame, timeout: float = 45.0) -> Tuple[bool, str]:
     """Wait up to timeout seconds and check if the game actually started.
+
+    Uses multiple detection strategies:
+    1. Process cmdline search (install_dir, appid, game name slug)
+    2. Window WM_CLASS search (steam_app_APPID, game name)
+    3. Steam gameoverlayui attachment (proves Steam knows game is running)
 
     Returns (launched, status_message).
     """
     start_time = time.time()
-    check_interval = 2.0
+    check_interval = 3.0
+    search_names = _game_search_names(game)
 
     while (time.time() - start_time) < timeout:
         time.sleep(check_interval)
 
-        # Check for game process in steamapps/common
+        # 1. Check process cmdlines
         try:
             result = subprocess.run(
                 ["ps", "aux"], capture_output=True, text=True, timeout=5
             )
             for line in result.stdout.split("\n"):
-                if game.install_dir and game.install_dir.lower() in line.lower():
-                    return True, f"{game.name} is running!"
-                if f"steamapps/common/{game.install_dir}" in line:
-                    return True, f"{game.name} is running!"
+                lower = line.lower()
+                # Skip Steam client itself, helpers, and this python process
+                if "ubuntu12_32/steam" in lower or "bin_steam.sh" in lower:
+                    continue
+                if "python" in lower and "steam_integration" in lower:
+                    continue
+                for name in search_names:
+                    if name in lower:
+                        return True, f"{game.name} is running!"
         except Exception:
             pass
 
-        # Check for game window (steam_app_APPID)
+        # 2. Check window WM_CLASS and window titles
         try:
             result = subprocess.run(
                 ["wmctrl", "-l"], capture_output=True, text=True, timeout=3
@@ -468,14 +507,26 @@ def verify_game_launched(game: SteamGame, timeout: float = 20.0) -> Tuple[bool, 
             for line in result.stdout.strip().split("\n"):
                 if not line:
                     continue
-                win_id = line.split()[0]
+                # Check window title (last column in wmctrl -l)
+                parts = line.split(None, 3)
+                if len(parts) >= 4:
+                    title = parts[3].lower()
+                    for name in search_names:
+                        if name in title:
+                            return True, f"{game.name} is running!"
+                # Check WM_CLASS
+                win_id = parts[0] if parts else ""
+                if not win_id:
+                    continue
                 try:
                     cls_result = subprocess.run(
                         ["xprop", "-id", win_id, "WM_CLASS"],
                         capture_output=True, text=True, timeout=2
                     )
-                    if f"steam_app_{game.appid}" in cls_result.stdout.lower():
-                        return True, f"{game.name} is running!"
+                    cls_lower = cls_result.stdout.lower()
+                    for name in search_names:
+                        if name in cls_lower:
+                            return True, f"{game.name} is running!"
                 except Exception:
                     pass
         except Exception:

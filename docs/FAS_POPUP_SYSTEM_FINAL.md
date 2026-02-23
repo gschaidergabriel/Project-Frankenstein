@@ -1,62 +1,62 @@
-# F.A.S. Proposal Popup System - Finales Konzept v2.0
+# F.A.S. Proposal Popup System - Final Concept v2.0
 
-## Übersicht
+## Overview
 
-Ein vollständig autonomes Feature-Proposal-System das:
-- Intelligent den richtigen Moment wählt
-- Unübersehbar aber nicht nervig ist
-- Mit wenigen Klicks bedienbar ist
-- Frank's Use-Cases erklärt
-- Sound-Feedback gibt
-- Per Hotkey manuell aufrufbar ist
-- Ein Archive für abgelehnte Features hat
+A fully autonomous feature proposal system that:
+- Intelligently chooses the right moment
+- Is unmissable but not annoying
+- Is operable with just a few clicks
+- Explains Frank's use cases
+- Provides sound feedback
+- Is manually accessible via hotkey
+- Has an archive for rejected features
 
 ---
 
 ## 1. SOUND SYSTEM
 
-### Konzept
-Subtiler aber unverwechselbarer Sound wenn Popup erscheint - nicht nervig, aber Aufmerksamkeit erregend.
+### Concept
+Subtle but unmistakable sound when popup appears - not annoying, but attention-grabbing.
 
-### Sound-Design
+### Sound Design
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      SOUND EVENTS                               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  POPUP ERSCHEINT:                                               │
+│  POPUP APPEARS:                                                 │
 │  ───────────────                                                │
-│  "Cyberpunk Chime" - Kurzer synthetischer Ton (0.8s)           │
-│  - Frequenz: Aufsteigend 440Hz → 880Hz                         │
-│  - Reverb: Leichter Hall für "digitalen" Charakter             │
-│  - Lautstärke: 60% System-Volume (nicht erschreckend)          │
+│  "Cyberpunk Chime" - Short synthetic tone (0.8s)               │
+│  - Frequency: Ascending 440Hz → 880Hz                          │
+│  - Reverb: Light reverb for "digital" character                │
+│  - Volume: 60% system volume (not startling)                   │
 │                                                                 │
-│  FEATURE AUSGEWÄHLT (Checkbox):                                 │
+│  FEATURE SELECTED (Checkbox):                                   │
 │  ─────────────────────────────                                  │
-│  Kurzer "Click" Sound (0.1s)                                   │
-│  - Bestätigendes Feedback                                       │
+│  Short "Click" sound (0.1s)                                    │
+│  - Confirmatory feedback                                        │
 │                                                                 │
-│  INTEGRATION STARTET:                                           │
+│  INTEGRATION STARTS:                                            │
 │  ───────────────────                                            │
-│  "Power Up" Sound (0.5s)                                       │
-│  - Aufsteigender Synthesizer                                    │
+│  "Power Up" sound (0.5s)                                       │
+│  - Ascending synthesizer                                        │
 │                                                                 │
 │  INTEGRATION COMPLETE:                                          │
 │  ────────────────────                                           │
 │  "Success Chime" (1.0s)                                        │
-│  - Harmonischer Dreiklang                                       │
-│  - Signalisiert: "Frank hat neue Fähigkeiten"                  │
+│  - Harmonious triad                                             │
+│  - Signals: "Frank has new capabilities"                       │
 │                                                                 │
-│  SPÄTER/DISMISS:                                                │
+│  LATER/DISMISS:                                                 │
 │  ──────────────                                                 │
-│  Leiser "Whoosh" (0.3s)                                        │
-│  - Popup verschwindet                                           │
+│  Quiet "Whoosh" (0.3s)                                         │
+│  - Popup disappears                                             │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Sound-Dateien Struktur
+### Sound File Structure
 
 ```
 /home/ai-core-node/aicore/opt/aicore/ui/sounds/
@@ -67,24 +67,24 @@ Subtiler aber unverwechselbarer Sound wenn Popup erscheint - nicht nervig, aber 
 └── popup_dismiss.ogg     # Whoosh
 ```
 
-### Sound-Manager
+### Sound Manager
 
 ```python
 class SoundManager:
-    """Verwaltet alle UI-Sounds mit Volume Control."""
+    """Manages all UI sounds with volume control."""
 
     SOUNDS_DIR = Path("ui/sounds/")
-    VOLUME = 0.6  # 60% - nicht zu laut
+    VOLUME = 0.6  # 60% - not too loud
 
-    # Sound kann vom User deaktiviert werden
+    # Sound can be disabled by the user
     enabled: bool = True
 
-    # Cooldown um Sound-Spam zu verhindern
+    # Cooldown to prevent sound spam
     last_played: Dict[str, float] = {}
-    MIN_INTERVAL = 0.2  # Sekunden
+    MIN_INTERVAL = 0.2  # Seconds
 
     def play(self, sound_name: str):
-        """Spielt Sound wenn enabled und Cooldown vorbei."""
+        """Plays sound if enabled and cooldown is over."""
         if not self.enabled:
             return
 
@@ -104,13 +104,13 @@ class SoundManager:
         )
 ```
 
-### Sound Toggle im Popup
+### Sound Toggle in Popup
 
 ```
 ┌────────────────────────────────────────┐
 │  ░▒▓ F.A.S. INTELLIGENCE REPORT ▓▒░   │
 │                                        │
-│                           🔊 Sound [ON]│  ← Klickbar
+│                           🔊 Sound [ON]│  ← Clickable
 └────────────────────────────────────────┘
 ```
 
@@ -118,8 +118,8 @@ class SoundManager:
 
 ## 2. KEYBOARD SHORTCUT SYSTEM
 
-### Konzept
-User kann Popup jederzeit manuell öffnen um Status zu prüfen - auch wenn Trigger-Schwellenwert nicht erreicht.
+### Concept
+User can manually open popup at any time to check status - even if trigger threshold is not reached.
 
 ### Global Hotkey
 
@@ -128,71 +128,71 @@ User kann Popup jederzeit manuell öffnen um Status zu prüfen - auch wenn Trigg
 │                     KEYBOARD SHORTCUTS                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  GLOBAL (funktioniert überall):                                 │
+│  GLOBAL (works everywhere):                                     │
 │  ─────────────────────────────                                  │
 │                                                                 │
-│  Super + F  →  F.A.S. Popup öffnen/schließen (Toggle)          │
-│              (Super = Windows-Taste)                            │
+│  Super + F  →  Open/close F.A.S. Popup (Toggle)                │
+│              (Super = Windows key)                              │
 │                                                                 │
 │  ───────────────────────────────────────────────────────────── │
 │                                                                 │
-│  IM POPUP (wenn offen):                                         │
+│  IN POPUP (when open):                                          │
 │  ─────────────────────                                          │
 │                                                                 │
-│  Space      →  Aktuelles Feature an/abwählen                   │
-│  ↑/↓        →  Navigation durch Features                       │
-│  Enter      →  "Ausgewählte Integrieren"                       │
-│  A          →  Alle auswählen                                   │
-│  N          →  Alle abwählen                                    │
-│  Escape     →  Später (schließen)                              │
-│  D          →  Details zum markierten Feature                   │
-│  R          →  Alle permanent ablehnen                         │
+│  Space      →  Select/deselect current feature                  │
+│  ↑/↓        →  Navigate through features                        │
+│  Enter      →  "Integrate Selected"                             │
+│  A          →  Select all                                       │
+│  N          →  Deselect all                                     │
+│  Escape     →  Later (close)                                    │
+│  D          →  Details for highlighted feature                  │
+│  R          →  Reject all permanently                           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Hotkey-Daemon
+### Hotkey Daemon
 
 ```python
 class GlobalHotkeyDaemon:
     """
-    Registriert globale Hotkeys via xdotool/xbindkeys.
-    Läuft als Teil des fas_popup_daemon.
+    Registers global hotkeys via xdotool/xbindkeys.
+    Runs as part of the fas_popup_daemon.
     """
 
-    HOTKEY = "super+f"  # Windows + F für F.A.S.
+    HOTKEY = "super+f"  # Windows + F for F.A.S.
 
     def __init__(self):
         self.popup_visible = False
 
     def setup_hotkey(self):
-        """Registriert den globalen Hotkey."""
-        # Methode 1: Via keybinder (Python)
-        # Methode 2: Via xbindkeys config
-        # Methode 3: Via dbus zu GNOME/KDE
+        """Registers the global hotkey."""
+        # Method 1: Via keybinder (Python)
+        # Method 2: Via xbindkeys config
+        # Method 3: Via dbus to GNOME/KDE
 
-        # Wir nutzen einen Socket-Listener
-        # Der Hotkey wird via xbindkeys → socket signal gesendet
+        # We use a socket listener
+        # The hotkey is sent via xbindkeys -> socket signal
 
     def on_hotkey_pressed(self):
-        """Callback wenn Hotkey gedrückt."""
+        """Callback when hotkey is pressed."""
         if self.popup_visible:
             self.hide_popup()
         else:
-            self.show_popup(force=True)  # force = auch wenn < 7 Features
+            self.show_popup(force=True)  # force = even if < 7 features
 
     def show_popup(self, force: bool = False):
         """
-        Öffnet Popup.
-        force=True: Öffnet auch wenn weniger als 7 Features
-                    (zeigt dann was da ist + "Noch X Features bis zum nächsten Batch")
+        Opens popup.
+        force=True: Opens even if fewer than 7 features
+                    (then shows what's there + "X more features until next batch")
         """
         features = self.get_available_features()
 
         if not features and not force:
             return
 
-        # Popup starten
+        # Start popup
         subprocess.Popen([
             sys.executable,
             str(POPUP_SCRIPT),
@@ -202,7 +202,7 @@ class GlobalHotkeyDaemon:
         self.popup_visible = True
 ```
 
-### Manuell geöffnetes Popup (< 7 Features)
+### Manually Opened Popup (< 7 Features)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -210,30 +210,30 @@ class GlobalHotkeyDaemon:
 │    ╔══════════════════════════════════════════════════════════════╗    │
 │    ║  ░▒▓ F.A.S. STATUS ▓▒░                              🔊 [ON] ║    │
 │    ║  ─────────────────────────────────                           ║    │
-│    ║  3 FEATURES IN QUEUE (4 mehr für Auto-Popup)                ║    │
+│    ║  3 FEATURES IN QUEUE (4 more for auto-popup)               ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
 │    ║  ☐ GitHub API Rate Limiter          [94%] ──────────█████▌  ║    │
-│    ║    └─ Intelligentes Rate-Limiting für API-Calls             ║    │
+│    ║    └─ Intelligent rate-limiting for API calls                ║    │
 │    ║                                                              ║    │
 │    ║  ☐ Async Task Queue                 [91%] ──────────█████   ║    │
-│    ║    └─ Robuste Task-Verwaltung mit Retry                     ║    │
+│    ║    └─ Robust task management with retry                      ║    │
 │    ║                                                              ║    │
 │    ║  ☐ Semantic Code Search             [89%] ──────────████▌   ║    │
-│    ║    └─ Code-Suche via Embeddings                             ║    │
+│    ║    └─ Code search via embeddings                             ║    │
 │    ║                                                              ║    │
 │    ║  ────────────────────────────────────────────────────────── ║    │
-│    ║  💡 Auto-Popup erscheint bei 7+ Features                    ║    │
-│    ║     Aktuell: ███░░░░ 3/7                                    ║    │
+│    ║  💡 Auto-popup appears at 7+ features                       ║    │
+│    ║     Currently: ███░░░░ 3/7                                  ║    │
 │    ║                                                              ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
 │    ║  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ ║    │
-│    ║  │ 📁 ARCHIVE  │ │ ⚙ SETTINGS  │ │      SCHLIEßEN       │ ║    │
+│    ║  │ 📁 ARCHIVE  │ │ ⚙ SETTINGS  │ │       CLOSE          │ ║    │
 │    ║  └──────────────┘ └──────────────┘ └──────────────────────┘ ║    │
 │    ║                                                              ║    │
 │    ║           ┌────────────────────────────────┐                 ║    │
-│    ║           │  ▶ AUSGEWÄHLTE INTEGRIEREN (0) │                 ║    │
+│    ║           │  ▶ INTEGRATE SELECTED (0)      │                 ║    │
 │    ║           └────────────────────────────────┘                 ║    │
 │    ║                                                              ║    │
 │    ╚══════════════════════════════════════════════════════════════╝    │
@@ -245,10 +245,10 @@ class GlobalHotkeyDaemon:
 
 ## 3. ARCHIVE SYSTEM
 
-### Konzept
-Abgelehnte Features sind nicht "weg" - sie sind im Archive einsehbar. User kann sie später reaktivieren falls sich Meinung ändert.
+### Concept
+Rejected features are not "gone" - they are viewable in the archive. User can reactivate them later if they change their mind.
 
-### Archive-Ansicht
+### Archive View
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -256,35 +256,35 @@ Abgelehnte Features sind nicht "weg" - sie sind im Archive einsehbar. User kann 
 │    ╔══════════════════════════════════════════════════════════════╗    │
 │    ║  ░▒▓ F.A.S. ARCHIVE ▓▒░                             [← BACK] ║    │
 │    ║  ─────────────────────────────────                           ║    │
-│    ║  23 abgelehnte Features                                      ║    │
+│    ║  23 rejected features                                       ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
-│    ║  Filter: [Alle ▼]  [Nach Datum ▼]  🔍 [Suche...]            ║    │
+│    ║  Filter: [All ▼]  [By Date ▼]  🔍 [Search...]              ║    │
 │    ║                                                              ║    │
 │    ║  ────────────────────────────────────────────────────────── ║    │
 │    ║                                                              ║    │
 │    ║  ✗ Docker Compose Generator         [87%]     2026-01-28    ║    │
-│    ║    └─ "Brauche ich nicht"                      [REAKTIVIEREN]║    │
+│    ║    └─ "Don't need it"                         [REACTIVATE]  ║    │
 │    ║                                                              ║    │
 │    ║  ✗ PDF Text Extractor               [92%]     2026-01-25    ║    │
-│    ║    └─ Batch dismissed                          [REAKTIVIEREN]║    │
+│    ║    └─ Batch dismissed                         [REACTIVATE]  ║    │
 │    ║                                                              ║    │
 │    ║  ✗ Slack API Wrapper                [85%]     2026-01-20    ║    │
-│    ║    └─ "Nutze kein Slack"                       [REAKTIVIEREN]║    │
+│    ║    └─ "Don't use Slack"                       [REACTIVATE]  ║    │
 │    ║                                                              ║    │
 │    ║  ✗ Redis Cache Helper               [91%]     2026-01-15    ║    │
-│    ║    └─ Batch dismissed                          [REAKTIVIEREN]║    │
+│    ║    └─ Batch dismissed                         [REACTIVATE]  ║    │
 │    ║                                                              ║    │
-│    ║  ... (scrollbar)                                             ║    │
+│    ║  ... (scrollable)                                            ║    │
 │    ║                                                              ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
-│    ║  Statistik:                                                  ║    │
-│    ║  • 23 abgelehnt │ 47 integriert │ 12 in Queue               ║    │
-│    ║  • Ältestes: 2025-11-03 │ Neuestes: 2026-01-28              ║    │
+│    ║  Statistics:                                                 ║    │
+│    ║  • 23 rejected │ 47 integrated │ 12 in queue                ║    │
+│    ║  • Oldest: 2025-11-03 │ Newest: 2026-01-28                 ║    │
 │    ║                                                              ║    │
 │    ║  ┌────────────────────────────────────────────────────────┐ ║    │
-│    ║  │  🗑️ ARCHIVE LEEREN (permanent löschen)                 │ ║    │
+│    ║  │  🗑️ CLEAR ARCHIVE (permanently delete)                  │ ║    │
 │    ║  └────────────────────────────────────────────────────────┘ ║    │
 │    ║                                                              ║    │
 │    ╚══════════════════════════════════════════════════════════════╝    │
@@ -292,69 +292,69 @@ Abgelehnte Features sind nicht "weg" - sie sind im Archive einsehbar. User kann 
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Reaktivierung
+### Reactivation
 
-Wenn User auf [REAKTIVIEREN] klickt:
+When user clicks [REACTIVATE]:
 
 ```
 ┌─────────────────────────────────────────┐
-│  Feature reaktivieren?                  │
+│  Reactivate feature?                    │
 │  ═══════════════════════════════════   │
 │                                         │
 │  "Docker Compose Generator"             │
 │                                         │
-│  Dieses Feature wird wieder in die      │
-│  Queue aufgenommen und beim nächsten    │
-│  Auto-Popup vorgeschlagen.              │
+│  This feature will be added back to     │
+│  the queue and suggested in the next    │
+│  auto-popup.                            │
 │                                         │
 │  ┌─────────────┐    ┌─────────────┐    │
-│  │   ABBRUCH   │    │ REAKTIVIEREN│    │
+│  │   CANCEL    │    │ REACTIVATE  │    │
 │  └─────────────┘    └─────────────┘    │
 └─────────────────────────────────────────┘
 ```
 
-### Datenbank-Status
+### Database Status
 
 ```python
-# integration_status Werte:
+# integration_status values:
 FEATURE_STATUS = {
-    "pending":              # Neu, noch nicht getestet
-    "testing":              # Im Sandbox-Test
-    "ready":                # Bereit für Proposal
-    "notified":             # User wurde benachrichtigt
-    "approved":             # User hat genehmigt
-    "integrated":           # Erfolgreich integriert
-    "rejected":             # Abgelehnt (kann reaktiviert werden)
-    "rejected_permanent":   # Permanent abgelehnt (im Archive)
-    "archived_deleted":     # Aus Archive gelöscht
+    "pending":              # New, not yet tested
+    "testing":              # In sandbox test
+    "ready":                # Ready for proposal
+    "notified":             # User has been notified
+    "approved":             # User has approved
+    "integrated":           # Successfully integrated
+    "rejected":             # Rejected (can be reactivated)
+    "rejected_permanent":   # Permanently rejected (in archive)
+    "archived_deleted":     # Deleted from archive
 }
 ```
 
 ---
 
-## 4. USE-CASE ERKLÄRUNGEN
+## 4. USE-CASE EXPLANATIONS
 
-### Konzept
-Frank erklärt nicht nur WAS ein Feature macht, sondern WARUM es für den User nützlich sein könnte - basierend auf beobachteten Patterns.
+### Concept
+Frank explains not only WHAT a feature does, but WHY it could be useful for the user - based on observed patterns.
 
 ### Use-Case Generator
 
 ```python
 class UseCaseGenerator:
     """
-    Generiert personalisierte Use-Case Erklärungen
-    basierend auf User's bisheriger Nutzung.
+    Generates personalized use-case explanations
+    based on user's previous usage.
     """
 
     def generate_use_case(self, feature: Dict) -> str:
         """
-        Analysiert Feature und generiert Use-Case.
+        Analyzes feature and generates use case.
         """
         feature_type = feature['feature_type']
         name = feature['name']
         code = feature['code_snippet']
 
-        # Basis Use-Case nach Typ
+        # Base use case by type
         base_cases = {
             "tool": self._tool_use_case,
             "api_wrapper": self._api_use_case,
@@ -364,84 +364,84 @@ class UseCaseGenerator:
 
         base = base_cases.get(feature_type, self._generic_use_case)(feature)
 
-        # Personalisierung basierend auf User-History
+        # Personalization based on user history
         personalized = self._personalize(feature, base)
 
         return personalized
 
     def _tool_use_case(self, feature: Dict) -> str:
-        """Use-Case für Tools."""
+        """Use case for tools."""
         return f"""
-WARUM DIESES FEATURE?
+WHY THIS FEATURE?
 ─────────────────────
-Dieses Tool erweitert Frank's Fähigkeiten direkt.
+This tool directly extends Frank's capabilities.
 
-KONKRETER ANWENDUNGSFALL:
-Wenn du Frank bittest "{self._generate_example_prompt(feature)}",
-kann Frank dieses Tool nutzen um die Aufgabe effizienter zu erledigen.
+CONCRETE USE CASE:
+When you ask Frank "{self._generate_example_prompt(feature)}",
+Frank can use this tool to complete the task more efficiently.
 
-VORHER:  Frank müsste umständlich manuell vorgehen
-NACHHER: Direkter Zugriff auf optimierte Funktionalität
+BEFORE:  Frank would have to proceed manually in a cumbersome way
+AFTER:   Direct access to optimized functionality
 """
 
     def _api_use_case(self, feature: Dict) -> str:
-        """Use-Case für API Wrapper."""
+        """Use case for API wrappers."""
         api_name = self._extract_api_name(feature)
         return f"""
-WARUM DIESES FEATURE?
+WHY THIS FEATURE?
 ─────────────────────
-Integration mit {api_name} Service.
+Integration with {api_name} service.
 
-KONKRETER ANWENDUNGSFALL:
-Frank kann direkt mit {api_name} kommunizieren:
-• Daten abrufen und verarbeiten
-• Automatisierte Aktionen ausführen
-• Echtzeit-Informationen integrieren
+CONCRETE USE CASE:
+Frank can communicate directly with {api_name}:
+• Retrieve and process data
+• Execute automated actions
+• Integrate real-time information
 
-BEISPIEL:
+EXAMPLE:
 "Frank, {self._generate_api_example(feature)}"
 """
 
     def _personalize(self, feature: Dict, base: str) -> str:
         """
-        Personalisiert Use-Case basierend auf User-Verhalten.
+        Personalizes use case based on user behavior.
         """
-        # Analysiere bisherige Nutzung
+        # Analyze previous usage
         user_patterns = self._get_user_patterns()
 
-        # Wenn User oft X macht und Feature X verbessert → hervorheben
+        # If user often does X and feature improves X -> highlight
         relevance = self._calculate_personal_relevance(feature, user_patterns)
 
         if relevance > 0.8:
             personal_note = f"""
-💡 PERSÖNLICHE EMPFEHLUNG:
-Basierend auf deiner häufigen Nutzung von {relevance['related_feature']}
-könnte dieses Feature besonders nützlich sein.
+💡 PERSONAL RECOMMENDATION:
+Based on your frequent use of {relevance['related_feature']}
+this feature could be particularly useful.
 """
             return base + personal_note
 
         return base
 ```
 
-### UI mit Use-Case
+### UI with Use Case
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │    ║                                                              ║    │
 │    ║  ☐ GitHub API Rate Limiter          [94%] ──────────█████▌  ║    │
-│    ║    └─ Intelligentes Rate-Limiting für API-Calls             ║    │
+│    ║    └─ Intelligent rate-limiting for API calls                ║    │
 │    ║                                                              ║    │
 │    ║    ┌─────────────────────────────────────────────────────┐  ║    │
-│    ║    │ 💡 WARUM DIESES FEATURE?                            │  ║    │
+│    ║    │ 💡 WHY THIS FEATURE?                                │  ║    │
 │    ║    │                                                     │  ║    │
-│    ║    │ Du nutzt oft GitHub-Integrationen. Dieses Tool     │  ║    │
-│    ║    │ verhindert automatisch 429-Errors und optimiert    │  ║    │
-│    ║    │ den API-Durchsatz.                                 │  ║    │
+│    ║    │ You often use GitHub integrations. This tool        │  ║    │
+│    ║    │ automatically prevents 429 errors and optimizes     │  ║    │
+│    ║    │ API throughput.                                     │  ║    │
 │    ║    │                                                     │  ║    │
-│    ║    │ VORHER:  Manuelle Delays, häufige Rate-Limit-Fehler│  ║    │
-│    ║    │ NACHHER: Automatisches Queueing, keine Fehler      │  ║    │
+│    ║    │ BEFORE:  Manual delays, frequent rate-limit errors  │  ║    │
+│    ║    │ AFTER:   Automatic queueing, no errors              │  ║    │
 │    ║    │                                                     │  ║    │
-│    ║    │ 📊 Persönliche Relevanz: ████████░░ 85%            │  ║    │
+│    ║    │ 📊 Personal Relevance: ████████░░ 85%              │  ║    │
 │    ║    └─────────────────────────────────────────────────────┘  ║    │
 │    ║                                                    [DETAILS] ║    │
 │    ║  ────────────────────────────────────────────────────────── ║    │
@@ -449,7 +449,7 @@ könnte dieses Feature besonders nützlich sein.
 
 ### Expanded Details View
 
-Wenn User auf [DETAILS] klickt:
+When user clicks [DETAILS]:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -472,21 +472,21 @@ Wenn User auf [DETAILS] klickt:
 │    ║  File: src/rate_limiter.py                                  ║    │
 │    ║                                                              ║    │
 │    ║  DEPENDENCIES:                                               ║    │
-│    ║  • requests (bereits installiert)                           ║    │
+│    ║  • requests (already installed)                              ║    │
 │    ║  • asyncio (stdlib)                                         ║    │
 │    ║                                                              ║    │
 │    ║  USE CASE:                                                   ║    │
 │    ║  ┌─────────────────────────────────────────────────────────┐║    │
-│    ║  │ Du nutzt häufig GitHub API Calls in deinen Projekten.  │║    │
-│    ║  │ Dieses Tool:                                            │║    │
+│    ║  │ You frequently use GitHub API calls in your projects.  │║    │
+│    ║  │ This tool:                                              │║    │
 │    ║  │                                                         │║    │
-│    ║  │ • Automatisches Queueing bei Rate-Limits               │║    │
-│    ║  │ • Exponential Backoff bei 429 Errors                   │║    │
-│    ║  │ • Request-Batching für Effizienz                       │║    │
+│    ║  │ • Automatic queueing at rate limits                     │║    │
+│    ║  │ • Exponential backoff on 429 errors                     │║    │
+│    ║  │ • Request batching for efficiency                       │║    │
 │    ║  │                                                         │║    │
-│    ║  │ Beispiel-Nutzung:                                       │║    │
-│    ║  │ "Frank, hole alle Issues von den letzten 30 Tagen"     │║    │
-│    ║  │ → Frank nutzt Rate Limiter automatisch                 │║    │
+│    ║  │ Example usage:                                           │║    │
+│    ║  │ "Frank, fetch all issues from the last 30 days"         │║    │
+│    ║  │ → Frank uses rate limiter automatically                 │║    │
 │    ║  └─────────────────────────────────────────────────────────┘║    │
 │    ║                                                              ║    │
 │    ║  CODE PREVIEW:                                               ║    │
@@ -501,7 +501,7 @@ Wenn User auf [DETAILS] klickt:
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
 │    ║  ┌──────────────────┐              ┌──────────────────────┐ ║    │
-│    ║  │  ✗ NICHT NUTZEN │              │  ✓ ZUR AUSWAHL HINZU │ ║    │
+│    ║  │  ✗ DON'T USE    │              │  ✓ ADD TO SELECTION  │ ║    │
 │    ║  └──────────────────┘              └──────────────────────┘ ║    │
 │    ║                                                              ║    │
 │    ╚══════════════════════════════════════════════════════════════╝    │
@@ -511,7 +511,7 @@ Wenn User auf [DETAILS] klickt:
 
 ---
 
-## 5. VOLLSTÄNDIGE SYSTEM-ARCHITEKTUR
+## 5. COMPLETE SYSTEM ARCHITECTURE
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -525,8 +525,8 @@ Wenn User auf [DETAILS] klickt:
 │          │                       │                        │            │
 │          │                       │                        ▼            │
 │          │               ┌───────▼───────┐        ┌──────────────┐    │
-│          │               │ Trigger       │        │ User ist     │    │
-│          │               │ Conditions    │◀───────│ aufnahmefähig│    │
+│          │               │ Trigger       │        │ User is      │    │
+│          │               │ Conditions    │◀───────│ receptive    │    │
 │          │               │ (7+, 85%+)    │        └──────────────┘    │
 │          │               └───────┬───────┘                            │
 │          │                       │                                     │
@@ -539,10 +539,10 @@ Wenn User auf [DETAILS] klickt:
 │          │    ╔════════════════════════════════════╗                  │
 │          │    ║     GTK4 PROPOSAL POPUP           ║                  │
 │          │    ║     ─────────────────────         ║                  │
-│          │    ║     • Feature Liste               ║                  │
-│          │    ║     • Use-Case Erklärungen        ║◀── Use-Case Gen  │
+│          │    ║     • Feature List               ║                  │
+│          │    ║     • Use-Case Explanations      ║◀── Use-Case Gen  │
 │          │    ║     • Confidence Bars             ║                  │
-│          │    ║     • Checkboxen                  ║                  │
+│          │    ║     • Checkboxes                  ║                  │
 │          │    ║     • Action Buttons              ║                  │
 │          │    ║     • Sound Feedback              ║◀── Sound Manager │
 │          │    ║     • Keyboard Navigation         ║                  │
@@ -551,8 +551,8 @@ Wenn User auf [DETAILS] klickt:
 │           ┌──────────────────┼──────────────────┐                     │
 │           ▼                  ▼                  ▼                     │
 │    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐             │
-│    │ ALLE        │    │ AUSGEWÄHLTE │    │ KEINE/      │             │
-│    │ UMSETZEN    │    │ INTEGRIEREN │    │ SPÄTER      │             │
+│    │ IMPLEMENT   │    │ INTEGRATE   │    │ NONE/       │             │
+│    │ ALL         │    │ SELECTED    │    │ LATER       │             │
 │    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘             │
 │           │                  │                  │                     │
 │           └─────────┬────────┘                  │                     │
@@ -565,7 +565,7 @@ Wenn User auf [DETAILS] klickt:
 │                    ▼                                                  │
 │           ┌─────────────────┐                                        │
 │           │ tools/discovered│                                        │
-│           │ (neue Features) │                                        │
+│           │ (new features)  │                                        │
 │           └─────────────────┘                                        │
 │                                                                       │
 └───────────────────────────────────────────────────────────────────────┘
@@ -573,28 +573,28 @@ Wenn User auf [DETAILS] klickt:
 
 ---
 
-## 6. DATEISTRUKTUR
+## 6. FILE STRUCTURE
 
 ```
 /home/ai-core-node/aicore/opt/aicore/
 │
 ├── tools/
-│   ├── fas_scavenger.py              # Backend (existiert)
-│   └── discovered/                    # Integrierte Features
+│   ├── fas_scavenger.py              # Backend (exists)
+│   └── discovered/                    # Integrated features
 │
 ├── ui/
 │   ├── fas_popup/
 │   │   ├── __init__.py
-│   │   ├── main_window.py            # Haupt-Popup GTK4
-│   │   ├── feature_list.py           # Feature-Liste Widget
-│   │   ├── details_view.py           # Detail-Ansicht
-│   │   ├── archive_view.py           # Archive-Ansicht
-│   │   ├── progress_dialog.py        # Integration Progress
-│   │   ├── settings_dialog.py        # Settings (Sound, etc.)
-│   │   ├── use_case_generator.py     # Use-Case Texte
+│   │   ├── main_window.py            # Main popup GTK4
+│   │   ├── feature_list.py           # Feature list widget
+│   │   ├── details_view.py           # Details view
+│   │   ├── archive_view.py           # Archive view
+│   │   ├── progress_dialog.py        # Integration progress
+│   │   ├── settings_dialog.py        # Settings (sound, etc.)
+│   │   ├── use_case_generator.py     # Use-case texts
 │   │   └── styles/
-│   │       ├── cyberpunk.css         # Haupt-Theme
-│   │       └── animations.css        # Glow-Effekte etc.
+│   │       ├── cyberpunk.css         # Main theme
+│   │       └── animations.css        # Glow effects etc.
 │   │
 │   └── sounds/
 │       ├── popup_appear.ogg
@@ -604,19 +604,19 @@ Wenn User auf [DETAILS] klickt:
 │       └── popup_dismiss.ogg
 │
 ├── services/
-│   ├── fas_popup_daemon.py           # Daemon (Trigger + Hotkey)
+│   ├── fas_popup_daemon.py           # Daemon (trigger + hotkey)
 │   └── fas-popup.service             # systemd user service
 │
 ├── config/
-│   └── fas_popup_config.py           # Alle Einstellungen
+│   └── fas_popup_config.py           # All settings
 │
 └── database/
-    └── fas_scavenger.db              # SQLite (existiert, erweitern)
+    └── fas_scavenger.db              # SQLite (exists, extend)
 ```
 
 ---
 
-## 7. KONFIGURATION
+## 7. CONFIGURATION
 
 ```python
 # /home/ai-core-node/aicore/opt/aicore/config/fas_popup_config.py
@@ -625,17 +625,17 @@ FAS_POPUP_CONFIG = {
     # ═══════════════════════════════════════════════════════
     # TRIGGER SETTINGS
     # ═══════════════════════════════════════════════════════
-    "min_features_for_auto_popup": 7,      # Minimum für Auto-Trigger
-    "min_confidence_score": 0.85,          # 85% Minimum
-    "max_popups_per_day": 2,               # Max 2x am Tag
-    "cooldown_hours": 8,                   # 8h zwischen Popups
-    "feature_expiry_days": 14,             # Nach 14 Tagen → Archive
+    "min_features_for_auto_popup": 7,      # Minimum for auto-trigger
+    "min_confidence_score": 0.85,          # 85% minimum
+    "max_popups_per_day": 2,               # Max 2x per day
+    "cooldown_hours": 8,                   # 8h between popups
+    "feature_expiry_days": 14,             # After 14 days -> archive
 
     # ═══════════════════════════════════════════════════════
     # ACTIVITY DETECTION
     # ═══════════════════════════════════════════════════════
-    "mouse_idle_threshold_sec": 120,       # 2min ohne Maus = idle
-    "cpu_busy_threshold": 50,              # >50% = beschäftigt
+    "mouse_idle_threshold_sec": 120,       # 2min without mouse = idle
+    "cpu_busy_threshold": 50,              # >50% = busy
     "require_no_fullscreen": True,
     "require_no_video": True,
     "require_no_presentation": True,
@@ -672,62 +672,63 @@ FAS_POPUP_CONFIG = {
     # ═══════════════════════════════════════════════════════
     # ARCHIVE SETTINGS
     # ═══════════════════════════════════════════════════════
-    "archive_max_items": 100,              # Max 100 im Archive
-    "archive_auto_cleanup_days": 90,       # Nach 90 Tagen löschen
+    "archive_max_items": 100,              # Max 100 in archive
+    "archive_auto_cleanup_days": 90,       # Delete after 90 days
 
     # ═══════════════════════════════════════════════════════
     # POSTPONE SETTINGS
     # ═══════════════════════════════════════════════════════
-    "postpone_hours": 8,                   # "Später" = 8h
-    "max_postpones": 3,                    # Max 3x verschieben
+    "postpone_hours": 8,                   # "Later" = 8h
+    "max_postpones": 3,                    # Max 3x postpone
 }
 ```
 
 ---
 
-## 8. USER FLOW DIAGRAMM
+## 8. USER FLOW DIAGRAM
 
 ```
                            START
                              │
                              ▼
               ┌──────────────────────────────┐
-              │ F.A.S. sammelt Features      │
-              │ (läuft autonom im Hintergrund)│
+              │ F.A.S. collects features     │
+              │ (runs autonomously in        │
+              │  background)                 │
               └──────────────┬───────────────┘
                              │
                              ▼
               ┌──────────────────────────────┐
-              │ 7+ Features mit >85%?        │
+              │ 7+ features with >85%?       │
               └──────────────┬───────────────┘
                              │
                     ┌────────┴────────┐
                     │                 │
-                   NEIN              JA
+                    NO               YES
                     │                 │
                     ▼                 ▼
          ┌─────────────────┐  ┌─────────────────┐
-         │ Warte weiter    │  │ User bereit?    │
-         │ (oder Super+F)  │  │ (Activity Check)│
+         │ Keep waiting    │  │ User ready?     │
+         │ (or Super+F)   │  │ (Activity Check)│
          └─────────────────┘  └────────┬────────┘
                                        │
                               ┌────────┴────────┐
                               │                 │
-                             NEIN              JA
+                              NO               YES
                               │                 │
                               ▼                 ▼
                     ┌─────────────────┐  ┌─────────────────┐
-                    │ Warte 5min,     │  │ 🔔 POPUP        │
-                    │ dann neu prüfen │  │ erscheint       │
-                    └─────────────────┘  │ + Sound         │
-                                         └────────┬────────┘
+                    │ Wait 5min,     │  │ 🔔 POPUP        │
+                    │ then check     │  │ appears          │
+                    │ again          │  │ + Sound          │
+                    └─────────────────┘  └────────┬────────┘
                                                   │
                               ┌────────────────────┴────────────────────┐
                               │                    │                    │
                               ▼                    ▼                    ▼
                      ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-                     │ ALLE         │     │ AUSGEWÄHLTE  │     │ KEINE /      │
-                     │ UMSETZEN     │     │ INTEGRIEREN  │     │ SPÄTER       │
+                     │ IMPLEMENT    │     │ INTEGRATE    │     │ NONE /       │
+                     │ ALL          │     │ SELECTED     │     │ LATER        │
                      └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
                             │                    │                    │
                             └─────────┬──────────┘                    │
@@ -736,58 +737,58 @@ FAS_POPUP_CONFIG = {
                             ┌─────────────────┐              ┌─────────────────┐
                             │ Integration     │              │ Archive /       │
                             │ Progress        │              │ 8h Cooldown     │
-                            │ (mit Sound)     │              └─────────────────┘
+                            │ (with Sound)    │              └─────────────────┘
                             └────────┬────────┘
                                      │
                                      ▼
                             ┌─────────────────┐
-                            │ ✓ FERTIG        │
-                            │ Neue Fähigkeiten│
-                            │ verfügbar       │
+                            │ ✓ DONE          │
+                            │ New capabilities│
+                            │ available       │
                             └─────────────────┘
 ```
 
 ---
 
-## 9. IMPLEMENTIERUNGS-REIHENFOLGE
+## 9. IMPLEMENTATION ORDER
 
 ```
 Phase 1: Core Infrastructure
 ────────────────────────────
- □ fas_popup_daemon.py (Basis-Daemon)
+ □ fas_popup_daemon.py (Base daemon)
  □ Activity Detector (Mouse, Fullscreen, etc.)
  □ Proposal Queue Manager
 
 Phase 2: GTK4 Popup
 ────────────────────────────
- □ main_window.py (Grundgerüst)
+ □ main_window.py (Basic framework)
  □ cyberpunk.css (Theme)
- □ feature_list.py (Liste mit Checkboxen)
+ □ feature_list.py (List with checkboxes)
  □ Action Buttons
 
 Phase 3: Sound System
 ────────────────────────────
- □ Sound-Dateien erstellen/beschaffen
- □ SoundManager implementieren
- □ Integration in Popup
+ □ Create/obtain sound files
+ □ Implement SoundManager
+ □ Integration into popup
 
 Phase 4: Keyboard Shortcuts
 ────────────────────────────
  □ Global Hotkey Daemon (Super+F)
- □ Popup-interne Navigation
- □ xbindkeys Integration
+ □ Popup-internal navigation
+ □ xbindkeys integration
 
 Phase 5: Archive & Details
 ────────────────────────────
  □ archive_view.py
  □ details_view.py
- □ Reaktivierungs-Logik
+ □ Reactivation logic
 
 Phase 6: Use-Case Generator
 ────────────────────────────
  □ use_case_generator.py
- □ Personalisierungs-Logik
- □ Integration in UI
+ □ Personalization logic
+ □ Integration into UI
 
 Phase 7: Polish & Testing
 ────────────────────────────
@@ -798,6 +799,6 @@ Phase 7: Polish & Testing
 
 ---
 
-## Bereit zur Implementierung?
+## Ready for Implementation?
 
-Dieses Konzept definiert ein vollständiges, durchdachtes System. Sag mir wenn du bereit bist und ich beginne mit Phase 1.
+This concept defines a complete, well-thought-out system. Let me know when you're ready and I'll begin with Phase 1.

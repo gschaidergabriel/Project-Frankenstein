@@ -1,23 +1,23 @@
-# F.A.S. Proposal Popup System - Konzept v1.0
+# F.A.S. Proposal Popup System - Concept v1.0
 
-## Problemanalyse
+## Problem Analysis
 
-### Das User-Verhalten verstehen
-- User gehen **nicht** proaktiv in kollaborative Prozesse
-- Datenflut = Ignorieren = Feature wird nie genutzt
-- Zu häufige Interrupts = Nervig = Popup wird weggeklickt ohne zu lesen
-- Zu seltene Interrupts = Features veralten = Irrelevant
+### Understanding User Behavior
+- Users do **not** proactively engage in collaborative processes
+- Data overload = Ignoring = Feature never gets used
+- Too frequent interrupts = Annoying = Popup gets clicked away without reading
+- Too infrequent interrupts = Features become outdated = Irrelevant
 
-### Die Lösung: "Intelligent Minimal Interruption"
-Frank sammelt autonom, analysiert autonom, kuratiert autonom - und präsentiert **nur wenn es sich lohnt** in einem **unübersehbaren aber nicht nervigen** Format.
+### The Solution: "Intelligent Minimal Interruption"
+Frank collects autonomously, analyzes autonomously, curates autonomously - and presents **only when it's worth it** in an **unmissable but not annoying** format.
 
 ---
 
-## Architektur-Übersicht
+## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    F.A.S. BACKEND (bereits gebaut)              │
+│                    F.A.S. BACKEND (already built)                │
 │  Scout → Triage → Extract → Sandbox Test → Confidence Score     │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -26,19 +26,19 @@ Frank sammelt autonom, analysiert autonom, kuratiert autonom - und präsentiert 
               ┌───────────────┴───────────────┐
               │      TRIGGER CONDITIONS       │
               │  • Min 7 Features @ >85%      │
-              │  • Max 2x pro Tag             │
+              │  • Max 2x per day             │
               │  • User Activity Detection    │
-              │  • Cooldown: 8h nach Popup    │
+              │  • Cooldown: 8h after popup   │
               └───────────────┬───────────────┘
                               ↓
               ┌───────────────┴───────────────┐
               │     ACTIVITY DETECTOR         │
-              │  • Mausbewegung aktiv?        │
-              │  • Kein Fullscreen-Game?      │
-              │  • Desktop sichtbar?          │
-              │  • Keine Video-Wiedergabe?    │
+              │  • Mouse movement active?     │
+              │  • No fullscreen game?        │
+              │  • Desktop visible?           │
+              │  • No video playback?         │
               │  • CPU < 50%?                 │
-              │  • Letzte Interaktion < 5min? │
+              │  • Last interaction < 5min?   │
               └───────────────┬───────────────┘
                               ↓
                     [Popup Launcher]
@@ -51,83 +51,83 @@ Frank sammelt autonom, analysiert autonom, kuratiert autonom - und präsentiert 
 
 ---
 
-## Trigger-Logik im Detail
+## Trigger Logic in Detail
 
 ### Proposal Queue Manager
 
 ```python
 class ProposalQueueManager:
     """
-    Entscheidet WANN das Popup erscheint.
-    Sammelt Features bis Schwellenwert erreicht.
+    Decides WHEN the popup appears.
+    Collects features until threshold is reached.
     """
 
-    # Konfiguration
-    MIN_FEATURES_FOR_POPUP = 7          # Mindestens 7 Features
-    MIN_CONFIDENCE_SCORE = 0.85         # Jedes Feature >85%
-    MAX_POPUPS_PER_DAY = 2              # Max 2x am Tag
-    COOLDOWN_HOURS = 8                  # 8h zwischen Popups
-    FEATURE_EXPIRY_DAYS = 14            # Features älter als 14 Tage = auto-dismiss
+    # Configuration
+    MIN_FEATURES_FOR_POPUP = 7          # At least 7 features
+    MIN_CONFIDENCE_SCORE = 0.85         # Each feature >85%
+    MAX_POPUPS_PER_DAY = 2              # Max 2x per day
+    COOLDOWN_HOURS = 8                  # 8h between popups
+    FEATURE_EXPIRY_DAYS = 14            # Features older than 14 days = auto-dismiss
 
     def should_trigger_popup(self) -> Tuple[bool, str]:
         """
         Returns (should_trigger, reason)
         """
-        # 1. Genug qualitativ hochwertige Features?
+        # 1. Enough high-quality features?
         ready_features = self.get_high_confidence_features()
         if len(ready_features) < MIN_FEATURES_FOR_POPUP:
             return False, f"Only {len(ready_features)}/{MIN_FEATURES_FOR_POPUP} features ready"
 
-        # 2. Tägliches Limit nicht erreicht?
+        # 2. Daily limit not reached?
         popups_today = self.get_popups_today()
         if popups_today >= MAX_POPUPS_PER_DAY:
             return False, "Daily popup limit reached"
 
-        # 3. Cooldown eingehalten?
+        # 3. Cooldown respected?
         last_popup = self.get_last_popup_time()
         if last_popup and (now - last_popup).hours < COOLDOWN_HOURS:
             return False, f"Cooldown active ({COOLDOWN_HOURS}h)"
 
-        # 4. User ist aufnahmefähig?
+        # 4. User is receptive?
         if not ActivityDetector.is_user_receptive():
             return False, "User not receptive"
 
         return True, f"{len(ready_features)} features ready for proposal"
 ```
 
-### Activity Detector (User-Aufnahmefähigkeit)
+### Activity Detector (User Receptivity)
 
 ```python
 class ActivityDetector:
     """
-    Erkennt wann der User "bereit" ist für ein Popup.
-    Ziel: Popup erscheint wenn User aktiv aber nicht beschäftigt ist.
+    Detects when the user is "ready" for a popup.
+    Goal: Popup appears when user is active but not busy.
     """
 
-    # Idealer Moment: User hat gerade etwas beendet, ist noch am PC
+    # Ideal moment: User has just finished something, is still at the PC
 
     @staticmethod
     def is_user_receptive() -> bool:
         checks = [
-            ActivityDetector._is_mouse_active_recently(),      # Maus bewegt in letzten 2min
-            ActivityDetector._no_fullscreen_app(),             # Kein Fullscreen
-            ActivityDetector._no_video_playing(),              # Kein Video/Stream
+            ActivityDetector._is_mouse_active_recently(),      # Mouse moved in last 2min
+            ActivityDetector._no_fullscreen_app(),             # No fullscreen
+            ActivityDetector._no_video_playing(),              # No video/stream
             ActivityDetector._cpu_not_busy(),                  # CPU < 50%
-            ActivityDetector._no_presentation_mode(),          # Kein Präsentationsmodus
-            ActivityDetector._desktop_visible(),               # Desktop nicht komplett verdeckt
+            ActivityDetector._no_presentation_mode(),          # No presentation mode
+            ActivityDetector._desktop_visible(),               # Desktop not completely covered
         ]
         return all(checks)
 
     @staticmethod
     def _is_mouse_active_recently() -> bool:
-        """Prüft ob Maus in letzten 2 Minuten bewegt wurde."""
-        # Via /dev/input oder xdotool
+        """Checks if mouse was moved in the last 2 minutes."""
+        # Via /dev/input or xdotool
         pass
 
     @staticmethod
     def _no_fullscreen_app() -> bool:
-        """Kein Fenster im Fullscreen-Modus."""
-        # Via wmctrl oder X11
+        """No window in fullscreen mode."""
+        # Via wmctrl or X11
         result = subprocess.run(['xdotool', 'getactivewindow'], capture_output=True)
         window_id = result.stdout.strip()
         # Check _NET_WM_STATE_FULLSCREEN
@@ -135,19 +135,19 @@ class ActivityDetector:
 
     @staticmethod
     def _no_video_playing() -> bool:
-        """Kein Video wird abgespielt (YouTube, VLC, etc.)."""
-        # Check für bekannte Video-Player Prozesse mit aktiver Wiedergabe
-        # Oder: pulseaudio sink-inputs prüfen
+        """No video is playing (YouTube, VLC, etc.)."""
+        # Check for known video player processes with active playback
+        # Or: check pulseaudio sink-inputs
         pass
 
     @staticmethod
     def get_best_popup_moment() -> Optional[datetime]:
         """
-        Analysiert User-Patterns und schlägt optimalen Moment vor.
-        Lernt aus vergangenen Interaktionen.
+        Analyzes user patterns and suggests optimal moment.
+        Learns from past interactions.
         """
-        # Historische Daten: Wann hat User in der Vergangenheit
-        # am schnellsten/positivsten auf Popups reagiert?
+        # Historical data: When did the user in the past
+        # react fastest/most positively to popups?
         pass
 ```
 
@@ -168,31 +168,31 @@ class ActivityDetector:
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
 │    ║  ☐ GitHub API Rate Limiter          [94%] ──────────█████▌  ║    │
-│    ║    └─ Intelligentes Rate-Limiting für API-Calls             ║    │
-│    ║       Verhindert 429-Errors, optimiert Throughput            ║    │
+│    ║    └─ Intelligent rate-limiting for API calls                ║    │
+│    ║       Prevents 429 errors, optimizes throughput              ║    │
 │    ║                                                    [DETAILS] ║    │
 │    ║  ────────────────────────────────────────────────────────── ║    │
 │    ║  ☐ Async Task Queue Manager         [91%] ──────────█████   ║    │
-│    ║    └─ Robuste Task-Verwaltung mit Retry-Logik               ║    │
-│    ║       Basis: celery-patterns, optimiert für Frank            ║    │
+│    ║    └─ Robust task management with retry logic                ║    │
+│    ║       Based on: celery-patterns, optimized for Frank         ║    │
 │    ║                                                    [DETAILS] ║    │
 │    ║  ────────────────────────────────────────────────────────── ║    │
 │    ║  ☑ Semantic Code Search             [89%] ──────────████▌   ║    │
-│    ║    └─ Code-Suche via Embeddings statt Keywords              ║    │
-│    ║       "Finde Funktionen die X machen" wird möglich           ║    │
+│    ║    └─ Code search via embeddings instead of keywords         ║    │
+│    ║       "Find functions that do X" becomes possible            ║    │
 │    ║                                                    [DETAILS] ║    │
 │    ║  ────────────────────────────────────────────────────────── ║    │
-│    ║  ... (scrollbar für mehr)                                   ║    │
+│    ║  ... (scrollable for more)                                   ║    │
 │    ║                                                              ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
 │    ║  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ ║    │
-│    ║  │ ✓ ALLE      │ │ ✗ KEINE     │ │ ⏰ SPÄTER (8h)       │ ║    │
-│    ║  │  UMSETZEN   │ │  RELEVANT   │ │                      │ ║    │
+│    ║  │ ✓ IMPLEMENT  │ │ ✗ NONE      │ │ ⏰ LATER (8h)        │ ║    │
+│    ║  │  ALL         │ │  RELEVANT   │ │                      │ ║    │
 │    ║  └──────────────┘ └──────────────┘ └──────────────────────┘ ║    │
 │    ║                                                              ║    │
 │    ║           ┌────────────────────────────────┐                 ║    │
-│    ║           │  ▶ AUSGEWÄHLTE INTEGRIEREN (2) │                 ║    │
+│    ║           │  ▶ INTEGRATE SELECTED (2)      │                 ║    │
 │    ║           └────────────────────────────────┘                 ║    │
 │    ║                                                              ║    │
 │    ╚══════════════════════════════════════════════════════════════╝    │
@@ -266,24 +266,24 @@ class ActivityDetector:
 
 ---
 
-## Button-Logik
+## Button Logic
 
-### Die 4 Aktionen
+### The 4 Actions
 
-| Button | Verhalten | Datenbank-Effekt |
-|--------|-----------|------------------|
-| **✓ ALLE UMSETZEN** | Alle Features → Integration Queue | `integration_status = 'approved'` für alle |
-| **✗ KEINE RELEVANT** | Alle Features permanent dismissed | `integration_status = 'rejected_permanent'` |
-| **⏰ SPÄTER** | Popup schließt, erscheint in 8h wieder | `postponed_until = now + 8h` |
-| **▶ AUSGEWÄHLTE** | Nur angekreuzte → Integration | Nur selected → `approved` |
+| Button | Behavior | Database Effect |
+|--------|----------|-----------------|
+| **✓ IMPLEMENT ALL** | All features -> Integration Queue | `integration_status = 'approved'` for all |
+| **✗ NONE RELEVANT** | All features permanently dismissed | `integration_status = 'rejected_permanent'` |
+| **⏰ LATER** | Popup closes, reappears in 8h | `postponed_until = now + 8h` |
+| **▶ SELECTED** | Only checked ones -> Integration | Only selected -> `approved` |
 
-### Wichtig: "Keine Relevant" ist permanent
+### Important: "None Relevant" is Permanent
 
 ```python
 def dismiss_all_permanently(feature_ids: List[int]):
     """
-    User hat entschieden: Diese Features sind nicht interessant.
-    Sie werden NIEMALS wieder vorgeschlagen.
+    User has decided: These features are not interesting.
+    They will NEVER be suggested again.
     """
     for fid in feature_ids:
         db.execute("""
@@ -294,16 +294,16 @@ def dismiss_all_permanently(feature_ids: List[int]):
             WHERE id = ?
         """, (datetime.now().isoformat(), fid))
 
-    # Diese Features tauchen NIE wieder auf
-    # Auch nicht in der CLI oder anderswo
+    # These features will NEVER appear again
+    # Not in the CLI or anywhere else either
 ```
 
 ---
 
-## Integration Flow nach Approval
+## Integration Flow after Approval
 
 ```
-User klickt "AUSGEWÄHLTE INTEGRIEREN (3)"
+User clicks "INTEGRATE SELECTED (3)"
               ↓
 ┌─────────────────────────────────────────┐
 │  Integration Progress Popup             │
@@ -321,7 +321,7 @@ User klickt "AUSGEWÄHLTE INTEGRIEREN (3)"
 │                                         │
 └─────────────────────────────────────────┘
               ↓
-         (Nach Abschluss)
+         (After completion)
               ↓
 ┌─────────────────────────────────────────┐
 │  ✓ Integration Complete                 │
@@ -335,27 +335,27 @@ User klickt "AUSGEWÄHLTE INTEGRIEREN (3)"
 │                                         │
 │  Location: tools/discovered/            │
 │                                         │
-│  [ Frank wird diese Tools ab sofort ]   │
-│  [ in Conversations nutzen können  ]   │
+│  [ Frank will be able to use these  ]   │
+│  [ tools in conversations from now  ]   │
 │                                         │
-│           [  VERSTANDEN  ]              │
+│           [  UNDERSTOOD  ]              │
 └─────────────────────────────────────────┘
 ```
 
 ---
 
-## Daemon-Architektur
+## Daemon Architecture
 
 ### fas_popup_daemon.py
 
 ```python
 """
 F.A.S. Proposal Popup Daemon
-Läuft als systemd user service, prüft periodisch ob Popup getriggert werden soll.
+Runs as systemd user service, periodically checks whether popup should be triggered.
 """
 
 class FASPopupDaemon:
-    CHECK_INTERVAL = 300  # Alle 5 Minuten prüfen
+    CHECK_INTERVAL = 300  # Check every 5 minutes
 
     def run(self):
         while True:
@@ -363,12 +363,12 @@ class FASPopupDaemon:
                 should_trigger, reason = self.queue_manager.should_trigger_popup()
 
                 if should_trigger:
-                    # Warte auf optimalen Moment
+                    # Wait for optimal moment
                     if ActivityDetector.is_user_receptive():
                         self.launch_popup()
                         self.record_popup_shown()
                     else:
-                        # User nicht bereit, in 5min nochmal prüfen
+                        # User not ready, check again in 5min
                         LOG.info("Popup ready but user not receptive, waiting...")
 
                 time.sleep(self.CHECK_INTERVAL)
@@ -378,10 +378,10 @@ class FASPopupDaemon:
                 time.sleep(60)
 
     def launch_popup(self):
-        """Startet das GTK Popup als subprocess."""
+        """Starts the GTK popup as subprocess."""
         features = self.get_proposal_features()
 
-        # Features als JSON an Popup übergeben
+        # Pass features as JSON to popup
         subprocess.Popen([
             sys.executable,
             str(POPUP_SCRIPT),
@@ -391,33 +391,33 @@ class FASPopupDaemon:
 
 ---
 
-## Dateistruktur
+## File Structure
 
 ```
 /home/ai-core-node/aicore/opt/aicore/
 ├── tools/
-│   ├── fas_scavenger.py          # Backend (bereits gebaut)
-│   ├── fas_popup_daemon.py       # NEU: Daemon der Popup triggert
-│   └── discovered/               # Integrierte Features landen hier
+│   ├── fas_scavenger.py          # Backend (already built)
+│   ├── fas_popup_daemon.py       # NEW: Daemon that triggers popup
+│   └── discovered/               # Integrated features land here
 │
 ├── ui/
-│   ├── fas_proposal_popup.py     # NEU: GTK4 Popup Window
-│   ├── fas_proposal_popup.css    # NEU: Cyberpunk Styling
-│   └── fas_progress_dialog.py    # NEU: Integration Progress
+│   ├── fas_proposal_popup.py     # NEW: GTK4 Popup Window
+│   ├── fas_proposal_popup.css    # NEW: Cyberpunk Styling
+│   └── fas_progress_dialog.py    # NEW: Integration Progress
 │
 └── services/
-    └── fas-popup.service         # NEU: systemd user service
+    └── fas-popup.service         # NEW: systemd user service
 ```
 
 ---
 
-## Konfiguration
+## Configuration
 
 ```python
 # /home/ai-core-node/aicore/opt/aicore/config/fas_popup_config.py
 
 FAS_POPUP_CONFIG = {
-    # Trigger-Schwellenwerte
+    # Trigger thresholds
     "min_features_for_popup": 7,
     "min_confidence_score": 0.85,
     "max_popups_per_day": 2,
@@ -438,110 +438,110 @@ FAS_POPUP_CONFIG = {
     "theme": "cyberpunk",
 
     # Timing
-    "preferred_hours": [9, 10, 11, 14, 15, 16],  # Bevorzugte Uhrzeiten
-    "avoid_hours": [0, 1, 2, 3, 4, 5, 6, 22, 23],  # Niemals nachts
+    "preferred_hours": [9, 10, 11, 14, 15, 16],  # Preferred times
+    "avoid_hours": [0, 1, 2, 3, 4, 5, 6, 22, 23],  # Never at night
 }
 ```
 
 ---
 
-## User Flow Zusammenfassung
+## User Flow Summary
 
 ```
                     ┌─────────────────────────┐
-                    │   F.A.S. läuft 24/7     │
-                    │   (Nachts, bei Idle)    │
+                    │   F.A.S. runs 24/7      │
+                    │   (At night, when idle)  │
                     └───────────┬─────────────┘
                                 ↓
                     ┌─────────────────────────┐
-                    │ Features werden entdeckt │
-                    │ und in Sandbox getestet  │
+                    │ Features are discovered  │
+                    │ and sandbox tested       │
                     └───────────┬─────────────┘
                                 ↓
                     ┌─────────────────────────┐
-                    │ 7+ Features mit >85%    │
-                    │ Confidence gesammelt    │
+                    │ 7+ features with >85%   │
+                    │ confidence collected     │
                     └───────────┬─────────────┘
                                 ↓
                     ┌─────────────────────────┐
-                    │ User ist gerade aktiv   │
-                    │ aber nicht beschäftigt  │
+                    │ User is currently active │
+                    │ but not busy            │
                     └───────────┬─────────────┘
                                 ↓
               ╔═══════════════════════════════════╗
               ║                                   ║
-              ║   POPUP ERSCHEINT AUTOMATISCH    ║
-              ║   (unübersehbar, zentriert)      ║
+              ║   POPUP APPEARS AUTOMATICALLY     ║
+              ║   (unmissable, centered)          ║
               ║                                   ║
               ╚═══════════════════════════════════╝
                                 ↓
                     ┌─────────────────────────┐
-                    │ User wählt mit Klicks:  │
-                    │ • Einzelne Features     │
-                    │ • Alle                  │
-                    │ • Keine                 │
-                    │ • Später                │
+                    │ User selects with clicks:│
+                    │ • Individual features    │
+                    │ • All                   │
+                    │ • None                  │
+                    │ • Later                 │
                     └───────────┬─────────────┘
                                 ↓
                     ┌─────────────────────────┐
-                    │ Frank integriert        │
-                    │ ausgewählte Features    │
+                    │ Frank integrates        │
+                    │ selected features       │
                     └───────────┬─────────────┘
                                 ↓
                     ┌─────────────────────────┐
-                    │ Neue Fähigkeiten sind   │
-                    │ sofort verfügbar        │
+                    │ New capabilities are    │
+                    │ immediately available   │
                     └─────────────────────────┘
 ```
 
 ---
 
-## Kritische Design-Entscheidungen
+## Critical Design Decisions
 
-### 1. Warum Minimum 7 Features?
-- Weniger = zu häufige Popups = nervig
-- 7 gibt dem User echte Auswahl
-- Batch-Processing ist effizienter
-- User fühlt sich nicht mit Einzelentscheidungen belästigt
+### 1. Why Minimum 7 Features?
+- Fewer = too frequent popups = annoying
+- 7 gives the user real choice
+- Batch processing is more efficient
+- User doesn't feel bothered with individual decisions
 
-### 2. Warum 85% Confidence Minimum?
-- Keine halbgaren Features vorschlagen
-- User-Vertrauen aufbauen
-- "Wenn Frank was vorschlägt, ist es gut"
-- Lieber weniger, dafür qualitativ
+### 2. Why 85% Confidence Minimum?
+- Don't suggest half-baked features
+- Build user trust
+- "When Frank suggests something, it's good"
+- Rather fewer, but higher quality
 
-### 3. Warum "Später" statt "Abbrechen"?
-- Abbrechen = Feature verschwindet = User verpasst was
-- Später = Respektiert User's Zeit, Feature kommt wieder
-- 8h Cooldown = Genug Zeit, nicht zu lange
+### 3. Why "Later" Instead of "Cancel"?
+- Cancel = Feature disappears = User misses something
+- Later = Respects user's time, feature comes back
+- 8h cooldown = Enough time, not too long
 
-### 4. Warum Activity Detection?
-- Popup während Gaming/Video = Genervt = Wegklicken ohne Lesen
-- Popup nach gerade beendeter Aktivität = User ist aufnahmebereit
-- Lernen aus Patterns = Immer besseres Timing
+### 4. Why Activity Detection?
+- Popup during gaming/video = Annoyed = Click away without reading
+- Popup after just finished activity = User is receptive
+- Learning from patterns = Ever better timing
 
-### 5. Warum Permanent Dismiss Option?
-- User weiß selbst was er braucht
-- Irrelevante Features sollen nie wiederkommen
-- Spart zukünftige Interrupts
-- Vertrauen: "Frank versteht mich"
-
----
-
-## Nächste Schritte zur Implementierung
-
-1. **fas_popup_daemon.py** - Daemon der Trigger-Logik implementiert
-2. **fas_proposal_popup.py** - GTK4 Popup mit Cyberpunk CSS
-3. **Activity Detection** - Mouse/Fullscreen/Video-Erkennung
-4. **Integration in F.A.S.** - Neue Status-Felder, Queue-Management
-5. **systemd Service** - User-Service für Daemon
-6. **Testing** - Mit Mock-Features testen
+### 5. Why Permanent Dismiss Option?
+- User knows best what they need
+- Irrelevant features should never come back
+- Saves future interrupts
+- Trust: "Frank understands me"
 
 ---
 
-## Offene Fragen für User
+## Next Steps for Implementation
 
-1. Soll das Popup einen Sound abspielen wenn es erscheint?
-2. Soll es eine Keyboard-Shortcut geben um das Popup manuell zu öffnen?
-3. Sollen abgelehnte Features in einem "Archive" einsehbar bleiben?
-4. Soll Frank erklären WARUM er ein Feature vorschlägt (Use-Case)?
+1. **fas_popup_daemon.py** - Daemon that implements trigger logic
+2. **fas_proposal_popup.py** - GTK4 Popup with Cyberpunk CSS
+3. **Activity Detection** - Mouse/fullscreen/video detection
+4. **Integration into F.A.S.** - New status fields, queue management
+5. **systemd Service** - User service for daemon
+6. **Testing** - Test with mock features
+
+---
+
+## Open Questions for User
+
+1. Should the popup play a sound when it appears?
+2. Should there be a keyboard shortcut to manually open the popup?
+3. Should rejected features remain viewable in an "Archive"?
+4. Should Frank explain WHY he suggests a feature (use case)?

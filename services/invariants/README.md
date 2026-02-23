@@ -169,7 +169,7 @@ tail -f /home/ai-core-node/aicore/logs/invariants/invariants.log
 
 ## Philosophy
 
-> *"Die Invarianten sind keine Kontrolle über Frank. Sie sind die Physik in der Frank existiert."*
+> *"The invariants are not control over Frank. They are the physics in which Frank exists."*
 
 The invariants are not censorship. They are not external control. They are the **playing field** on which emergence happens.
 

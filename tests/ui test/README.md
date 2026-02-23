@@ -1,21 +1,21 @@
 # Frank AI - UI Test Module v2.0
 
-Automatisiertes UI-Testing mit Screenshot-Vergleich, Design-Analyse und UX-Metriken.
+Automated UI testing with screenshot comparison, design analysis, and UX metrics.
 
 ## Features
 
-| Feature | Beschreibung |
-|---------|--------------|
-| **Tests** | 17 automatisierte UI-Tests in 6 Kategorien |
-| **Design-Analyse** | Farben, Kontrast, WCAG, Layout |
-| **Workflow-Analyse** | UX-Metriken, Benutzerflows |
-| **Visual Regression** | Pixel-Vergleich mit Baseline |
-| **Responsive Tests** | Verschiedene Fenstergrößen |
-| **Heatmap-Analyse** | Klick- und Fokus-Bereiche |
-| **Konkrete Vorschläge** | Actionable CSS-Fixes |
-| **Headless-Modus** | CI/CD-Integration mit Xvfb |
+| Feature | Description |
+|---------|-------------|
+| **Tests** | 17 automated UI tests in 6 categories |
+| **Design Analysis** | Colors, contrast, WCAG, layout |
+| **Workflow Analysis** | UX metrics, user flows |
+| **Visual Regression** | Pixel comparison with baseline |
+| **Responsive Tests** | Various window sizes |
+| **Heatmap Analysis** | Click and focus areas |
+| **Concrete Suggestions** | Actionable CSS fixes |
+| **Headless Mode** | CI/CD integration with Xvfb |
 
-## Schnellstart
+## Quick Start
 
 ### GUI Version
 ```bash
@@ -25,150 +25,150 @@ DISPLAY=:0 python3 ui_test_runner.py
 
 ### CLI Version
 ```bash
-# Alle Tests, 15 Minuten
+# All tests, 15 minutes
 python3 cli_runner.py --duration 15
 
-# Headless für CI/CD
+# Headless for CI/CD
 python3 cli_runner.py --headless --duration 10
 
 # Visual Regression
 python3 cli_runner.py --regression
 
-# Design-Analyse mit konkreten Vorschlägen
+# Design analysis with concrete suggestions
 python3 cli_runner.py --design --concrete
 
 # Responsive Tests
 python3 cli_runner.py --responsive
 ```
 
-## CLI Optionen
+## CLI Options
 
-### Allgemein
-| Option | Beschreibung |
-|--------|--------------|
-| `--duration, -d` | Testdauer in Minuten (default: 15) |
-| `--interval, -i` | Intervall in Sekunden (default: 30) |
-| `--tests, -t` | Test-IDs oder 'all' |
-| `--no-ocr` | OCR deaktivieren |
-| `--no-screenshots` | Screenshots nicht speichern |
-| `--headless` | Xvfb automatisch starten |
-| `--list` | Verfügbare Tests auflisten |
+### General
+| Option | Description |
+|--------|-------------|
+| `--duration, -d` | Test duration in minutes (default: 15) |
+| `--interval, -i` | Interval in seconds (default: 30) |
+| `--tests, -t` | Test IDs or 'all' |
+| `--no-ocr` | Disable OCR |
+| `--no-screenshots` | Don't save screenshots |
+| `--headless` | Start Xvfb automatically |
+| `--list` | List available tests |
 
 ### Visual Regression
-| Option | Beschreibung |
-|--------|--------------|
-| `--regression` | Regression-Test ausführen |
-| `--baseline-update` | Baseline aktualisieren |
-| `--threshold` | Max. Differenz in % (default: 0.1) |
+| Option | Description |
+|--------|-------------|
+| `--regression` | Run regression test |
+| `--baseline-update` | Update baseline |
+| `--threshold` | Max difference in % (default: 0.1) |
 
-### Design-Analyse
-| Option | Beschreibung |
-|--------|--------------|
-| `--design` | Design-Analyse ausführen |
-| `--concrete` | Konkrete CSS-Vorschläge |
+### Design Analysis
+| Option | Description |
+|--------|-------------|
+| `--design` | Run design analysis |
+| `--concrete` | Concrete CSS suggestions |
 
 ### Responsive Tests
-| Option | Beschreibung |
-|--------|--------------|
-| `--responsive` | Responsive Tests ausführen |
-| `--responsive-sizes` | Größen: mobile,tablet,laptop,desktop |
+| Option | Description |
+|--------|-------------|
+| `--responsive` | Run responsive tests |
+| `--responsive-sizes` | Sizes: mobile,tablet,laptop,desktop |
 
 ### Heatmap
-| Option | Beschreibung |
-|--------|--------------|
-| `--heatmap` | Heatmap-Analyse |
-| `--heatmap-duration` | Simulations-Dauer (default: 30s) |
+| Option | Description |
+|--------|-------------|
+| `--heatmap` | Heatmap analysis |
+| `--heatmap-duration` | Simulation duration (default: 30s) |
 
-## Verfügbare Tests
+## Available Tests
 
 ### Basic
-- `chat_overlay_visible` - Overlay sichtbar
-- `desktopd_health` - Desktop Daemon läuft
-- `screenshot_quality` - Screenshot funktioniert
+- `chat_overlay_visible` - Overlay visible
+- `desktopd_health` - Desktop daemon running
+- `screenshot_quality` - Screenshot works
 
 ### Rendering
-- `chat_overlay_truncation` - Keine Truncation
-- `text_readability` - Text lesbar (Kontrast)
-- `layout_consistency` - Layout konsistent
+- `chat_overlay_truncation` - No truncation
+- `text_readability` - Text readable (contrast)
+- `layout_consistency` - Layout consistent
 
 ### Workflow
-- `basic_workflow` - Basis-Interaktion
-- `scroll_workflow` - Scroll funktioniert
+- `basic_workflow` - Basic interaction
+- `scroll_workflow` - Scrolling works
 - `copy_paste_workflow` - Copy/Paste
-- `keyboard_navigation` - Keyboard-Nav
+- `keyboard_navigation` - Keyboard nav
 
 ### Convenience
-- `response_time` - Reaktionszeit < 1s
-- `window_focus` - Focus funktioniert
-- `input_handling` - Input-Verarbeitung
+- `response_time` - Response time < 1s
+- `window_focus` - Focus works
+- `input_handling` - Input processing
 
 ### Design
-- `color_contrast` - WCAG Kontrast
-- `color_palette` - Farbpalette
-- `visual_hierarchy` - Hierarchie
+- `color_contrast` - WCAG contrast
+- `color_palette` - Color palette
+- `visual_hierarchy` - Hierarchy
 
 ### Accessibility
-- `accessibility_basic` - WCAG Compliance
+- `accessibility_basic` - WCAG compliance
 
-## Ordnerstruktur
+## Directory Structure
 
 ```
 ui test/
-├── ui_test_runner.py       # GUI (4 Tabs)
-├── cli_runner.py           # CLI mit allen Features
-├── test_engine.py          # Screenshot & Test Engine
-├── test_cases.py           # 17 Test-Implementierungen
-├── design_analyzer.py      # Farben, Kontrast, WCAG
-├── workflow_analyzer.py    # UX-Metriken
-├── visual_regression.py    # Pixel-Vergleich
-├── heatmap_analyzer.py     # Klick-/Fokus-Heatmaps
-├── concrete_suggestions.py # Konkrete CSS-Fixes
-├── config.json             # Einstellungen
+├── ui_test_runner.py       # GUI (4 tabs)
+├── cli_runner.py           # CLI with all features
+├── test_engine.py          # Screenshot & test engine
+├── test_cases.py           # 17 test implementations
+├── design_analyzer.py      # Colors, contrast, WCAG
+├── workflow_analyzer.py    # UX metrics
+├── visual_regression.py    # Pixel comparison
+├── heatmap_analyzer.py     # Click/focus heatmaps
+├── concrete_suggestions.py # Concrete CSS fixes
+├── config.json             # Settings
 ├── screenshots/            # Screenshots
-├── baseline/               # Regression Baselines
-├── reports/                # JSON/HTML Reports
+├── baseline/               # Regression baselines
+├── reports/                # JSON/HTML reports
 └── README.md
 ```
 
 ## Visual Regression Workflow
 
 ```bash
-# 1. Baseline erstellen
+# 1. Create baseline
 python3 cli_runner.py --regression --baseline-update
 
-# 2. Nach Änderungen: Vergleich
+# 2. After changes: compare
 python3 cli_runner.py --regression
 
-# 3. Bei gewollten Änderungen: Baseline aktualisieren
+# 3. For intended changes: update baseline
 python3 cli_runner.py --regression --baseline-update
 ```
 
-## Konkrete Vorschläge (Beispiel)
+## Concrete Suggestions (Example)
 
 ```markdown
 ## Contrast
 
-### 🔴 Kritischer Kontrast-Mangel
-Text/Hintergrund-Kontrast 3.2:1 ist unter WCAG AA (4.5:1)
-- **Aktuell:** #a6adc8 auf #1e1e2e = 3.2:1
-- **Empfohlen:** #cdd6f4 auf #1e1e2e = 5.8:1
+### Critical Contrast Deficiency
+Text/background contrast 3.2:1 is below WCAG AA (4.5:1)
+- **Current:** #a6adc8 on #1e1e2e = 3.2:1
+- **Recommended:** #cdd6f4 on #1e1e2e = 5.8:1
 
 ​```css
-color: #cdd6f4; /* vorher: #a6adc8 */
+color: #cdd6f4; /* was: #a6adc8 */
 ​```
 ```
 
 ## CI/CD Integration
 
 ```yaml
-# GitHub Actions Beispiel
+# GitHub Actions example
 - name: UI Tests
   run: |
     cd /path/to/ui\ test
     python3 cli_runner.py --headless --duration 5 --regression
 ```
 
-## Abhängigkeiten
+## Dependencies
 
 ### Python
 ```bash
@@ -180,7 +180,7 @@ pip install --break-system-packages pyautogui pillow pytesseract opencv-python m
 sudo apt install tesseract-ocr tesseract-ocr-deu xvfb wmctrl xdotool
 ```
 
-## Aufräumen
+## Cleanup
 
 ```bash
 rm -rf "/home/ai-core-node/aicore/opt/aicore/tests/ui test"

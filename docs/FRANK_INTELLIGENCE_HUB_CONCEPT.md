@@ -1,14 +1,14 @@
 # F.I.H. - Frank's Intelligence Hub
-## Zentrales Self-Improvement System
+## Central Self-Improvement System
 
 ### Vision
 
-Das F.A.S. Popup wird zum **zentralen Nervensystem** für ALLE Self-Improvement Funktionen. Nicht nur GitHub-Features, sondern ALLES was Frank besser macht fließt durch dieses System.
+The F.A.S. Popup becomes the **central nervous system** for ALL self-improvement functions. Not just GitHub features, but EVERYTHING that makes Frank better flows through this system.
 
 ```
                     ┌─────────────────────────────────────┐
                     │     F.I.H. - INTELLIGENCE HUB       │
-                    │   "Das Gehirn von Frank's Wachstum" │
+                    │   "The Brain of Frank's Growth"     │
                     └─────────────────┬───────────────────┘
                                       │
         ┌─────────────────────────────┼─────────────────────────────┐
@@ -48,146 +48,146 @@ Das F.A.S. Popup wird zum **zentralen Nervensystem** für ALLE Self-Improvement 
                                     ▼
                     ┌───────────────────────────────────┐
                     │      INTELLIGENT INTEGRATION      │
-                    │   Frank wird kontinuierlich       │
-                    │   besser - mit User als Guide     │
+                    │   Frank continuously improves     │
+                    │   - with the User as guide        │
                     └───────────────────────────────────┘
 ```
 
 ---
 
-## Die 6 Intelligence Sources
+## The 6 Intelligence Sources
 
-### 1. F.A.S. GitHub Discovery (existiert)
+### 1. F.A.S. GitHub Discovery (exists)
 ```python
 class GitHubSource(IntelligenceSource):
     """
-    Findet neue Tools/Patterns auf GitHub.
-    - Scout-Scraping
-    - Interest Scoring
-    - Sandbox Testing
+    Finds new tools/patterns on GitHub.
+    - Scout scraping
+    - Interest scoring
+    - Sandbox testing
     """
     source_type = "github"
-    confidence_weight = 0.9  # Hohe Confidence weil getestet
+    confidence_weight = 0.9  # High confidence because tested
 ```
 
-### 2. E-CPMM Training Insights (NEU)
+### 2. E-CPMM Training Insights (NEW)
 ```python
 class TrainingSource(IntelligenceSource):
     """
-    Lernt aus dem Training was besser werden könnte.
-    - Identifiziert wiederkehrende Fehler-Patterns
-    - Entdeckt missing tools während Tasks
-    - Schlägt Optimierungen basierend auf Lernkurve vor
+    Learns from training what could be improved.
+    - Identifies recurring error patterns
+    - Discovers missing tools during tasks
+    - Suggests optimizations based on learning curve
     """
     source_type = "training"
     confidence_weight = 0.85
 
     def extract_insights(self, training_log: Path) -> List[Proposal]:
         """
-        Analysiert Training-Logs und extrahiert Verbesserungsvorschläge.
+        Analyzes training logs and extracts improvement proposals.
 
-        Beispiele:
-        - "Frank hat 3x versucht JSON zu parsen und ist gescheitert"
-          → Proposal: "Robusterer JSON Parser"
+        Examples:
+        - "Frank tried to parse JSON 3x and failed"
+          -> Proposal: "More robust JSON parser"
 
-        - "Task 'API Call' hat 5x timeout"
-          → Proposal: "Retry-Logic mit Backoff"
+        - "Task 'API Call' timed out 5x"
+          -> Proposal: "Retry logic with backoff"
 
-        - "User hat 10x nach 'format code' gefragt"
-          → Proposal: "Auto-Formatter Tool"
+        - "User asked for 'format code' 10x"
+          -> Proposal: "Auto-formatter tool"
         """
         pass
 ```
 
-### 3. User Feedback & Requests (NEU)
+### 3. User Feedback & Requests (NEW)
 ```python
 class UserFeedbackSource(IntelligenceSource):
     """
-    Sammelt und analysiert User-Feedback.
-    - Explizite Feature Requests
-    - Implizite Wünsche aus Konversationen
-    - Beschwerden/Frustrationen → Verbesserungen
+    Collects and analyzes user feedback.
+    - Explicit feature requests
+    - Implicit wishes from conversations
+    - Complaints/frustrations -> improvements
     """
     source_type = "user_feedback"
-    confidence_weight = 1.0  # User Request = höchste Priorität
+    confidence_weight = 1.0  # User request = highest priority
 
     def collect_feedback(self):
         """
-        Quellen:
-        - Chat-History Analyse
-        - Explizite /request Commands
-        - Sentiment aus Konversationen
-        - Abgebrochene Tasks (Frustration?)
+        Sources:
+        - Chat history analysis
+        - Explicit /request commands
+        - Sentiment from conversations
+        - Abandoned tasks (frustration?)
         """
         pass
 ```
 
-### 4. Internal Self-Analysis (NEU)
+### 4. Internal Self-Analysis (NEW)
 ```python
 class SelfAnalysisSource(IntelligenceSource):
     """
-    Frank analysiert sich selbst.
-    - Code Review der eigenen Tools
-    - Performance Bottlenecks
-    - Unused/Dead Code
-    - Security Audits
+    Frank analyzes itself.
+    - Code review of its own tools
+    - Performance bottlenecks
+    - Unused/dead code
+    - Security audits
     """
     source_type = "self_analysis"
     confidence_weight = 0.7
 
     def analyze_self(self):
         """
-        Prüft:
-        - Welche Tools werden nie benutzt?
-        - Welche Funktionen sind langsam?
-        - Wo gibt es Code-Duplikation?
-        - Welche Dependencies sind veraltet?
+        Checks:
+        - Which tools are never used?
+        - Which functions are slow?
+        - Where is there code duplication?
+        - Which dependencies are outdated?
         """
         pass
 ```
 
-### 5. Performance Optimizer (NEU)
+### 5. Performance Optimizer (NEW)
 ```python
 class PerformanceSource(IntelligenceSource):
     """
-    Kontinuierliche Performance-Überwachung.
-    - Response Time Tracking
-    - Memory Usage
-    - Startup Time
-    - Resource Efficiency
+    Continuous performance monitoring.
+    - Response time tracking
+    - Memory usage
+    - Startup time
+    - Resource efficiency
     """
     source_type = "performance"
     confidence_weight = 0.8
 
     def monitor(self):
         """
-        Identifiziert:
-        - Langsame Funktionen (> 1s)
-        - Memory Leaks
-        - Ineffiziente Loops
-        - Caching-Möglichkeiten
+        Identifies:
+        - Slow functions (> 1s)
+        - Memory leaks
+        - Inefficient loops
+        - Caching opportunities
         """
         pass
 ```
 
-### 6. External Tools Integration (NEU)
+### 6. External Tools Integration (NEW)
 ```python
 class ExternalToolsSource(IntelligenceSource):
     """
-    Entdeckt nützliche externe Tools/APIs.
-    - MCP Server Discovery
-    - API-Kataloge durchsuchen
-    - Tool-Empfehlungen aus Community
+    Discovers useful external tools/APIs.
+    - MCP server discovery
+    - Searching API catalogs
+    - Tool recommendations from community
     """
     source_type = "external"
     confidence_weight = 0.75
 
     def discover(self):
         """
-        Sucht nach:
-        - Neue MCP Server die zu Frank passen
-        - APIs die häufige Tasks erleichtern
-        - Tools die User-Requests erfüllen könnten
+        Searches for:
+        - New MCP servers that fit Frank
+        - APIs that simplify frequent tasks
+        - Tools that could fulfill user requests
         """
         pass
 ```
@@ -200,8 +200,8 @@ class ExternalToolsSource(IntelligenceSource):
 @dataclass
 class UnifiedProposal:
     """
-    Ein Verbesserungsvorschlag aus beliebiger Quelle.
-    Einheitliches Format für alle Intelligence Sources.
+    An improvement proposal from any source.
+    Unified format for all intelligence sources.
     """
     id: int
     source_type: str          # "github", "training", "user", "self", "perf", "external"
@@ -210,9 +210,9 @@ class UnifiedProposal:
     description: str
 
     # Why this matters
-    problem_statement: str    # Was ist das Problem?
-    proposed_solution: str    # Was ist die Lösung?
-    expected_benefit: str     # Was bringt das?
+    problem_statement: str    # What is the problem?
+    proposed_solution: str    # What is the solution?
+    expected_benefit: str     # What is the benefit?
 
     # Confidence & Priority
     confidence_score: float   # 0.0 - 1.0
@@ -220,13 +220,13 @@ class UnifiedProposal:
     urgency: str              # "low", "medium", "high", "critical"
 
     # Evidence
-    evidence: List[str]       # Warum glaubt Frank dass das gut ist?
-    related_events: List[str] # Training-Fehler, User-Requests, etc.
+    evidence: List[str]       # Why does Frank believe this is good?
+    related_events: List[str] # Training errors, user requests, etc.
 
     # Implementation
     complexity: str           # "trivial", "simple", "moderate", "complex"
     estimated_impact: str     # "minor", "moderate", "major", "transformative"
-    dependencies: List[str]   # Was muss zuerst da sein?
+    dependencies: List[str]   # What needs to exist first?
 
     # Status
     status: str               # "discovered", "testing", "ready", "approved", etc.
@@ -236,12 +236,12 @@ class UnifiedProposal:
 
 ---
 
-## Intelligente Priorisierung
+## Intelligent Prioritization
 
 ```python
 class ProposalRanker:
     """
-    Rankt Proposals intelligent basierend auf mehreren Faktoren.
+    Ranks proposals intelligently based on multiple factors.
     """
 
     def calculate_priority(self, proposal: UnifiedProposal) -> float:
@@ -249,11 +249,11 @@ class ProposalRanker:
         Priority Score Formula:
 
         priority = (
-            confidence * 0.25 +           # Wie sicher sind wir?
-            user_relevance * 0.30 +       # Hat User danach gefragt?
-            impact * 0.20 +               # Wie groß ist der Nutzen?
-            urgency * 0.15 +              # Wie dringend?
-            recency * 0.10                # Wie aktuell?
+            confidence * 0.25 +           # How confident are we?
+            user_relevance * 0.30 +       # Did the user ask for this?
+            impact * 0.20 +               # How big is the benefit?
+            urgency * 0.15 +              # How urgent?
+            recency * 0.10                # How recent?
         )
 
         Multipliers:
@@ -268,7 +268,7 @@ class ProposalRanker:
         impact = self._score_impact(proposal.estimated_impact)
         urgency = self._score_urgency(proposal.urgency)
 
-        # User relevance - höchste Gewichtung
+        # User relevance - highest weight
         user_relevance = self._calculate_user_relevance(proposal)
 
         # Recency bonus
@@ -296,11 +296,11 @@ class ProposalRanker:
 
     def _calculate_user_relevance(self, proposal: UnifiedProposal) -> float:
         """
-        Wie relevant ist das für den User?
-        - Direkte Requests: 1.0
-        - Implizite Wünsche: 0.7
-        - Training-Fehler die User betrafen: 0.6
-        - Allgemeine Verbesserungen: 0.3
+        How relevant is this for the user?
+        - Direct requests: 1.0
+        - Implicit wishes: 0.7
+        - Training errors that affected the user: 0.6
+        - General improvements: 0.3
         """
         if proposal.source_type == "user_feedback":
             return 1.0
@@ -313,34 +313,34 @@ class ProposalRanker:
 
 ---
 
-## Emergente Vernetzung
+## Emergent Interconnection
 
 ### Cross-Source Correlation
 ```python
 class EmergentAnalyzer:
     """
-    Findet Verbindungen zwischen verschiedenen Intelligence Sources.
-    Emergentes Verhalten durch Korrelation.
+    Finds connections between different intelligence sources.
+    Emergent behavior through correlation.
     """
 
     def find_correlations(self, proposals: List[UnifiedProposal]) -> List[Insight]:
         """
-        Beispiel-Korrelationen:
+        Example correlations:
 
         1. GitHub Feature + User Request = HIGH PRIORITY
-           "User fragte nach 'besseres Logging' UND
-            GitHub hat 'structured-logger' mit 95% confidence"
-           → Korrelation! Priority boosted.
+           "User asked for 'better logging' AND
+            GitHub has 'structured-logger' with 95% confidence"
+           -> Correlation! Priority boosted.
 
         2. Training Error + Self-Analysis = BUGFIX NEEDED
-           "Training scheiterte 5x an JSON parsing UND
-            Self-Analysis fand veraltete json library"
-           → Korrelation! Urgency = critical
+           "Training failed 5x at JSON parsing AND
+            self-analysis found outdated json library"
+           -> Correlation! Urgency = critical
 
         3. Performance Issue + External Tool = SOLUTION FOUND
-           "Slow startup detected UND
-            External Tool 'lazy-loader' available"
-           → Korrelation! Automatic proposal generated
+           "Slow startup detected AND
+            external tool 'lazy-loader' available"
+           -> Correlation! Automatic proposal generated
         """
 
         correlations = []
@@ -364,7 +364,7 @@ class EmergentAnalyzer:
 
     def _create_correlation_insight(self, topic: str, proposals: List) -> Insight:
         """
-        Erstellt einen verstärkten Vorschlag aus korrelierten Quellen.
+        Creates a reinforced proposal from correlated sources.
         """
         # Combine confidence scores
         combined_confidence = 1 - math.prod(1 - p.confidence_score for p in proposals)
@@ -382,54 +382,54 @@ class EmergentAnalyzer:
 
 ---
 
-## Antizipatives Verhalten
+## Anticipatory Behavior
 
 ### Prediction Engine
 ```python
 class AnticipatoryEngine:
     """
-    Frank antizipiert was der User brauchen wird.
-    Proaktiv statt reaktiv.
+    Frank anticipates what the user will need.
+    Proactive instead of reactive.
     """
 
     def predict_needs(self, context: UserContext) -> List[Prediction]:
         """
-        Basierend auf:
-        - Aktuelle Projekte des Users
-        - Historische Patterns
-        - Saisonale Trends
-        - Workflow-Analyse
+        Based on:
+        - User's current projects
+        - Historical patterns
+        - Seasonal trends
+        - Workflow analysis
         """
 
         predictions = []
 
-        # Pattern: User arbeitet an Web-Projekt
+        # Pattern: User is working on a web project
         if self._detect_web_project(context):
             predictions.append(Prediction(
                 what="API Testing Tools",
-                why="User arbeitet an Web-Projekt, wird wahrscheinlich APIs testen",
-                when="Bald",
+                why="User is working on a web project, will likely test APIs",
+                when="Soon",
                 confidence=0.75
             ))
 
-        # Pattern: User hat kürzlich nach X gefragt
+        # Pattern: User recently asked about X
         recent_topics = self._get_recent_topics(context)
         for topic in recent_topics:
             related = self._find_related_tools(topic)
             if related:
                 predictions.append(Prediction(
                     what=related.name,
-                    why=f"User interessierte sich für '{topic}', dies ist verwandt",
-                    when="Wenn verfügbar",
+                    why=f"User was interested in '{topic}', this is related",
+                    when="When available",
                     confidence=0.6
                 ))
 
-        # Pattern: Zeitbasiert
+        # Pattern: Time-based
         if self._is_end_of_sprint(context):
             predictions.append(Prediction(
                 what="Code Review Tools",
-                why="Sprint-Ende naht, Code Reviews werden wichtiger",
-                when="Diese Woche",
+                why="Sprint end is approaching, code reviews become more important",
+                when="This week",
                 confidence=0.7
             ))
 
@@ -437,11 +437,11 @@ class AnticipatoryEngine:
 
     def act_on_predictions(self, predictions: List[Prediction]):
         """
-        Handelt proaktiv basierend auf Vorhersagen.
+        Acts proactively based on predictions.
 
-        - Beginnt Sandbox-Tests für vorhergesagte Tools
-        - Bereitet Proposals vor
-        - Sammelt mehr Daten zur Bestätigung
+        - Begins sandbox tests for predicted tools
+        - Prepares proposals
+        - Gathers more data for confirmation
         """
         for pred in predictions:
             if pred.confidence >= 0.7:
@@ -456,7 +456,7 @@ class AnticipatoryEngine:
 
 ## Popup Integration
 
-### Kategorisierte Ansicht
+### Categorized View
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │    ╔══════════════════════════════════════════════════════════════╗    │
@@ -465,14 +465,14 @@ class AnticipatoryEngine:
 │    ║  12 IMPROVEMENTS AVAILABLE                                   ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
 │    ║                                                              ║    │
-│    ║  📁 FILTER: [Alle ▼]  SORT: [Priority ▼]  🔍               ║    │
+│    ║  📁 FILTER: [All ▼]  SORT: [Priority ▼]  🔍               ║    │
 │    ║                                                              ║    │
 │    ║  ┌─────────────────────────────────────────────────────────┐║    │
 │    ║  │ 🎯 HIGH PRIORITY (User + System agree)                  │║    │
 │    ║  │                                                         │║    │
 │    ║  │ ☐ Structured Logger       [GitHub + User Request]       │║    │
-│    ║  │   "Du fragtest nach besserem Logging UND wir fanden    │║    │
-│    ║  │    ein perfekt passendes Tool auf GitHub"               │║    │
+│    ║  │   "You asked for better logging AND we found            │║    │
+│    ║  │    a perfectly matching tool on GitHub"                  │║    │
 │    ║  │   Priority: ████████████ 98%                            │║    │
 │    ║  └─────────────────────────────────────────────────────────┘║    │
 │    ║                                                              ║    │
@@ -480,7 +480,7 @@ class AnticipatoryEngine:
 │    ║  │ 🔧 FROM TRAINING                                        │║    │
 │    ║  │                                                         │║    │
 │    ║  │ ☐ Robust JSON Parser      [Training: 5 failures]        │║    │
-│    ║  │   "Training zeigte wiederholt JSON-Parsing Probleme"    │║    │
+│    ║  │   "Training repeatedly showed JSON parsing problems"    │║    │
 │    ║  │   Priority: ████████░░░░ 75%                            │║    │
 │    ║  └─────────────────────────────────────────────────────────┘║    │
 │    ║                                                              ║    │
@@ -496,33 +496,33 @@ class AnticipatoryEngine:
 │    ║  │ ⚡ PERFORMANCE                                          │║    │
 │    ║  │                                                         │║    │
 │    ║  │ ☐ Startup Optimizer       [Detected: 3.2s → 1.1s]       │║    │
-│    ║  │   "Startup könnte um 66% beschleunigt werden"           │║    │
+│    ║  │   "Startup could be accelerated by 66%"                 │║    │
 │    ║  └─────────────────────────────────────────────────────────┘║    │
 │    ║                                                              ║    │
 │    ╠══════════════════════════════════════════════════════════════╣    │
-│    ║  ... (action buttons wie gehabt)                             ║    │
+│    ║  ... (action buttons as before)                              ║    │
 │    ╚══════════════════════════════════════════════════════════════╝    │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Implementierungs-Roadmap
+## Implementation Roadmap
 
 ```
-Phase 1: Foundation (Jetzt fertig)
+Phase 1: Foundation (Now complete)
 ─────────────────────────────────
 ✓ F.A.S. GitHub Discovery
 ✓ Popup System
 ✓ Queue Manager
 ✓ Activity Detector
 
-Phase 2: Unified Hub (Nächster Schritt)
+Phase 2: Unified Hub (Next step)
 ─────────────────────────────────
 □ UnifiedProposal Schema
 □ Multi-Source Database
 □ Proposal Ranker
-□ Kategorisierte Popup-Ansicht
+□ Categorized Popup View
 
 Phase 3: Training Integration
 ─────────────────────────────────
@@ -555,14 +555,14 @@ Phase 6: Anticipation
 
 ---
 
-## Zusammenfassung
+## Summary
 
-**F.I.H. (Frank's Intelligence Hub)** ist die Evolution von F.A.S.:
+**F.I.H. (Frank's Intelligence Hub)** is the evolution of F.A.S.:
 
-1. **Nicht nur GitHub** - Alle Quellen der Verbesserung
-2. **Emergent** - Korrelationen zwischen Quellen verstärken Signale
-3. **Vernetzt** - Training + User + GitHub + Self = Ganzheitlich
-4. **Antizipativ** - Frank sieht Bedürfnisse voraus
-5. **User-Centric** - User bleibt Human-in-the-Loop für finale Entscheidung
+1. **Not just GitHub** - All sources of improvement
+2. **Emergent** - Correlations between sources amplify signals
+3. **Interconnected** - Training + User + GitHub + Self = Holistic
+4. **Anticipatory** - Frank foresees needs in advance
+5. **User-Centric** - User remains human-in-the-loop for final decisions
 
-Das Popup wird zum **Dashboard der kontinuierlichen Verbesserung** - ein Fenster in Frank's Wachstum, gesteuert vom User.
+The popup becomes the **dashboard of continuous improvement** - a window into Frank's growth, controlled by the user.

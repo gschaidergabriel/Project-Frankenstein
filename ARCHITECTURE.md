@@ -69,7 +69,7 @@
         │                                                       │
         ▼                                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              DATABASES (28)                                 │
+│                              DATABASES (29)                                 │
 │  titan.db │ consciousness.db │ world_experience.db │ chat_memory.db │ ...  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -84,8 +84,8 @@
 | Voice | Whisper STT + Piper TTS (push-to-talk) |
 | OS | Ubuntu 24.04 Linux |
 | GPU | AMD Phoenix1 (integrated, Vulkan backend) |
-| Services | 23 systemd user services |
-| Databases | 28 SQLite databases |
+| Services | 24 systemd user services |
+| Databases | 29 SQLite databases |
 | Codebase | 76k+ lines Python |
 
 ---
@@ -105,6 +105,7 @@ All services communicate via HTTP REST APIs on localhost:
 | Webd | 8093 | Web search (DuckDuckGo) |
 | Ingestd | 8094 | Document ingestion |
 | Toolbox | 8096 | System introspection & tools |
+| Quantum Reflector | 8097 | Epistemic coherence optimization (QUBO + SA) |
 | Llama | 8101 | General reasoning (llama.cpp) |
 | Qwen | 8102 | Code generation (llama.cpp, on-demand) |
 | Whisper | 8103 | Speech-to-text (GPU) |
@@ -335,7 +336,7 @@ Frank's persistent global workspace. Thinks continuously even between conversati
 | feature-training | 1h (10min delay) | Weekly 3-phase feature self-training |
 | perception-feedback | 200ms | Hardware sensor polling, event detection |
 | experience-space | 60s | 64-dim state embedding, novelty/drift detection |
-| attention-controller | 10s | AST: 6 competing attention sources |
+| attention-controller | 10s | AST: 7 competing attention sources |
 | goal-management | 300s (1min delay) | Goal extraction, ACT-R decay, conflict detection |
 
 ---
@@ -382,7 +383,7 @@ Token budget: ~295 tokens.
 
 #### Attention Controller (AST)
 
-Active Source Tracking — selects focus from 6 competing sources every 10s.
+Active Source Tracking — selects focus from 7 competing sources every 10s.
 
 | Source | Trigger | Salience Formula |
 |--------|---------|-----------------|
@@ -391,6 +392,7 @@ Active Source Tracking — selects focus from 6 competing sources every 10s.
 | `perceptual_event` | Recent HW events | `min(0.8, 0.2×unique + 0.1×total)` |
 | `mood_shift` | `|mood| > 0.3` | `0.5 × |mood_value|` |
 | `goal_urgency` | Priority > 0.6 | `0.4 × goal_priority` |
+| `coherence_signal` | Epistemic gap > 2.0 | `min(0.6, 0.2 + gap × 0.05)` |
 | `idle_curiosity` | Fallback | `0.15` (fixed baseline) |
 
 Winner: Highest salience source wins focus. Repetition penalty for consecutive wins.
@@ -654,6 +656,45 @@ Invisible enforcement layer — Frank cannot see, query, or modify these. They a
 
 ---
 
+### Quantum Reflector — Epistemic Coherence Optimization
+
+#### `/services/quantum_reflector/` - QUBO-Based Coherence Service (:8097)
+
+Continuously monitors Frank's cognitive state and computes the optimal coherence configuration using simulated annealing on a QUBO (Quadratic Unconstrained Binary Optimization) matrix.
+
+**Core Concept:** Frank's cognitive state (active entity, intent, phase, mode, mood, E-PQ vectors, task load, engagement, surprise, confidence, goals) is encoded as a 40-variable binary optimization problem. Simulated annealing finds the lowest-energy (most coherent) configuration, and the gap between current and optimal state drives feedback.
+
+**Architecture:**
+
+| Component | Purpose |
+|-----------|---------|
+| `qubo_builder.py` | Reads Frank's state from DBs, builds linear penalties + quadratic implications (47 rules) |
+| `annealer.py` | Simulated annealing with O(n) delta energy, multi-flip, 200 runs × 2000 steps |
+| `coherence_monitor.py` | Polling daemon (5s), cumulative drift detection, energy history |
+| `epq_bridge.py` | Translates coherence events → E-PQ personality events with exponential backoff |
+| `api.py` | HTTP API: `/health`, `/status`, `/energy`, `/trend`, `/solve`, `/simulate` |
+
+**40-Variable Schema (12 one-hot groups + 4 binaries):**
+
+| Variables | Group | Encoding |
+|-----------|-------|----------|
+| 0-3 | Entity | therapist, mirror, atlas, muse |
+| 4-6 | Intent | update, review, creative |
+| 7-9 | Phase | idle, engaged, reflecting |
+| 10-12 | Mode | meeting, project, focus |
+| 13-14 | Mood | positive, negative |
+| 15-29 | E-PQ (5×3) | precision/risk/empathy/autonomy/vigilance × low/mid/high |
+| 30-32 | Task Load | none, moderate, heavy |
+| 33-35 | Engagement | absent, recent, active |
+| 36-39 | Binaries | surprise_high, confidence_high, goal_urgent, reflector_aligned |
+
+**Integration Points:**
+- **Consciousness**: Attention source #6 (`coherence_signal`) — triggers when epistemic gap > 2.0
+- **Genesis**: Manifestation resonance factor #8 — queries `/simulate` for what-if coherence scoring
+- **E-PQ**: Bridge fires `reflection_growth`/`reflection_vulnerability` events on improvement/degradation
+
+---
+
 ### Safety Systems
 
 #### A.S.R.S. — Autonomous Safety Recovery System v2.0
@@ -737,7 +778,7 @@ GitHub intelligence and code analysis.
 
 ## Databases
 
-### Overview (28 databases)
+### Overview (29 databases)
 
 | Database | Purpose | Key Tables |
 |----------|---------|------------|
@@ -766,13 +807,14 @@ GitHub intelligence and code analysis.
 | `clipboard_history.db` | Clipboard | clipboard_entries |
 | `fas_scavenger.db` | GitHub analysis | analyzed_repos, scout_history, extracted_features |
 | `news_scanner.db` | News | (runtime) |
+| `quantum_reflector.db` | Epistemic coherence optimization | energy_history, coherence_events |
 | `aicore.sqlite` | Core events | events |
 
 ---
 
 ## Services
 
-### All 23 systemd User Services
+### All 24 systemd User Services
 
 | Service | Status | Description |
 |---------|--------|-------------|
@@ -793,6 +835,7 @@ GitHub intelligence and code analysis.
 | `aicore-asrs` | Always on | Safety recovery system |
 | `aicore-entities` | Always on | Entity session dispatcher |
 | `aicore-gaming-mode` | Always on | Gaming mode detection |
+| `aicore-quantum-reflector` | Always on | Epistemic coherence (QUBO + SA, :8097) |
 | `aicore-fas` | Scheduled | Autonomous scavenger (02:00-06:00) |
 | `aicore-therapist` | On-demand | Dr. Hibbert entity |
 | `aicore-atlas` | On-demand | Atlas entity |
@@ -813,7 +856,7 @@ GitHub intelligence and code analysis.
                       │ events
                       ▼
                ┌──────────────┐
-               │  Attention   │◄── 6 competing sources
+               │  Attention   │◄── 7 competing sources
                │  (AST)       │──► Focus selection every 10s
                └──────┬───────┘
                       │ salience weights
@@ -869,7 +912,7 @@ System observations (7 sensors)
          ▼
 ┌──────────────────┐
 │  Manifestation   │
-│  Gate            │──► Resonance + readiness check
+│  Gate            │──► Resonance + readiness + coherence check
 └────────┬─────────┘
          │
          ▼
@@ -935,6 +978,16 @@ GET  /hw/detail    - Hardware detail
 POST /desktop/*    - Desktop automation
 ```
 
+### Quantum Reflector API (`:8097`)
+```http
+GET  /health    - Service health check
+GET  /status    - Full monitor state (solve count, history, EPQ bridge stats)
+GET  /energy    - Current vs optimal energy, gap, violations, optimal state
+GET  /trend     - Energy trend analysis (improving/stable/degrading)
+POST /solve     - Force immediate QUBO solve
+POST /simulate  - What-if coherence scoring (accepts hypothesis JSON)
+```
+
 ### E-PQ API
 ```python
 from personality import get_personality_context, process_event
@@ -979,4 +1032,4 @@ ego.auto_train_from_state(
 
 ---
 
-*Updated 2026-02-23 — v3.1 release cleanup. All processing is 100% local.*
+*Updated 2026-02-23 — v3.2 quantum reflector added. All processing is 100% local.*

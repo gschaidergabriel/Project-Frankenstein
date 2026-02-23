@@ -3,7 +3,7 @@
 **Date:** 2026-02-15
 **Method:** 21-probe comparative benchmark across 8 capability categories
 **Systems under test:**
-- **Frank** — Llama 3.1 8B Instruct (Q4_K_M) wrapped in 22 autonomous subsystems (Global Workspace, Ego-Construct, E-PQ personality, Perception Loop, Experience Space, Attention Controller, Goal Structure, Prediction Engine, Memory Consolidation)
+- **Frank** — Llama 3.1 8B Instruct (Q4_K_M) wrapped in 23 autonomous subsystems (Global Workspace, Ego-Construct, E-PQ personality, Perception Loop, Experience Space, Attention Controller, Goal Structure, Prediction Engine, Memory Consolidation, Quantum Reflector)
 - **Bare Llama 3.1 8B** — Same model, same hardware, minimal system prompt ("You are a helpful assistant"), no architecture
 
 Both systems run on the same machine (AMD Ryzen 7 / Radeon 780M, Vulkan GPU). The only variable is the architecture surrounding the LLM.

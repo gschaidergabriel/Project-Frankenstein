@@ -9,7 +9,7 @@ Built by one person in 2 months with zero programming experience. [Read the full
 
 **[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)**
 
-A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ services on your machine — voice interaction, agentic task execution, autonomous entities, a dynamic personality engine, and more — all powered by local LLMs with zero cloud dependencies.
+A fully local, privacy-first AI desktop companion for Linux. Frank runs 26+ services on your machine — voice interaction, agentic task execution, autonomous entities, a dynamic personality engine, and more — all powered by local LLMs with zero cloud dependencies.
 
 ![Frank Desktop](assets/screenshot.png)
 
@@ -23,7 +23,8 @@ A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ serv
 - **Plugin System** — 25 skills: 3 native Python + 22 OpenClaw (LLM-mediated) with hot-reload
 - **Desktop Automation** — App launcher, screenshot analysis, window management via xdotool/wmctrl
 - **Personality Engine** — E-PQ 5-vector personality, ego-construct (hardware→body mapping), self-knowledge
-- **Consciousness Stream** — 10-thread daemon: Global Workspace (GWT), attention controller (AST), perception loop (200ms), experience space (64-dim), goals, deep reflection, predictions, mood trajectory
+- **Consciousness Stream** — 10-thread daemon: Global Workspace (GWT), attention controller (AST), perception loop (200ms), experience space (64-dim), goals, deep reflection, predictions, mood trajectory, coherence signal
+- **Quantum Reflector** — QUBO-based epistemic coherence optimization: 40-variable binary model, simulated annealing (200 runs), E-PQ feedback loop, Genesis coherence scoring
 - **Autonomous Entities** — 4 AI agents that interact with Frank on a daily schedule (see below)
 - **Self-Improvement** — Genesis daemon: idea organisms evolve in a primordial soup, crystallize, and manifest through approval gates
 - **Safety Systems** — ASRS (4-stage rollback), invariants engine (energy, entropy, core kernel, triple reality), gaming mode
@@ -116,6 +117,7 @@ Frank is a microservice system where all services communicate via HTTP on localh
 | Webd | 8093 | Web search (DuckDuckGo) |
 | Ingestd | 8094 | Document ingestion, file processing |
 | Toolboxd | 8096 | System tools, skills, todos, notes |
+| Quantum Reflector | 8097 | Epistemic coherence optimization (QUBO + simulated annealing) |
 
 LLM inference:
 | Engine | Port | Models |
@@ -136,6 +138,7 @@ Background services (no port):
 | ASRS | Autonomous safety recovery system (4-stage monitoring, rollback) |
 | Gaming Mode | Detect active games, manage GPU resources, anti-cheat safety |
 | F.A.S. | Frank's Autonomous Scavenger — GitHub intelligence (scheduled) |
+| Quantum Reflector | Epistemic coherence monitor — QUBO-based state optimization, E-PQ feedback |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) for the 9-layer memory system.
 
@@ -324,7 +327,7 @@ Project-Frankenstein/
 ├── router/            # LLM request routing (FastAPI)
 ├── schemas/           # Data schemas
 ├── scripts/           # Utility and setup scripts
-├── services/          # Background daemons (consciousness, genesis, invariants, ASRS, entities)
+├── services/          # Background daemons (consciousness, genesis, invariants, ASRS, entities, quantum reflector)
 ├── skills/            # Plugin system (native + OpenClaw)
 ├── tests/             # Test suite
 ├── tools/             # System tools, toolboxd, titan memory

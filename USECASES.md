@@ -275,4 +275,4 @@ Dazu schuetzt die Invariants-Engine Franks Wissensbasis mit physik-analogen Gese
 
 ---
 
-*25 Skills, 34 Agent-Tools, 27+ SQLite-Datenbanken, 25 systemd-Services. Alles lokal, alles Open Source.*
+*25 Skills, 34 Agent-Tools, 29 SQLite-Datenbanken, 26 systemd-Services. Alles lokal, alles Open Source.*

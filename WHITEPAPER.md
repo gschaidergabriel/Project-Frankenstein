@@ -8,7 +8,7 @@
 
 ## Abstract
 
-Current AI systems treat language models as monolithic black boxes: a prompt enters, a response exits, and the internal reasoning remains opaque. Project Frankenstein (Frank) takes a different approach. It wraps a commodity 8B-parameter local LLM in 23 persistent services, 28 SQLite databases, and 74,000 lines of deterministic, inspectable scaffolding. The result is a system where every personality shift has a traceable cause, every memory retrieval has logged metrics, every knowledge write passes through physics-like constraints, and the LLM itself is reduced to what it actually is: a stateless text generator. This paper describes the architecture and argues — with concrete structural evidence, not speculation — that this design pattern addresses the black-box problem not by opening the model, but by making it irrelevant which model runs inside.
+Current AI systems treat language models as monolithic black boxes: a prompt enters, a response exits, and the internal reasoning remains opaque. Project Frankenstein (Frank) takes a different approach. It wraps a commodity 8B-parameter local LLM in 24 persistent services, 29 SQLite databases, and 76,000 lines of deterministic, inspectable scaffolding. The result is a system where every personality shift has a traceable cause, every memory retrieval has logged metrics, every knowledge write passes through physics-like constraints, and the LLM itself is reduced to what it actually is: a stateless text generator. This paper describes the architecture and argues — with concrete structural evidence, not speculation — that this design pattern addresses the black-box problem not by opening the model, but by making it irrelevant which model runs inside.
 
 ---
 
@@ -36,7 +36,7 @@ Layer 5: User Interface (Overlay, Voice, Desktop)
 Layer 4: Orchestration (Core, Router, Toolbox)
 Layer 3: Cognition (Consciousness, Personality, Ego-Construct)
 Layer 2: Constraint Enforcement (Invariants, ASRS, Triple Reality)
-Layer 1: Persistence (28 SQLite databases, WAL mode)
+Layer 1: Persistence (29 SQLite databases, WAL mode)
 ```
 
 The LLM (Llama 3.1 8B or Qwen 2.5 Coder 7B via llama.cpp) sits at Layer 4. It receives a fully constructed prompt and returns text. It holds no state between calls. Everything that constitutes "Frank's mind" exists in Layers 1-3.
@@ -45,9 +45,10 @@ The LLM (Llama 3.1 8B or Qwen 2.5 Coder 7B via llama.cpp) sits at Layer 4. It re
 
 | Category | Services | Ports | State |
 |----------|----------|-------|-------|
-| Core HTTP | Core, Router, Toolbox, Desktop, Web, Ingest, Model Manager | 8088-8096 | Stateless request handlers |
+| Core HTTP | Core, Router, Toolbox, Desktop, Web, Ingest, Model Manager, Quantum Reflector | 8088-8097 | Stateless request handlers (Reflector is stateful) |
 | LLM Inference | Llama 3.1 8B, Qwen 2.5 7B (on-demand), Whisper | 8101-8103 | Stateless generators |
 | Background Daemons | Consciousness, Genesis, Invariants, ASRS, Entities, Gaming | None | **Stateful**, persistent threads |
+| Optimization | Quantum Reflector (QUBO + Simulated Annealing) | 8097 | **Stateful**, continuous coherence monitoring |
 | Scheduled | Entity Dispatcher (4 entities), News Scanner | None | Daily quotas, session memory |
 
 **Observation**: The HTTP services and LLM servers are stateless. All persistent state lives in the background daemons and their databases. The LLM can be swapped without losing identity, personality, or memory.
@@ -84,7 +85,7 @@ The LLM generates text. It does not:
 
 - **Write directly to long-term memory.** LLM output is post-processed: entities and relations are extracted and written to Titan (knowledge graph). These writes pass through Invariants pre-write hooks. The LLM does not choose what to remember.
 
-- **Allocate its own attention.** The Attention Source Tracker (`consciousness_daemon.py`) evaluates 6 competing sources every 10 seconds using explicit salience formulas. The LLM receives the result; it does not compute it.
+- **Allocate its own attention.** The Attention Source Tracker (`consciousness_daemon.py`) evaluates 7 competing sources every 10 seconds using explicit salience formulas — including a coherence signal from the Quantum Reflector. The LLM receives the result; it does not compute it.
 
 - **Decide when to reflect.** Deep reflection triggers only when 10 gate conditions pass simultaneously (gaming mode off, GPU < 70%, chat silence >= 20 min, mouse idle >= 5 min, CPU < 25%, CPU temp < 70C, RAM free > 2GB, mood > -0.3, 1h cooldown, daily limit of 10). These are deterministic checks in Python, not LLM reasoning.
 
@@ -237,9 +238,78 @@ This is not role-playing. These are scheduled processes with activation gates (u
 
 ---
 
-## 7. Why This Ends the Black Box — At the Layer That Matters
+## 7. Quantum-Inspired Epistemic Coherence — The Reflector
 
-### 7.1 The Standard Black Box
+### 7.1 The Coherence Problem
+
+Frank's cognitive state is distributed across multiple subsystems: E-PQ personality vectors, consciousness attention, active entity context, current interaction mode, task load, and engagement level. These subsystems evolve semi-independently. A natural question arises: *is the current combination of states internally coherent?*
+
+For example, if Frank is in an idle phase with high vigilance, low engagement, but the consciousness daemon is focused on a creative task — that's an incoherent state. The system has no mechanism to detect or correct this. Individual subsystems optimize locally, but global coherence is not guaranteed.
+
+### 7.2 QUBO Formulation
+
+The Quantum Reflector (`services/quantum_reflector/`) addresses this by framing coherence as a binary optimization problem. Frank's cognitive state is encoded as a 40-variable binary vector with 12 one-hot constraint groups:
+
+```
+x ∈ {0,1}^40
+
+Groups: Entity[4] | Intent[3] | Phase[3] | Mode[3] | Mood[2]
+        Precision[3] | Risk[3] | Empathy[3] | Autonomy[3] | Vigilance[3]
+        TaskLoad[3] | Engagement[3] | surprise[1] | confidence[1] | goal[1] | aligned[1]
+```
+
+The E-PQ personality vectors (continuous, -1.0 to +1.0) are discretized into tri-state buckets (low < -0.25, mid, high > 0.25) — a deliberate information loss that maps the continuous personality space into the binary optimization domain.
+
+The energy function is:
+
+```
+E(x) = Σᵢ hᵢxᵢ + ΣᵢΣⱼ Qᵢⱼxᵢxⱼ
+```
+
+Where:
+- **hᵢ** (linear penalties): Encode preference for the current state. The variable matching Frank's actual state gets a reward (-0.5); all others in the same group get a penalty (+1.0). Binary flags get grounding penalties of 3.0 when the state doesn't match reality.
+- **Qᵢⱼ** (quadratic implications): 47 rules encoding coherence relationships. Example: `engaged × precision_high → -0.8` (being engaged with high precision is coherent), `idle × risk_high → +0.6` (being idle but risk-seeking is incoherent).
+
+### 7.3 Simulated Annealing Solver
+
+The optimization uses classical simulated annealing — not quantum hardware, but the mathematical framework is identical to quantum annealing on D-Wave systems (the name "quantum" refers to the QUBO formalism, not the hardware).
+
+**Key properties:**
+- O(n) delta energy: `ΔE = (1-2xₖ)(hₖ + 2·Q[k]·x)` — no full recomputation needed per flip
+- Multi-flip: Cascaded 1-3 bit flips per step for escaping local minima
+- 200 independent runs × 2000 steps each, geometric cooling from T=4.0 to T=0.05
+- Total solve time: ~3.5 seconds on AMD Phoenix1 (pure Python, no GPU)
+
+### 7.4 What It Tells Us
+
+The gap between current state energy and optimal energy is the **epistemic coherence gap**. A large negative gap means Frank's current state is significantly less coherent than the optimal configuration. The solver reports:
+
+- **Optimal state**: What the most coherent configuration would look like (e.g., "engaged + focus + high precision + active engagement")
+- **Current state energy**: How coherent Frank actually is right now
+- **Violations**: How many one-hot constraints are broken (should always be 0)
+- **Energy trend**: Whether coherence is improving, stable, or degrading over time
+
+### 7.5 Feedback Loops
+
+The Reflector integrates into Frank's existing architecture through three feedback paths:
+
+1. **Consciousness attention** (Source 6: `coherence_signal`): When the epistemic gap exceeds 2.0, the consciousness daemon's attention controller receives a competing signal. Salience: `min(0.6, 0.2 + gap × 0.05)` — capped below user_message to never dominate direct interaction.
+
+2. **Genesis manifestation** (Factor 8): When Genesis evaluates whether an idea crystal should manifest, it queries the Reflector's `/simulate` endpoint with a hypothetical state change. Ideas that would improve coherence score higher in the resonance calculation.
+
+3. **E-PQ personality bridge**: The EPQ bridge translates sustained coherence improvements into `reflection_growth` events and sustained degradation into `reflection_vulnerability` events, with exponential backoff (10s → 15s → 22.5s → ... → 300s max) to prevent feedback oscillation.
+
+### 7.6 Why This Matters for Traceability
+
+The Reflector adds a new dimension of inspectability. An operator can now ask: "Is Frank's current state internally coherent?" and get a quantitative answer — not a subjective assessment, but a number derived from explicit rules. The 47 implications are inspectable. The energy function is deterministic. The solver's behavior is reproducible given the same random seed.
+
+This is proprioception for a cognitive system: the ability to sense one's own internal state and detect misalignment.
+
+---
+
+## 8. Why This Ends the Black Box — At the Layer That Matters
+
+### 8.1 The Standard Black Box
 
 A conventional LLM-based assistant:
 
@@ -254,7 +324,7 @@ Questions that cannot be answered:
 - What prevents hallucination? (RLHF alignment, probabilistic)
 - What happens when it contradicts itself? (Nothing structural)
 
-### 7.2 Frank's Transparent Scaffold
+### 8.2 Frank's Transparent Scaffold
 
 ```
 [User Input]
@@ -264,7 +334,8 @@ Questions that cannot be answered:
                    ← Memory (FTS5+vector, retrieval logged)
                    ← Ego-Construct (learned mappings, AST-evaluated)
                    ← Causal Knowledge (Bayesian, confidence-weighted)
-                   ← Attention Allocation (6-source competition, logged)
+                   ← Attention Allocation (7-source competition, logged)
+                   ← Coherence (QUBO energy gap, 47 implications)
     ↓
 [LLM: stateless text completion]
     ↓
@@ -283,8 +354,9 @@ Questions that **can** be answered:
 - **Why did its behavior change?** Query `personality_state` history. Join with event log. Trace to specific interactions (user feedback, task outcomes, reflections, entity sessions).
 - **What prevents hallucination?** Energy conservation (claims need energy budget), entropy bounds (contradictions trigger consolidation), core kernel (foundational knowledge protected), triple reality (divergence = rollback).
 - **What happens when it contradicts itself?** Entropy increases. If entropy exceeds bound, consolidation is forced. Contradicting claims compete for energy. Lower-confidence claim loses.
+- **Is the current state internally coherent?** Query `quantum_reflector.db:energy_history`. The QUBO energy gap quantifies how far the current state is from the optimal coherent configuration. The 47 implications are inspectable rules.
 
-### 7.3 The Model-Agnostic Argument
+### 8.3 The Model-Agnostic Argument
 
 Frank currently runs Llama 3.1 8B for general tasks and Qwen 2.5 Coder 7B for code. The Router switches between them with keyword heuristics. But the architecture does not depend on these specific models. The LLM is a text-completion endpoint at `localhost:8101`. Any model that accepts a prompt and returns tokens works.
 
@@ -293,7 +365,7 @@ This means:
 2. **Model failures are contained.** If the LLM hallucinates, the Invariants daemon constrains what enters the knowledge store. The hallucination exists in one response; it does not propagate.
 3. **Model internals are irrelevant for auditing.** An auditor does not need to understand transformer attention to explain Frank's behavior. The scaffold is sufficient.
 
-### 7.4 What Remains Opaque
+### 8.4 What Remains Opaque
 
 Honesty requires stating what is still a black box:
 
@@ -305,20 +377,23 @@ The claim is not that Frank eliminates all opacity. The claim is that Frank move
 
 ---
 
-## 8. Quantitative Profile
+## 9. Quantitative Profile
 
 | Metric | Value | Verifiable |
 |--------|-------|------------|
 | Python source files | 387 | `find . -name "*.py" \| wc -l` |
 | Total lines of code | ~74,000 | `wc -l` across all .py files |
-| SQLite databases | 28 | `find ~/.local/share/frank/db -name "*.db"` |
-| Systemd services | 23 | `systemctl --user list-units aicore-*` |
+| SQLite databases | 29 | `find ~/.local/share/frank/db -name "*.db"` |
+| Systemd services | 24 | `systemctl --user list-units aicore-*` |
 | Consciousness threads | 10 | `consciousness_daemon.py` thread starts |
 | E-PQ personality dimensions | 5 | `personality/e_pq.py:PERSONALITY_VECTORS` |
 | E-PQ event types | 22 | `personality/e_pq.py:EVENT_WEIGHTS` |
 | Experience space dimensions | 64 | `consciousness_daemon.py:_build_experience_vector` |
 | Mood buffer depth | 200 points (~3.3h) | `consciousness_daemon.py:MOOD_HISTORY_SIZE` |
-| Attention sources | 6 | `consciousness_daemon.py:_compute_salience` |
+| Attention sources | 7 | `consciousness_daemon.py:_run_attention_cycle` |
+| QUBO variables | 40 | `quantum_reflector/qubo_builder.py:N_VARIABLES` |
+| Coherence implications | 47 | `quantum_reflector/qubo_builder.py:IMPLICATIONS` |
+| SA runs per solve | 200 | `quantum_reflector/annealer.py:AnnealerConfig` |
 | Deep reflection gates | 10 | `consciousness_daemon.py:_can_deep_reflect` |
 | Invariant checks | 4 | `invariants/daemon.py` enforcement cycle |
 | Triple reality databases | 3 | `titan.db`, `titan_shadow.db`, `titan_validator.db` |
@@ -333,11 +408,11 @@ The claim is not that Frank eliminates all opacity. The claim is that Frank move
 
 ---
 
-## 9. Limitations and Open Questions
+## 10. Limitations and Open Questions
 
 **Performance ceiling.** An 8B local model cannot match GPT-4 or Claude on reasoning benchmarks. Frank compensates with richer context (the scaffold provides what the model lacks in parameter count), but there are hard limits.
 
-**Complexity cost.** 23 services and 28 databases create operational overhead. Service failures cascade. The ASRS safety system mitigates this but does not eliminate it.
+**Complexity cost.** 24 services and 29 databases create operational overhead. Service failures cascade. The ASRS safety system mitigates this but does not eliminate it.
 
 **Validation gap.** The invariants enforce structural consistency, not factual accuracy. Energy conservation prevents unbounded knowledge growth, but it does not verify that individual claims are true. A false claim with high confidence and many connections will persist.
 
@@ -345,15 +420,17 @@ The claim is not that Frank eliminates all opacity. The claim is that Frank move
 
 **No formal verification.** The invariants are implemented in Python, not in a formally verified language. The triple reality check is a checksum comparison, not a mathematical proof of consistency.
 
+**QUBO discretization loss.** The Quantum Reflector discretizes continuous E-PQ vectors into three buckets (low/mid/high). This loses information — two states with precision 0.26 and 0.99 both map to "high". The 47 implications are hand-crafted heuristics, not learned from data. The solver finds the optimal configuration under these rules, but the rules themselves are not formally validated.
+
 ---
 
-## 10. Conclusion
+## 11. Conclusion
 
 The conventional approach to making AI systems more transparent focuses on opening the model: mechanistic interpretability, attention visualization, feature circuits. This is valuable research, but it operates at a layer most users and operators do not need.
 
 Frank demonstrates an alternative: keep the model opaque, and build everything else to be transparent. Personality is 5 floats with a documented update formula. Memory is a queryable graph with confidence scores and timestamps. Consciousness is structured data in SQLite tables. Physics constraints are enforced by a daemon the model cannot see or influence.
 
-The result is a system where the answer to "why did it do that?" is never "because of hidden neural network states." It is always: "because these memories were retrieved (logged), this personality state was active (queryable), this attention source won (formula-based), and these invariants were satisfied (enforced)."
+The result is a system where the answer to "why did it do that?" is never "because of hidden neural network states." It is always: "because these memories were retrieved (logged), this personality state was active (queryable), this attention source won (formula-based), these invariants were satisfied (enforced), and the epistemic coherence gap was X (computed from 47 explicit rules)."
 
 The LLM is still a black box. But in this architecture, the black box is a peripheral — a text-completion engine whose outputs are shaped by transparent context assembly and constrained by inspectable physics. The intelligence is in the scaffold. And the scaffold is open.
 
@@ -379,4 +456,4 @@ The LLM is still a black box. But in this architecture, the black box is a perip
 
 *Project Frankenstein is open source: [github.com/gschaidergabriel/Project-Frankenstein](https://github.com/gschaidergabriel/Project-Frankenstein)*
 
-*This document describes the system as implemented on February 23, 2026. All claims are verifiable against the source code.*
+*This document describes the system as implemented on February 23, 2026 (v3.2, including Quantum Reflector). All claims are verifiable against the source code.*

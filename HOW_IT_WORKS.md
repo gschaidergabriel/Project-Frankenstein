@@ -58,7 +58,7 @@ Maps hardware states to bodily experience through three learned systems: Sensati
 Frank thinks even when you're not talking to him. This is the heart of the system:
 
 - **Perception** (200ms): Continuous hardware sampling with event detection (CPU spikes, GPU warming, user leaving/returning)
-- **Attention Controller**: 6 competing sources (user message, perception event, mood shift, goal urgency, prediction surprise, idle curiosity) — highest salience wins focus every 10 seconds
+- **Attention Controller**: 7 competing sources (user message, perception event, mood shift, goal urgency, prediction surprise, coherence signal, idle curiosity) — highest salience wins focus every 10 seconds
 - **Global Workspace (GWT)**: All channels merge into a unified `[INNER_WORLD]` broadcast injected into every LLM prompt — 7 channels (Body, Perception, Mood, Memory, Identity, Attention, Environment) with attention-weighted budgets
 - **Experience Space**: 64-dimensional state vector embedded every 60s, detecting novelty, drift, and cycles
 - **Mood Trajectory**: 200-point buffer (~3.3 hours), influences response tone
@@ -68,7 +68,7 @@ Frank thinks even when you're not talking to him. This is the heart of the syste
 
 ## Memory — He Actually Remembers
 
-Frank has a 9-layer memory system across 28 SQLite databases. The key layers:
+Frank has a 9-layer memory system across 29 SQLite databases. The key layers:
 
 **Chat Memory (Hybrid Search)**
 Recent conversations are stored with 384-dim semantic embeddings (MiniLM-L6-v2). Search uses FTS5 keyword + vector cosine + RRF fusion — finding both exact keyword matches and semantically similar messages with no keyword overlap.
@@ -112,6 +112,7 @@ Port 8092  ─ Desktopd     (X11 automation)
 Port 8093  ─ Webd         (web search)
 Port 8094  ─ Ingestd      (document ingestion)
 Port 8096  ─ Toolboxd     (system tools, skills, todos)
+Port 8097  ─ Quantum Reflector (epistemic coherence, QUBO optimization)
 Port 8101  ─ Llama 3.1    (general LLM, llama.cpp)
 Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp, on-demand)
 Port 8103  ─ Whisper      (speech-to-text, GPU)
@@ -123,6 +124,7 @@ No port  ─ Invariants      (physics engine: energy, entropy, core kernel)
 No port  ─ Entities        (idle-driven 4-agent dispatcher)
 No port  ─ ASRS            (safety recovery, 4-stage monitoring)
 No port  ─ Gaming Mode     (Steam detection, resource management)
+Has port ─ Quantum Reflector (QUBO coherence monitor, E-PQ feedback, :8097)
 ```
 
 ## Genesis — Self-Improvement
@@ -185,8 +187,8 @@ Each entity has its own personality vectors, session memory, and E-PQ feedback l
 - **Ollama** for vision models (LLaVA)
 - **tkinter** for the chat overlay
 - **FastAPI** for the router
-- **SQLite** for all 28 databases
-- **systemd** user services (23 services)
+- **SQLite** for all 29 databases
+- **systemd** user services (24 services)
 - **Vulkan/CUDA** for GPU acceleration
 
 No cloud dependencies. No API keys. No telemetry. Everything runs on your hardware.

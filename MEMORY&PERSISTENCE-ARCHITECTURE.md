@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 28 SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
+Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 29 SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
 
 ### Core Capabilities
 
@@ -508,7 +508,7 @@ CREATE TABLE memory_consolidated (
 | feature-training | 1h | Weekly 3-phase self-training | feature_training |
 | perception-feedback | 200ms | Hardware sensor polling + event detection | perceptual_log |
 | experience-space | 60s | 64-dim state embedding | experience_vectors |
-| attention-controller | 10s | AST: 6 competing sources | attention_log |
+| attention-controller | 10s | AST: 7 competing sources | attention_log |
 | goal-management | 300s | Extract/decay/conflict goals | goals |
 
 ### GWT Channel Weighting
@@ -1078,6 +1078,7 @@ Old messages archived (retention: 30 days)
 | `clipboard_history.db` | Clipboard | clipboard_entries | Per copy |
 | `e_cpmm.db` | Core Performance Memory | edges, nodes | On update |
 | `fas_scavenger.db` | GitHub analysis | analyzed_repos, extracted_features | Nightly |
+| `quantum_reflector.db` | Epistemic coherence optimization | energy_history, coherence_events | Per solve (~5s) |
 
 ---
 
@@ -1116,8 +1117,9 @@ Old messages archived (retention: 30 days)
 | `tools/titan/retrieval.py` | Titan retrieval (vector + FTS + graph) |
 | `tools/titan/maintenance.py` | Confidence decay, protection lifecycle, pruning |
 | `tools/world_experience_daemon.py` | Causal learning from observations |
+| `services/quantum_reflector/` | QUBO coherence: annealer, builder, monitor, EPQ bridge, API |
 | `gaming/gaming_mode.py` | Steam detection, service management, anti-cheat safety |
 
 ---
 
-*Updated 2026-02-23 — v3.1 release cleanup. All persistence is 100% local, 28 SQLite databases, no external APIs.*
+*Updated 2026-02-23 — v3.2 quantum reflector added. All persistence is 100% local, 29 SQLite databases, no external APIs.*

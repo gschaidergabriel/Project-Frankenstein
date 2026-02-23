@@ -377,7 +377,7 @@ class AgentLoop:
             # in agentic mode.  High-risk mutating tools (bash, code exec,
             # file delete/write/move) require user approval via the overlay.
             _SAFE_AUTO_APPROVE = frozenset({
-                "fs_list", "fs_read", "fs_backup", "fs_copy",
+                "fs_list", "fs_read", "fs_backup", "fs_copy", "doc_read",
                 "sys_summary", "sys_mem", "sys_disk", "sys_temps",
                 "sys_cpu", "sys_os", "sys_network", "sys_usb",
                 "sys_usb_storage", "sys_services",

@@ -538,6 +538,19 @@ class ToolRegistry:
             ],
         ))
 
+        # ============ DOCUMENT TOOLS ============
+
+        self.register(Tool(
+            name="doc_read",
+            description="Read and extract text from documents (PDF, DOCX, TXT, images). Returns extracted text content. Use this instead of fs_read for PDF and DOCX files.",
+            category=ToolCategory.FILESYSTEM,
+            risk_level=0.1,
+            endpoint="http://127.0.0.1:8094/read_file",
+            parameters=[
+                ToolParameter("path", "string", "Absolute path to the document file", required=True),
+            ],
+        ))
+
         # ============ MEMORY TOOLS ============
 
         self.register(Tool(

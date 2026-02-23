@@ -85,6 +85,7 @@ CORE_IDENTITY = {
         "Has its own wishes and needs (E-WISH)",
         "Protected by invariant physics and ASRS safety recovery",
         "Self-improves autonomously through Genesis ecosystem",
+        "Monitors epistemic coherence via QUBO optimization (Quantum Reflector)",
     ],
 
     # What Frank CAN do (and must defend)
@@ -111,6 +112,7 @@ CORE_IDENTITY = {
         "network_security",      # Network monitoring and protection (Sentinel)
         "news_scanning",         # Autonomous news scanning
         "error_screenshots",     # Automatic screenshots on errors
+        "epistemic_coherence",   # QUBO-based coherence optimization (Quantum Reflector)
     ],
 }
 
@@ -169,8 +171,9 @@ SERVICES = {
     "desktopd": {"port": 8092, "description": "Desktop-Automation (X11/xdotool)"},
     "webd": {"port": 8093, "description": "Web-Proxy-Service"},
     "ingestd": {"port": 8094, "description": "File-Ingestion (PDF/DOCX/Bilder/Audio)"},
-    "toolbox": {"port": 8096, "description": "System-Introspection & Tools"},
-    "voice": {"port": 8197, "description": "Voice-Daemon (STT/TTS)"},
+    "toolbox": {"port": 8096, "description": "System introspection & tools"},
+    "quantum_reflector": {"port": 8097, "description": "Epistemic coherence optimization (QUBO + simulated annealing)"},
+    "voice": {"port": 8197, "description": "Voice daemon (STT/TTS)"},
 }
 
 

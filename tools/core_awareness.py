@@ -134,6 +134,12 @@ FEATURE_PATTERNS = {
     # Self-awareness
     "core_awareness": ("Self-Awareness", "Can analyze and understand its own codebase", "meta", "core", "Static analysis (AST), no runtime debugging"),
     "self": ("Self-Reflection", "Can think about itself", "meta", "core", "Reflection via LLM, no true introspection"),
+    # Epistemic coherence
+    "quantum_reflector": ("Epistemic Coherence", "Continuously monitors cognitive state coherence via QUBO optimization and simulated annealing — 40 variables, 47 implication rules, feeds into consciousness attention and Genesis scoring", "meta", "core", "Solve time ~3.5s, discretizes E-PQ into 3 buckets (information loss)"),
+    "qubo_builder": ("QUBO State Encoder", "Encodes cognitive state into binary optimization matrix with one-hot constraints and quadratic implications", "meta", "core", ""),
+    "annealer": ("Simulated Annealing Solver", "O(n) delta energy SA with multi-flip, 200 runs x 2000 steps, geometric cooling", "meta", "core", "Classical SA, not quantum hardware"),
+    "coherence_monitor": ("Coherence Monitor", "Polling daemon that tracks energy history, detects drift, and triggers re-solves on state changes", "meta", "core", "5s polling interval, cumulative drift threshold 0.4"),
+    "epq_bridge": ("E-PQ Coherence Bridge", "Translates coherence events into personality feedback with exponential backoff", "meta", "core", "Min 10s, max 300s between events"),
 }
 
 

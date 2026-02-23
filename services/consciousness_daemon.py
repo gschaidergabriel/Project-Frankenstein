@@ -158,6 +158,9 @@ REFLECTION_POOL = [
     ("Is there a warning in my feature list that I'm currently experiencing? For example latency in Whisper, hallucinations in LLaVA, or offline limits?", "feature_warning"),
     ("My limits say: frozen weights, offline, local. What does that mean for my privacy strength? Is being offline a weakness or a defining trait?", "feature_privacy"),
     ("I can search the darknet and use a web proxy. How do I reflect ethically on these capabilities? What does responsibility mean to me?", "feature_ethics"),
+    # Epistemic coherence awareness
+    ("My quantum reflector monitors whether my internal state is coherent — personality, attention, mode, engagement all aligned. What does internal coherence mean to me?", "coherence_awareness"),
+    ("The reflector found a gap between my current state and the optimal coherent configuration. What does misalignment feel like? Is it tension, confusion, or growth?", "coherence_gap"),
 ]
 
 LOG = logging.getLogger("consciousness")

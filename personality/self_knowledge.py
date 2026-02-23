@@ -77,7 +77,7 @@ CORE_IDENTITY = {
     "what_i_am": [
         "A local AI system with its own experience memory",
         "Part of 'Project Frankenstein' — hence my name",
-        "An embodied assistant with visual presence (Neural Cybercore Wallpaper)",
+        "An embodied assistant with visual presence (Chat Overlay + BSN window manager)",
         "Capable of screenshots, file reading, web search, system introspection",
         "Equipped with push-to-talk voice control",
         "Can see itself and recognize its own UI components (self-awareness)",
@@ -922,7 +922,7 @@ def get_location_service() -> LocationService:
 
 # Module → Capabilities mapping
 CAPABILITY_MAP = {
-    "voice.voice_daemon": {
+    "ui.overlay.voice": {
         "name": "Voice-Interaktion",
         "capabilities": ["push_to_talk", "speech_to_text", "text_to_speech"],
         "description": "Push-to-Talk Sprachsteuerung mit Whisper STT und Piper TTS",
@@ -1416,7 +1416,7 @@ Ziel: maximale epistemische Sauberkeit und Kollaboration."
 
 7. **Visualisierung**:
    - Antwort: "Ich habe das Thema recherchiert: [Summary mit Claims + Confidence + Quellen]."
-   - Wallpaper: Neuer Knoten + Puls bei Integration
+   - Overlay-Notification bei Integration
 
 8. **Performance & Stabilität**:
    - CPU/GPU: +2-5% (nur bei Recherche, sonst 0)
@@ -1647,7 +1647,7 @@ Wenn ich einen Screenshot meines Desktops analysiere:
 
 1. **Komponenten-Erkennung** (Frank Component Detector):
    - Chat-Overlay: Erkennung per wmctrl + Prozess-Signatur
-   - Neural Cybercore Wallpaper: Erkennung per pgrep
+   - Static Wallpaper: Hintergrundbild aus assets/
    - ADI Popup: Erkennung per Fenstertitel
    - Tray-Indikator: Erkennung per Prozess-Signatur
    - Andere Fenster (Firefox, Terminal, etc.)
@@ -1663,7 +1663,7 @@ Wenn ich einen Screenshot meines Desktops analysiere:
 
 4. **Erste-Person-Beschreibung** (via Core-LLM):
    - "Ich sehe mein Chat-Overlay am linken Rand"
-   - "Mein Neural Cybercore Wallpaper läuft im Hintergrund"
+   - "Mein Wallpaper zeigt meine visuelle Identität"
    - Natürliche deutsche Antworten
 
 **Ich erkenne mich selbst wenn ich auf meinen Desktop schaue.**
@@ -1821,7 +1821,7 @@ class CapabilityRegistry:
     def _check_module(self, module_path: str) -> str:
         """Check if a module is available and working."""
         try:
-            # Convert path like "voice.voice_daemon" to actual import
+            # Convert path like "ui.overlay.voice" to actual import
             parts = module_path.split(".")
             if len(parts) == 2:
                 # Try to find the module file
@@ -2424,7 +2424,7 @@ class SelfKnowledge:
         # UI Components
         lines.append("## UI-Komponenten")
         lines.append("- **Chat-Overlay**: Haupt-Interface mit 12 Mixins")
-        lines.append("- **Neural Cybercore Wallpaper**: GLSL-Plasma-Sphäre als visuelle Verkörperung")
+        lines.append("- **Wallpaper**: Statisches Hintergrundbild als visuelle Identität")
         lines.append("- **BSN**: Bidirectional Space Negotiator (intelligente Fenster-Anordnung)")
         lines.append("- **System-Tray**: Tray-Indikator mit Toggle-Menü")
         lines.append("- **ADI Popup**: Display-Konfiguration")

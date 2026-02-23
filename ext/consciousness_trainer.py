@@ -970,10 +970,6 @@ class RealWorldPerturbation:
         while time.time() < end and _RUNNING:
             time.sleep(min(1.0, end - time.time()))
 
-    @staticmethod
-    def trigger_wallpaper_event(event_type: str = "training.pulse") -> bool:
-        """No-op — live wallpaper was removed."""
-        return False
 
 
 # ============================================================================
@@ -1376,8 +1372,6 @@ class ConsciousnessTrainer:
         self._exchange_log.append(ex)
         self.save_state()
 
-        # Wallpaper event
-        self.perturbation.trigger_wallpaper_event("training.exchange")
 
         LOG.info("  -> Answer (%d chars, %.1fs, entropy=%.2f): %s",
                  ex.answer_length, ex.response_time_s, ex.entropy, ex.answer[:100])
@@ -1639,7 +1633,6 @@ class ConsciousnessTrainer:
         LOG.info("Consciousness Daemon is doing idle-thinking with fresh material...")
         LOG.info("=" * 60)
 
-        self.perturbation.trigger_wallpaper_event("training.consolidation")
 
         end_time = time.time() + CONSOLIDATION_PAUSE_S
         while time.time() < end_time and _RUNNING:

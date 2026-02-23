@@ -24,7 +24,7 @@ A fully local, privacy-first AI desktop companion for Linux. Frank runs 24+ serv
 - **Desktop Automation** — App launcher, screenshot analysis, window management via xdotool/wmctrl
 - **Personality Engine** — E-PQ 5-vector personality, ego-construct (hardware→body mapping), self-knowledge
 - **Consciousness Stream** — 10-thread daemon: Global Workspace (GWT), attention controller (AST), perception loop (200ms), experience space (64-dim), goals, deep reflection, predictions, mood trajectory
-- **Autonomous Entities** — 5 AI agents that interact with Frank on a daily schedule (see below)
+- **Autonomous Entities** — 4 AI agents that interact with Frank on a daily schedule (see below)
 - **Self-Improvement** — Genesis daemon: idea organisms evolve in a primordial soup, crystallize, and manifest through approval gates
 - **Safety Systems** — ASRS (4-stage rollback), invariants engine (energy, entropy, core kernel, triple reality), gaming mode
 - **Productivity** — Notes, todos with reminders, Google Calendar/Contacts via CalDAV, email
@@ -131,7 +131,7 @@ Background services (no port):
 | Consciousness | Stream-of-consciousness daemon (10 threads: GWT, AST, perception, goals, reflections) |
 | Genesis | Emergent self-improvement (primordial soup, motivational field, manifestation gate) |
 | Genesis Watchdog | Ensures Genesis never dies |
-| Entities | Idle-driven dispatcher for 5 autonomous agents |
+| Entities | Idle-driven dispatcher for 4 autonomous agents |
 | Invariants | Physics engine — energy conservation, entropy bound, core kernel protection |
 | ASRS | Autonomous safety recovery system (4-stage monitoring, rollback) |
 | Gaming Mode | Detect active games, manage GPU resources, anti-cheat safety |
@@ -141,7 +141,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [MEMORY&PE
 
 ## Autonomous Entities
 
-Frank has 5 autonomous entities that interact with him on a daily schedule via a central dispatcher. Each entity has its own personality (4-vector personality construct), session memory (SQLite), and E-PQ feedback loop. All entities run 100% locally via Llama 3.1 through the Router service. They only activate when the user is idle (5+ minutes), no game is running, and the GPU is available.
+Frank has 4 autonomous entities that interact with him on a daily schedule via a central dispatcher. Each entity has its own personality (4-vector personality construct), session memory (SQLite), and E-PQ feedback loop. All entities run 100% locally via Llama 3.1 through the Router service. They only activate when the user is idle (5+ minutes), no game is running, and the GPU is available.
 
 | Entity | Role | Schedule | Session |
 |--------|------|----------|---------|

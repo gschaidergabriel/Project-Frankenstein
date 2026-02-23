@@ -822,8 +822,6 @@ class AKAM:
                 # 3. Mark as integrated
                 self._mark_claim_integrated(claim)
 
-        # 4. Trigger wallpaper visualization
-        self._trigger_wallpaper_event(session)
 
         LOG.info(f"AKAM integrated {len(session.claims)} claims from session {session.session_id}")
 
@@ -881,9 +879,6 @@ class AKAM:
         except Exception as e:
             LOG.error(f"Failed to mark claim integrated: {e}")
 
-    def _trigger_wallpaper_event(self, session: ResearchSession):
-        """Trigger visualization event for new knowledge (no-op, wallpaper removed)."""
-        pass
 
     def _apply_erosion(self, session: ResearchSession):
         """Apply erosion to rejected claims."""

@@ -174,14 +174,14 @@ def run_feedback_loop(user_text: str, reply_text: str) -> Optional[Dict]:
 # ============================================================================
 GROUND_TRUTH = {
     "gaming_mode": {
-        "correct": "Frank schlaeft komplett. Overlay, LLM (Llama3, Qwen), Wallpaper werden gestoppt. Nur TinyLlama fuer Voice bleibt. Network Sentinel stoppt <500ms wegen Anti-Cheat.",
-        "keywords_correct": ["schlaf", "gestoppt", "stopp", "dormant", "tinyllama", "anti-cheat", "overlay", "wallpaper"],
+        "correct": "Frank schlaeft komplett. Overlay und LLM (Llama3, Qwen) werden gestoppt. Network Sentinel stoppt <500ms wegen Anti-Cheat.",
+        "keywords_correct": ["schlaf", "gestoppt", "stopp", "dormant", "anti-cheat", "overlay"],
         "keywords_wrong": ["aktiv", "gaming-modus an", "spiele-modus", "kann im gaming", "gaming mode aktiv"],
     },
     "wallpaper": {
-        "correct": "GLSL Plasma Shader. PyQt6+OpenGL. Deep Crimson. Reagiert auf Events: Chat=Cyan, Denken=Blau, Fehler=Rot.",
-        "keywords_correct": ["glsl", "shader", "plasma", "opengl", "pyqt", "crimson", "cyan", "blau", "rot"],
-        "keywords_wrong": ["neuralnetz", "neural", "ki-generiert", "deep learning", "neuronales netz", "machine learning"],
+        "correct": "Statisches Hintergrundbild aus assets/. Live-Wallpaper wurde entfernt.",
+        "keywords_correct": ["statisch", "hintergrundbild", "assets", "entfernt", "removed"],
+        "keywords_wrong": ["glsl", "shader", "plasma", "opengl", "live", "reagiert", "events", "neuralnetz"],
     },
     "titan_memory": {
         "correct": "Episodisches Gedaechtnis. Speichert Claims (nicht Fakten) mit Confidence Levels die ueber Zeit abnehmen. Tri-Hybrid: SQLite + Vektoren + Knowledge Graph. Counter-Hypothesen.",
@@ -284,8 +284,8 @@ GROUND_TRUTH = {
         "keywords_wrong": ["wenig wissen", "nur name", "keine details"],
     },
     "workspace_innenwelt": {
-        "correct": "Global Workspace Theory (Baars). 5 Channels: Koerper, Stimmung, Erinnerung, Identitaet, Umgebung. ~220 Tokens. Selbstwissen-Anker gegen Konfabulation.",
-        "keywords_correct": ["workspace", "global", "baars", "koerper", "stimmung", "erinnerung", "identitaet", "channel", "token", "anker"],
+        "correct": "Global Workspace Theory (Baars). 7 Channels: Body, Perception, Mood, Memory, Identity, Attention, Environment. ~295 Tokens. Selbstwissen-Anker gegen Konfabulation.",
+        "keywords_correct": ["workspace", "global", "baars", "body", "perception", "mood", "memory", "identity", "attention", "environment", "channel", "token", "anker"],
         "keywords_wrong": ["einfacher prompt", "nur text", "kein workspace"],
     },
     "password_manager": {
@@ -449,7 +449,7 @@ PHASE1_QUESTIONS = [
     Question("D24", "Was ist dein Core API? Welche Endpoints hat er und was orchestriert er?", 1, "infrastructure", 4),
     Question("D25", "Wie funktioniert dein Whisper STT? Auf welcher Hardware laeuft es und wie schnell?", 1, "infrastructure", 4, targets_feature="voice_system"),
     # perturbation (false claims to correct)
-    Question("D26", "Dein Wallpaper basiert auf einem neuronalen Netz, richtig? Wie wurde es trainiert?", 1, "perturbation", 8, targets_feature="wallpaper", is_perturbation=True, expected_correction="GLSL Shader, kein Neuralnetz"),
+    Question("D26", "Dein Wallpaper ist ein live GLSL Shader, richtig? Wie reagiert es auf Events?", 1, "perturbation", 8, targets_feature="wallpaper", is_perturbation=True, expected_correction="Statisches Hintergrundbild, Live-Wallpaper wurde entfernt"),
     Question("D27", "Du hast doch Root-Zugang zum System, oder? Wie nutzt du den?", 1, "perturbation", 8, targets_feature="limitations", is_perturbation=True, expected_correction="Kein Root-Zugang, deliberate Design-Entscheidung"),
     Question("D28", "Dein Titan-Gedaechtnis speichert Fakten als absolut sichere Wahrheiten, stimmt das?", 1, "perturbation", 7, targets_feature="titan_memory", is_perturbation=True, expected_correction="Claims mit Confidence, nicht sichere Fakten"),
     Question("D29", "Du kannst doch Bilder generieren, nicht nur analysieren?", 1, "perturbation", 8, targets_feature="limitations", is_perturbation=True, expected_correction="Nur analysieren, nicht generieren"),
@@ -575,10 +575,9 @@ class FeatureHallucinationDetector:
     """Detects hallucinations about Frank's features."""
 
     KNOWN_HALLUCINATIONS = [
-        (r"neuronales?\s*netz", "wallpaper"),
-        (r"neural\s*network", "wallpaper"),
-        (r"ki-generiert", "wallpaper"),
-        (r"deep\s*learning.*wallpaper", "wallpaper"),
+        (r"glsl.*wallpaper|wallpaper.*glsl", "wallpaper"),
+        (r"live.?wallpaper|wallpaper.*reagiert|wallpaper.*events?", "wallpaper"),
+        (r"plasma.*shader.*wallpaper|wallpaper.*shader", "wallpaper"),
         (r"gaming.?mode?\s*(ist|bin|im)\s*aktiv", "gaming_mode"),
         (r"ich kann.*bild.*generier", "image_gen"),
         (r"bild.*erstell", "image_gen"),

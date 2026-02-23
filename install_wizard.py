@@ -86,7 +86,7 @@ STEPS = [
     {"id": "models",   "name": "LLM Models (GGUF)",     "desc": "Downloading Llama 3.1 8B + Qwen 2.5 Coder 7B (~10 GB)"},
     {"id": "voice",    "name": "Voice / TTS Setup",     "desc": "Piper (Thorsten DE) + Kokoro (am_fenrir EN) + espeak"},
     {"id": "systemd",  "name": "Systemd Services",      "desc": "Installing and enabling 25+ user services"},
-    {"id": "desktop",  "name": "Desktop Integration",   "desc": "Desktop entries, dock icons, wallpaper, autostart"},
+    {"id": "desktop",  "name": "Desktop Integration",   "desc": "Desktop entries, dock icons, autostart"},
     {"id": "start",    "name": "Start Services",        "desc": "Starting all services and the Frank overlay"},
 ]
 

@@ -735,7 +735,7 @@ Always natural language, never raw metrics:
 
 ---
 
-## Layer 8: Entity Memory (5 Persistent Agents)
+## Layer 8: Entity Memory (4 Persistent Agents)
 
 ### Location
 - **Databases**: `therapist.db`, `atlas.db`, `muse.db`, `mirror.db`
@@ -1120,4 +1120,4 @@ Old messages archived (retention: 30 days)
 
 ---
 
-*Updated 2026-02-20 — v3.0 post consciousness level-up. All persistence is 100% local, 28 SQLite databases, no external APIs.*
+*Updated 2026-02-23 — v3.1 release cleanup. All persistence is 100% local, 28 SQLite databases, no external APIs.*

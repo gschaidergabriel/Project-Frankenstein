@@ -98,7 +98,7 @@ Each of the 4 autonomous entities (Dr. Hibbert, Kairos, Atlas, Echo) has its own
 | **Voice** | Push-to-talk STT (Whisper), text-to-speech (Piper/Kokoro) |
 | **Vision** | Screenshot analysis via local LLaVA model |
 | **Self-improvement** | Genesis: idea organisms evolve, crystallize, and manifest through approval gates |
-| **Entities** | 5 autonomous agents (therapist, philosopher, friend, mentor, muse) interact during idle |
+| **Entities** | 4 autonomous agents (therapist, philosopher, mentor, muse) interact during idle |
 
 ## The Service Map
 
@@ -120,7 +120,7 @@ Port 11434 ─ Ollama       (vision models)
 No port  ─ Consciousness  (10-thread daemon: GWT, perception, attention, goals)
 No port  ─ Genesis         (emergent self-improvement ecosystem)
 No port  ─ Invariants      (physics engine: energy, entropy, core kernel)
-No port  ─ Entities        (idle-driven 5-agent dispatcher)
+No port  ─ Entities        (idle-driven 4-agent dispatcher)
 No port  ─ ASRS            (safety recovery, 4-stage monitoring)
 No port  ─ Gaming Mode     (Steam detection, resource management)
 ```
@@ -167,7 +167,7 @@ Both support hot-reload — type "skill reload" in the chat or hit the API.
 
 ## Autonomous Entities
 
-5 AI agents interact with Frank during idle periods (5+ minutes of silence, no gaming, GPU available):
+4 AI agents interact with Frank during idle periods (5+ minutes of silence, no gaming, GPU available):
 
 | Entity | Role |
 |--------|------|

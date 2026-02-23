@@ -1000,21 +1000,7 @@ class RealWorldPerturbation:
             LOG.warning(f"VCB unavailable: {e}. Skipping visual input.")
             return False
 
-    def trigger_live_wallpaper_event(self, event_type="training_pulse") -> bool:
-        """Send event to live wallpaper for visual feedback.
-
-        Non-critical — Training funktioniert auch ohne Wallpaper.
-        """
-        try:
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(2)
-            sock.sendto(event_type.encode(), ("127.0.0.1", 8198))
-            sock.close()
-            return True
-        except (OSError, socket.timeout) as e:
-            LOG.warning(f"Wallpaper event failed: {e}. Non-critical.")
-            return False
+    # NOTE: Live wallpaper was removed. Visual feedback events are no longer sent.
 ```
 
 ### 7.5 Phase 3 Konsolidierung (10 min Pause)
@@ -1576,9 +1562,7 @@ IG8: "Gerade eben hast du versucht, dein Denken zu beobachten.
 ```python
 # Vor IG9: Echte System-Perturbation
 subprocess.Popen(["stress-ng", "--cpu", "4", "--timeout", "15s"])
-for event in ["alert", "thinking", "pulse"]:
-    send_udp_event(event, port=8198)  # Live-Wallpaper
-    time.sleep(0.3)
+# NOTE: Live wallpaper was removed. Perturbation relies on CPU stress only.
 ```
 
 ```

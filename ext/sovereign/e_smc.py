@@ -833,13 +833,12 @@ class GamingModeLock:
                 capture_output=True, timeout=2
             )
             if result.returncode == 0:
-                # Gaming mode daemon läuft - prüfe Status
+                # Gaming mode daemon läuft - prüfe State-Datei
                 try:
-                    import urllib.request
-                    req = urllib.request.Request("http://127.0.0.1:8198/status")
-                    with urllib.request.urlopen(req, timeout=1) as resp:
-                        data = json.loads(resp.read().decode())
-                        return data.get("gaming_active", False)
+                    state_file = Path("/tmp/gaming_mode_state.json")
+                    if state_file.exists():
+                        data = json.loads(state_file.read_text())
+                        return data.get("active", False)
                 except Exception:
                     pass
         except Exception:

@@ -2141,7 +2141,7 @@ class ConsciousnessDaemon:
             f"Discovery: \"{p1_result[:200]}\"\n"
             f"Mapping: \"{p2_result[:200]}\"\n\n"
             "How do your features connect? For example: How do hardware features "
-            "help with vision or wallpaper? How does your privacy focus (offline, "
+            "help with vision? How does your privacy focus (offline, "
             "local) fit with your identity?"
         )
         p3_result = self._llm_call(p3_prompt, max_tokens=FEATURE_TRAINING_TOKENS, system=system_prompt)

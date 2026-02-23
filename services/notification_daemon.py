@@ -3,8 +3,7 @@
 Frank Notification Daemon — Calendar & Todo Reminders.
 
 Polls calendar events and todo deadlines, sends desktop notifications
-via notify-send, writes JSON files for overlay pickup, and publishes
-wallpaper events.
+via notify-send, and writes JSON files for overlay pickup.
 
 Usage:
     python3 notification_daemon.py --daemon   # Run as daemon
@@ -272,8 +271,6 @@ class NotificationDaemon:
                     "minutes_until": minutes_until,
                     "read": False,
                 })
-                pass  # _publish_wallpaper_event("calendar", title)
-
                 self._state["notified_events"][dedup_key] = now_iso
                 self._state["notifications_this_hour"] = \
                     self._state.get("notifications_this_hour", 0) + 1
@@ -320,8 +317,6 @@ class NotificationDaemon:
                     "minutes_until": minutes_until,
                     "read": False,
                 })
-                pass  # _publish_wallpaper_event("todo", content[:40])
-
                 self._state["notified_todos"][dedup_key] = now_iso
                 self._state["notifications_this_hour"] = \
                     self._state.get("notifications_this_hour", 0) + 1

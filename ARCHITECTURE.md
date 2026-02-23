@@ -54,7 +54,7 @@
 │                     CONSCIOUSNESS & PERSONALITY                             │
 │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
 │  │   E-PQ    │ │Ego-Constr.│ │Consciousn.│ │  Genesis  │ │ Entities  │   │
-│  │Personality│ │ Embodiment│ │  Daemon   │ │Self-Improv│ │ 5 Agents  │   │
+│  │Personality│ │ Embodiment│ │  Daemon   │ │Self-Improv│ │ 4 Agents  │   │
 │  └───────────┘ └───────────┘ └───────────┘ └───────────┘ └───────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
         │                                                       │
@@ -297,8 +297,7 @@ Frank's awareness of his own capabilities.
 
 **Grounding Anchors** (injected into every prompt via workspace):
 ```
-Gaming=sleep(Overlay+LLM+Wallpaper off),
-Wallpaper=GLSL-plasma-sphere(NOT neural-net),
+Gaming=sleep(Overlay+LLM off),
 Voice=HeyFrank+Whisper+Piper,
 VCB=local-LLaVA-500/day,
 Personality=E-PQ-5vectors,
@@ -597,7 +596,7 @@ traits:     {novelty, complexity, risk, impact}
 
 #### `/services/entity_dispatcher.py` - Idle-Driven Entity Sessions
 
-5 persistent entities that interact with Frank during idle periods.
+4 persistent entities that interact with Frank during idle periods.
 
 | Entity | Display Name | Role | Daily Quota |
 |--------|-------------|------|-------------|
@@ -686,7 +685,7 @@ Multi-stage feature monitoring with automatic rollback.
 
 Automatic resource optimization during Steam games.
 
-**Detection:** Scans `ps aux` for `steamapps/common/` processes. Entry grace: 3 consecutive detections.
+**Detection:** Scans `/proc/*/cmdline` for game process patterns (no X11 probing — anti-cheat safe). Entry grace: 3 consecutive detections.
 
 **Activation Sequence:**
 1. **Stop network sentinel IMMEDIATELY** (<500ms, anti-cheat safety)
@@ -980,4 +979,4 @@ ego.auto_train_from_state(
 
 ---
 
-*Updated 2026-02-20 — v3.0 post consciousness level-up. All processing is 100% local.*
+*Updated 2026-02-23 — v3.1 release cleanup. All processing is 100% local.*

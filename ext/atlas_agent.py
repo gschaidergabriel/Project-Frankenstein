@@ -116,7 +116,7 @@ Toolboxd:8096 (skills/tools) | Voice:8197
 - E-PQ vectors: mood, autonomy, precision, empathy, vigilance (0.0-1.0)
 - Ego-Construct maps hardware states to bodily experience (CPU = exertion, temp = warmth)
 - Consciousness Stream: idle thinking between conversations
-- 5 autonomous entities interact with Frank daily (see below)
+- 4 autonomous entities interact with Frank daily (see below)
 
 ## Autonomous Entities (all 100% local via Llama 3.1)
 | Entity | Role | Schedule |

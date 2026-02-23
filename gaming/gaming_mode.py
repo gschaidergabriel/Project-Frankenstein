@@ -560,7 +560,7 @@ def exit_gaming_mode(state: GamingModeState):
     state.game_name = None
     state.save()
 
-    # 3. Start Frank overlay + wallpaper + LLM services ALL in parallel
+    # 3. Start Frank overlay + LLM services ALL in parallel
     def restore_all():
         threads = [
             threading.Thread(target=start_main_frank, daemon=True),

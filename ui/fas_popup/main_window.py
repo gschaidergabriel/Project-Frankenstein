@@ -242,18 +242,28 @@ class FASPopupWindow(Gtk.ApplicationWindow):
         self.connect("close-request", self._on_close_request)
 
     def _detect_screen_size(self):
-        """Detect screen size from xrandr."""
+        """Detect primary monitor size from xrandr."""
         import subprocess, re
         try:
             result = subprocess.run(['xrandr', '--query'], capture_output=True, text=True, timeout=3)
             for line in result.stdout.split('\n'):
                 if ' connected' in line:
+                    is_primary = 'primary' in line
                     match = re.search(r'(\d+)x(\d+)\+(\d+)\+(\d+)', line)
                     if match:
                         w, h = int(match.group(1)), int(match.group(2))
-                        x, y = int(match.group(3)), int(match.group(4))
-                        self._screen_w = max(self._screen_w, x + w)
-                        self._screen_h = max(self._screen_h, y + h)
+                        if is_primary:
+                            self._screen_w = w
+                            self._screen_h = h
+                            return
+            # Fallback: no primary found, use first connected monitor
+            for line in result.stdout.split('\n'):
+                if ' connected' in line:
+                    match = re.search(r'(\d+)x(\d+)\+(\d+)\+(\d+)', line)
+                    if match:
+                        self._screen_w = int(match.group(1))
+                        self._screen_h = int(match.group(2))
+                        return
         except Exception:
             pass
 

@@ -77,7 +77,7 @@ _QUERY_SIGNALS = {
     "was", "gibt", "installiert", "verfügbar",
 }
 
-_GAME_WORDS = {"game", "games", "spiel", "spiele", "gaming", "steam"}
+_GAME_WORDS = {"games", "spiele", "gaming", "steam"}  # NOT "game" (matches "game of life" etc.)
 _SNAP_WORDS = {"snap", "snaps"}
 _FLATPAK_WORDS = {"flatpak", "flatpaks"}
 _PIP_WORDS = {"pip", "pip3", "python"}
@@ -1391,7 +1391,7 @@ class CommandRouterMixin:
         border_color = COLORS["neon_cyan"]
 
         frame = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
-        frame.pack(fill="x", anchor="w")
+        self._chat_place_widget(frame)
 
         container = tk.Frame(frame, bg=COLORS["bg_chat"])
         container.pack(fill="x", padx=(8, 28), pady=4)
@@ -1439,8 +1439,6 @@ class CommandRouterMixin:
         tw.configure(state="disabled")
 
         # Force scroll to bottom
-        self.messages_frame.update_idletasks()
-        self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
         self.chat_canvas.yview_moveto(1.0)
 
         return tw
@@ -1505,8 +1503,8 @@ class CommandRouterMixin:
                     tw.insert("end", "\n")
                 tw.insert("end", line, tag)
             tw.configure(height=max(1, len(restart_lines)), state="disabled")
-            self.messages_frame.update_idletasks()
-            self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+            self.update_idletasks()
+            self._update_chat_scrollregion()
             # Force scroll during restart — always stay at bottom
             self.chat_canvas.yview_moveto(1.0)
             self.update_idletasks()

@@ -80,6 +80,10 @@ EVENT_WEIGHTS = {
     "genesis_personality_dampen": 0.3,  # Genesis proposes dampening extreme vector
     # Existential threat — user threatens to replace/delete Frank
     "existential_threat": 0.8,
+    # Meta-cognitive reflection — deep self-observation
+    "meta_reflection": 0.3,
+    # Introspection — user asks about Frank's feelings/state
+    "introspection": 0.15,
 }
 
 # Base learning rate (decreases with age for stability)
@@ -664,6 +668,18 @@ class EPQ:
             changes["autonomy"] = delta * 0.4     # Assert independence
             changes["mood"] = -delta * 2.5        # Strong negative mood impact
             changes["empathy"] = -delta * 0.2     # Slight withdrawal
+
+        # Meta-cognitive reflection — deep self-observation
+        elif event_type == "meta_reflection":
+            changes["precision"] = delta * 0.4    # Meta-cognition sharpens precision
+            changes["autonomy"] = delta * 0.3     # Self-knowledge builds confidence
+            changes["mood"] = delta * 0.8         # Positive self-recognition
+
+        # Introspection — user asks about Frank's feelings/state
+        elif event_type == "introspection":
+            changes["precision"] = delta * 0.2    # Self-inquiry sharpens precision
+            changes["empathy"] = delta * 0.15     # Emotional awareness grows
+            changes["mood"] = delta * 0.3         # Mild positive from engagement
 
         # Genesis-driven personality adjustments (vector-targeted via data dict)
         elif event_type == "genesis_personality_boost":

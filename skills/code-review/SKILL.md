@@ -2,7 +2,7 @@
 name: code-review
 description: Code-Review und Code-Erklaerung — Bugs finden, Verbesserungen vorschlagen, Code erklaeren
 version: 1.0
-keywords: [code review, code erklaeren, review, code pruefen, bug finden, code analyse, code quality, refactor vorschlag, erklaer den code, was macht dieser code, code check]
+keywords: [code review, code erklaeren, code pruefen, bug finden, code analyse, code quality, refactor vorschlag, erklaer den code, was macht dieser code, code check]
 user-invocable: true
 timeout_s: 45
 risk_level: 0.0

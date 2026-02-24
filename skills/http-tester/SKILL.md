@@ -2,7 +2,7 @@
 name: http-tester
 description: HTTP-Requests und API-Tests — curl bauen, Responses interpretieren, REST debuggen
 version: 1.0
-keywords: [curl, http, api, request, response, rest, endpoint, post, get, header, status code, api test, http test, httpie, wget, api debuggen, 404, 500, 401, 403, timeout]
+keywords: [curl, http request, http response, api test, http test, rest api, endpoint, http header, status code, httpie, wget, api debuggen, 404, 500, 401, 403]
 user-invocable: true
 timeout_s: 25
 risk_level: 0.0

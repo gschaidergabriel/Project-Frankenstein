@@ -2,7 +2,7 @@
 name: content-repurpose
 description: Einen Post/Artikel in Multi-Plattform-Content umwandeln (X, LinkedIn, Instagram, TikTok, Newsletter)
 version: 1.0
-keywords: [repurpose, content, umwandeln, plattform, cross-post, crosspost, social media, x thread, linkedin post, instagram caption, tiktok, newsletter, verteile, verteilen, mehrere plattformen]
+keywords: [repurpose, content repurpose, cross-post, crosspost, social media post, x thread, linkedin post, instagram caption, tiktok, newsletter erstellen, verteile, verteilen, mehrere plattformen]
 user-invocable: true
 timeout_s: 60
 risk_level: 0.0

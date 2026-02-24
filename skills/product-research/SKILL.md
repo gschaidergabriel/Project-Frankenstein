@@ -2,7 +2,7 @@
 name: product-research
 description: Produkte/Tools/Services recherchieren und strukturierten Vergleichsbericht erstellen
 version: 1.0
-keywords: [vergleich, vergleiche, produkt, produkte, recherche, recherchiere, product research, comparison, welches tool, welcher service, welche software, alternative, alternativen, empfehlung, empfiehl, bestes, beste]
+keywords: [vergleich, vergleiche, produkt vergleich, recherche, recherchiere, product research, welches tool, welcher service, welche software, alternative, alternativen, empfehlung, empfiehl]
 user-invocable: true
 timeout_s: 60
 risk_level: 0.0

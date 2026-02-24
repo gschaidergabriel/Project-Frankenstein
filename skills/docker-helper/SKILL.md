@@ -2,7 +2,7 @@
 name: docker-helper
 description: Docker und Container — Dockerfiles, Compose, Debugging, Image-Management
 version: 1.0
-keywords: [docker, container, dockerfile, docker-compose, docker compose, image, container starten, docker build, docker run, docker logs, docker exec, podman, containerd]
+keywords: [docker, dockerfile, docker-compose, docker compose, docker image, container starten, docker build, docker run, docker logs, docker exec, podman, containerd]
 user-invocable: true
 timeout_s: 30
 risk_level: 0.05

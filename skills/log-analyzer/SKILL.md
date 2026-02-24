@@ -2,7 +2,7 @@
 name: log-analyzer
 description: Log-Analyse und Fehler-Interpretation — Stacktraces, Journalctl, Anwendungslogs
 version: 1.0
-keywords: [log, logs, fehler, error, stacktrace, traceback, exception, logfile, log analyse, log analysieren, fehler erklaeren, error message, was bedeutet dieser fehler, crash, segfault, oom, kernel, dmesg]
+keywords: [logfile, log analyse, log analysieren, stacktrace, traceback, exception, fehler erklaeren, error message, was bedeutet dieser fehler, segfault, oom, dmesg, journalctl log, app crash]
 user-invocable: true
 timeout_s: 45
 risk_level: 0.0

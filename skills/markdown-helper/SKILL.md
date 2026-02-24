@@ -2,7 +2,7 @@
 name: markdown-helper
 description: Markdown formatieren, Tabellen erstellen, Dokumente strukturieren
 version: 1.0
-keywords: [markdown, md, tabelle, table, formatieren, format, liste, heading, ueberschrift, link, bild, code block, markdown help, markdown tabelle, markdown erstellen]
+keywords: [markdown, tabelle erstellen, markdown tabelle, markdown erstellen, markdown help, code block, ueberschrift, markdown formatieren, markdown link, markdown bild, markdown liste]
 user-invocable: true
 timeout_s: 20
 risk_level: 0.0

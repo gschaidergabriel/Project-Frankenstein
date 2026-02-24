@@ -2,7 +2,7 @@
 name: systemd-helper
 description: systemd Units erstellen und debuggen — Services, Timer, Sockets, Abhaengigkeiten
 version: 1.0
-keywords: [systemd, service, unit, unit file, systemctl, service erstellen, service file, service schreiben, restart, enable, journalctl, after, wants, requires, wantedby, execstart, service debuggen, service startet nicht]
+keywords: [systemd, unit file, systemctl, service erstellen, service file, service schreiben, journalctl, wantedby, execstart, service debuggen, service startet nicht, systemd unit, systemd service]
 user-invocable: true
 timeout_s: 30
 risk_level: 0.05

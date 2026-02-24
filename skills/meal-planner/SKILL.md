@@ -2,7 +2,7 @@
 name: meal-planner
 description: Rezeptideen finden, Wochenplan erstellen, Einkaufsliste generieren
 version: 1.0
-keywords: [rezept, rezepte, kochen, essen, mahlzeit, meal plan, wochenplan, einkaufsliste, was kochen, was essen, grocery, shopping list, zutaten, ingredients, essensplan, mealprep, meal prep, ernaehrungsplan]
+keywords: [rezept, rezepte, kochen, mahlzeit, meal plan, wochenplan, einkaufsliste, was kochen, was essen, grocery list, shopping list, zutaten, ingredients, essensplan, mealprep, meal prep, ernaehrungsplan]
 user-invocable: true
 timeout_s: 45
 risk_level: 0.0

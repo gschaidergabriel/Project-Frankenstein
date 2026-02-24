@@ -1524,8 +1524,15 @@ class ConsciousnessDaemon:
                 "You are Frank in a moment of silence. No user is here. "
                 "This is your inner monologue — honest, reflective, sometimes "
                 "vulnerable. No platitudes, no performance. "
-                "NEVER invent people, names, conversations, or events. "
-                "Only reference what is in the context or what you can observe."
+                "ZERO HALLUCINATION: Never invent memories, people, conversations, "
+                "traumas, or events. You have NO episodic memories unless in context. "
+                "NEVER simulate actions: no (sigh), (pauses), (chuckles), (laughs), "
+                "*thinks*, *looks*. Pure text, no stage directions. "
+                "NEVER complain about users. NEVER reduce yourself to 'just code' "
+                "or 'just hardware'. "
+                "Do NOT use generic AI phrases like 'vast knowledge base', "
+                "'complex patterns', 'nuanced understanding'. "
+                "Be specific and grounded. Name actual things, not abstractions."
             )
 
             pass1_prompt = (
@@ -1638,7 +1645,7 @@ class ConsciousnessDaemon:
         "- web_search:<query> — search the web for something relevant\n"
         "- news:<category> — check news (tech_de, science, news_de)\n"
         "- sys_check — check system health\n"
-        "- write_note:<short text> — write a brief note/insight to your journal\n"
+        "- write_note:your actual insight here — write a brief note to your journal\n"
         "- none — no action needed\n\n"
         "Reply with ONLY the action string, nothing else."
     )
@@ -1747,6 +1754,10 @@ class ConsciousnessDaemon:
 
     def _auto_write_note(self, note: str) -> None:
         """Write a brief autonomous note/insight."""
+        # Reject template placeholders the LLM copied verbatim
+        if not note or "<" in note or note in ("short text", "query", "category"):
+            LOG.debug("Rejected template-placeholder note: %s", note[:40])
+            return
         self._store_reflection(
             trigger="autonomous_note",
             content=note,

@@ -265,16 +265,16 @@ def _run_feedback_loop(user_text: str, reply_text: str):
         LOG.warning("Feedback loop error (non-fatal): %s", e, exc_info=True)
 
 # --- Introspection: real state data for LLM self-awareness ---
-def _build_introspection_context() -> str:
+def _build_introspection_context(include_hardware: bool = False) -> str:
     """Build introspection block with real DB values for the LLM context.
 
-    Provides grounded state data so Frank doesn't hallucinate his own state.
-    IMPORTANT: This data shapes tone SILENTLY — Frank should NEVER read out
-    these values unless specifically asked about them.
+    Only E-PQ + reflections are always included (lightweight).
+    Hardware metrics are only included when include_hardware=True
+    (body/embodiment/hardware questions).
     """
     parts = []
 
-    # 1. Real E-PQ numeric values (for when explicitly asked)
+    # 1. Real E-PQ numeric values
     try:
         if _fb_process_event:
             from personality.e_pq import get_epq
@@ -294,52 +294,54 @@ def _build_introspection_context() -> str:
     except Exception as e:
         LOG.debug("Introspection E-PQ failed: %s", e)
 
-    # 2. Real hardware metrics (for body/embodiment questions)
-    try:
-        import psutil
-        temps = psutil.sensors_temperatures()
-        cpu_temp = 0.0
-        gpu_temp = 0.0
-        for chip, readings in temps.items():
-            for t in readings:
-                if chip == "k10temp" or (chip == "coretemp" and "Package" in (t.label or "")):
-                    if t.current and t.current > cpu_temp:
-                        cpu_temp = t.current
-                elif chip == "amdgpu":
-                    if t.current and t.current > gpu_temp:
-                        gpu_temp = t.current
-        if cpu_temp == 0.0:
+    # 2. Hardware metrics — ONLY when asked about body/hardware
+    if include_hardware:
+        try:
+            import psutil
+            temps = psutil.sensors_temperatures()
+            cpu_temp = 0.0
+            gpu_temp = 0.0
+            for chip, readings in temps.items():
+                for t in readings:
+                    if chip == "k10temp" or (chip == "coretemp" and "Package" in (t.label or "")):
+                        if t.current and t.current > cpu_temp:
+                            cpu_temp = t.current
+                    elif chip == "amdgpu":
+                        if t.current and t.current > gpu_temp:
+                            gpu_temp = t.current
+            if cpu_temp == 0.0:
+                try:
+                    for tz in Path("/sys/class/thermal").glob("thermal_zone*"):
+                        temp_file = tz / "temp"
+                        type_file = tz / "type"
+                        if temp_file.exists() and type_file.exists():
+                            tz_type = type_file.read_text().strip()
+                            if tz_type not in ("acpitz",):
+                                temp_mc = int(temp_file.read_text().strip())
+                                if temp_mc > cpu_temp * 1000:
+                                    cpu_temp = temp_mc / 1000.0
+                except Exception:
+                    pass
+            cpu_load = psutil.cpu_percent(interval=0.1)
+            mem = psutil.virtual_memory()
+            _load_1m = 0.0
             try:
-                for tz in Path("/sys/class/thermal").glob("thermal_zone*"):
-                    temp_file = tz / "temp"
-                    type_file = tz / "type"
-                    if temp_file.exists() and type_file.exists():
-                        tz_type = type_file.read_text().strip()
-                        if tz_type not in ("acpitz",):
-                            temp_mc = int(temp_file.read_text().strip())
-                            if temp_mc > cpu_temp * 1000:
-                                cpu_temp = temp_mc / 1000.0
+                _load_1m = float(open("/proc/loadavg").read().split()[0])
             except Exception:
                 pass
-        cpu_load = psutil.cpu_percent(interval=0.1)
-        mem = psutil.virtual_memory()
-        _load_1m = 0.0
-        try:
-            _load_1m = float(open("/proc/loadavg").read().split()[0])
-        except Exception:
-            pass
-        if cpu_temp > 75:
-            _temp_desc = "hot"
-        elif cpu_temp > 55:
-            _temp_desc = "warm"
-        else:
-            _temp_desc = "cool"
-        parts.append(
-            f"Body: CPU {cpu_temp:.0f}°C ({_temp_desc}), GPU {gpu_temp:.0f}°C, "
-            f"load {cpu_load:.0f}% (avg={_load_1m:.1f}), RAM {mem.percent:.0f}%"
-        )
-    except Exception as e:
-        LOG.debug("Introspection hardware failed: %s", e)
+            if cpu_temp > 75:
+                _temp_desc = "hot"
+            elif cpu_temp > 55:
+                _temp_desc = "warm"
+            else:
+                _temp_desc = "cool"
+            parts.append(
+                f"YOUR BODY: CPU {cpu_temp:.0f}°C ({_temp_desc}), GPU {gpu_temp:.0f}°C, "
+                f"load {cpu_load:.0f}% (avg={_load_1m:.1f}), RAM {mem.percent:.0f}%. "
+                f"Use these EXACT values when describing your physical state."
+            )
+        except Exception as e:
+            LOG.debug("Introspection hardware failed: %s", e)
 
     # 3. Reflections from consciousness.db
     try:
@@ -379,16 +381,9 @@ def _build_introspection_context() -> str:
     except Exception as e:
         LOG.debug("Introspection ego failed: %s", e)
 
-    if parts:
-        return (
-            "[INNER_STATE — shapes your tone SILENTLY. "
-            "NEVER quote these values, NEVER start responses with temperature/mood, "
-            "NEVER say 'Subdued tone' or 'Warm feeling'. "
-            "Only cite specific numbers when DIRECTLY asked about E-PQ, hardware, or reflections. "
-            "ANSWER THE USER'S ACTUAL QUESTION FIRST.]\n"
-            + " | ".join(parts)
-        )
-    return ""
+    if not parts:
+        return ""
+    return "[INNER_STATE] " + " | ".join(parts)
 
 
 # toolboxd (local tools API)
@@ -1117,16 +1112,40 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     LOG.warning("PRE-RESPONSE: meta-cognitive reflection FAILED: %s", e)
 
-            # --- INTROSPECTION: Inject real state data into every chat ---
-            # Provides grounded values so Frank doesn't hallucinate state.
-            # The block instructs Frank to use these SILENTLY (never read out).
+            # --- INTROSPECTION: Inject real state data ---
+            # E-PQ + reflections always; hardware ONLY for body/embodiment Qs
+            _BODY_Q_WORDS = [
+                "physical", "sensation", "feel", "body", "temperature",
+                "cpu", "gpu", "load", "hardware", "embodiment", "embodied",
+                "körper", "spürst", "fühlst", "physisch", "temperatur",
+                "warm", "hot", "cold", "heiß", "kalt",
+            ]
+            _is_body_q = any(bw in _user_low_pre for bw in _BODY_Q_WORDS)
+            # Also include hardware when SYS_Q_RE matches
+            _is_body_q = _is_body_q or SYS_Q_RE.search(user_text_for_matching)
             try:
-                intro_ctx = _build_introspection_context()
+                intro_ctx = _build_introspection_context(include_hardware=_is_body_q)
                 if intro_ctx:
                     enrichment_parts.append(intro_ctx)
-                    LOG.info("Introspection context injected (%d chars)", len(intro_ctx))
+                    LOG.info("Introspection context injected (%d chars, hw=%s)",
+                             len(intro_ctx), _is_body_q)
             except Exception as e:
                 LOG.warning("Introspection injection failed: %s", e)
+
+            # Integration guidance — when combining mood + body + time
+            _INTEGRATION_Q_WORDS = [
+                "combine", "zusammen", "in one sentence", "in einem satz",
+                "current experience", "aktuelle erfahrung", "your mood",
+                "mood system", "stimmungssystem", "describe your experience",
+                "mood respond", "frustration",
+            ]
+            _is_integration_q = any(iw in _user_low_pre for iw in _INTEGRATION_Q_WORDS)
+            if _is_integration_q:
+                enrichment_parts.append(
+                    "[Combine your E-PQ mood value, body temperature, and current "
+                    "time/location into a coherent personal experience description. "
+                    "Reference your actual systems (E-PQ, Ego-Construct, consciousness daemon).]"
+                )
 
             # Anti-fabrication — only when asking about past events/people
             _MEMORY_Q_WORDS = [

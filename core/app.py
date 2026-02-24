@@ -505,11 +505,12 @@ _FALLBACK_IDENTITY = (
     "NEVER simulate actions (*opens…*, *checks…*). Never invent data.\n"
 )
 
-def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None) -> str:
+def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None,
+                       profile: str = "default") -> str:
     """Get Frank's identity prompt from centralized personality module."""
     if _PERSONALITY_AVAILABLE:
         try:
-            return build_system_prompt(runtime_context=runtime_context)
+            return build_system_prompt(profile=profile, runtime_context=runtime_context)
         except Exception:
             pass
     return _FALLBACK_IDENTITY
@@ -1247,7 +1248,7 @@ class Handler(BaseHTTPRequestHandler):
                     LOG.warning("PRE-RESPONSE: attention_log threat write FAILED: %s", e)
 
             # --- Build grounded prompt for LLM ---
-            identity = get_frank_identity()
+            identity = get_frank_identity(profile="full")
             # Pass identity as SYSTEM PROMPT (not in user text) so the Router
             # wraps it properly in ChatML/Instruct templates. Without this,
             # Frank's persona collapses to generic "hilfreicher Assistent".
@@ -1263,7 +1264,7 @@ class Handler(BaseHTTPRequestHandler):
                 _core_response_lang = "de"
             elif re.search(r"switch\s+(back\s+)?(to\s+)?english|speak\s+english|auf\s+englisch", user_text_for_matching, re.I):
                 _core_response_lang = "en"
-            _lang_prefix = "[lang:en]\n" if _core_response_lang == "en" else ""
+            _lang_prefix = "[Reply in English]\n" if _core_response_lang == "en" else ""
 
             grounded_text = _lang_prefix + (ctx_block + "\n" if ctx_block else "") + text
 

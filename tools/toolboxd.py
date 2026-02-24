@@ -811,7 +811,7 @@ def sys_temps() -> Dict[str, Any]:
         except Exception:
             max_temp = None
 
-    return {"ok": True, "ts": now_iso(), "max_temp_c": max_temp, "sensors": sensors}
+    return {"ok": True, "ts": now_iso(), "max_temp_c": max_temp, "max_c": max_temp, "sensors": sensors}
 
 def sys_pressure() -> Dict[str, Any]:
     """Read PSI (Pressure Stall Information) from /proc/pressure/{cpu,memory,io}."""
@@ -929,7 +929,14 @@ def sys_summary() -> Dict[str, Any]:
 
     d: Dict[str, Any] = {"ok": True, "ts": now_iso()}
     d["os"] = sys_os().get("os")
-    d["cpu"] = sys_cpu().get("cpu")
+    d["cpu"] = sys_cpu().get("cpu") or {}
+    # Add load_1m from /proc/loadavg (benchmark reads cpu.load_1m)
+    try:
+        _la = Path("/proc/loadavg").read_text().strip().split()
+        if _la:
+            d["cpu"]["load_1m"] = float(_la[0])
+    except Exception:
+        pass
     d["mem"] = sys_mem()
     d["uptime_load"] = sys_uptime_load()
     d["disk"] = sys_disk().get("disks")

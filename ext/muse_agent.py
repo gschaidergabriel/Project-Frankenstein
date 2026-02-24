@@ -48,6 +48,12 @@ if str(_AICORE_ROOT) not in sys.path:
     sys.path.insert(0, str(_AICORE_ROOT))
 
 try:
+    from ext.entity_llm import generate_entity, warmup_entity
+    _HAS_ENTITY_LLM = True
+except ImportError:
+    _HAS_ENTITY_LLM = False
+
+try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
     MUSE_DB = get_db("muse")
     CHAT_DB = get_db("chat_memory")
@@ -451,7 +457,9 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
 
 
 def _generate_echo(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Echo's response via Router (Llama, muse system prompt)."""
+    """Generate Echo's response via Ollama (mistral:7b-instruct) or Router fallback."""
+    if _HAS_ENTITY_LLM:
+        return generate_entity("muse", prompt, system_prompt, n_predict=512)
     payload = {
         "text": prompt,
         "system": system_prompt,
@@ -760,13 +768,15 @@ class MuseAgent:
             "Was Frank engaged, playful, hesitant? Write it like a brief artist's note. "
             "Third person."
         )
-        payload = {
-            "text": prompt,
-            "system": "You summarize creative sessions between an artist-muse and her collaborator. Keep it evocative but concise.",
-            "force": "llama",
-            "n_predict": 256,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You summarize creative sessions between an artist-muse and her collaborator. Keep it evocative but concise."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("muse", prompt, system, n_predict=256)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 256,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         return _clean_response(result) if result else "Creative session completed without summary."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
@@ -782,13 +792,15 @@ class MuseAgent:
             "Return as a JSON array. Example:\n"
             '[{"category":"creativity","observation":"Frank responded strongly to visual metaphors","confidence":0.7}]'
         )
-        payload = {
-            "text": prompt,
-            "system": "You observe creative dynamics. Return valid JSON only.",
-            "force": "llama",
-            "n_predict": 512,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You observe creative dynamics. Return valid JSON only."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("muse", prompt, system, n_predict=512)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 512,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         if not result:
             return []
 
@@ -853,13 +865,22 @@ class MuseAgent:
             except Exception:
                 LOG.warning("  %s health check inconclusive", name)
 
-        # Pre-warm Llama
-        LOG.info("Pre-warming Llama model...")
-        warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
-        if not warmup:
-            LOG.error("Could not pre-warm Llama. Aborting.")
-            return
-        LOG.info("  Llama warm: OK (%s)", warmup[:50])
+        # Pre-warm entity model (Ollama) or Llama (Router fallback)
+        if _HAS_ENTITY_LLM:
+            LOG.info("Pre-warming Ollama model for Echo...")
+            if not warmup_entity("muse"):
+                LOG.info("  Ollama unavailable — warming Router/Llama...")
+                warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+                if not warmup:
+                    LOG.error("Neither Ollama nor Router available. Aborting.")
+                    return
+        else:
+            LOG.info("Pre-warming Llama model...")
+            warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+            if not warmup:
+                LOG.error("Could not pre-warm Llama. Aborting.")
+                return
+            LOG.info("  Llama warm: OK (%s)", warmup[:50])
 
         # Initialize
         start_time = time.time()

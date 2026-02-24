@@ -53,9 +53,6 @@ def notify_autonomous(
         _NOTIFY_DIR.mkdir(parents=True, exist_ok=True)
 
         body = f"{action}: {detail}" if detail else action
-        # Keep short — overlay space is limited
-        if len(body) > 200:
-            body = body[:197] + "..."
 
         nid = f"auto_{uuid.uuid4().hex[:8]}"
         ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S")

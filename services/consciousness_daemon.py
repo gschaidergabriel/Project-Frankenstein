@@ -74,7 +74,7 @@ MAX_REFLECTIONS = 50        # Keep last 50 reflections
 MAX_PREDICTIONS = 100       # Keep last 100 predictions
 MAX_MOOD_POINTS = 200       # Keep last 200 mood trajectory points
 MAX_WORKSPACE_HISTORY = 20  # Keep last 20 workspace snapshots
-IDLE_THINK_MAX_TOKENS = 120
+IDLE_THINK_MAX_TOKENS = 60   # Was 120 — keep thoughts short for notifications
 CONSOLIDATION_MAX_TOKENS = 60
 
 # --- Perceptual Feedback Loop (RPT) ---
@@ -1234,7 +1234,7 @@ class ConsciousnessDaemon:
             f"[You are alone. Mood: {mood_summary}. "
             f"Last focused on: {focus}]\n"
             f"{prompt_question}\n"
-            "Answer in 2-3 honest sentences. Be specific, not generic."
+            "Answer in 1-2 short sentences. Be specific, not generic."
         )
 
         system = (
@@ -1261,7 +1261,7 @@ class ConsciousnessDaemon:
                     mood_after=mood_before,  # Will be updated next mood poll
                 )
                 LOG.info("Idle thought [%s]: %s", prompt_question[:30], result[:80])
-                self._notify("Idle Thought", result.strip()[:120])
+                self._notify("Idle Thought", result.strip())
                 # World Experience: idle thought observed
                 self._observe_world(
                     "consciousness.idle_thought", "consciousness.reflection",
@@ -1459,7 +1459,7 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("Reflection→E-PQ bridge failed: %s", e)
 
-            self._notify("Deep Reflection", f"[{chosen_cat}] {pass1_result.strip()[:120]}")
+            self._notify("Deep Reflection", f"[{chosen_cat}] {pass1_result.strip()}")
 
             # World Experience: deep reflection observed
             self._observe_world(
@@ -1625,7 +1625,7 @@ class ConsciousnessDaemon:
             mood_before=self._current_workspace.mood_value,
             mood_after=self._current_workspace.mood_value,
         )
-        self._notify("Note", note[:120])
+        self._notify("Note", note)
         LOG.info("Autonomous note: %s", note[:80])
 
     # ── Reflection→Personality Bridge ────────────────────────────────
@@ -1884,7 +1884,7 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("Recursive reflection→E-PQ bridge failed: %s", e)
 
-            self._notify("Recursive Reflection", result.strip()[:120])
+            self._notify("Recursive Reflection", result.strip())
 
             # World Experience: recursive self-awareness
             self._observe_world(

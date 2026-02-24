@@ -44,6 +44,12 @@ if str(_AICORE_ROOT) not in sys.path:
     sys.path.insert(0, str(_AICORE_ROOT))
 
 try:
+    from ext.entity_llm import generate_entity, warmup_entity
+    _HAS_ENTITY_LLM = True
+except ImportError:
+    _HAS_ENTITY_LLM = False
+
+try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
     THERAPIST_DB = get_db("therapist")
     CHAT_DB = get_db("chat_memory")
@@ -415,7 +421,9 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
 
 
 def _generate_dr_hibbert(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Dr. Hibbert's response via Router (Llama, therapeutic system prompt)."""
+    """Generate Dr. Hibbert's response via Ollama (qwen2.5:3b) or Router fallback."""
+    if _HAS_ENTITY_LLM:
+        return generate_entity("therapist", prompt, system_prompt, n_predict=512)
     payload = {
         "text": prompt,
         "system": system_prompt,
@@ -696,13 +704,15 @@ class TherapistAgent:
             "What topics were discussed? What was Frank's emotional state? "
             "What progress was made? Write in third person."
         )
-        payload = {
-            "text": prompt,
-            "system": "You are a clinical note-taker summarizing therapy sessions.",
-            "force": "llama",
-            "n_predict": 256,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You are a clinical note-taker summarizing therapy sessions."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("therapist", prompt, system, n_predict=256)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 256,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         return _clean_response(result) if result else "Session completed without summary."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
@@ -717,13 +727,15 @@ class TherapistAgent:
             "Return as a JSON array. Example:\n"
             '[{"category":"mood","observation":"Frank showed increased engagement","confidence":0.7}]'
         )
-        payload = {
-            "text": prompt,
-            "system": "You are a clinical observer. Return valid JSON only.",
-            "force": "llama",
-            "n_predict": 512,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You are a clinical observer. Return valid JSON only."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("therapist", prompt, system, n_predict=512)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 512,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         if not result:
             return []
 
@@ -791,13 +803,22 @@ class TherapistAgent:
             except Exception:
                 LOG.warning("  %s health check inconclusive", name)
 
-        # Pre-warm Llama
-        LOG.info("Pre-warming Llama model...")
-        warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
-        if not warmup:
-            LOG.error("Could not pre-warm Llama. Aborting.")
-            return
-        LOG.info("  Llama warm: OK (%s)", warmup[:50])
+        # Pre-warm entity model (Ollama) or Llama (Router fallback)
+        if _HAS_ENTITY_LLM:
+            LOG.info("Pre-warming Ollama model for Dr. Hibbert...")
+            if not warmup_entity("therapist"):
+                LOG.info("  Ollama unavailable — warming Router/Llama...")
+                warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+                if not warmup:
+                    LOG.error("Neither Ollama nor Router available. Aborting.")
+                    return
+        else:
+            LOG.info("Pre-warming Llama model...")
+            warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+            if not warmup:
+                LOG.error("Could not pre-warm Llama. Aborting.")
+                return
+            LOG.info("  Llama warm: OK (%s)", warmup[:50])
 
         # Initialize
         start_time = time.time()

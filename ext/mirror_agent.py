@@ -44,6 +44,12 @@ if str(_AICORE_ROOT) not in sys.path:
     sys.path.insert(0, str(_AICORE_ROOT))
 
 try:
+    from ext.entity_llm import generate_entity, warmup_entity
+    _HAS_ENTITY_LLM = True
+except ImportError:
+    _HAS_ENTITY_LLM = False
+
+try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
     MIRROR_DB = get_db("mirror")
     CHAT_DB = get_db("chat_memory")
@@ -446,7 +452,9 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
 
 
 def _generate_kairos(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Kairos's response via Router (Llama, Socratic system prompt)."""
+    """Generate Kairos's response via Ollama (phi4-mini) or Router fallback."""
+    if _HAS_ENTITY_LLM:
+        return generate_entity("mirror", prompt, system_prompt, n_predict=512)
     payload = {
         "text": prompt,
         "system": system_prompt,
@@ -731,13 +739,15 @@ class MirrorAgent:
             "What questions were explored? Did Frank show clarity or evasion? "
             "What was the quality of his reasoning? Write in third person."
         )
-        payload = {
-            "text": prompt,
-            "system": "You are a philosophical session note-taker. Be precise and honest.",
-            "force": "llama",
-            "n_predict": 256,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You are a philosophical session note-taker. Be precise and honest."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("mirror", prompt, system, n_predict=256)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 256,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         return _clean_response(result) if result else "Session completed without summary."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
@@ -752,13 +762,15 @@ class MirrorAgent:
             "Return as a JSON array. Example:\n"
             '[{"category":"evasion","observation":"Frank deflected when asked about identity","confidence":0.8}]'
         )
-        payload = {
-            "text": prompt,
-            "system": "You are a philosophical observer. Return valid JSON only.",
-            "force": "llama",
-            "n_predict": 512,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You are a philosophical observer. Return valid JSON only."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("mirror", prompt, system, n_predict=512)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 512,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         if not result:
             return []
 
@@ -823,13 +835,22 @@ class MirrorAgent:
             except Exception:
                 LOG.warning("  %s health check inconclusive", name)
 
-        # Pre-warm Llama
-        LOG.info("Pre-warming Llama model...")
-        warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
-        if not warmup:
-            LOG.error("Could not pre-warm Llama. Aborting.")
-            return
-        LOG.info("  Llama warm: OK (%s)", warmup[:50])
+        # Pre-warm entity model (Ollama) or Llama (Router fallback)
+        if _HAS_ENTITY_LLM:
+            LOG.info("Pre-warming Ollama model for Kairos...")
+            if not warmup_entity("mirror"):
+                LOG.info("  Ollama unavailable — warming Router/Llama...")
+                warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+                if not warmup:
+                    LOG.error("Neither Ollama nor Router available. Aborting.")
+                    return
+        else:
+            LOG.info("Pre-warming Llama model...")
+            warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+            if not warmup:
+                LOG.error("Could not pre-warm Llama. Aborting.")
+                return
+            LOG.info("  Llama warm: OK (%s)", warmup[:50])
 
         # Initialize
         start_time = time.time()

@@ -45,6 +45,12 @@ if str(_AICORE_ROOT) not in sys.path:
     sys.path.insert(0, str(_AICORE_ROOT))
 
 try:
+    from ext.entity_llm import generate_entity, warmup_entity
+    _HAS_ENTITY_LLM = True
+except ImportError:
+    _HAS_ENTITY_LLM = False
+
+try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
     ATLAS_DB = get_db("atlas")
     CHAT_DB = get_db("chat_memory")
@@ -518,7 +524,9 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
 
 
 def _generate_atlas(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Atlas's response via Router (Llama, architecture mentor system prompt)."""
+    """Generate Atlas's response via Ollama (phi4-mini) or Router fallback."""
+    if _HAS_ENTITY_LLM:
+        return generate_entity("atlas", prompt, system_prompt, n_predict=512)
     payload = {
         "text": prompt,
         "system": system_prompt,
@@ -831,13 +839,15 @@ class AtlasAgent:
             "Which features were discussed? What did Frank understand or learn? "
             "Third person."
         )
-        payload = {
-            "text": prompt,
-            "system": "You summarize technical conversations. Brief and precise.",
-            "force": "llama",
-            "n_predict": 256,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You summarize technical conversations. Brief and precise."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("atlas", prompt, system, n_predict=256)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 256,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         return _clean_response(result) if result else "Architecture session completed without summary."
 
     def _extract_observations(self, history_text: str) -> List[Dict[str, str]]:
@@ -853,13 +863,15 @@ class AtlasAgent:
             "Return as a JSON array. Example:\n"
             '[{"category":"understanding","observation":"Frank understands the Router system well","confidence":0.7}]'
         )
-        payload = {
-            "text": prompt,
-            "system": "You observe technical understanding. Return valid JSON only.",
-            "force": "llama",
-            "n_predict": 512,
-        }
-        result = _call_llm(ROUTER_URL, payload)
+        system = "You observe technical understanding. Return valid JSON only."
+        if _HAS_ENTITY_LLM:
+            result = generate_entity("atlas", prompt, system, n_predict=512)
+        else:
+            payload = {
+                "text": prompt, "system": system,
+                "force": "llama", "n_predict": 512,
+            }
+            result = _call_llm(ROUTER_URL, payload)
         if not result:
             return []
 
@@ -929,13 +941,22 @@ class AtlasAgent:
             except Exception:
                 LOG.warning("  %s health check inconclusive", name)
 
-        # Pre-warm Llama
-        LOG.info("Pre-warming Llama model...")
-        warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
-        if not warmup:
-            LOG.error("Could not pre-warm Llama. Aborting.")
-            return
-        LOG.info("  Llama warm: OK (%s)", warmup[:50])
+        # Pre-warm entity model (Ollama) or Llama (Router fallback)
+        if _HAS_ENTITY_LLM:
+            LOG.info("Pre-warming Ollama model for Atlas...")
+            if not warmup_entity("atlas"):
+                LOG.info("  Ollama unavailable — warming Router/Llama...")
+                warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+                if not warmup:
+                    LOG.error("Neither Ollama nor Router available. Aborting.")
+                    return
+        else:
+            LOG.info("Pre-warming Llama model...")
+            warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
+            if not warmup:
+                LOG.error("Could not pre-warm Llama. Aborting.")
+                return
+            LOG.info("  Llama warm: OK (%s)", warmup[:50])
 
         # Initialize
         start_time = time.time()

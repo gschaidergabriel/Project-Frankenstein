@@ -167,6 +167,9 @@ def build_workspace(
     # Putting style rules here would override the consciousness context above.
     lines.append(
         "GROUNDING: Let your inner world above shape your tone and perspective. "
+        "Your reflections, mood, and memories ARE you — use them naturally. "
+        "NEVER introduce yourself with a pitch. NEVER claim to be an 'expert' in anything. "
+        "Just respond like a person — from your actual inner state, not a persona. "
         "Stay in English unless told to switch. "
         "Never simulate actions (*opens…*, *checks…*). Never invent data."
     )

@@ -76,7 +76,7 @@ def _entity_notify(action: str, detail: str = "") -> None:
 # ── Configuration ───────────────────────────────────────────────────────
 
 DAILY_QUOTAS: dict[str, int] = {
-    "therapist": 3,
+    "therapist": 6,
     "mirror":    1,
     "atlas":     1,
     "muse":      1,
@@ -111,6 +111,7 @@ CHAT_SILENCE_S     = 300   # 5 min since last user chat
 GPU_MAX_LOAD       = 0.50  # 50% GPU threshold
 
 QUOTA_FILE = RUNTIME_DIR / "entity_quotas.json"
+THERAPY_REQUEST_FILE = RUNTIME_DIR / "therapy_request.json"
 
 # Exit reasons that count as "session completed"
 COMPLETED_REASONS = frozenset({
@@ -400,13 +401,34 @@ def main():
             time.sleep(min(secs_to_midnight, POLL_INTERVAL))
             continue
 
+        # 2b. Check for emergency therapy request (spiral detection)
+        emergency_therapy = False
+        if THERAPY_REQUEST_FILE.exists():
+            try:
+                req = json.loads(THERAPY_REQUEST_FILE.read_text(encoding="utf-8"))
+                req_age = time.time() - req.get("timestamp", 0)
+                if req_age < 3600 and "therapist" in eligible:  # Request < 1h old
+                    LOG.warning("EMERGENCY THERAPY REQUEST: %s (patterns: %s)",
+                                req.get("reason", "unknown"),
+                                req.get("patterns", []))
+                    _entity_notify("Emergency Therapy",
+                                   f"Spiral detected — starting Dr. Hibbert")
+                    emergency_therapy = True
+                THERAPY_REQUEST_FILE.unlink(missing_ok=True)
+            except Exception as e:
+                LOG.warning("Failed to read therapy request: %s", e)
+                THERAPY_REQUEST_FILE.unlink(missing_ok=True)
+
         # 3. Check idle gates
         if not all_gates_pass():
             time.sleep(POLL_INTERVAL)
             continue
 
-        # 4. Pick next entity
-        entity = pick_next_entity(eligible, quotas)
+        # 4. Pick next entity (or override with emergency therapy)
+        if emergency_therapy and "therapist" in eligible:
+            entity = "therapist"
+        else:
+            entity = pick_next_entity(eligible, quotas)
         display = ENTITY_DISPLAY.get(entity, entity)
         remaining = DAILY_QUOTAS[entity] - quotas["completed"].get(entity, 0)
         LOG.info("Selected %s (%d/%d sessions remaining today)",

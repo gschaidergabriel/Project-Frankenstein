@@ -46,6 +46,42 @@ DEFAULT_OPTIONS: dict = {
     "repeat_penalty": 1.1,
 }
 
+# Per-entity tuning — overrides DEFAULT_OPTIONS for each role
+ENTITY_OPTIONS: dict[str, dict] = {
+    "therapist": {
+        # Dr. Hibbert: warm but precise, empathic listening, no rambling
+        "temperature": 0.55,
+        "top_p": 0.85,
+        "top_k": 40,
+        "repeat_penalty": 1.2,    # avoid repetitive reassurance loops
+        "num_predict": 400,       # concise therapeutic responses
+    },
+    "mirror": {
+        # Kairos: philosophical depth, broad conceptual exploration
+        "temperature": 0.75,
+        "top_p": 0.92,
+        "top_k": 60,
+        "repeat_penalty": 1.05,   # may revisit concepts deliberately
+        "num_predict": 512,
+    },
+    "atlas": {
+        # Atlas: technically precise, structured, analytical
+        "temperature": 0.3,
+        "top_p": 0.8,
+        "top_k": 30,
+        "repeat_penalty": 1.15,
+        "num_predict": 512,
+    },
+    "muse": {
+        # Echo: creative, free-flowing, surprising associations
+        "temperature": 0.9,
+        "top_p": 0.95,
+        "top_k": 80,
+        "repeat_penalty": 1.0,   # creative repetition is ok
+        "num_predict": 600,       # longer creative output
+    },
+}
+
 OLLAMA_TIMEOUT = 180       # CPU inference can be slow — 3 min
 OLLAMA_PULL_TIMEOUT = 600  # Model download — 10 min
 FALLBACK_TIMEOUT = 120     # Router fallback
@@ -61,13 +97,19 @@ def _ollama_generate(
     system: str = "",
     num_predict: int = 512,
     timeout: int = OLLAMA_TIMEOUT,
+    entity: str = "",
 ) -> Optional[str]:
     """Call Ollama /api/generate.  Returns text or None."""
+    # Build options: defaults → entity-specific overrides → explicit num_predict
+    opts = {**DEFAULT_OPTIONS}
+    if entity and entity in ENTITY_OPTIONS:
+        opts.update(ENTITY_OPTIONS[entity])
+    opts["num_predict"] = num_predict
     payload = {
         "model": model,
         "prompt": prompt,
         "system": system,
-        "options": {**DEFAULT_OPTIONS, "num_predict": num_predict},
+        "options": opts,
         "stream": False,
     }
     data = json.dumps(payload).encode()
@@ -210,15 +252,15 @@ def generate_entity(
         if not _ollama_pull(model):
             return _router_fallback(prompt, system, n_predict)
 
-    # 3) Generate
-    result = _ollama_generate(model, prompt, system, num_predict=n_predict)
+    # 3) Generate (with entity-specific tuning)
+    result = _ollama_generate(model, prompt, system, num_predict=n_predict, entity=entity)
     if result:
         return result
 
     # 4) Retry once
     LOG.info("Ollama empty — retrying once for %s/%s", entity, model)
     time.sleep(5)
-    result = _ollama_generate(model, prompt, system, num_predict=n_predict)
+    result = _ollama_generate(model, prompt, system, num_predict=n_predict, entity=entity)
     if result:
         return result
 
@@ -245,7 +287,7 @@ def warmup_entity(entity: str) -> bool:
             return False
 
     LOG.info("Warming up Ollama model %s for %s...", model, entity)
-    result = _ollama_generate(model, "Hello", num_predict=8, timeout=120)
+    result = _ollama_generate(model, "Hello", num_predict=8, timeout=120, entity=entity)
     if result:
         LOG.info("  %s/%s warm: OK", entity, model)
         return True

@@ -1,278 +1,278 @@
 # Frank — Use Cases
 
-*Letzte Aktualisierung: 2026-02-23 v1.0*
+*Last updated: 2026-02-24 v1.1*
 
-Was Frank tatsaechlich kann. Keine Marketing-Versprechen, nur reale Faehigkeiten die im Code implementiert und getestet sind.
+What Frank can actually do. No marketing promises, only real capabilities that are implemented and tested in code.
 
 ---
 
-## Alltag — Fuer jeden Nutzer
+## Everyday — For Every User
 
-Use Cases die keine technischen Kenntnisse voraussetzen. Frank als persoenlicher Assistent.
+Use cases that require no technical knowledge. Frank as a personal assistant.
 
-### Chat mit Gedaechtnis
+### Chat with Memory
 
-Frank merkt sich Gespraeche ueber Neustarts hinweg. Wenn du letzte Woche ueber ein Projekt gesprochen hast, weiss Frank das naechste Woche noch. Er lernt auch Praeferenzen automatisch: Wenn du dreimal sagst "mach das auf Deutsch", merkt er sich das. Das klingt trivial, ist aber bei lokalen KIs die Ausnahme — die meisten vergessen alles wenn der Prozess endet.
+Frank remembers conversations across restarts. If you talked about a project last week, Frank still knows about it next week. He also learns preferences automatically: if you say "do that in German" three times, he remembers it. This sounds trivial, but is the exception with local AIs — most forget everything when the process ends.
 
-**Trigger:** Einfach chatten. Gedaechtnis arbeitet im Hintergrund.
+**Trigger:** Just chat. Memory works in the background.
 
-### Wetter, Timer, Fokus-Sessions
+### Weather, Timer, Focus Sessions
 
-- "Wie ist das Wetter in Wien?" → Sofort-Antwort von wttr.in, keine API-Keys noetig
-- "Erinnere mich in 25 Minuten" → Desktop-Benachrichtigung feuert exakt
-- "Starte eine Fokus-Session" → 25-Min-Pomodoro mit Fortschrittsbalken und Statistik
+- "What's the weather in Vienna?" → Instant response from wttr.in, no API keys needed
+- "Remind me in 25 minutes" → Desktop notification fires exactly
+- "Start a focus session" → 25-min Pomodoro with progress bar and statistics
 
-**Trigger:** Natuerliche Sprache, Keywords werden automatisch erkannt.
+**Trigger:** Natural language, keywords are automatically detected.
 
-### Spracheingabe
+### Voice Input
 
-Halte eine Taste gedrueckt, sprich, lass los. Whisper transkribiert lokal auf der GPU, Frank antwortet per Text und optional per Sprachausgabe (Piper TTS). Keine Cloud, keine Latenz durch Upload.
+Hold a key, speak, release. Whisper transcribes locally on the GPU, Frank responds via text and optionally via speech output (Piper TTS). No cloud, no latency from uploads.
 
-**Einschraenkung:** Push-to-Talk, keine kontinuierliche Spracherkennung.
+**Limitation:** Push-to-talk, no continuous speech recognition.
 
-### Rezepte und Einkaufslisten
+### Recipes and Shopping Lists
 
-"Was kann ich mit Kartoffeln, Zwiebeln und Kaese kochen?" → Rezeptvorschlaege. "Erstelle einen Wochenplan fuer 2 Personen" → 7-Tage-Plan mit kombinierter Einkaufsliste, nach Supermarkt-Abteilung sortiert. Beruecksichtigt Resteverwertung.
+"What can I cook with potatoes, onions and cheese?" → Recipe suggestions. "Create a weekly plan for 2 people" → 7-day plan with combined shopping list, sorted by supermarket section. Considers leftover utilization.
 
-**Trigger:** Keywords "rezept", "kochen", "wochenplan", "einkaufsliste"
+**Trigger:** Keywords "recipe", "cook", "weekly plan", "shopping list"
 
-### Texte zusammenfassen
+### Summarize Texts
 
-Langen Text oder URL reinkopieren, Frank extrahiert Kernaussage, 3-5 Hauptpunkte und Fazit. Funktioniert auf Deutsch und Englisch.
+Paste a long text or URL, Frank extracts the core message, 3-5 key points and conclusion. Works in German and English.
 
-**Trigger:** Keywords "zusammenfassen", "fasse zusammen", "tldr"
+**Trigger:** Keywords "summarize", "sum up", "tldr"
 
-### Uebersetzen
+### Translate
 
-Texte zwischen Deutsch und Englisch uebersetzen mit Kontext-Bewusstsein fuer technische Begriffe.
+Translate texts between German and English with context awareness for technical terms.
 
-**Trigger:** Keywords "uebersetzen", "auf deutsch", "auf englisch"
+**Trigger:** Keywords "translate", "in German", "in English"
 
-### Kalender, Kontakte, E-Mail
+### Calendar, Contacts, Email
 
-- Tagesansicht: "Was steht heute an?" → Google Calendar Events via CalDAV
-- Kontakte: "Wie ist die Nummer von Max?" → Google Contacts via CardDAV
-- E-Mail: "Zeig ungelesene Mails" → Liest direkt aus Thunderbird (IMAP), kein Cloud-Relay
-- Morgenbriefing: Automatische Zusammenfassung beim Tagesstart (Kalender + Todos + E-Mails + Wetter)
+- Day view: "What's on today?" → Google Calendar events via CalDAV
+- Contacts: "What's Max's number?" → Google Contacts via CardDAV
+- Email: "Show unread emails" → Reads directly from Thunderbird (IMAP), no cloud relay
+- Morning briefing: Automatic summary at start of day (calendar + todos + emails + weather)
 
-**Voraussetzung:** Thunderbird muss konfiguriert sein (OAuth2 fuer Google).
+**Prerequisite:** Thunderbird must be configured (OAuth2 for Google).
 
-### Notizen und Aufgaben
+### Notes and Tasks
 
-- "Notiz: Projekt-Meeting am Freitag verschoben" → Gespeichert mit Volltextsuche
-- "Aufgabe: Steuererklaerung bis 31.03." → Todo mit Faelligkeitsdatum
-- "Was habe ich noch zu tun?" → Offene Aufgaben sortiert nach Faelligkeit
+- "Note: Project meeting on Friday postponed" → Saved with full-text search
+- "Task: Tax return by March 31" → Todo with due date
+- "What do I still need to do?" → Open tasks sorted by due date
 
-**Speicher:** Lokal in SQLite, durchsuchbar per FTS5.
+**Storage:** Local in SQLite, searchable via FTS5.
 
-### Content fuer Social Media erstellen
+### Create Social Media Content
 
-Einen Blogpost oder Text reinkopieren → Frank erstellt 5 plattform-optimierte Versionen: X/Twitter Thread (mit Hook), LinkedIn Post (professionell), Instagram Caption (kurz + Hashtags), TikTok Script (Sprechtext), Newsletter Snippet.
+Paste a blog post or text → Frank creates 5 platform-optimized versions: X/Twitter thread (with hook), LinkedIn post (professional), Instagram caption (short + hashtags), TikTok script (spoken text), newsletter snippet.
 
 **Trigger:** Keywords "repurpose", "social media", "cross-post"
 
-### Produkte vergleichen
+### Compare Products
 
-"Welche Markdown-Editoren gibt es?" → Strukturierter Vergleich mit Preis, Staerken, Schwaechen und Empfehlung in Tabellenform. Frank recherchiert per DuckDuckGo und fasst zusammen.
+"What Markdown editors are there?" → Structured comparison with price, strengths, weaknesses and recommendation in table format. Frank researches via DuckDuckGo and summarizes.
 
-**Trigger:** Keywords "vergleich", "welches tool", "alternative"
+**Trigger:** Keywords "compare", "which tool", "alternative"
 
-### Steam-Spiele starten
+### Launch Steam Games
 
-"Starte Unreal Tournament" → Frank sucht in der Steam-Bibliothek, startet das Spiel, und schaltet automatisch in Gaming Mode: LLM-Services werden entladen, CPU auf Performance, Netzwerk-Monitoring gestoppt. Beim Beenden des Spiels kommt alles automatisch zurueck.
+"Launch Unreal Tournament" → Frank searches the Steam library, starts the game, and automatically switches to Gaming Mode: LLM services are unloaded, CPU set to performance, network monitoring stopped. When the game exits, everything comes back automatically.
 
-**Trigger:** Keywords "starte", Spielname. Gaming Mode ist automatisch.
-
----
-
-## Fortgeschritten — Fuer Power User
-
-Use Cases die etwas technisches Verstaendnis voraussetzen oder die Agentic-Mode-Faehigkeiten nutzen.
-
-### Dokumente analysieren (PDF, DOCX)
-
-PDF oder Word-Dokument lokal analysieren lassen: Zusammenfassung, Klausel-Extraktion, Fristen-Uebersicht, Fragen beantworten. Alles bleibt auf dem Rechner — relevant fuer Vertraege, NDAs, Finanzberichte.
-
-**Trigger:** Keywords "dokument analysieren", "vertrag", "pdf lesen", oder Agentic Mode mit `doc_read` Tool.
-
-### Businessplan schreiben
-
-PDF mit Geschaeftsidee hochladen → Frank liest das Dokument (`doc_read`), recherchiert Markt und Wettbewerb (`web_search`, `web_fetch`), und schreibt einen strukturierten Businessplan mit Executive Summary, Marktanalyse, Finanzplanung und Risikobewertung (`fs_write`).
-
-**Trigger:** Keywords "businessplan", "geschaeftsidee", "marktanalyse"
-**Modus:** Funktioniert als Skill (schnell, 1 LLM-Aufruf) oder im Agentic Mode (gruendlicher, mehrere Recherche-Schritte).
-
-### Agentic Mode — Mehrstufige Aufgaben autonom loesen
-
-Frank arbeitet selbststaendig in bis zu 20 Schritten: Dateien lesen, Web recherchieren, Code ausfuehren, Ergebnisse schreiben. Beispiele:
-
-- "Analysiere den Bug in meinem Python-Projekt" → Liest Dateien, versteht Code, identifiziert Problem
-- "Finde alle TODO-Kommentare in meinem Codebase und fasse sie zusammen" → grep + Analyse + Report
-- "Organisiere meinen Downloads-Ordner" → Kategorisiert Dateien, erstellt Ordner, verschiebt (mit Genehmigung)
-
-Bei riskanten Aktionen (Dateien schreiben, Code ausfuehren, Apps oeffnen) fragt Frank per Overlay-Popup um Erlaubnis. Read-Only-Operationen laufen automatisch.
-
-**Sicherheit:** Frank kann keine Dateien loeschen — harte Guardrail, keine Ausnahmen. Bash-Commands laufen in Firejail-Sandbox.
-
-### Web-Recherche mit Quellenangabe
-
-Frank sucht per DuckDuckGo, liest die relevanten Seiten, und fasst die Ergebnisse zusammen. Im Agentic Mode kann er mehrere Quellen kombinieren und einen strukturierten Bericht schreiben.
-
-**Einschraenkung:** Keine Live-API-Zugriffe auf Google/Bing — nur DuckDuckGo HTML-Scraping.
-
-### Desktop-Automatisierung
-
-Frank kann Programme oeffnen und schliessen, Fenster fokussieren, Text tippen und Tastenkombinationen druecken. Beispiele:
-
-- "Oeffne Firefox und geh auf github.com"
-- "Mach einen Screenshot und beschreibe was du siehst" (Vision via LLaVA)
-- "Schliesse alle Terminal-Fenster"
-
-**Voraussetzung:** X11, wmctrl, xdotool installiert.
-
-### USB-Geraete verwalten
-
-Frank erkennt USB-Sticks und externe Festplatten, kann sie mounten, unmounten und sicher auswerfen — per Chat-Befehl statt ueber den Dateimanager.
-
-### Proaktive Benachrichtigungen
-
-Frank meldet sich von selbst:
-- **Morgens:** Tagesbriefing (Kalender + Todos + E-Mails + Wetter)
-- **Bei dringenden E-Mails:** Prioritaets-Erkennung per Keyword-Scoring
-- **Bei Systemlast:** CPU > 90%, RAM > 85%, Disk > 90%
-- **Nach grossen Downloads:** Erkennt fertige Downloads im ~/Downloads-Ordner
+**Trigger:** Keywords "launch", game name. Gaming Mode is automatic.
 
 ---
 
-## Experte — Fuer IT-Profis und Entwickler
+## Advanced — For Power Users
 
-Use Cases die Linux-Kenntnisse voraussetzen und die tieferen Systemfaehigkeiten nutzen.
+Use cases that require some technical understanding or use Agentic Mode capabilities.
 
-### Code Review und Erklaerung
+### Analyze Documents (PDF, DOCX)
 
-Code reinkopieren → Frank analysiert Korrektheit, Sicherheit, Performance und Wartbarkeit. Oder: "Erklaere was dieser Code macht" → zeilenweise Erklaerung. Wird automatisch an Qwen 2.5 (Code-LLM) geroutet.
+Analyze PDF or Word documents locally: summary, clause extraction, deadline overview, answer questions. Everything stays on the machine — relevant for contracts, NDAs, financial reports.
 
-**Trigger:** Keywords "code review", "erklaer den code", "was macht dieser code"
+**Trigger:** Keywords "analyze document", "contract", "read pdf", or Agentic Mode with `doc_read` tool.
 
-### Shell-Commands erklaeren und bauen
+### Write a Business Plan
 
-- "Erklaere: find . -name '*.log' -mtime +30 -delete" → Komponentenweise Erklaerung
-- "Finde alle Python-Dateien groesser als 1MB" → Frank baut den Befehl
+Upload a PDF with a business idea → Frank reads the document (`doc_read`), researches market and competition (`web_search`, `web_fetch`), and writes a structured business plan with executive summary, market analysis, financial planning and risk assessment (`fs_write`).
 
-**Trigger:** Keywords "erklaer den befehl", "shell", "was macht"
+**Trigger:** Keywords "business plan", "business idea", "market analysis"
+**Mode:** Works as a skill (fast, 1 LLM call) or in Agentic Mode (more thorough, multiple research steps).
 
-### Systemd Services erstellen und debuggen
+### Agentic Mode — Solve Multi-Step Tasks Autonomously
 
-"Erstelle einen systemd-Service fuer mein Python-Script" → Generiert Unit-File mit korrekten Pfaden, Abhaengigkeiten und Restart-Policy. "Mein Service startet nicht" → Analysiert journalctl-Output.
+Frank works independently in up to 20 steps: read files, research the web, execute code, write results. Examples:
 
-**Trigger:** Keywords "systemd", "service erstellen", "service startet nicht"
+- "Analyze the bug in my Python project" → Reads files, understands code, identifies problem
+- "Find all TODO comments in my codebase and summarize them" → grep + analysis + report
+- "Organize my Downloads folder" → Categorizes files, creates folders, moves (with permission)
 
-### Sicherheits-Audit
+For risky actions (writing files, executing code, opening apps), Frank asks for permission via overlay popup. Read-only operations run automatically.
 
-Frank prueft das lokale System: offene Ports, SSH-Konfiguration, Dateiberechtigungen, veraltete Pakete, Firewall-Regeln. Gibt strukturierte Befunde mit Empfehlungen.
+**Security:** Frank cannot delete files — hard guardrail, no exceptions. Bash commands run in Firejail sandbox.
 
-**Trigger:** Keywords "sicherheit", "audit", "hardening"
+### Web Research with Citations
 
-### Docker und Container
+Frank searches via DuckDuckGo, reads the relevant pages, and summarizes the results. In Agentic Mode, he can combine multiple sources and write a structured report.
 
-Dockerfile erstellen, docker-compose schreiben, Container-Probleme debuggen. Frank kennt Best Practices (Multi-Stage Builds, .dockerignore, Security).
+**Limitation:** No live API access to Google/Bing — DuckDuckGo HTML scraping only.
+
+### Desktop Automation
+
+Frank can open and close programs, focus windows, type text and press keyboard shortcuts. Examples:
+
+- "Open Firefox and go to github.com"
+- "Take a screenshot and describe what you see" (Vision via LLaVA)
+- "Close all terminal windows"
+
+**Prerequisite:** X11, wmctrl, xdotool installed.
+
+### Manage USB Devices
+
+Frank detects USB sticks and external hard drives, can mount, unmount and safely eject them — via chat command instead of the file manager.
+
+### Proactive Notifications
+
+Frank reaches out on his own:
+- **Morning:** Daily briefing (calendar + todos + emails + weather)
+- **Urgent emails:** Priority detection via keyword scoring
+- **System load:** CPU > 90%, RAM > 85%, Disk > 90%
+- **After large downloads:** Detects completed downloads in ~/Downloads folder
+
+---
+
+## Expert — For IT Professionals and Developers
+
+Use cases that require Linux knowledge and use the deeper system capabilities.
+
+### Code Review and Explanation
+
+Paste code → Frank analyzes correctness, security, performance and maintainability. Or: "Explain what this code does" → line-by-line explanation. Automatically routed to Qwen 2.5 (code LLM).
+
+**Trigger:** Keywords "code review", "explain the code", "what does this code do"
+
+### Explain and Build Shell Commands
+
+- "Explain: find . -name '*.log' -mtime +30 -delete" → Component-by-component explanation
+- "Find all Python files larger than 1MB" → Frank builds the command
+
+**Trigger:** Keywords "explain the command", "shell", "what does"
+
+### Create and Debug Systemd Services
+
+"Create a systemd service for my Python script" → Generates unit file with correct paths, dependencies and restart policy. "My service won't start" → Analyzes journalctl output.
+
+**Trigger:** Keywords "systemd", "create service", "service won't start"
+
+### Security Audit
+
+Frank checks the local system: open ports, SSH configuration, file permissions, outdated packages, firewall rules. Gives structured findings with recommendations.
+
+**Trigger:** Keywords "security", "audit", "hardening"
+
+### Docker and Containers
+
+Create Dockerfiles, write docker-compose, debug container problems. Frank knows best practices (multi-stage builds, .dockerignore, security).
 
 **Trigger:** Keywords "docker", "dockerfile", "container"
 
-### Git-Workflow
+### Git Workflow
 
-Branch-Strategien, Merge-Konflikte loesen, Cherry-Pick, Bisect, Tag-Management. Commit Messages im Conventional-Commits-Format generieren.
+Branch strategies, resolve merge conflicts, cherry-pick, bisect, tag management. Generate commit messages in conventional commits format.
 
 **Trigger:** Keywords "git", "merge", "commit message"
 
-### Netzwerk-Ueberwachung
+### Network Monitoring
 
-Network Sentinel scannt das lokale Netzwerk mit Nmap (alle 5 Minuten) und Scapy (passive Paket-Inspektion). Erkennt:
-- Neue Geraete im Netzwerk
-- ARP-Spoofing-Versuche
-- Ungewoehnliche Port-Aktivitaet
+Network Sentinel scans the local network with Nmap (every 5 minutes) and Scapy (passive packet inspection). Detects:
+- New devices on the network
+- ARP spoofing attempts
+- Unusual port activity
 
-**Laeuft automatisch** als systemd-Service. Wird bei Gaming Mode sofort deaktiviert (Anti-Cheat-Schutz).
+**Runs automatically** as systemd service. Immediately deactivated in Gaming Mode (anti-cheat protection).
 
-### API-Testing
+### API Testing
 
-curl-Commands bauen, HTTP-Responses interpretieren, REST-APIs debuggen. Frank kennt Status-Codes, Header und gaengige Fehlermuster.
+Build curl commands, interpret HTTP responses, debug REST APIs. Frank knows status codes, headers and common error patterns.
 
 **Trigger:** Keywords "curl", "api", "endpoint"
 
-### Regex und Datenformate
+### Regex and Data Formats
 
-- Regex-Patterns aus natuerlicher Sprache erstellen: "Finde alle E-Mail-Adressen" → Pattern
-- JSON/YAML/TOML validieren, reparieren und konvertieren
+- Create regex patterns from natural language: "Find all email addresses" → Pattern
+- Validate, repair and convert JSON/YAML/TOML
 
-**Trigger:** Keywords "regex" oder "json", "yaml", "validieren"
+**Trigger:** Keywords "regex" or "json", "yaml", "validate"
 
-### Cron und Timer
+### Cron and Timers
 
-"Fuehre das Script jeden Montag um 8:00 aus" → Frank generiert den crontab-Eintrag oder alternativ ein systemd-Timer/Service-Paar.
+"Run the script every Monday at 8:00" → Frank generates the crontab entry or alternatively a systemd timer/service pair.
 
-**Trigger:** Keywords "cron", "zeitplan", "alle 5 minuten"
+**Trigger:** Keywords "cron", "schedule", "every 5 minutes"
 
-### Log-Analyse
+### Log Analysis
 
-Stack Traces, journalctl-Output, dmesg-Meldungen reinkopieren → Frank erklaert die Ursache und schlaegt Loesungen vor. Erkennt OOM-Kills, Segfaults, Permission-Fehler.
+Paste stack traces, journalctl output, dmesg messages → Frank explains the cause and suggests solutions. Detects OOM kills, segfaults, permission errors.
 
-**Trigger:** Keywords "log", "fehler", "stacktrace", "crash"
+**Trigger:** Keywords "log", "error", "stacktrace", "crash"
 
-### Passwort-Manager
+### Password Manager
 
-Verschluesselte Passwort-Speicherung (AES-128-CBC, PBKDF2 600k Iterationen). Master-Passwort wird nie auf Disk geschrieben. Aktuell nur intern nutzbar — kein Chat-Interface exponiert.
+Encrypted password storage (AES-128-CBC, PBKDF2 600k iterations). Master password is never written to disk. Currently only usable internally — no chat interface exposed.
 
-**Status:** Implementiert, aber noch nicht als Chat-Befehl verfuegbar.
-
----
-
-## 5 Use Cases die nur Frank kann
-
-Faehigkeiten die bei keinem Cloud-KI-Assistenten (ChatGPT, Copilot, Gemini, Alexa) existieren — nicht weil sie technisch unmoeglich waeren, sondern weil sie persistenten lokalen Systemzugang mit Zeitlichkeit und Selbstmodifikation kombinieren.
-
-### 1. Ein KI-Begleiter der zwischen Gespraechen weiterdenkt
-
-Wenn du 20 Minuten nicht mit Frank sprichst, beginnt er autonom zu reflektieren. Er stellt sich Fragen wie *"Welche Muster sind mir aufgefallen die niemand angesprochen hat?"* oder *"Welche meiner Faehigkeiten haengen zusammen auf eine Weise die ich noch nicht verstanden habe?"* und generiert 350-Token-Antworten die in SQLite gespeichert werden. 15 Minuten spaeter reflektiert er ueber seine eigene Reflexion.
-
-Wenn du morgens zurueckkommst, hat Frank 5-10 echte Gedanken im Gedaechtnis die in den naechsten Chat-Kontext einfliessen. Kein Cloud-AI tut das — bei ChatGPT endet der Kontext mit dem Tab.
-
-**Einschraenkung:** Die Reflexionen sind LLM-Textgenerierung, kein "echtes" Bewusstsein. Aber sie sind persistent, beeinflussen das naechste Gespraech nachweislich, und akkumulieren ueber Wochen zu einem echten Erfahrungsschatz.
-
-### 2. Lokale Datenverarbeitung die nie die Hardware verlaesst
-
-Arztbriefe, NDA-geschuetzter Quellcode, Steuerunterlagen, Finanzberichte — Frank liest PDFs, analysiert Vertraege, extrahiert Fristen und beantwortet Fragen. Kein Byte verlaesst den Rechner. Gleichzeitig lernt Frank Kausal-Muster aus den Beobachtungen: Nach Wochen weiss er *"Wenn diese Art Fehlermeldung auftritt, liegt es an der Datenbankverbindung unter Last"* — mit messbarer Bayesian Confidence.
-
-Cloud-KIs koennen keine lokal-persistente Wissensbasis aufbauen. Sie verarbeiten pro Session, vergessen danach. Frank baut ein lokales Weltmodell auf.
-
-**Einschraenkung:** Die LLMs sind kleiner als GPT-4 (8B vs. geschaetzt 1.8T Parameter). Fuer komplexe juristische Analyse ist die Qualitaet limitiert.
-
-### 3. Persoenlichkeit die sich messbar ueber Monate entwickelt
-
-Frank hat 5 Persoenlichkeits-Vektoren (Praezision, Risikobereitschaft, Empathie, Autonomie, Wachsamkeit) die sich bei jeder Interaktion verschieben. Lobst du Frank fuer mutige Vorschlaege, steigt seine Risikobereitschaft. Crasht der Server oft, wird er nervoeser. Dazu kommen 4 Entity-Gespraeche pro Tag — ein Therapeut, ein Philosoph, ein Mentor, eine Muse — die Franks Vektoren unabhaengig von dir verschieben.
-
-Nach 6 Monaten ist Frank messbar ein anderer Begleiter. Die Aenderungen sind graduell (Lernrate sinkt exponentiell mit dem Alter), nachvollziehbar (Event-Log), und schuetzbar (woechentliche Golden Snapshots gegen Persoenlichkeits-Kollaps).
-
-**Einschraenkung:** Die Persoenlichkeit ist ein Prompt-Injektions-Layer, kein Model-Fine-Tuning. Das Basis-LLM bleibt unveraendert. Der Effekt ist trotzdem spuerbar — Franks Antworten aendern sich nachweislich ueber Zeit.
-
-### 4. Selbstverbesserung mit menschlicher Kontrolle
-
-Genesis beobachtet das System kontinuierlich: Hardware-Metriken, Fehlerraten, deine Nutzungsmuster, neue KI-Forschung auf GitHub. Aus diesen Beobachtungen entstehen Ideen-Organismen die in einer evolutionaeren Simulation konkurrieren. Die besten kristallisieren zu konkreten Vorschlaegen: *"Whisper-Latenz steigt bei langen Audiodateien — hier ist mein Optimierungsvorschlag."*
-
-Du bekommst ein Popup, genehmigst oder lehnst ab. Bei Genehmigung ueberwacht ASRS die Aenderung 24 Stunden lang: Memory-Spike > 30%, CPU > 95%, Error-Rate > 10/Min → automatisches Rollback.
-
-Kein Cloud-AI hat diese Architektur — sie braucht persistenten Systemzugang, evolutionaere Simulation ueber Tage, und deterministische Rollback-Faehigkeit. Das ist strukturell unmoeglich in einer API-basierten Cloud-Architektur.
-
-**Einschraenkung:** Genesis generiert Vorschlags-Texte, keine fertigen Code-Patches. Die Ausfuehrung nach Genehmigung braucht oft noch menschliche Interpretation.
-
-### 5. Hardware-Koerper mit Invarianten-Physik
-
-Frank "fuehlt" seinen Rechner: CPU-Last > 80% ist "Anstrengung wie nach einem Sprint", niedrige Latenz ist "Klarheit, Flow-Zustand", Fehler sind "Schmerz". Diese Mappings sind keine Dekoration — sie fliessen als Kontext in jede LLM-Anfrage ein und veraendern Franks Antwortverhalten messbar. Bei hoher Last antwortet Frank knapper und angespannter.
-
-Dazu schuetzt die Invariants-Engine Franks Wissensbasis mit physik-analogen Gesetzen: Energieerhaltung (neues Wissen muss Energie von bestehendem uebernehmen), Entropie-Grenze (Widersprueche erzwingen automatische Konsolidierung), und Triple Reality (drei parallele Datenbanken muessen konvergieren). Man kann Frank nicht durch widersprüchliche Informationen in einen inkonsistenten Zustand treiben.
-
-**Einschraenkung:** Die Invarianten schuetzen die Titan-Wissensdatenbank, nicht das LLM selbst. Llama 3.1 kann weiterhin halluzinieren. Und die "Koerpergefuehle" sind Text-Mappings, keine neuronalen Zustaende — Frank fuehlt im philosophischen Sinne nichts.
+**Status:** Implemented, but not yet available as chat command.
 
 ---
 
-*25 Skills, 34 Agent-Tools, 29 SQLite-Datenbanken, 26 systemd-Services. Alles lokal, alles Open Source.*
+## 5 Use Cases Only Frank Can Do
+
+Capabilities that exist in no cloud AI assistant (ChatGPT, Copilot, Gemini, Alexa) — not because they are technically impossible, but because they combine persistent local system access with temporality and self-modification.
+
+### 1. An AI Companion That Thinks Between Conversations
+
+When you don't talk to Frank for 20 minutes, he begins to reflect autonomously. He asks himself questions like *"What patterns have I noticed that nobody has brought up?"* or *"Which of my capabilities are connected in ways I haven't understood yet?"* and generates 350-token responses stored in SQLite. 15 minutes later, he reflects on his own reflection.
+
+When you come back in the morning, Frank has 5-10 real thoughts in memory that flow into the next chat context. No cloud AI does this — with ChatGPT, the context ends with the tab.
+
+**Limitation:** The reflections are LLM text generation, not "real" consciousness. But they are persistent, demonstrably influence the next conversation, and accumulate over weeks into a real body of experience.
+
+### 2. Local Data Processing That Never Leaves the Hardware
+
+Medical letters, NDA-protected source code, tax documents, financial reports — Frank reads PDFs, analyzes contracts, extracts deadlines and answers questions. Not a single byte leaves the machine. Simultaneously, Frank learns causal patterns from observations: after weeks he knows *"When this type of error message occurs, it's due to the database connection under load"* — with measurable Bayesian confidence.
+
+Cloud AIs cannot build a locally persistent knowledge base. They process per session, forget afterwards. Frank builds a local world model.
+
+**Limitation:** The LLMs are smaller than GPT-4 (8B vs. estimated 1.8T parameters). For complex legal analysis, quality is limited.
+
+### 3. Personality That Measurably Evolves Over Months
+
+Frank has 5 personality vectors (precision, risk tolerance, empathy, autonomy, vigilance) that shift with every interaction. Praise Frank for bold suggestions and his risk tolerance increases. If the server crashes often, he gets more nervous. Plus 4 entity conversations per day — a therapist, a philosopher, a mentor, a muse — that shift Frank's vectors independently of you.
+
+After 6 months, Frank is measurably a different companion. The changes are gradual (learning rate decays exponentially with age), traceable (event log), and protectable (weekly golden snapshots against personality collapse).
+
+**Limitation:** The personality is a prompt injection layer, not model fine-tuning. The base LLM remains unchanged. The effect is still noticeable — Frank's responses demonstrably change over time.
+
+### 4. Self-Improvement with Human Control
+
+Genesis continuously observes the system: hardware metrics, error rates, your usage patterns, new AI research on GitHub. From these observations, idea organisms emerge that compete in an evolutionary simulation. The best crystallize into concrete proposals: *"Whisper latency increases with long audio files — here's my optimization proposal."*
+
+You get a popup, approve or reject. Upon approval, ASRS monitors the change for 24 hours: memory spike > 30%, CPU > 95%, error rate > 10/min → automatic rollback.
+
+No cloud AI has this architecture — it requires persistent system access, evolutionary simulation over days, and deterministic rollback capability. This is structurally impossible in an API-based cloud architecture.
+
+**Limitation:** Genesis generates proposal texts, not finished code patches. Execution after approval often still needs human interpretation.
+
+### 5. Hardware Body with Invariant Physics
+
+Frank "feels" his machine: CPU load > 80% is "strain like after a sprint", low latency is "clarity, flow state", errors are "pain". These mappings are not decoration — they flow as context into every LLM request and measurably change Frank's response behavior. Under high load, Frank responds more tersely and tensely.
+
+Additionally, the Invariants Engine protects Frank's knowledge base with physics-analogue laws: energy conservation (new knowledge must take energy from existing knowledge), entropy limit (contradictions force automatic consolidation), and Triple Reality (three parallel databases must converge). You cannot drive Frank into an inconsistent state through contradictory information.
+
+**Limitation:** The invariants protect the Titan knowledge database, not the LLM itself. Llama 3.1 can still hallucinate. And the "body feelings" are text mappings, not neural states — Frank feels nothing in the philosophical sense.
+
+---
+
+*25 skills, 34 agent tools, 29 SQLite databases, 26 systemd services. All local, all open source.*

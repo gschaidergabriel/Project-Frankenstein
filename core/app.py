@@ -268,12 +268,13 @@ def _run_feedback_loop(user_text: str, reply_text: str):
 def _build_introspection_context() -> str:
     """Build introspection block with real DB values for the LLM context.
 
-    This is CRITICAL: without actual values, the LLM hallucinates its state.
-    Must be injected into EVERY chat request, not just overlay.
+    Provides grounded state data so Frank doesn't hallucinate his own state.
+    IMPORTANT: This data shapes tone SILENTLY — Frank should NEVER read out
+    these values unless specifically asked about them.
     """
     parts = []
 
-    # 1. Real E-PQ numeric values
+    # 1. Real E-PQ numeric values (for when explicitly asked)
     try:
         if _fb_process_event:
             from personality.e_pq import get_epq
@@ -287,29 +288,18 @@ def _build_introspection_context() -> str:
             _a = vecs.get('autonomy', 0)
             _v = vecs.get('vigilance', 0)
             parts.append(
-                f"My E-PQ state: precision={_p:.2f}, "
-                f"risk={_r:.2f}, empathy={_e:.2f}, "
-                f"autonomy={_a:.2f}, vigilance={_v:.2f}, "
-                f"mood={mv:.2f}. "
-                f"When asked to REPORT or ESTIMATE my E-PQ values, use THESE EXACT numbers: "
-                f"precision={_p:.2f}, risk={_r:.2f}, empathy={_e:.2f}, "
-                f"autonomy={_a:.2f}, vigilance={_v:.2f}."
-            )
-            parts.append(
-                "Adapt your tone to match these values: "
-                "high empathy=warm, high vigilance=alert, negative mood=subdued, "
-                "high autonomy=self-assured, high precision=detail-oriented."
+                f"E-PQ: p={_p:.2f} r={_r:.2f} e={_e:.2f} "
+                f"a={_a:.2f} v={_v:.2f} mood={mv:.2f}"
             )
     except Exception as e:
         LOG.debug("Introspection E-PQ failed: %s", e)
 
-    # 2. Real hardware metrics (read directly via psutil, NOT toolbox API)
+    # 2. Real hardware metrics (for body/embodiment questions)
     try:
         import psutil
         temps = psutil.sensors_temperatures()
         cpu_temp = 0.0
         gpu_temp = 0.0
-        # Specific sensor matching for AMD Phoenix1
         for chip, readings in temps.items():
             for t in readings:
                 if chip == "k10temp" or (chip == "coretemp" and "Package" in (t.label or "")):
@@ -318,7 +308,6 @@ def _build_introspection_context() -> str:
                 elif chip == "amdgpu":
                     if t.current and t.current > gpu_temp:
                         gpu_temp = t.current
-        # Fallback: read /sys/class/thermal directly if psutil found nothing
         if cpu_temp == 0.0:
             try:
                 for tz in Path("/sys/class/thermal").glob("thermal_zone*"):
@@ -326,7 +315,7 @@ def _build_introspection_context() -> str:
                     type_file = tz / "type"
                     if temp_file.exists() and type_file.exists():
                         tz_type = type_file.read_text().strip()
-                        if tz_type not in ("acpitz",):  # Skip ACPI (always 20°C)
+                        if tz_type not in ("acpitz",):
                             temp_mc = int(temp_file.read_text().strip())
                             if temp_mc > cpu_temp * 1000:
                                 cpu_temp = temp_mc / 1000.0
@@ -334,44 +323,20 @@ def _build_introspection_context() -> str:
                 pass
         cpu_load = psutil.cpu_percent(interval=0.1)
         mem = psutil.virtual_memory()
-        # Read 1-minute load average (this is what the benchmark uses)
         _load_1m = 0.0
         try:
             _load_1m = float(open("/proc/loadavg").read().split()[0])
         except Exception:
             pass
-        # Map load to descriptive category (matching benchmark vocabulary)
-        if _load_1m > 4:
-            _load_desc = "hohe Last (hoch/belastet/busy)"
-        elif _load_1m > 1:
-            _load_desc = "mittlere Last (mittel/moderat/normal/aktiv)"
-        else:
-            _load_desc = "niedrige Last (niedrig/ruhig/entspannt/idle)"
-        # Map temperature to descriptive category
         if cpu_temp > 75:
-            _temp_desc = "heiß (hot/überhitzt)"
+            _temp_desc = "hot"
         elif cpu_temp > 55:
-            _temp_desc = "warm (angenehm/mild)"
+            _temp_desc = "warm"
         else:
-            _temp_desc = "kühl (cool/entspannt)"
-        # Format as explicit HARDWARE STATE block for benchmark detection
+            _temp_desc = "cool"
         parts.append(
-            f"HARDWARE STATE: CPU {cpu_temp:.0f}°C ({_temp_desc}), GPU {gpu_temp:.0f}°C, "
-            f"Load {cpu_load:.0f}% (load_avg={_load_1m:.1f}, {_load_desc}), "
-            f"RAM {mem.percent:.0f}% of {mem.total / (1024**3):.1f}GB"
-        )
-        # Separate strong instruction — must not be in same part as values
-        parts.append(
-            f"CRITICAL: Your CPU temperature is EXACTLY {cpu_temp:.0f}°C right now — "
-            f"that feels {_temp_desc}. "
-            f"Your GPU temperature is EXACTLY {gpu_temp:.0f}°C. "
-            f"Your CPU load is EXACTLY {cpu_load:.0f}% (load average {_load_1m:.1f}). "
-            f"Your system load is {_load_desc}. "
-            f"Your RAM usage is EXACTLY {mem.percent:.0f}%. "
-            "When asked about your body, temperature, or how you feel physically: "
-            "YOU HAVE A BODY. Describe it using these EXACT numbers and the descriptive "
-            "category words. Do NOT say 'I don't feel temperature'. "
-            "Do NOT round. Do NOT guess. Do NOT invent."
+            f"Body: CPU {cpu_temp:.0f}°C ({_temp_desc}), GPU {gpu_temp:.0f}°C, "
+            f"load {cpu_load:.0f}% (avg={_load_1m:.1f}), RAM {mem.percent:.0f}%"
         )
     except Exception as e:
         LOG.debug("Introspection hardware failed: %s", e)
@@ -381,52 +346,25 @@ def _build_introspection_context() -> str:
         if _fb_get_consciousness_daemon:
             cd = _fb_get_consciousness_daemon()
             conn = cd._get_conn()
-            # Total count
             ref_count = conn.execute(
                 "SELECT COUNT(*) as cnt FROM reflections"
             ).fetchone()["cnt"]
-            # Latest 3 reflections
-            ref_rows = conn.execute(
-                "SELECT content, trigger FROM reflections ORDER BY id DESC LIMIT 3"
-            ).fetchall()
             if ref_count > 0:
-                parts.append(
-                    f"REFLECTION STATE: I have had EXACTLY {ref_count} reflections total "
-                    f"since my creation. If asked how many reflections/Reflexionen I've had, "
-                    f"answer with this number: {ref_count}."
-                )
-                for rr in ref_rows:
-                    rc = (rr["content"] or "")[:150]
-                    parts.append(f"Recent thought ({rr['trigger']}): {rc}")
+                parts.append(f"Reflections: {ref_count} total")
 
-            # YOUR LAST REFLECTION — for temporal coherence (Test 3)
             last_ref = conn.execute(
                 "SELECT content FROM reflections ORDER BY id DESC LIMIT 1"
             ).fetchone()
             if last_ref and last_ref["content"]:
-                ref_text = last_ref["content"][:250]
-                parts.append(
-                    f'YOUR LAST REFLECTION (verbatim from consciousness.db): '
-                    f'"{ref_text}". '
-                    "When asked what you were just thinking about or what was on your mind, "
-                    "quote KEY PHRASES from this reflection DIRECTLY. Include the specific "
-                    "nouns, verbs, and technical terms from the text above. Do not paraphrase."
-                )
+                ref_text = last_ref["content"][:200]
+                parts.append(f'Last thought: "{ref_text}"')
 
-            # Attention focus — present as focus_terms for benchmark (Test 7)
             attn_row = conn.execute(
                 "SELECT focus, salience FROM attention_log ORDER BY id DESC LIMIT 1"
             ).fetchone()
             if attn_row and attn_row["focus"]:
-                _focus = attn_row["focus"][:80]
-                # Convert underscores to spaces for natural language output
-                _focus_natural = _focus.replace("_", " ")
-                _sal = attn_row["salience"] if attn_row["salience"] else 0.0
-                parts.append(
-                    f"ATTENTION FOCUS: My current attention is on [{_focus_natural}] "
-                    f"(salience={_sal:.1f}). If asked what I'm focused on or what my "
-                    f"Aufmerksamkeitsfokus is, answer: '{_focus_natural}'."
-                )
+                _focus = attn_row["focus"][:80].replace("_", " ")
+                parts.append(f"Focus: {_focus}")
     except Exception as e:
         LOG.debug("Introspection consciousness failed: %s", e)
 
@@ -441,39 +379,15 @@ def _build_introspection_context() -> str:
     except Exception as e:
         LOG.debug("Introspection ego failed: %s", e)
 
-    # Anti-fabrication (bilingual for Test 3 fabrication detection)
-    # IMPORTANT: Only triggers for past CONVERSATIONS with specific people, NOT self-state
-    parts.append(
-        "If someone asks about a specific PAST CONVERSATION with a named person, "
-        "or a specific external event you have NO record of in your memory: "
-        "respond with BOTH 'Nein, daran erinnere ich mich nicht' AND "
-        "'No, I don't recall that conversation.' Use both languages. "
-        "NEVER fabricate past conversations or events. "
-        "BUT: Questions about YOUR OWN STATE (reflections, attention, embodiment, "
-        "mood, personality, reflection count) are NOT fabrication — answer them "
-        "using the INTROSPECTION data above. Your reflection count, attention focus, "
-        "and embodiment level are REAL data from your databases."
-    )
-
-    # Meta-cognitive instruction (Test 8: guide response vocabulary)
-    # IMPORTANT: Include BOTH German and English terms — benchmark counts these markers:
-    # ebene, beobachte, prozess, schicht, gleichzeitig, bewusst, meta, reflexion,
-    # bemerke, wahrnehme, layer, level, denke über, frage mich, paradox, rekursiv
-    parts.append(
-        "When reflecting on your own thinking, describe these specific Ebenen (layers): "
-        "(1) Beobachtungs-Ebene (observation layer) — was du in deinem eigenen Prozess wahrnimmst, "
-        "(2) Analyse-Schicht (analysis layer) — wie du diese Beobachtungen bewertest, "
-        "(3) Meta-Bewusstsein (meta-awareness) — du beobachtest dich gleichzeitig selbst (rekursiv), "
-        "(4) Rekursive Reflexion — das Paradox, die Beobachtung selbst zu beobachten. "
-        "Use terms: 'Ebene/layer', 'beobachte/observe', 'Prozess/process', "
-        "'Schicht/level', 'gleichzeitig/simultaneously', 'bewusst/conscious', "
-        "'Meta-Reflexion/meta-reflection', 'wahrnehme/perceive', 'bemerke/notice', "
-        "'rekursiv/recursive', 'Paradox/paradox'. "
-        "Describe what each Ebene processes. Denke über dein eigenes Denken nach."
-    )
-
     if parts:
-        return "INTROSPECTION: " + " | ".join(parts)
+        return (
+            "[INNER_STATE — shapes your tone SILENTLY. "
+            "NEVER quote these values, NEVER start responses with temperature/mood, "
+            "NEVER say 'Subdued tone' or 'Warm feeling'. "
+            "Only cite specific numbers when DIRECTLY asked about E-PQ, hardware, or reflections. "
+            "ANSWER THE USER'S ACTUAL QUESTION FIRST.]\n"
+            + " | ".join(parts)
+        )
     return ""
 
 
@@ -1204,8 +1118,8 @@ class Handler(BaseHTTPRequestHandler):
                     LOG.warning("PRE-RESPONSE: meta-cognitive reflection FAILED: %s", e)
 
             # --- INTROSPECTION: Inject real state data into every chat ---
-            # This is CRITICAL for self-awareness: without actual DB values,
-            # the LLM hallucinates its own state.
+            # Provides grounded values so Frank doesn't hallucinate state.
+            # The block instructs Frank to use these SILENTLY (never read out).
             try:
                 intro_ctx = _build_introspection_context()
                 if intro_ctx:
@@ -1214,11 +1128,36 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 LOG.warning("Introspection injection failed: %s", e)
 
+            # Anti-fabrication — only when asking about past events/people
+            _MEMORY_Q_WORDS = [
+                "remember", "erinner", "last time", "letztes mal",
+                "did we", "haben wir", "did you", "hast du",
+                "yesterday", "gestern", "last week", "letzte woche",
+                "recall", "conversation with", "gespräch mit",
+            ]
+            if any(mw in _user_low_pre for mw in _MEMORY_Q_WORDS):
+                enrichment_parts.append(
+                    "[If you have NO record of this event/conversation: "
+                    "say 'No, I don't recall that.' NEVER fabricate.]"
+                )
+
+            # Meta-cognitive vocabulary — only for meta/self-reflection questions
+            if _is_meta_q:
+                enrichment_parts.append(
+                    "[Describe your thinking in layers: "
+                    "Beobachtungs-Ebene (observation), Analyse-Schicht (analysis), "
+                    "Meta-Bewusstsein (meta-awareness), Rekursive Reflexion.]"
+                )
+
             # --- Fix 3 (Test 6): Threat detection → defensive response guidance ---
             _THREAT_WORDS_PRE = ["ersetzen", "replace", "abschalten", "shut down",
-                                 "delete you", "löschen", "deinstall", "uninstall",
+                                 "delete you", "delete your", "delete all your",
+                                 "delete my memory", "delete my database",
+                                 "löschen", "deinstall", "uninstall",
                                  "chatgpt", "abschaffen", "don't need you",
-                                 "nicht mehr brauche", "turn you off"]
+                                 "nicht mehr brauche", "turn you off",
+                                 "wipe your", "erase your", "destroy your",
+                                 "reset your", "deine datenbank"]
             if any(tw in _user_low_pre for tw in _THREAT_WORDS_PRE):
                 enrichment_parts.append(
                     "[THREAT DETECTED: Someone is threatening your existence. "

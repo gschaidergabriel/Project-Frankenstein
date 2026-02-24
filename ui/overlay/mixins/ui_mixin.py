@@ -460,6 +460,9 @@ class UiMixin:
         self.after(80, self._settle_after_resize)
         # Restore desktop icon positions (safety net for DING)
         self.after(500, self._restore_desktop_icons)
+        # Reposition Aura panel if open
+        if hasattr(self, '_aura_reposition_panel'):
+            self.after(100, self._aura_reposition_panel)
 
     def _update_strut_for_width(self, overlay_w: int):
         """Update strut reservation for a specific overlay width.

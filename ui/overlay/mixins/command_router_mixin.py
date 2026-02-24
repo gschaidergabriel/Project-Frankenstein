@@ -166,6 +166,13 @@ class CommandRouterMixin:
         if hasattr(self, 'entry') and hasattr(self.entry, 'add_to_history'):
             self.entry.add_to_history(msg)
 
+        # Aura ripple on chat message
+        if hasattr(self, '_aura_on_chat_message'):
+            try:
+                self._aura_on_chat_message()
+            except Exception:
+                pass
+
         try:
             self._route_message(msg)
         except Exception as e:

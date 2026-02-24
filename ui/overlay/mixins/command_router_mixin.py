@@ -1011,6 +1011,14 @@ class CommandRouterMixin:
             self._io_q.put(("calendar_general", {"user_msg": msg}))
             return
 
+        # System status deep report — intercept BEFORE skill matcher
+        if re.search(r'\b(system\s*status|systemstatus|system\s*report|system\s*check'
+                     r'|system\s*health|system\s*info|system\s*overview'
+                     r'|systemzustand|systeminfo|systemcheck)\b', low):
+            self._add_message("Du", msg, is_user=True)
+            self._io_q.put(("sys_status_deep", {}))
+            return
+
         # Skill keyword matching (trigger installed skills) — checked BEFORE generic
         # handlers (notes, todo, clipboard, etc.) to give skills priority
         try:

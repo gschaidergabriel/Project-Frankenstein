@@ -100,6 +100,9 @@ class WorkerMixin:
                     self._do_rss_feed_worker(**arg)
                 elif kind == "news":
                     self._do_news_worker(**arg)
+                # System status deep report
+                elif kind == "sys_status_deep":
+                    self._do_sys_status_deep_worker()
                 # Skill system
                 elif kind == "skill":
                     self._do_skill_worker(**arg)

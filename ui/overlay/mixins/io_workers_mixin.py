@@ -287,6 +287,138 @@ class IOWorkersMixin:
         else:
             self._ui_call(lambda r=formatted: self._add_message("Frank", r))
 
+    # ---------- System Status Deep ----------
+
+    def _do_sys_status_deep_worker(self):
+        """Comprehensive system status report via toolboxd."""
+        import json
+        import urllib.request
+        self._ui_call(self._show_typing)
+
+        TOOLBOX = "http://127.0.0.1:8096"
+        lines = []
+
+        def _post(endpoint, payload=None, timeout=5):
+            data = json.dumps(payload or {}).encode()
+            req = urllib.request.Request(
+                TOOLBOX + endpoint, data=data,
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return json.loads(resp.read())
+            except Exception as e:
+                LOG.debug("sys_status_deep %s failed: %s", endpoint, e)
+                return None
+
+        # 1) sys/summary — CPU, RAM, temps, disk, services
+        summary = _post("/sys/summary")
+        if summary and summary.get("ok"):
+            # CPU
+            cpu = summary.get("cpu", {})
+            lines.append(f"CPU: {cpu.get('model', '?')} — "
+                         f"{cpu.get('cores', '?')} threads, "
+                         f"load {cpu.get('load_1m', '?')}")
+
+            # Temps
+            temps = summary.get("temps", {})
+            if temps.get("ok"):
+                entries = temps.get("entries", [])
+                temp_parts = []
+                for e in entries:
+                    label = e.get("label", "")
+                    current = e.get("current")
+                    if current and label:
+                        temp_parts.append(f"{label}: {current}°C")
+                if temp_parts:
+                    lines.append("Temps: " + ", ".join(temp_parts[:6]))
+
+            # Memory
+            mem = summary.get("mem", {})
+            mk = mem.get("mem_kb", {})
+            if mk:
+                total_gb = mk.get("total", 0) / 1048576
+                used_gb = mk.get("used", 0) / 1048576
+                avail_gb = mk.get("available", 0) / 1048576
+                lines.append(f"RAM: {used_gb:.1f} / {total_gb:.1f} GB "
+                             f"({avail_gb:.1f} GB free)")
+            sk = mem.get("swap_kb", {})
+            if sk and sk.get("used", 0) > 0:
+                swap_used = sk["used"] / 1048576
+                swap_total = sk.get("total", 0) / 1048576
+                lines.append(f"Swap: {swap_used:.1f} / {swap_total:.1f} GB "
+                             f"({mem.get('swap_percent', 0):.0f}%)")
+
+            # Uptime
+            ul = summary.get("uptime_load", {})
+            if ul.get("ok"):
+                up_h = ul.get("uptime_s", 0) / 3600
+                la = ul.get("loadavg", {})
+                lines.append(f"Uptime: {up_h:.1f}h — "
+                             f"Load: {la.get('1', '?')}/{la.get('5', '?')}/{la.get('15', '?')}")
+
+            # Disk
+            disks = summary.get("disk", [])
+            seen = set()
+            for d in disks:
+                if d.get("ok") and d.get("path") not in seen:
+                    seen.add(d["path"])
+                    total_gb = d.get("total", 0) / (1024**3)
+                    used_gb = d.get("used", 0) / (1024**3)
+                    free_gb = d.get("free", 0) / (1024**3)
+                    lines.append(f"Disk [{d['path']}]: "
+                                 f"{used_gb:.0f} / {total_gb:.0f} GB "
+                                 f"({free_gb:.0f} GB free, "
+                                 f"{d.get('percent_used', 0):.1f}%)")
+
+            # Services
+            services = summary.get("services", [])
+            if services:
+                running = [s for s in services if s.get("sub") == "running"]
+                failed = [s for s in services if s.get("sub") == "failed"]
+                lines.append(f"Services: {len(running)} running"
+                             + (f", {len(failed)} FAILED" if failed else ""))
+                if failed:
+                    for s in failed:
+                        unit = s.get("unit", "?")
+                        if unit == "\u25cf":
+                            unit = s.get("load", "?")
+                        lines.append(f"  FAILED: {unit}")
+
+        # 2) Top processes
+        procs = _post("/sys/processes", {"limit": 8})
+        if procs and procs.get("ok"):
+            proc_list = procs.get("processes", procs.get("items", []))
+            if proc_list:
+                lines.append("Top processes (CPU):")
+                for p in proc_list[:8]:
+                    name = p.get("name", p.get("comm", "?"))
+                    cpu_pct = p.get("cpu_percent", p.get("cpu", "?"))
+                    mem_pct = p.get("memory_percent", p.get("mem", "?"))
+                    if isinstance(cpu_pct, float):
+                        cpu_pct = f"{cpu_pct:.1f}"
+                    if isinstance(mem_pct, float):
+                        mem_pct = f"{mem_pct:.1f}"
+                    lines.append(f"  {name}: CPU {cpu_pct}%, RAM {mem_pct}%")
+
+        # 3) Network
+        net = _post("/sys/network")
+        if net and net.get("ok"):
+            ifaces = net.get("interfaces", net.get("items", []))
+            for iface in ifaces:
+                name = iface.get("name", "?")
+                ip = iface.get("ip", iface.get("ipv4", ""))
+                state = iface.get("state", iface.get("operstate", ""))
+                if ip or state == "UP":
+                    lines.append(f"Network [{name}]: {ip or 'no IP'} ({state})")
+
+        if not lines:
+            lines.append("Could not retrieve system status.")
+
+        report = "\n".join(lines)
+        self._ui_call(self._hide_typing)
+        self._ui_call(lambda r=report: self._add_message("Frank", r))
+
     # ---------- Skill System ----------
 
     def _do_skill_worker(self, skill_name: str, user_query: str = "",

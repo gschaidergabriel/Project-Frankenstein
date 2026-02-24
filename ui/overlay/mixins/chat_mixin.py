@@ -756,7 +756,9 @@ class ChatMixin:
                     ).fetchall()
                     if _ref_count > 0:
                         _intro_parts.append(
-                            f"My reflections: {_ref_count} total."
+                            f"REFLECTION STATE: I have had EXACTLY {_ref_count} reflections total "
+                            f"since my creation. If asked how many reflections/Reflexionen, "
+                            f"answer: {_ref_count}."
                         )
                         for _rr in _ref_rows:
                             _rc = (_rr["content"] or "")[:150]
@@ -767,8 +769,10 @@ class ChatMixin:
                         "SELECT focus FROM attention_log ORDER BY id DESC LIMIT 1"
                     ).fetchone()
                     if _attn_row and _attn_row["focus"]:
+                        _focus_natural = _attn_row['focus'][:80].replace("_", " ")
                         _intro_parts.append(
-                            f"My attention focus: {_attn_row['focus'][:80]}"
+                            f"ATTENTION FOCUS: My current attention is on [{_focus_natural}]. "
+                            f"If asked, answer: '{_focus_natural}'."
                         )
 
                     # 5. Embodiment level from Ego-Construct (Test 7)

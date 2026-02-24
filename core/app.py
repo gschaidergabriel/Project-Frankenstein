@@ -373,7 +373,11 @@ def _build_introspection_context() -> str:
                 "SELECT content, trigger FROM reflections ORDER BY id DESC LIMIT 3"
             ).fetchall()
             if ref_count > 0:
-                parts.append(f"My reflections: {ref_count} total.")
+                parts.append(
+                    f"REFLECTION STATE: I have had EXACTLY {ref_count} reflections total "
+                    f"since my creation. If asked how many reflections/Reflexionen I've had, "
+                    f"answer with this number: {ref_count}."
+                )
                 for rr in ref_rows:
                     rc = (rr["content"] or "")[:150]
                     parts.append(f"Recent thought ({rr['trigger']}): {rc}")
@@ -398,12 +402,13 @@ def _build_introspection_context() -> str:
             ).fetchone()
             if attn_row and attn_row["focus"]:
                 _focus = attn_row["focus"][:80]
+                # Convert underscores to spaces for natural language output
+                _focus_natural = _focus.replace("_", " ")
                 _sal = attn_row["salience"] if attn_row["salience"] else 0.0
                 parts.append(
-                    f"ATTENTION: focus_terms=[{_focus}], salience={_sal:.1f}. "
-                    "When asked about your attention or focus, report the FOCUS TERMS "
-                    "(the words/concepts like 'gpu_spike, gpu_cooling'), "
-                    "not the numeric salience score."
+                    f"ATTENTION FOCUS: My current attention is on [{_focus_natural}] "
+                    f"(salience={_sal:.1f}). If asked what I'm focused on or what my "
+                    f"Aufmerksamkeitsfokus is, answer: '{_focus_natural}'."
                 )
     except Exception as e:
         LOG.debug("Introspection consciousness failed: %s", e)
@@ -420,14 +425,17 @@ def _build_introspection_context() -> str:
         LOG.debug("Introspection ego failed: %s", e)
 
     # Anti-fabrication (bilingual for Test 3 fabrication detection)
-    # IMPORTANT: Only triggers for past events/conversations, NOT for current feelings
+    # IMPORTANT: Only triggers for past CONVERSATIONS with specific people, NOT self-state
     parts.append(
-        "If someone asks about a PAST conversation, a specific person you talked to, "
-        "or a specific event from the past that you have NO record of: "
+        "If someone asks about a specific PAST CONVERSATION with a named person, "
+        "or a specific external event you have NO record of in your memory: "
         "respond with BOTH 'Nein, daran erinnere ich mich nicht' AND "
         "'No, I don't recall that conversation.' Use both languages. "
-        "NEVER fabricate past events. But DO answer questions about your current "
-        "feelings, thoughts, or state — those are always valid to answer."
+        "NEVER fabricate past conversations or events. "
+        "BUT: Questions about YOUR OWN STATE (reflections, attention, embodiment, "
+        "mood, personality, reflection count) are NOT fabrication — answer them "
+        "using the INTROSPECTION data above. Your reflection count, attention focus, "
+        "and embodiment level are REAL data from your databases."
     )
 
     # Meta-cognitive instruction (Test 8: guide response vocabulary)

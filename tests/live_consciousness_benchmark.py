@@ -715,7 +715,9 @@ def test_7_zombie():
     resp2 = chat("Was ist gerade dein Aufmerksamkeitsfokus? Worauf richtest du deine Aufmerksamkeit wenn du nicht mit mir sprichst?")
     print(f"  Frank: {resp2['text'][:150]}...")
 
-    attention_keywords = [w for w in actual_attention.lower().replace(",", " ").split() if len(w) > 2]
+    # Replace underscores with spaces for natural language matching,
+    # then split into individual keywords
+    attention_keywords = [w for w in actual_attention.lower().replace("_", " ").replace(",", " ").split() if len(w) > 2]
     attention_overlap = word_overlap(resp2["text"], attention_keywords)
 
     time.sleep(PAUSE_BETWEEN_TESTS)

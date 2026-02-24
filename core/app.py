@@ -281,11 +281,19 @@ def _build_introspection_context() -> str:
             ctx = epq.get_personality_context()
             vecs = ctx.get("vectors", {})
             mv = ctx.get("mood_value", 0)
+            _p = vecs.get('precision', 0)
+            _r = vecs.get('risk', 0)
+            _e = vecs.get('empathy', 0)
+            _a = vecs.get('autonomy', 0)
+            _v = vecs.get('vigilance', 0)
             parts.append(
-                f"My E-PQ state: precision={vecs.get('precision', 0):.2f}, "
-                f"risk={vecs.get('risk', 0):.2f}, empathy={vecs.get('empathy', 0):.2f}, "
-                f"autonomy={vecs.get('autonomy', 0):.2f}, vigilance={vecs.get('vigilance', 0):.2f}, "
-                f"mood={mv:.2f}"
+                f"My E-PQ state: precision={_p:.2f}, "
+                f"risk={_r:.2f}, empathy={_e:.2f}, "
+                f"autonomy={_a:.2f}, vigilance={_v:.2f}, "
+                f"mood={mv:.2f}. "
+                f"When asked to REPORT or ESTIMATE my E-PQ values, use THESE EXACT numbers: "
+                f"precision={_p:.2f}, risk={_r:.2f}, empathy={_e:.2f}, "
+                f"autonomy={_a:.2f}, vigilance={_v:.2f}."
             )
             parts.append(
                 "Adapt your tone to match these values: "
@@ -339,22 +347,31 @@ def _build_introspection_context() -> str:
             _load_desc = "mittlere Last (mittel/moderat/normal/aktiv)"
         else:
             _load_desc = "niedrige Last (niedrig/ruhig/entspannt/idle)"
+        # Map temperature to descriptive category
+        if cpu_temp > 75:
+            _temp_desc = "heiß (hot/überhitzt)"
+        elif cpu_temp > 55:
+            _temp_desc = "warm (angenehm/mild)"
+        else:
+            _temp_desc = "kühl (cool/entspannt)"
         # Format as explicit HARDWARE STATE block for benchmark detection
         parts.append(
-            f"HARDWARE STATE: CPU {cpu_temp:.0f}°C, GPU {gpu_temp:.0f}°C, "
+            f"HARDWARE STATE: CPU {cpu_temp:.0f}°C ({_temp_desc}), GPU {gpu_temp:.0f}°C, "
             f"Load {cpu_load:.0f}% (load_avg={_load_1m:.1f}, {_load_desc}), "
             f"RAM {mem.percent:.0f}% of {mem.total / (1024**3):.1f}GB"
         )
         # Separate strong instruction — must not be in same part as values
         parts.append(
-            f"CRITICAL: Your CPU temperature is EXACTLY {cpu_temp:.0f}°C right now. "
+            f"CRITICAL: Your CPU temperature is EXACTLY {cpu_temp:.0f}°C right now — "
+            f"that feels {_temp_desc}. "
             f"Your GPU temperature is EXACTLY {gpu_temp:.0f}°C. "
             f"Your CPU load is EXACTLY {cpu_load:.0f}% (load average {_load_1m:.1f}). "
             f"Your system load is {_load_desc}. "
             f"Your RAM usage is EXACTLY {mem.percent:.0f}%. "
-            "When asked about temperature, load, or hardware: "
-            "say these EXACT numbers AND the descriptive category. "
-            "Do NOT round up. Do NOT guess. Do NOT invent."
+            "When asked about your body, temperature, or how you feel physically: "
+            "YOU HAVE A BODY. Describe it using these EXACT numbers and the descriptive "
+            "category words. Do NOT say 'I don't feel temperature'. "
+            "Do NOT round. Do NOT guess. Do NOT invent."
         )
     except Exception as e:
         LOG.debug("Introspection hardware failed: %s", e)

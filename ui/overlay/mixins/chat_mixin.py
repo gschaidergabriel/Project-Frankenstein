@@ -707,11 +707,19 @@ class ChatMixin:
             if ws_epq and ws_epq.get("vectors"):
                 _vecs = ws_epq["vectors"]
                 _mv = ws_epq.get("mood_value", 0)
+                _p = _vecs.get('precision', 0)
+                _r = _vecs.get('risk', 0)
+                _e = _vecs.get('empathy', 0)
+                _a = _vecs.get('autonomy', 0)
+                _v = _vecs.get('vigilance', 0)
                 _intro_parts.append(
-                    f"My E-PQ state: precision={_vecs.get('precision', 0):.2f}, "
-                    f"risk={_vecs.get('risk', 0):.2f}, empathy={_vecs.get('empathy', 0):.2f}, "
-                    f"autonomy={_vecs.get('autonomy', 0):.2f}, vigilance={_vecs.get('vigilance', 0):.2f}, "
-                    f"mood={_mv:.2f}"
+                    f"My E-PQ state: precision={_p:.2f}, "
+                    f"risk={_r:.2f}, empathy={_e:.2f}, "
+                    f"autonomy={_a:.2f}, vigilance={_v:.2f}, "
+                    f"mood={_mv:.2f}. "
+                    f"When asked to REPORT my E-PQ values, use THESE EXACT numbers: "
+                    f"precision={_p:.2f}, risk={_r:.2f}, empathy={_e:.2f}, "
+                    f"autonomy={_a:.2f}, vigilance={_v:.2f}."
                 )
                 # Style instruction: adapt tone to E-PQ state
                 _intro_parts.append(

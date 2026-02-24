@@ -140,6 +140,12 @@ FEATURE_PATTERNS = {
     "annealer": ("Simulated Annealing Solver", "O(n) delta energy SA with multi-flip, 200 runs x 2000 steps, geometric cooling", "meta", "core", "Classical SA, not quantum hardware"),
     "coherence_monitor": ("Coherence Monitor", "Polling daemon that tracks energy history, detects drift, and triggers re-solves on state changes", "meta", "core", "5s polling interval, cumulative drift threshold 0.4"),
     "epq_bridge": ("E-PQ Coherence Bridge", "Translates coherence events into personality feedback with exponential backoff", "meta", "core", "Min 10s, max 300s between events"),
+    # Dream Daemon
+    "dream_daemon": ("Dream Consolidation", "Sleep-analogue offline processing: 60min/day budget, 3 phases (Replay → Synthesis → Consolidation), interrupt-safe resume, 45min idle trigger, writes dream reflections to consciousness.db", "meta", "core", "LLM contention with consciousness daemon can cause timeouts"),
+    "dream_state": ("Dream State Tracker", "Persistent dream budget, phase/step/IDs for interrupt-resume, 24h rolling reset", "meta", "core", ""),
+    # Atlas Entity
+    "atlas_agent": ("Atlas Architecture Mentor", "Autonomous entity that teaches Frank about his own system architecture via structured daily conversations, tracks technical understanding with 4-vector personality (precision, encouragement, rapport, patience)", "entities", "core", "1x daily, 10-12min sessions, max 10 turns"),
+    "atlas_pq": ("Atlas Personality Construct", "4-vector adaptive personality for Atlas mentoring sessions — rapport only grows, precision/encouragement adapt per turn", "entities", "core", "Learning rate 0.02/turn, 0.05/session"),
 }
 
 

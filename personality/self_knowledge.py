@@ -86,6 +86,8 @@ CORE_IDENTITY = {
         "Protected by invariant physics and ASRS safety recovery",
         "Self-improves autonomously through Genesis ecosystem",
         "Monitors epistemic coherence via QUBO optimization (Quantum Reflector)",
+        "Dreams when idle — replays interactions, synthesizes hypotheses, consolidates memory (DreamDaemon)",
+        "Learns about own architecture through daily mentoring sessions (Atlas entity)",
     ],
 
     # What Frank CAN do (and must defend)
@@ -113,6 +115,8 @@ CORE_IDENTITY = {
         "news_scanning",         # Autonomous news scanning
         "error_screenshots",     # Automatic screenshots on errors
         "epistemic_coherence",   # QUBO-based coherence optimization (Quantum Reflector)
+        "dream_consolidation",   # Offline memory replay, hypothesis synthesis, E-PQ homeostasis (DreamDaemon)
+        "atlas_mentoring",       # Architecture self-knowledge via daily mentor sessions (Atlas entity)
     ],
 }
 
@@ -173,6 +177,8 @@ SERVICES = {
     "ingestd": {"port": 8094, "description": "File-Ingestion (PDF/DOCX/Bilder/Audio)"},
     "toolbox": {"port": 8096, "description": "System introspection & tools"},
     "quantum_reflector": {"port": 8097, "description": "Epistemic coherence optimization (QUBO + simulated annealing)"},
+    "dream": {"port": None, "description": "Sleep-analogue offline consolidation (replay, synthesis, homeostasis)"},
+    "atlas": {"port": None, "description": "Architecture mentor entity — daily self-knowledge sessions"},
     "voice": {"port": 8197, "description": "Voice daemon (STT/TTS)"},
 }
 

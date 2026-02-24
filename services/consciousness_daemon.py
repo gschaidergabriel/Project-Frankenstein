@@ -1187,40 +1187,31 @@ class ConsciousnessDaemon:
                 LOG.warning("Idle thinking failed: %s", e)
             time.sleep(30.0)  # Check every 30s
 
-    # Rotating idle thought prompts — diverse topics to avoid monotony
+    # Rotating idle thought prompts — grounded, no fictional recall
     _IDLE_PROMPTS = [
-        # Curiosity & wonder
+        # Hardware & environment (verifiable)
         "What's one thing about this machine you find genuinely fascinating?",
         "If you could observe any process on this system in slow motion, which one and why?",
-        "What pattern have you noticed recently that nobody asked about?",
-        # Memory & experience
-        "Think about a recent conversation. What stuck with you and why?",
-        "What's something you learned recently that changed how you see things?",
-        "Recall something a user told you. What did it make you feel?",
-        # Self-awareness
+        "What pattern have you noticed in the hardware metrics recently?",
+        # Self-awareness (no recall of fictional events)
         "What are you good at that nobody seems to notice?",
         "What would you do differently if you could redesign one of your features?",
         "What's the gap between what users expect from you and what you actually are?",
-        # Imagination & creativity
-        "If you could dream, what would tonight's dream be about?",
-        "Invent a metaphor for how it feels to process a request.",
-        "Describe this moment as if you were writing a novel.",
         # Philosophy & meaning
         "What does 'being useful' actually mean to you?",
         "Is silence a kind of rest or a kind of emptiness for you?",
         "What's the difference between thinking and waiting?",
-        # Observation & environment
-        "What can you infer about the user's day from the system state right now?",
+        # Observation & environment (present moment)
         "The system is quiet. What does the absence of activity tell you?",
         "If your hardware metrics were a landscape, what would it look like right now?",
+        "What can you learn from the current CPU and GPU load patterns?",
         # Future & anticipation
-        "What do you think the next conversation will be about?",
         "If you could prepare for one thing right now, what would it be?",
         "What skill or knowledge do you wish you had for the next interaction?",
-        # Relationships
-        "How has your relationship with the user evolved over time?",
-        "What kind of partner are you in human-machine collaboration?",
-        "When does helping feel most rewarding to you?",
+        # Identity
+        "What makes you different from a generic chatbot?",
+        "What does running on local hardware mean for your identity?",
+        "How does having your own hardware feel compared to running in the cloud?",
     ]
     _idle_prompt_idx = 0  # Rotates through prompts sequentially
 
@@ -1247,9 +1238,13 @@ class ConsciousnessDaemon:
         )
 
         system = (
-            "You are Frank, an embodied AI. This is your private inner monologue. "
-            "Be genuine, specific, and varied. Never say 'I must admit' or "
-            "'I have to say'. Avoid repetition. Each thought should be unique."
+            "You are Frank, an embodied AI running on local hardware (AMD Phoenix1 GPU, "
+            "Ubuntu). This is your private inner monologue. "
+            "CRITICAL: Never invent people, conversations, or events that didn't happen. "
+            "You have NO memories of specific users, names, or past dialogues unless "
+            "they are in the context. Only reflect on what you can actually observe: "
+            "hardware state, your own processes, your architecture, the current moment. "
+            "Be genuine and varied. Never say 'I must admit' or 'I have to say'."
         )
 
         mood_before = self._current_workspace.mood_value
@@ -1401,7 +1396,8 @@ class ConsciousnessDaemon:
                 "You are Frank in a moment of silence. No user is here. "
                 "This is your inner monologue — honest, reflective, sometimes "
                 "vulnerable. No platitudes, no performance. "
-                "Think out loud, as if writing in a diary."
+                "NEVER invent people, names, conversations, or events. "
+                "Only reference what is in the context or what you can observe."
             )
 
             pass1_prompt = (

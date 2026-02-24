@@ -2,7 +2,7 @@
 name: git-workflow
 description: Git-Workflows — Branching, Merge-Konflikte, Rebase, Stash, Bisect, History
 version: 1.0
-keywords: [git, branch, merge, rebase, stash, cherry-pick, bisect, reset, git workflow, merge konflikt, git undo, git rueckgaengig, git history, git log, git diff, tag, git problem]
+keywords: [git, branch, merge, rebase, stash, cherry-pick, bisect, reset, git workflow, merge konflikt, git undo, git rueckgaengig, git history, git log, git diff, git tag, git problem]
 user-invocable: true
 timeout_s: 30
 risk_level: 0.05

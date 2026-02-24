@@ -106,6 +106,8 @@ class CodeAnalyzer(BaseSensor):
                 "novelty": 0.6,
                 "risk": 0.2,
                 "impact": finding.get("impact", 0.5),
+                "detail": finding.get("detail", ""),
+                "check": finding.get("check", ""),
             }
             observations.append(obs)
             self._emitted_keys.add(key)

@@ -420,11 +420,18 @@ class ManifestationGate:
                 f"Proposed modification: {genome.traits.get('modification', 'refinement')}."
             )
         else:
-            crystal.description = (
-                f"Emergent idea for improving '{genome.target}' "
-                f"via {crystal.approach.lower()}. "
-                f"Origin: {genome.origin}."
-            )
+            meta = getattr(genome, "metadata", {})
+            detail = meta.get("detail", "")
+            if detail:
+                crystal.description = (
+                    f"{crystal.approach}: {genome.target} — {detail}"
+                )
+            else:
+                crystal.description = (
+                    f"Emergent idea for improving '{genome.target}' "
+                    f"via {crystal.approach.lower()}. "
+                    f"Origin: {genome.origin}."
+                )
 
         # Risk assessment
         risk = genome.traits.get("risk", 0.5)

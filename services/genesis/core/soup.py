@@ -309,12 +309,13 @@ class PrimordialSoup:
                 and c.genome.target == obs_target
                 and c.genome.approach == obs_approach
             )
-            if existing + crystal_existing >= 3:
+            if existing + crystal_existing >= 1:
                 LOG.debug(f"Skipping duplicate seed: {obs_type}/{obs_target}/{obs_approach} "
                          f"(already {existing} organisms + {crystal_existing} crystals)")
                 return
 
         # Create genome from observation
+        _META_KEYS = ("detail", "check", "exc_type", "location", "error_count")
         genome = IdeaGenome(
             idea_type=obs_type,
             target=obs_target,
@@ -326,6 +327,10 @@ class PrimordialSoup:
                 "complexity": observation.get("complexity", random.random() * 0.5),
                 "risk": observation.get("risk", random.random() * 0.3),
                 "impact": observation.get("impact", random.random()),
+            },
+            metadata={
+                k: str(v) for k, v in observation.items()
+                if k in _META_KEYS and v
             },
         )
 

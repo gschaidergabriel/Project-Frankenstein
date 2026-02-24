@@ -56,6 +56,9 @@ class IdeaGenome:
         "impact": random.random(),       # Potential impact
     })
 
+    # Non-numeric metadata (file paths, detail strings, error context)
+    metadata: Dict[str, str] = field(default_factory=dict)
+
     # Mutation history
     mutations: int = 0
 
@@ -101,6 +104,7 @@ class IdeaGenome:
                                      other.traits.get(trait, 0.5)])
                 for trait in set(self.traits) | set(other.traits)
             },
+            metadata={**self.metadata, **other.metadata},
             mutations=0,
         )
         return child

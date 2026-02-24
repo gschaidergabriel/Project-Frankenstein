@@ -144,36 +144,9 @@ class SystemPulse(BaseSensor):
                     "impact": 0.5,
                 })
 
-            # Low CPU idle time → good time for proactive improvements
-            if cpu < 0.3 and _rnd.random() < 0.15:
-                targets = ["log_cleanup", "service_health", "disk_usage",
-                           "startup_time", "response_latency", "error_handling"]
-                approaches = ["new_tool", "refactoring", "config_change", "precompute"]
-                observations.append({
-                    "type": _rnd.choice(["optimization", "feature"]),
-                    "target": _rnd.choice(targets),
-                    "approach": _rnd.choice(approaches),
-                    "origin": "system_observation",
-                    "strength": 0.4 + _rnd.random() * 0.3,
-                    "novelty": 0.6 + _rnd.random() * 0.3,
-                    "risk": 0.1 + _rnd.random() * 0.2,
-                    "impact": 0.4 + _rnd.random() * 0.4,
-                })
-
-            # Periodic diverse exploration seed (5% chance per tick)
-            if _rnd.random() < 0.05:
-                explore_targets = ["code_quality", "test_coverage", "documentation",
-                                   "dependency_audit", "security_scan", "backup_verify"]
-                observations.append({
-                    "type": "exploration",
-                    "target": _rnd.choice(explore_targets),
-                    "approach": _rnd.choice(["new_tool", "refactoring"]),
-                    "origin": "system_observation",
-                    "strength": 0.3 + _rnd.random() * 0.3,
-                    "novelty": 0.7 + _rnd.random() * 0.2,
-                    "risk": 0.1 + _rnd.random() * 0.15,
-                    "impact": 0.3 + _rnd.random() * 0.4,
-                })
+            # NOTE: Random exploration seeds removed — they produced generic
+            # proposals with no grounding in actual code or metrics.
+            # Real observations come from CodeAnalyzer and ErrorTremor.
 
         except Exception as e:
             LOG.warning(f"Error getting observations: {e}")

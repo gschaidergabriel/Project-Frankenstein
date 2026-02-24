@@ -661,7 +661,7 @@ ADI_HINTS_RE = re.compile(
     r"your.{0,10}(size|position|appearance|layout)|"
     r"mach.{0,5}dich.{0,10}(größer|groesser|kleiner|breiter|schmaler)|"
     r"make\s+yourself.{0,10}(bigger|smaller|wider|narrower|larger)|"
-    r"adi|display.?intelligence|"
+    r"\badi\b|display.?intelligence|"
     r"nochmal.{0,10}(einstellen|anpassen|ändern|aendern)|"
     r"öffne.{0,10}(setup|einstellung|monitor|display)|"
     r"oeffne.{0,10}(setup|einstellung|monitor|display)|"

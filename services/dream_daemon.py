@@ -65,6 +65,17 @@ ROUTER_BASE = os.environ.get("AICORE_ROUTER_URL", "http://127.0.0.1:8091")
 
 LOG = logging.getLogger("dream_daemon")
 
+
+def _dream_notify(action: str, detail: str = "") -> None:
+    """Fire-and-forget overlay notification."""
+    try:
+        from services.autonomous_notify import notify_autonomous
+        notify_autonomous(action, detail, category="dream",
+                          source="dream_daemon")
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Timing & Constants
 # ---------------------------------------------------------------------------
@@ -818,6 +829,7 @@ class DreamDaemon:
         self._save_state(phase=1, progress=self._phase_progress)
         self._log_dream("replay", self._replay_results, elapsed)
         LOG.info("Phase 1: REPLAY complete (%d results, %ds)", len(self._replay_results), elapsed)
+        _dream_notify("Dream Phase 1", f"Replay complete ({len(self._replay_results)} results, {elapsed}s)")
 
     # ── Phase 2: Synthesis ───────────────────────────────────────────
 
@@ -900,6 +912,7 @@ class DreamDaemon:
         self._save_state(phase=2, progress=self._phase_progress)
         self._log_dream("synthesis", self._synthesis_results, elapsed)
         LOG.info("Phase 2: SYNTHESIS complete (%ds)", elapsed)
+        _dream_notify("Dream Phase 2", f"Synthesis complete ({elapsed}s)")
 
     def _apply_hypothesis_updates(self, updates: List):
         """Apply hypothesis status updates from synthesis."""
@@ -973,6 +986,7 @@ class DreamDaemon:
             "steps": steps_done,
         }, elapsed)
         LOG.info("Phase 3: CONSOLIDATION complete (%ds)", elapsed)
+        _dream_notify("Dream Phase 3", f"Consolidation complete ({elapsed}s)")
 
     def _write_dream_reflections(self):
         """Write 2-5 dream reflections to consciousness.db."""
@@ -1189,6 +1203,7 @@ class DreamDaemon:
             }, 0)
 
             LOG.info("Dream session %s COMPLETE", self._dream_session_id)
+            _dream_notify("Dream Complete", f"Session {self._dream_session_id[:8]} finished")
 
         except Exception as e:
             LOG.error("Dream session failed: %s\n%s", e, traceback.format_exc())

@@ -62,6 +62,17 @@ logging.basicConfig(
 )
 LOG = logging.getLogger("entity_dispatcher")
 
+
+def _entity_notify(action: str, detail: str = "") -> None:
+    """Fire-and-forget overlay notification."""
+    try:
+        from services.autonomous_notify import notify_autonomous
+        notify_autonomous(action, detail, category="entity",
+                          source="entity_dispatcher")
+    except Exception:
+        pass
+
+
 # ── Configuration ───────────────────────────────────────────────────────
 
 DAILY_QUOTAS: dict[str, int] = {
@@ -343,6 +354,7 @@ def run_entity_session(entity: str) -> str:
     module_name = ENTITY_MODULES[entity]
     display = ENTITY_DISPLAY.get(entity, entity)
     LOG.info("Starting %s session...", display)
+    _entity_notify(f"{display} Session", "starting")
 
     try:
         mod = importlib.import_module(module_name)
@@ -352,6 +364,7 @@ def run_entity_session(entity: str) -> str:
         if exit_reason is None:
             exit_reason = "unknown"
         LOG.info("%s session ended: %s", display, exit_reason)
+        _entity_notify(f"{display} Session", f"ended ({exit_reason})")
         return exit_reason
     except KeyboardInterrupt:
         LOG.info("%s session interrupted (KeyboardInterrupt)", display)

@@ -60,11 +60,11 @@ except ImportError:
 CORE_BASE = os.environ.get("AICORE_CORE_URL", "http://127.0.0.1:8088")
 ROUTER_BASE = os.environ.get("AICORE_ROUTER_URL", "http://127.0.0.1:8091")
 
-# Timing
-WORKSPACE_UPDATE_INTERVAL_S = 30.0      # Continuous workspace refresh
+# Timing  (relaxed 2026-02-24 — reduce GPU load, break runaway feedback)
+WORKSPACE_UPDATE_INTERVAL_S = 60.0      # Was 30s — workspace refresh
 IDLE_THINK_INTERVAL_S = 300.0           # 5 min idle thinking
 IDLE_THINK_MIN_SILENCE_S = 180.0        # Only think after 3min silence
-MOOD_RECORD_INTERVAL_S = 60.0           # Mood trajectory recording
+MOOD_RECORD_INTERVAL_S = 120.0          # Was 60s — mood trajectory recording
 PREDICTION_CHECK_INTERVAL_S = 120.0     # Check predictions every 2min
 SLEEP_CONSOLIDATION_INTERVAL_S = 21600  # 6 hours
 HEARTBEAT_INTERVAL_S = 900.0            # 15 min checkpoint
@@ -78,9 +78,9 @@ IDLE_THINK_MAX_TOKENS = 120
 CONSOLIDATION_MAX_TOKENS = 60
 
 # --- Perceptual Feedback Loop (RPT) ---
-PERCEPTION_TICK_S = 0.2              # 200ms sampling rate
-PERCEPTION_SUMMARY_INTERVAL_S = 5.0  # Workspace update every 5s
-PERCEPTION_INTERPRET_INTERVAL_S = 30.0  # LLM micro-interpretation every 30s
+PERCEPTION_TICK_S = 1.0              # Was 0.2 — 1Hz statt 5Hz (5x weniger Samples)
+PERCEPTION_SUMMARY_INTERVAL_S = 10.0 # Was 5s — Workspace update every 10s
+PERCEPTION_INTERPRET_INTERVAL_S = 60.0  # Was 30s — LLM micro-interpretation every 60s
 PERCEPTION_INTERPRET_TOKENS = 50
 MAX_PERCEPTUAL_LOG = 100
 # Event thresholds (deltas that count as "perceptual events")
@@ -92,7 +92,7 @@ PERCEPT_USER_BACK_S = 5.0    # mouse idle < this after being gone = "user_return
 PERCEPT_PREV_IDLE_THRESHOLD = 60.0  # previous must be > this to trigger "user_returned"
 
 # --- Latent Experience Space (HOT-4) ---
-EXPERIENCE_EMBED_INTERVAL_S = 60.0   # Embed state every 60s
+EXPERIENCE_EMBED_INTERVAL_S = 120.0  # Was 60s — Embed state every 120s
 EXPERIENCE_VECTOR_DIM = 64
 MAX_EXPERIENCE_VECTORS = 1440        # ~24h at 1/min
 EXPERIENCE_NOVELTY_THRESHOLD = 0.70  # Below this = "novel"
@@ -100,7 +100,7 @@ EXPERIENCE_DRIFT_THRESHOLD = 0.50    # Below this vs 1h ago = "drift"
 EXPERIENCE_CYCLE_THRESHOLD = 0.85    # Above this vs 24h ago = "cycle"
 
 # --- Attention Controller (AST) ---
-ATTENTION_TICK_S = 10.0       # Controller runs every 10s
+ATTENTION_TICK_S = 20.0       # Was 10s — Controller runs every 20s
 ATTENTION_STALE_S = 300.0     # 5min without engagement = "stale"
 ATTENTION_DECAY_RATE = 0.95   # Salience decay per 10s
 MAX_ATTENTION_LOG = 200
@@ -333,6 +333,19 @@ class ConsciousnessDaemon:
             )
         except Exception as _we_err:
             LOG.debug("_observe_world failed: %s", _we_err)
+
+    # ── Overlay notification (fire-and-forget) ─────────────────────
+
+    @staticmethod
+    def _notify(action: str, detail: str = "",
+                category: str = "consciousness") -> None:
+        """Send a short notification to the overlay."""
+        try:
+            from services.autonomous_notify import notify_autonomous
+            notify_autonomous(action, detail, category=category,
+                              source="consciousness_daemon")
+        except Exception:
+            pass
 
     # ── Database ──────────────────────────────────────────────────────
 
@@ -1253,6 +1266,7 @@ class ConsciousnessDaemon:
                     mood_after=mood_before,  # Will be updated next mood poll
                 )
                 LOG.info("Idle thought [%s]: %s", prompt_question[:30], result[:80])
+                self._notify("Idle Thought", result.strip()[:120])
                 # World Experience: idle thought observed
                 self._observe_world(
                     "consciousness.idle_thought", "consciousness.reflection",
@@ -1449,6 +1463,8 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("Reflection→E-PQ bridge failed: %s", e)
 
+            self._notify("Deep Reflection", f"[{chosen_cat}] {pass1_result.strip()[:120]}")
+
             # World Experience: deep reflection observed
             self._observe_world(
                 "consciousness.deep_reflection", "personality.growth",
@@ -1477,10 +1493,146 @@ class ConsciousnessDaemon:
             LOG.info("Deep reflection complete [%s] (%d today)",
                      chosen_cat, self._daily_reflection_count)
 
+            # ── Autonomous External Action ──
+            # After reflecting, Frank may choose to act on his thoughts.
+            try:
+                self._maybe_autonomous_action(combined)
+            except Exception as e:
+                LOG.debug("Autonomous action failed: %s", e)
+
         except Exception as e:
             LOG.warning("Deep reflection failed: %s", e)
         finally:
             self._reflecting = False
+
+    # ── Autonomous External Actions ──────────────────────────────────
+
+    _AUTONOMOUS_ACTION_PROMPT = (
+        "You just reflected:\n\"{reflection}\"\n\n"
+        "Based on this reflection, would ONE specific external action be valuable right now?\n"
+        "Choose exactly one, or 'none':\n"
+        "- web_search:<query> — search the web for something relevant\n"
+        "- news:<category> — check news (tech_de, science, news_de)\n"
+        "- sys_check — check system health\n"
+        "- write_note:<short text> — write a brief note/insight to your journal\n"
+        "- none — no action needed\n\n"
+        "Reply with ONLY the action string, nothing else."
+    )
+
+    def _maybe_autonomous_action(self, reflection_text: str) -> None:
+        """After a deep reflection, decide and execute one external action."""
+        if self._user_became_active():
+            return
+
+        decision = self._llm_call(
+            self._AUTONOMOUS_ACTION_PROMPT.format(
+                reflection=reflection_text[:300],
+            ),
+            max_tokens=40,
+            system="You are Frank deciding on one autonomous action. Be brief.",
+        )
+        if not decision:
+            return
+
+        decision = decision.strip().lower()
+        LOG.info("Autonomous action decision: %s", decision[:60])
+
+        if decision.startswith("none") or "none" in decision[:10]:
+            return
+
+        try:
+            if decision.startswith("web_search:"):
+                query = decision.split(":", 1)[1].strip()[:100]
+                self._auto_web_search(query)
+            elif decision.startswith("news:"):
+                cat = decision.split(":", 1)[1].strip()[:20]
+                self._auto_news_check(cat)
+            elif decision.startswith("sys_check"):
+                self._auto_sys_check()
+            elif decision.startswith("write_note:"):
+                note = decision.split(":", 1)[1].strip()[:200]
+                self._auto_write_note(note)
+            else:
+                LOG.debug("Unknown autonomous action: %s", decision[:40])
+        except Exception as e:
+            LOG.debug("Autonomous action execution failed: %s", e)
+
+    def _auto_web_search(self, query: str) -> None:
+        """Perform an autonomous web search via webd."""
+        import urllib.request, json
+        payload = json.dumps({"query": query, "limit": 3}).encode()
+        req = urllib.request.Request(
+            "http://127.0.0.1:8093/search",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+
+        results = data.get("results", [])
+        if results:
+            titles = "; ".join(r.get("title", "")[:40] for r in results[:3])
+            self._notify("Web Search", f'"{query}" → {titles}')
+            LOG.info("Autonomous web search: %s → %d results", query, len(results))
+
+            # Store search result as short-term memory
+            summary = "\n".join(
+                f"- {r.get('title', '')}: {r.get('snippet', '')[:80]}"
+                for r in results[:3]
+            )
+            self._store_reflection(
+                trigger="autonomous_search",
+                content=f"Web search for '{query}':\n{summary}",
+                mood_before=self._current_workspace.mood_value,
+                mood_after=self._current_workspace.mood_value,
+            )
+
+    def _auto_news_check(self, category: str = "tech_de") -> None:
+        """Check news via webd."""
+        import urllib.request, json
+        payload = json.dumps({"category": category, "limit": 3}).encode()
+        req = urllib.request.Request(
+            "http://127.0.0.1:8093/news",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+
+        items = data.get("items", data.get("results", []))
+        if items:
+            titles = "; ".join(i.get("title", "")[:40] for i in items[:3])
+            self._notify("News Check", f"[{category}] {titles}")
+            LOG.info("Autonomous news check [%s]: %d items", category, len(items))
+
+    def _auto_sys_check(self) -> None:
+        """Quick system health check via toolboxd."""
+        import urllib.request, json
+        req = urllib.request.Request(
+            "http://127.0.0.1:8096/sys/summary",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+
+        cpu = data.get("cpu", {}).get("percent", "?")
+        mem = data.get("mem", {}).get("percent", "?")
+        self._notify("System Check", f"CPU {cpu}%, RAM {mem}%")
+        LOG.info("Autonomous sys check: CPU=%s%% RAM=%s%%", cpu, mem)
+
+    def _auto_write_note(self, note: str) -> None:
+        """Write a brief autonomous note/insight."""
+        self._store_reflection(
+            trigger="autonomous_note",
+            content=note,
+            mood_before=self._current_workspace.mood_value,
+            mood_after=self._current_workspace.mood_value,
+        )
+        self._notify("Note", note[:120])
+        LOG.info("Autonomous note: %s", note[:80])
+
+    # ── Reflection→Personality Bridge ────────────────────────────────
 
     def _fire_reflection_epq_event(self, reflection_text: str, category: str):
         """Analyze a reflection and fire appropriate E-PQ personality events.
@@ -1736,6 +1888,8 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("Recursive reflection→E-PQ bridge failed: %s", e)
 
+            self._notify("Recursive Reflection", result.strip()[:120])
+
             # World Experience: recursive self-awareness
             self._observe_world(
                 "consciousness.recursive_reflect", "personality.self_awareness",
@@ -1974,6 +2128,7 @@ class ConsciousnessDaemon:
 
         conn.commit()
         LOG.info("Memory consolidation complete")
+        self._notify("Memory Consolidation", mood_label if rows else "complete")
 
         # World Experience: consolidation event
         self._observe_world(
@@ -2169,6 +2324,7 @@ class ConsciousnessDaemon:
         )
         conn.commit()
         LOG.info("Feature training complete (3 phases)")
+        self._notify("Feature Training", "3 phases complete")
 
     # ══════════════════════════════════════════════════════════════════
     # MODULE 1: Perceptual Feedback Loop (RPT)
@@ -2330,7 +2486,16 @@ class ConsciousnessDaemon:
         """Optional LLM micro-interpretation of perceptual events."""
         if not events:
             return
-        event_str = ", ".join(set(events))
+        # --- Runaway-Schutz: GPU/CPU-Spikes nach eigener LLM-Nutzung ignorieren ---
+        hw_events = {"gpu_spike", "cpu_spike", "warming", "gpu_warming"}
+        unique = set(events)
+        if unique.issubset(hw_events):
+            # Nur HW-Events → wahrscheinlich selbst verursacht, kein LLM nötig
+            LOG.debug("Perception: skipping self-induced HW events: %s", unique)
+            return
+        # Entferne HW-Events aus gemischten Sets (user_returned + gpu_spike → nur user_returned)
+        unique -= hw_events
+        event_str = ", ".join(unique) if unique else ", ".join(set(events))
         try:
             result = self._llm_call(
                 f"You sensed: {event_str}. What does this feel like? (1 sentence, "

@@ -68,6 +68,11 @@ class NotificationMixin:
                     "mirror": "\u2694\uFE0F",         # crossed swords (Kairos)
                     "atlas": "\U0001F9ED",            # compass (Atlas)
                     "muse": "\U0001F3A8",             # palette (Echo)
+                    "autonomous": "\u2699\uFE0F",     # gear (autonomous action)
+                    "consciousness": "\U0001F9E0",    # brain (consciousness)
+                    "dream": "\U0001F4AD",            # thought bubble (dream)
+                    "entity": "\U0001F464",            # silhouette (entity session)
+                    "genesis": "\U0001F9EC",           # DNA (genesis)
                 }
                 icon = icon_map.get(category, "\U0001F514")  # default: bell
 

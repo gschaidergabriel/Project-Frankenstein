@@ -142,7 +142,7 @@ def _detect_primary_monitor() -> dict:
 class BSNConstants:
     """Constants for the layout system."""
     # Frank Constraints
-    FRANK_MIN_WIDTH = 340      # Minimum for usable UI
+    FRANK_MIN_WIDTH = 380      # Minimum for usable UI (room for L/A buttons in titlebar)
     FRANK_MAX_WIDTH = 520      # Maximum width (leave room for apps)
     FRANK_MIN_HEIGHT = 500     # Title + Messages + Input
     FRANK_DEFAULT_WIDTH = 420  # Default width

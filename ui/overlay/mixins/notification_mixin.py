@@ -18,6 +18,12 @@ except ImportError:
     NOTIFICATION_DIR = Path("/tmp/frank/notifications")
 _NOTIFICATION_POLL_MS = 15_000  # 15 seconds
 
+# Categories routed to the Log Panel instead of main chat
+_LOG_PANEL_CATEGORIES = frozenset({
+    "consciousness", "dream", "entity",
+    "therapist", "mirror", "atlas", "muse",
+})
+
 
 class NotificationMixin:
     """Polls notification JSON files from the daemon and shows them in chat."""
@@ -85,6 +91,11 @@ class NotificationMixin:
                     self._ui_call(
                         lambda m=msg, s=is_system, sn=sender, fp=filepath:
                             self._add_download_message(sn, m, fp, is_system=s)
+                    )
+                elif category in _LOG_PANEL_CATEGORIES and hasattr(self, "_log_add_entry"):
+                    self._ui_call(
+                        lambda cat=category, m=body, sn=sender:
+                            self._log_add_entry(cat, m, sn)
                     )
                 else:
                     self._ui_call(

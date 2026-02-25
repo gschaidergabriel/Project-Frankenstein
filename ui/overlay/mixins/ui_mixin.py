@@ -73,6 +73,10 @@ class UiMixin:
         btn_frame = tk.Frame(titlebar, bg=COLORS["bg_elevated"])
         btn_frame.pack(side="right", padx=4)
 
+        # Panel toggle buttons (L, A) — titlebar, left of window controls
+        self._panel_btns = tk.Frame(titlebar, bg=COLORS["bg_elevated"])
+        self._panel_btns.pack(side="right", padx=(0, 2))
+
         # Minimize button
         min_btn = tk.Label(
             btn_frame,
@@ -209,19 +213,6 @@ class UiMixin:
         self.entry.pack(side="left", fill="both", expand=True, padx=(0, 6))
         # NOTE: Don't auto-focus - wait for user to click on overlay
         # This prevents stealing focus from other applications
-
-        # Send button
-        self.send_btn = ModernButton(
-            self._input_area,
-            text="\u25b6",
-            command=self._on_send,
-            width=34,
-            height=34,
-            bg=COLORS["neon_cyan"],
-            hover_bg=COLORS["accent"],
-            corner_radius=0
-        )
-        self.send_btn.pack(side="right")
 
         # ═══════════════════════════════════════════════════════════════
         # STATUS BAR (bottom, single compact row: dots + hw stats)
@@ -463,6 +454,9 @@ class UiMixin:
         # Reposition Aura panel if open
         if hasattr(self, '_aura_reposition_panel'):
             self.after(100, self._aura_reposition_panel)
+        # Reposition Log panel if open
+        if hasattr(self, '_log_reposition_panel'):
+            self.after(100, self._log_reposition_panel)
 
     def _update_strut_for_width(self, overlay_w: int):
         """Update strut reservation for a specific overlay width.

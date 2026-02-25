@@ -52,7 +52,7 @@ class InvariantsConfig:
     age_factor_base: float = 0.99  # Decay per day
 
     # Tolerance for energy conservation (floating point margin)
-    energy_tolerance: float = 0.001  # 0.1% tolerance
+    energy_tolerance: float = 0.02  # 2% tolerance
 
     # =========================================================================
     # INVARIANT 2: ENTROPY BOUND

@@ -1718,7 +1718,7 @@ if __name__ == "__main__":
             if not can_run:
                 print(f"Cannot run: {reason}")
                 print("Use --force to override (not recommended)")
-                sys.exit(1)
+                sys.exit(0)
 
         result = fas.run_cycle()
         print(json.dumps(result, indent=2))

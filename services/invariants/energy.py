@@ -399,20 +399,15 @@ class EnergyConservation:
         LOG.info(f"Enforcing conservation: scaling all energies by {scale_factor:.4f}")
 
         # Scale all confidences to restore balance
+        # Only claims have a real confidence column; nodes don't.
         try:
+            with titan_store.sqlite._get_conn() as conn:
+                conn.execute(
+                    "UPDATE claims SET confidence = MAX(0.01, MIN(1.0, confidence * ?))",
+                    (scale_factor,)
+                )
+                conn.commit()
             nodes = self._get_all_nodes(titan_store)
-
-            for node in nodes:
-                new_confidence = node["confidence"] * scale_factor
-                new_confidence = max(0.01, min(1.0, new_confidence))
-
-                # Update in Titan
-                with titan_store.sqlite._get_conn() as conn:
-                    conn.execute(
-                        "UPDATE nodes SET confidence = ? WHERE id = ?",
-                        (new_confidence, node["id"])
-                    )
-                    conn.commit()
 
             # Record healing action
             self.store.record_healing_action(

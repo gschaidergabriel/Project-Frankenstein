@@ -140,10 +140,11 @@ class AuraVisualizerMixin:
     # ──────────────────────────────────────────────────────────────
 
     def _aura_create_toggle_button(self):
-        """Small square button at the top-right corner of the overlay."""
+        """Small square button in the panel button bar (bottom area)."""
         s = 22
+        parent = getattr(self, "_panel_btns", self)
         btn = tk.Canvas(
-            self, width=s, height=s,
+            parent, width=s, height=s,
             bg=_BTN_BG, highlightthickness=0, cursor="hand2",
         )
         btn.create_rectangle(
@@ -158,7 +159,7 @@ class AuraVisualizerMixin:
         btn.bind("<Button-1>", lambda _e: self._aura_toggle())
         btn.bind("<Enter>", self._aura_btn_enter)
         btn.bind("<Leave>", self._aura_btn_leave)
-        btn.place(relx=1.0, x=-1, y=2, anchor="ne")
+        btn.pack(side="right", padx=(6, 0), pady=2)
 
         self._aura_btn = btn
         self._aura_btn_hover = False
@@ -204,6 +205,10 @@ class AuraVisualizerMixin:
             self._aura_open_panel()
 
     def _aura_open_panel(self):
+        # Mutual exclusion: close log panel if open
+        if getattr(self, "_log_open", False) and hasattr(self, "_log_close"):
+            self._log_close()
+
         panel_h = self.winfo_height()
         self._aura_panel_size = panel_h  # square
 

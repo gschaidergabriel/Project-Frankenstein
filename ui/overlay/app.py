@@ -61,6 +61,7 @@ from overlay.mixins.password_mixin import PasswordMixin
 from overlay.mixins.qr_mixin import QrMixin
 from overlay.mixins.printer_mixin import PrinterMixin
 from overlay.mixins.notification_mixin import NotificationMixin
+from overlay.mixins.log_panel_mixin import LogPanelMixin
 from overlay.mixins.gol_visualizer_mixin import AuraVisualizerMixin
 
 
@@ -87,6 +88,7 @@ class ChatOverlay(
     QrMixin,
     PrinterMixin,
     NotificationMixin,
+    LogPanelMixin,            # Daemon activity log panel
     AuraVisualizerMixin,  # Inner life visualizer
     AppWorkersMixin,
     AnalysisMixin,
@@ -201,6 +203,13 @@ class ChatOverlay(
             LOG.info("Aura visualizer initialized")
         except Exception as e:
             LOG.warning("Aura visualizer init failed: %s", e)
+
+        # Log Panel — Daemon activity log (toggle button + slide-out panel)
+        try:
+            self._init_log_panel()
+            LOG.info("Log panel initialized")
+        except Exception as e:
+            LOG.warning("Log panel init failed: %s", e)
 
         # NOTE: Chat history is loaded AFTER reveal via _deferred_load_history().
         # MessageBubble creation is slow (~250ms each), so we show the window

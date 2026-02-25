@@ -11,7 +11,7 @@
 
 > **Get started in one command:** Download [`frank-installer`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-installer), run `chmod +x frank-installer && ./frank-installer` — no Python required. Or clone the repo and run `python3 install_wizard.py`.
 
-Built by one person in 2 months with zero programming experience. [Read the full story.](ABOUT.md)
+Built by one person with zero programming experience, using Claude as co-developer. 76k+ lines in 2 months. [Read the full story.](ABOUT.md)
 
 **[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)**
 

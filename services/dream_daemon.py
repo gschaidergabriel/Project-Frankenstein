@@ -486,6 +486,19 @@ class DreamDaemon:
 
     # ── Idle / Activity Detection ────────────────────────────────────
 
+    @staticmethod
+    def _is_gaming_active() -> bool:
+        """Check if gaming mode is active — no dreaming during gaming."""
+        try:
+            state_file = Path("/tmp/frank/gaming_mode_state.json")
+            if state_file.exists():
+                import json as _json
+                data = _json.loads(state_file.read_text())
+                return data.get("active", False)
+        except Exception:
+            pass
+        return False
+
     def _get_idle_seconds(self) -> float:
         """Get seconds since last user interaction."""
         if self._test_mode:
@@ -556,6 +569,10 @@ class DreamDaemon:
 
     def _should_start_dreaming(self) -> bool:
         """Check if all trigger conditions are met."""
+        # Gaming mode: never dream during gaming
+        if self._is_gaming_active():
+            return False
+
         status = self._get_current_status()
 
         # If paused, check resume conditions (lower idle threshold)

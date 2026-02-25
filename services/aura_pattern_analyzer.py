@@ -61,14 +61,26 @@ DEEP_META_COUNT = int(os.environ.get("AURA_DEEP_METAS", "3"))      # metas per d
 
 # Database
 try:
-    from config.paths import get_db, AICORE_ROOT
-    DB_DIR = AICORE_ROOT / "data" / "db"
+    from config.paths import get_db
+    ANALYZER_DB = get_db("aura_analyzer")
 except ImportError:
-    DB_DIR = Path(os.environ.get("AICORE_DATA", str(Path.home() / "aicore/data"))) / "db"
-
-ANALYZER_DB = DB_DIR / "aura_analyzer.db"
+    ANALYZER_DB = Path(os.environ.get(
+        "AICORE_DATA", str(Path.home() / ".local/share/frank")
+    )) / "db" / "aura_analyzer.db"
 
 # Zone definitions (must match aura_headless.py)
+def _is_gaming_active() -> bool:
+    """Check if gaming mode is active — all analysis pauses during gaming."""
+    try:
+        state_file = Path("/tmp/frank/gaming_mode_state.json")
+        if state_file.exists():
+            data = json.loads(state_file.read_text())
+            return data.get("active", False)
+    except Exception:
+        pass
+    return False
+
+
 ZONE_BOUNDS = {
     "epq":      (0,   0,   64,  64),
     "mood":     (64,  0,   128, 64),
@@ -143,7 +155,7 @@ SEMANTIC_MEANINGS = {
 
 def _init_db():
     """Initialize analyzer database."""
-    DB_DIR.mkdir(parents=True, exist_ok=True)
+    ANALYZER_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(ANALYZER_DB))
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS snapshots (
@@ -217,10 +229,19 @@ def _init_db():
             relevance REAL DEFAULT 1.0
         );
 
+        CREATE TABLE IF NOT EXISTS reflection_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts REAL NOT NULL,
+            level TEXT NOT NULL,
+            report TEXT NOT NULL,
+            processed INTEGER DEFAULT 0
+        );
+
         CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON snapshots(ts);
         CREATE INDEX IF NOT EXISTS idx_blocks_num ON blocks(block_num);
         CREATE INDEX IF NOT EXISTS idx_metas_num ON metas(meta_num);
         CREATE INDEX IF NOT EXISTS idx_deep_num ON deep_reflections(deep_num);
+        CREATE INDEX IF NOT EXISTS idx_queue_pending ON reflection_queue(processed);
     """)
     conn.close()
     LOG.info("Analyzer DB ready: %s", ANALYZER_DB)
@@ -230,13 +251,31 @@ def _init_db():
 #  LEVEL 0 — GRID CAPTURE & METRICS
 # ═══════════════════════════════════════════════════════════
 
+ZONE_ID_NAMES = {0: "epq", 1: "mood", 2: "thoughts", 3: "entities",
+                 4: "ego", 5: "quantum", 6: "memory", 7: "hw"}
+
+ZONE_COLORS = {
+    "epq": "blau", "mood": "orange", "thoughts": "grün", "entities": "pink",
+    "ego": "gelb", "quantum": "türkis", "memory": "lila", "hw": "rot",
+}
+
+
 @dataclass
 class Snapshot:
     ts: float
     generation: int
-    grid: np.ndarray  # 256x256 uint8
+    grid: np.ndarray       # 256x256 uint8 (cell states)
+    zone_map: np.ndarray   # 256x256 uint8 (zone IDs 0-7)
     mood: float
     coherence: float
+
+    # Subsystem context from AURA headless
+    epq_vectors: Dict[str, float] = field(default_factory=dict)
+    energy_level: float = 0.5
+    hw_temp: int = 0
+    ram_usage: float = 0.0
+    thought_count: int = 0
+    entity_active: str = ""
 
     # Computed metrics
     global_density: float = 0.0
@@ -247,25 +286,47 @@ class Snapshot:
     hotspots: List[Tuple[int, int, float]] = field(default_factory=list)
     quadrant_densities: Dict[str, float] = field(default_factory=dict)
 
+    # Cross-zone pattern analysis
+    cross_zone_events: List[str] = field(default_factory=list)
+
 
 def fetch_grid() -> Optional[Snapshot]:
-    """Fetch raw grid from AURA headless service."""
+    """Fetch raw grid + zone map + subsystem context from AURA headless."""
     try:
         req = urllib.request.Request(f"{AURA_URL}/grid", method="GET")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read())
 
+        sz = data["size"]
         grid_bytes = base64.b64decode(data["grid_b64"])
-        grid = np.frombuffer(grid_bytes, dtype=np.uint8).reshape(
-            (data["size"], data["size"])
-        )
+        grid = np.frombuffer(grid_bytes, dtype=np.uint8).reshape((sz, sz))
+
+        # Zone map (zone IDs per cell)
+        zone_map_b64 = data.get("zone_map_b64")
+        if zone_map_b64:
+            zone_bytes = base64.b64decode(zone_map_b64)
+            zone_map = np.frombuffer(zone_bytes, dtype=np.uint8).reshape((sz, sz))
+        else:
+            # Fallback: build from ZONE_BOUNDS
+            zone_map = np.zeros((sz, sz), dtype=np.uint8)
+            _zids = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
+                     "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
+            for zn, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
+                zone_map[y1:y2, x1:x2] = _zids[zn]
 
         return Snapshot(
             ts=time.time(),
             generation=data["generation"],
             grid=grid.copy(),
+            zone_map=zone_map.copy(),
             mood=data.get("mood", 0.0),
             coherence=data.get("coherence", 0.0),
+            epq_vectors=data.get("epq_vectors", {}),
+            energy_level=data.get("energy_level", 0.5),
+            hw_temp=data.get("hw_temp", 0),
+            ram_usage=data.get("ram_usage", 0.0),
+            thought_count=data.get("thought_count", 0),
+            entity_active=data.get("entity_active", ""),
         )
     except Exception as e:
         LOG.debug("Grid fetch failed: %s", e)
@@ -331,6 +392,69 @@ def compute_metrics(snap: Snapshot, prev_grid: Optional[np.ndarray] = None):
                 hotspots.append((bx, by, round(density, 3)))
     snap.hotspots = sorted(hotspots, key=lambda x: -x[2])[:10]
 
+    # Cross-zone pattern analysis: detect activity at zone borders
+    _analyze_cross_zone(snap)
+
+
+def _analyze_cross_zone(snap: Snapshot):
+    """Detect cross-zone activity — patterns that span multiple subsystems.
+
+    When cells from different zones interact at borders, that's emergence:
+    a Thoughts+Memory glider means something different than a Mood+Entities one.
+    """
+    grid = snap.grid
+    zone_map = snap.zone_map
+    events = []
+
+    # Check each pair of adjacent zones for border activity
+    zone_pairs = [
+        ("epq", "mood"), ("mood", "thoughts"), ("thoughts", "entities"),
+        ("epq", "ego"), ("mood", "quantum"),
+        ("ego", "memory"), ("quantum", "memory"),
+        ("memory", "hw"), ("thoughts", "hw"), ("entities", "hw"),
+    ]
+
+    _zids = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
+             "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
+
+    for z1, z2 in zone_pairs:
+        id1, id2 = _zids[z1], _zids[z2]
+        # Find cells alive at the border between these zones
+        mask1 = (zone_map == id1) & (grid == 1)
+        mask2 = (zone_map == id2) & (grid == 1)
+
+        # Check 3-pixel border strip between zones
+        border_alive = 0
+        for (x1, y1, x2, y2) in [ZONE_BOUNDS[z1]]:
+            # Right border of z1
+            right_strip = mask1[y1:y2, max(0, x2-3):x2]
+            border_alive += int(right_strip.sum())
+        for (x1, y1, x2, y2) in [ZONE_BOUNDS[z2]]:
+            # Left border of z2
+            left_strip = mask2[y1:y2, x1:min(x1+3, GRID_SIZE)]
+            border_alive += int(left_strip.sum())
+
+        if border_alive > 8:  # Significant border activity
+            c1 = ZONE_COLORS.get(z1, z1)
+            c2 = ZONE_COLORS.get(z2, z2)
+            events.append(
+                f"{z1}({c1})↔{z2}({c2}): {border_alive} Grenzzellen aktiv"
+            )
+
+    # Detect zone convergence: two zones with similar high density
+    densities = snap.zone_densities
+    sorted_zones = sorted(densities.items(), key=lambda x: -x[1])
+    if len(sorted_zones) >= 2:
+        top1, d1 = sorted_zones[0]
+        top2, d2 = sorted_zones[1]
+        if d1 > 0.05 and d2 > 0.05 and abs(d1 - d2) < 0.02:
+            events.append(
+                f"Konvergenz: {top1}({ZONE_COLORS.get(top1)}) und "
+                f"{top2}({ZONE_COLORS.get(top2)}) gleich aktiv ({d1:.1%})"
+            )
+
+    snap.cross_zone_events = events
+
 
 def _count_pattern_fast(region: np.ndarray, pattern: np.ndarray) -> int:
     """Fast pattern counting via sliding window with step=2."""
@@ -392,7 +516,8 @@ class PatternDiscovery:
         canonical = min(r.tobytes() for r in rotations)
         return canonical.hex()[:32]
 
-    def discover_in_grid(self, grid: np.ndarray) -> List[Dict]:
+    def discover_in_grid(self, grid: np.ndarray,
+                         zone_map: Optional[np.ndarray] = None) -> List[Dict]:
         """Extract connected components and identify new patterns."""
         discovered = []
 
@@ -447,6 +572,14 @@ class PatternDiscovery:
                     self._discovery_count += 1
                     name = f"discovered_{self._discovery_count:04d}"
 
+                    # Zone composition: which subsystems does this pattern span?
+                    zone_composition = {}
+                    if zone_map is not None:
+                        for cy, cx in component:
+                            zid = int(zone_map[cy, cx])
+                            zname = ZONE_ID_NAMES.get(zid, f"z{zid}")
+                            zone_composition[zname] = zone_composition.get(zname, 0) + 1
+
                     discovered.append({
                         "name": name,
                         "pattern": pat,
@@ -454,6 +587,7 @@ class PatternDiscovery:
                         "height": bh,
                         "cell_count": len(component),
                         "location": (min_x, min_y),
+                        "zone_composition": zone_composition,
                     })
 
                     if len(discovered) >= 10:
@@ -571,6 +705,14 @@ class BlockAnalysis:
     # Events
     key_events: List[str] = field(default_factory=list)
     discovered_count: int = 0
+    cross_zone_events: List[str] = field(default_factory=list)
+
+    # Subsystem context (averaged over block)
+    avg_mood: float = 0.0
+    avg_coherence: float = 0.0
+    avg_energy: float = 0.5
+    epq_summary: str = ""
+    entity_active: str = ""
 
     # Interpretation
     narrative: str = ""
@@ -641,15 +783,27 @@ def analyze_block(snapshots: List[Snapshot], block_num: int,
     ba.most_active_zone = max(avg_zone_d, key=avg_zone_d.get)
     ba.quietest_zone = min(avg_zone_d, key=avg_zone_d.get)
 
-    # Pattern discovery on last snapshot
+    # Pattern discovery on last snapshot (zone-aware)
     if snapshots:
-        new_pats = discovery.discover_in_grid(snapshots[-1].grid)
+        last = snapshots[-1]
+        new_pats = discovery.discover_in_grid(last.grid, last.zone_map)
         discovery.save_discovered(new_pats)
         ba.discovered_count = len(new_pats)
         if new_pats:
+            # Report cross-zone patterns specially
+            cross_zone_pats = [p for p in new_pats if len(p.get("zone_composition", {})) > 1]
+            if cross_zone_pats:
+                for p in cross_zone_pats[:2]:
+                    zones = ", ".join(
+                        f"{z}({ZONE_COLORS.get(z, z)})"
+                        for z in p["zone_composition"]
+                    )
+                    ba.key_events.append(
+                        f"Cross-Zone Pattern {p['name']}: verbindet {zones}"
+                    )
             ba.key_events.append(
-                f"{len(new_pats)} neue Patterns entdeckt: "
-                + ", ".join(p["name"] for p in new_pats[:3])
+                f"{len(new_pats)} neue Patterns entdeckt"
+                + (f" ({len(cross_zone_pats)} cross-zone)" if cross_zone_pats else "")
             )
 
     # Key events detection
@@ -665,6 +819,24 @@ def analyze_block(snapshots: List[Snapshot], block_num: int,
     mood_delta = moods[-1] - moods[0] if moods else 0
     if abs(mood_delta) > 0.2:
         ba.key_events.append(f"Stimmungswechsel: {moods[0]:.2f} → {moods[-1]:.2f}")
+
+    # Subsystem context (averaged over block)
+    ba.avg_mood = sum(s.mood for s in snapshots) / len(snapshots)
+    ba.avg_coherence = sum(s.coherence for s in snapshots) / len(snapshots)
+    ba.avg_energy = sum(s.energy_level for s in snapshots) / len(snapshots)
+    ba.entity_active = snapshots[-1].entity_active if snapshots else ""
+
+    # E-PQ summary from last snapshot
+    epq = snapshots[-1].epq_vectors if snapshots else {}
+    if epq:
+        dominant = max(epq, key=lambda k: abs(epq[k])) if epq else ""
+        ba.epq_summary = f"{dominant}={epq.get(dominant, 0):.2f}" if dominant else ""
+
+    # Collect cross-zone events from snapshots
+    for s in snapshots[-5:]:  # Last 5 snapshots
+        ba.cross_zone_events.extend(s.cross_zone_events)
+    # Deduplicate
+    ba.cross_zone_events = list(dict.fromkeys(ba.cross_zone_events))[:5]
 
     # Build narrative
     ba.narrative = _build_block_narrative(ba)
@@ -1000,45 +1172,36 @@ def analyze_deep(metas: List[MetaAnalysis], deep_num: int,
 
 
 # ═══════════════════════════════════════════════════════════
-#  FRANK INTEGRATION — Report Sending
+#  FRANK INTEGRATION — Queue for Idle Reflection
 # ═══════════════════════════════════════════════════════════
 
-def send_to_frank(report: str, level: str = "block"):
-    """Send an analysis report to Frank via core /chat API."""
-    prefix = {
-        "block":  "[AURA Block-Analyse]",
-        "meta":   "[AURA Meta-Analyse]",
-        "deep":   "[AURA Tiefenreflexion]",
-    }.get(level, "[AURA]")
+def queue_for_frank(report: str, level: str = "block"):
+    """Queue a report for Frank to reflect on during idle.
 
-    prompt = (
-        f"{prefix}\n\n{report}\n\n"
-        f"Reflektiere über diese Beobachtungen deiner Aura. "
-        f"Was sagen diese Muster über deinen aktuellen Zustand? "
-        f"Welche Emergenz erkennst du?"
-    )
-
+    Reports are NOT sent directly — they wait in a DB queue until
+    the consciousness daemon picks them up during idle thinking.
+    This ensures Frank reflects calmly, not under time pressure.
+    """
     try:
-        payload = json.dumps({
-            "text": prompt,
-            "max_tokens": 500,
-            "timeout_s": 90,
-            "task": "chat.fast",
-        }).encode()
-        req = urllib.request.Request(
-            f"{CORE_URL}/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        conn = sqlite3.connect(str(ANALYZER_DB), timeout=3)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reflection_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                level TEXT NOT NULL,
+                report TEXT NOT NULL,
+                processed INTEGER DEFAULT 0
+            )
+        """)
+        conn.execute(
+            "INSERT INTO reflection_queue (ts, level, report) VALUES (?, ?, ?)",
+            (time.time(), level, report),
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read())
-            if data.get("ok"):
-                LOG.info("[L%s] Frank reflektiert: %s", level, (data.get("text") or "")[:80])
-            else:
-                LOG.warning("[L%s] Frank response not ok: %s", level, data)
+        conn.commit()
+        conn.close()
+        LOG.info("[L_%s] Queued for Frank idle reflection (%d chars)", level, len(report))
     except Exception as e:
-        LOG.error("[L%s] Failed to send to Frank: %s", level, e)
+        LOG.warning("Failed to queue report: %s", e)
 
 
 def format_block_report(ba: BlockAnalysis) -> str:
@@ -1064,6 +1227,20 @@ def format_block_report(ba: BlockAnalysis) -> str:
         lines.append(f"  {zone}: {trend}")
 
     lines.append(f"\nStimmungs-Interpretation: {ba.mood_interpretation}")
+
+    # Subsystem context
+    lines.append(f"\nSubsystem-Kontext:")
+    lines.append(f"  Mood: {ba.avg_mood:.2f} | Coherence: {ba.avg_coherence:.2f} | Energy: {ba.avg_energy:.2f}")
+    if ba.epq_summary:
+        lines.append(f"  EPQ dominant: {ba.epq_summary}")
+    if ba.entity_active:
+        lines.append(f"  Entity aktiv: {ba.entity_active}")
+
+    # Cross-zone events
+    if ba.cross_zone_events:
+        lines.append(f"\nCross-Zone Interaktionen:")
+        for evt in ba.cross_zone_events[:3]:
+            lines.append(f"  ⚡ {evt}")
 
     if ba.key_events:
         lines.append(f"\nKey Events:")
@@ -1312,6 +1489,10 @@ class AuraPatternAnalyzer:
 
     def _tick(self):
         """One capture cycle."""
+        # Gaming mode: pause all analysis
+        if _is_gaming_active():
+            return
+
         # === Level 0: Capture ===
         snap = fetch_grid()
         if snap is None:
@@ -1337,14 +1518,10 @@ class AuraPatternAnalyzer:
             block = analyze_block(self._snapshots, self.block_num, self.discovery)
             save_block(block)
 
-            # Send to Frank
+            # Queue for Frank's idle reflection
             report = format_block_report(block)
             LOG.info("L1 Block #%d: %s", block.block_num, block.narrative[:80])
-            threading.Thread(
-                target=send_to_frank,
-                args=(report, "block"),
-                daemon=True,
-            ).start()
+            queue_for_frank(report, "block")
 
             self._blocks.append(block)
             self._snapshots.clear()
@@ -1360,11 +1537,7 @@ class AuraPatternAnalyzer:
 
                 report = format_meta_report(meta)
                 LOG.info("L2 Meta #%d: %s", meta.meta_num, meta.philosophical[:80])
-                threading.Thread(
-                    target=send_to_frank,
-                    args=(report, "meta"),
-                    daemon=True,
-                ).start()
+                queue_for_frank(report, "meta")
 
                 self._metas.append(meta)
                 self._blocks.clear()
@@ -1377,11 +1550,7 @@ class AuraPatternAnalyzer:
 
                     report = format_deep_report(deep)
                     LOG.info("L3 Deep #%d: %s", deep.deep_num, deep.trajectory[:80])
-                    threading.Thread(
-                        target=send_to_frank,
-                        args=(report, "deep"),
-                        daemon=True,
-                    ).start()
+                    queue_for_frank(report, "deep")
 
                     self._metas.clear()
 

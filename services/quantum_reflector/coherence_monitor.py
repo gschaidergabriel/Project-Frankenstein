@@ -310,6 +310,19 @@ class CoherenceMonitor:
             self._thread.join(timeout=15)
         LOG.info("CoherenceMonitor stopped (total solves: %d)", self._solve_count)
 
+    @staticmethod
+    def _is_gaming_active() -> bool:
+        """Check if gaming mode is active — pause coherence monitoring."""
+        try:
+            import json as _json
+            state_file = Path("/tmp/frank/gaming_mode_state.json")
+            if state_file.exists():
+                data = _json.loads(state_file.read_text())
+                return data.get("active", False)
+        except Exception:
+            pass
+        return False
+
     def _monitor_loop(self):
         """Haupt-Loop: poll → check → solve → event."""
         # Erster Solve sofort
@@ -324,6 +337,10 @@ class CoherenceMonitor:
                 time.sleep(POLL_INTERVAL)
                 if not self._running:
                     break
+
+                # Gaming mode: pause coherence monitoring
+                if self._is_gaming_active():
+                    continue
 
                 # State lesen
                 new_state = self.builder.read_frank_state()

@@ -196,6 +196,14 @@ class AuraHeadless:
         self._lock = threading.Lock()
         self._last_seed_time = 0.0
 
+        # Zone map: each cell knows which subsystem it belongs to (0-7)
+        # This enables color-coded analysis — cross-zone patterns have meaning
+        self.zone_map = np.zeros((size, size), dtype=np.uint8)
+        _zone_ids = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
+                     "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
+        for zone_name, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
+            self.zone_map[y1:y2, x1:x2] = _zone_ids[zone_name]
+
         # Initial random seed (sparse, ~5% alive)
         self.grid = (np.random.random((size, size)) < 0.05).astype(np.uint8)
 
@@ -597,6 +605,19 @@ class AuraHeadless:
         return result
 
 
+# --- Gaming mode check ---
+
+def _is_gaming_active() -> bool:
+    try:
+        state_file = Path("/tmp/frank/gaming_mode_state.json")
+        if state_file.exists():
+            data = json.loads(state_file.read_text())
+            return data.get("active", False)
+    except Exception:
+        pass
+    return False
+
+
 # --- GoL tick loop (background thread) ---
 
 aura = AuraHeadless()
@@ -607,7 +628,8 @@ def _tick_loop():
     LOG.info(f"GoL tick loop started ({TICK_HZ} Hz, {GRID_SIZE}x{GRID_SIZE})")
     while True:
         try:
-            aura.tick()
+            if not _is_gaming_active():
+                aura.tick()
         except Exception as e:
             LOG.error(f"Tick error: {e}")
         time.sleep(interval)
@@ -667,17 +689,33 @@ def introspect_json_endpoint(depth: str = "full"):
 
 @app.get("/grid")
 def grid_endpoint():
-    """Raw grid export for pattern analyzer. Returns base64-encoded 256x256 uint8 array."""
+    """Raw grid + zone map export for pattern analyzer.
+
+    Returns base64-encoded 256x256 arrays:
+    - grid_b64: cell states (0/1)
+    - zone_map_b64: zone IDs per cell (0-7)
+    - Full subsystem context for cross-zone pattern analysis
+    """
     import base64
     _ensure_tick_thread()
     with aura._lock:
         grid_bytes = aura.grid.tobytes()
+        zone_bytes = aura.zone_map.tobytes()
         gen = aura.generation
     return {
         "generation": gen,
         "size": aura.size,
         "grid_b64": base64.b64encode(grid_bytes).decode("ascii"),
+        "zone_map_b64": base64.b64encode(zone_bytes).decode("ascii"),
+        "zone_names": {0: "epq", 1: "mood", 2: "thoughts", 3: "entities",
+                       4: "ego", 5: "quantum", 6: "memory", 7: "hw"},
+        # Subsystem context
         "mood": aura.mood,
         "coherence": aura.coherence,
         "hw_temp": aura.hw_temp,
+        "ram_usage": aura.ram_usage,
+        "epq_vectors": aura.epq_vectors,
+        "energy_level": aura.energy_level,
+        "thought_count": aura.thought_count,
+        "entity_active": aura.entity_active,
     }

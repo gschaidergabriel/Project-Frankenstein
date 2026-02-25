@@ -48,10 +48,10 @@ LOG = logging.getLogger("agentic.loop")
 class AgentConfig:
     """Configuration for the agent loop."""
     max_iterations: int = 20  # Maximum think-act-observe cycles
-    max_consecutive_failures: int = 8  # Qwen 7B has ~30% JSON parse rate, needs headroom
+    max_consecutive_failures: int = 8  # RLM may need retries for JSON formatting
     failure_score_abort_threshold: float = 0.55  # EMA-weighted failure score abort threshold
-    thinking_timeout_s: float = 60.0
-    execution_timeout_s: float = 120.0
+    thinking_timeout_s: float = 240.0   # RLM reasons deeply before answering
+    execution_timeout_s: float = 180.0
     auto_approve_risk_threshold: float = 0.3
     require_approval_risk_threshold: float = 0.6
     enable_replanning: bool = True
@@ -469,6 +469,30 @@ class AgentLoop:
         # mark_failed triggers auto_save
         return "Maximum number of steps reached. Please clarify your goal.", state
 
+    @staticmethod
+    def _strip_think_block(text: str) -> Tuple[str, str]:
+        """Strip <think>...</think> from RLM output.
+
+        Returns (clean_text, reasoning_text).
+        The reasoning is logged separately for debugging.
+        """
+        import re
+        reasoning = ""
+        # Extract complete think blocks
+        think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
+        if think_match:
+            reasoning = think_match.group(1).strip()
+            clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        else:
+            # Check for incomplete think block (truncated)
+            open_match = re.search(r"<think>(.*)", text, re.DOTALL)
+            if open_match:
+                reasoning = open_match.group(1).strip()
+                clean = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
+            else:
+                clean = text
+        return clean, reasoning
+
     def _think(self, state: AgentState) -> Tuple[str, Optional[ParsedToolCall]]:
         """
         Think phase: Analyze state and decide next action.
@@ -508,13 +532,18 @@ class AgentLoop:
             LOG.error(f"LLM call failed: {e}")
             return f"Error during thinking: {e}", None
 
-        # Parse tool call from response
-        tool_call = parse_tool_call(response)
+        # Strip <think> blocks — log reasoning, parse only clean output
+        clean_response, reasoning = self._strip_think_block(response)
+        if reasoning:
+            LOG.info(f"💭 RLM REASONING ({len(reasoning)} chars): {reasoning[:300]}...")
+
+        # Parse tool call from clean response (no think tags)
+        tool_call = parse_tool_call(clean_response)
 
         if not tool_call:
-            LOG.warning(f"Failed to parse tool call from LLM response ({len(response)} chars): {response[:300]}")
+            LOG.warning(f"Failed to parse tool call from RLM response ({len(clean_response)} chars): {clean_response[:300]}")
 
-        return response, tool_call
+        return clean_response, tool_call
 
     def _replan(self, state: AgentState, failure_reason: str) -> None:
         """Replan after failure."""
@@ -554,8 +583,7 @@ class AgentLoop:
         payload = {
             "text": formatted_text,
             "system": system_prompt,
-            "force": "qwen",
-            "n_predict": 3500,
+            "n_predict": 4096,
             "temperature": 0.1,
         }
 
@@ -582,7 +610,7 @@ class AgentLoop:
 
             def _do_request():
                 try:
-                    with urllib.request.urlopen(req, timeout=60) as resp:
+                    with urllib.request.urlopen(req, timeout=300) as resp:
                         result = json.loads(resp.read().decode("utf-8"))
                         _result_box.append(result.get("text", result.get("response", "")))
                 except Exception as exc:

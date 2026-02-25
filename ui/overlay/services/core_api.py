@@ -99,7 +99,7 @@ def _core_chat_stream(
     )
 
     full_text = ""
-    model = force or "llama"
+    model = "deepseek-r1"
 
     try:
         with urllib.request.urlopen(req, timeout=420) as resp:

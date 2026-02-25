@@ -283,10 +283,16 @@ class LogPanelMixin:
             lambda e: canvas.itemconfig(canvas_window, width=e.width),
         )
 
-        # Mouse wheel
-        for widget in (canvas, messages_frame):
-            widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-2, "units"))
-            widget.bind("<Button-5>", lambda e: canvas.yview_scroll(2, "units"))
+        # Mouse wheel — return "break" to prevent propagation to chat
+        def _log_scroll_up(e):
+            canvas.yview_scroll(-2, "units")
+            return "break"
+        def _log_scroll_down(e):
+            canvas.yview_scroll(2, "units")
+            return "break"
+        for widget in (canvas, messages_frame, win):
+            widget.bind("<Button-4>", _log_scroll_up)
+            widget.bind("<Button-5>", _log_scroll_down)
 
         # Render existing entries
         for entry in self._log_entries:

@@ -13,8 +13,7 @@ PORT = 8090
 
 # Backends: llama-server instances (already running)
 BACKENDS = {
-    "llama3_8b_q4km": "http://127.0.0.1:8101",
-    "qwen_coder_7b_q4km": "http://127.0.0.1:8102",
+    "deepseek_r1_8b_q6k": "http://127.0.0.1:8101",
 }
 
 # Limit in-flight requests per backend to avoid overload / connection churn

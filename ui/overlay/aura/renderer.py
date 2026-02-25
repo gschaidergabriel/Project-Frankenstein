@@ -12,7 +12,7 @@ import math
 import time
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 try:
     from scipy.ndimage import gaussian_filter, zoom
@@ -89,51 +89,6 @@ def _get_zone_color_map() -> np.ndarray:
 # AuraRenderer — stateful per-session renderer
 # ──────────────────────────────────────────────────────────────
 
-_ZONE_LABELS = {
-    "epq":       "PERSONALITY",
-    "mood":      "MOOD",
-    "reflexion": "THOUGHTS",
-    "entities":  "ENTITIES",
-    "ego":       "EGO",
-    "quantum":   "COHERENCE",
-    "titan":     "MEMORY",
-    "hardware":  "HARDWARE",
-}
-
-
-def _build_zone_label_layer() -> np.ndarray:
-    """Render zone labels into a float32 RGBA overlay (cached, built once)."""
-    img = Image.new("RGBA", (GRID_SIZE, GRID_SIZE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 8)
-    except (OSError, IOError):
-        font = ImageFont.load_default()
-
-    for zone_name, (row, col) in ZONE_LAYOUT.items():
-        y0 = row * ZONE_HEIGHT + 3
-        x0 = col * ZONE_WIDTH + 3
-        r, g, b = ZONE_COLORS[zone_name]
-        # 25% opacity of zone color
-        color = (int(r * 255), int(g * 255), int(b * 255), 64)
-        label = _ZONE_LABELS.get(zone_name, zone_name.upper())
-        draw.text((x0, y0), label, fill=color, font=font)
-
-    # Convert to float32 array for blending
-    arr = np.array(img, dtype=np.float32) / 255.0
-    return arr
-
-
-_ZONE_LABEL_LAYER: np.ndarray | None = None
-
-
-def _get_zone_label_layer() -> np.ndarray:
-    global _ZONE_LABEL_LAYER
-    if _ZONE_LABEL_LAYER is None:
-        _ZONE_LABEL_LAYER = _build_zone_label_layer()
-    return _ZONE_LABEL_LAYER
-
-
 class AuraRenderer:
     """Pseudo-3D renderer with trails, bloom, breathing, and base noise."""
 
@@ -141,7 +96,6 @@ class AuraRenderer:
         self._zone_colors = _get_zone_color_map()
         self._visual_decay = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
         self._base_noise = self._generate_base_noise()
-        self._zone_labels = _get_zone_label_layer()
         self._highlight_zone: str | None = None  # For legend hover highlight
         self._t0 = time.monotonic()
 
@@ -177,12 +131,6 @@ class AuraRenderer:
 
         # ── Layer 1: Base noise (dark background) ──
         img = self._base_noise.copy()
-
-        # ── Layer 1.5: Zone labels (under cells, subtle) ──
-        labels = self._zone_labels
-        alpha = labels[:, :, 3:4]  # (256,256,1)
-        label_rgb = labels[:, :, :3]
-        img = img * (1.0 - alpha) + label_rgb * alpha
 
         # ── Layer 2: Cells + Trails (additive) ──
         visible = self._visual_decay > 0.01

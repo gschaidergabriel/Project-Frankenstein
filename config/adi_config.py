@@ -27,8 +27,8 @@ ADI_CONFIG = {
     # LLM settings for chat
     "llm_url": "http://127.0.0.1:8101/v1/chat/completions",
     "llm_model": "llama-3.1-8b",
-    "llm_timeout": 30,
-    "llm_max_tokens": 500,
+    "llm_timeout": 240,     # RLM reasons before answering
+    "llm_max_tokens": 800,
 
     # Preview settings
     "preview_width": 52,

@@ -138,8 +138,7 @@ def main():
 
     # LLM endpoints
     endpoints = {
-        "Llama3 (8101)": "http://127.0.0.1:8101",
-        "Qwen (8102)": "http://127.0.0.1:8102",
+        "DeepSeek-R1 (8101)": "http://127.0.0.1:8101",
     }
 
     try:

@@ -396,13 +396,13 @@ INFER_MAX_CONCURRENCY = int(os.environ.get("AICORE_CORE_INFER_MAX_CONCURRENCY", 
 INFER_SEM = threading.BoundedSemaphore(INFER_MAX_CONCURRENCY)
 
 TASK_POLICY = {
-    "chat.fast":   {"max_tokens": 400,  "timeout_s": 600},
-    "code.edit":   {"max_tokens": 512,  "timeout_s": 900},
-    "tool.json":   {"max_tokens": 512,  "timeout_s": 900},
-    "audit":       {"max_tokens": 768,  "timeout_s": 1800},
-    "reason.hard": {"max_tokens": 1024, "timeout_s": 1800},
+    "chat.fast":   {"max_tokens": 600,  "timeout_s": 600},
+    "code.edit":   {"max_tokens": 1024, "timeout_s": 900},
+    "tool.json":   {"max_tokens": 800,  "timeout_s": 900},
+    "audit":       {"max_tokens": 1200, "timeout_s": 1800},
+    "reason.hard": {"max_tokens": 1500, "timeout_s": 1800},
 }
-DEFAULT_POLICY = {"max_tokens": 512, "timeout_s": 900}
+DEFAULT_POLICY = {"max_tokens": 800, "timeout_s": 900}
 
 # --- Frank Identity - from centralized personality module ---
 _FALLBACK_IDENTITY = (

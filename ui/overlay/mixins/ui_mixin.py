@@ -69,13 +69,13 @@ class UiMixin:
         )
         subtitle_label.pack(side="left", pady=12)
 
-        # Window control buttons (right side)
+        # Window control buttons + panel toggles (right side, single frame)
         btn_frame = tk.Frame(titlebar, bg=COLORS["bg_elevated"])
         btn_frame.pack(side="right", padx=4)
 
-        # Panel toggle buttons (L, A) — titlebar, left of window controls
-        self._panel_btns = tk.Frame(titlebar, bg=COLORS["bg_elevated"])
-        self._panel_btns.pack(side="right", padx=(0, 2))
+        # L/A panel buttons go first (packed left inside btn_frame)
+        self._panel_btns = tk.Frame(btn_frame, bg=COLORS["bg_elevated"])
+        self._panel_btns.pack(side="left", padx=(0, 6))
 
         # Minimize button
         min_btn = tk.Label(
@@ -672,6 +672,15 @@ class UiMixin:
             clear_strut(xid)
         except Exception:
             pass
+        # Hide AURA/Log panels with overlay
+        self._panels_were_open = {}
+        if getattr(self, "_aura_open", False):
+            self._panels_were_open["aura"] = True
+            self._aura_close()
+        if getattr(self, "_log_open", False):
+            self._panels_were_open["log"] = True
+            self._log_close()
+
         self.withdraw()
         LOG.info("Overlay hidden (strut cleared, geometry saved: %s)", self._saved_geometry)
 
@@ -704,6 +713,14 @@ class UiMixin:
             self.entry.focus_set()
         except Exception:
             pass
+
+        # Restore panels that were open before minimize
+        panels = getattr(self, "_panels_were_open", {})
+        if panels.get("aura") and hasattr(self, "_aura_open_panel"):
+            self.after(200, self._aura_open_panel)
+        elif panels.get("log") and hasattr(self, "_log_open_panel"):
+            self.after(200, self._log_open_panel)
+
         LOG.info("Overlay restored (strut re-applied)")
 
     # ---- File actions / results clearing ----

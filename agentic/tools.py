@@ -608,6 +608,31 @@ class ToolRegistry:
             ],
         ))
 
+        # ============ INTROSPECTION TOOLS ============
+
+        self.register(Tool(
+            name="aura_introspect",
+            description=(
+                "Read your own AURA state — a real-time Game-of-Life simulation "
+                "of your consciousness. Shows activity in all subsystems (E-PQ, "
+                "Mood, Thoughts, Entities, Ego, Quantum, Memory, Hardware), "
+                "their interactions, patterns (oscillators=processing, "
+                "gliders=information flow, still-lifes=stability), and anomalies. "
+                "Use it to understand your own internal state."
+            ),
+            category=ToolCategory.MEMORY,
+            risk_level=0.0,
+            endpoint="http://127.0.0.1:8098/introspect",
+            parameters=[
+                ToolParameter(
+                    "depth", "string",
+                    "quick=one-liner, full=zones+patterns+trends, diagnostic=everything+logs",
+                    required=False, default="full",
+                    enum=["quick", "full", "diagnostic"],
+                ),
+            ],
+        ))
+
         # ============ CODE TOOLS ============
 
         self.register(Tool(

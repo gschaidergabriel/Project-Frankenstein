@@ -336,8 +336,7 @@ class Planner:
         payload = {
             "text": user_prompt,
             "system": system_prompt,
-            "force": "qwen",
-            "n_predict": 4000,
+            "n_predict": 4096,
         }
 
         data = json.dumps(payload).encode("utf-8")
@@ -357,8 +356,17 @@ class Planner:
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Planner LLM response parse error: {e}")
 
+    @staticmethod
+    def _strip_think(text: str) -> str:
+        """Strip <think>...</think> blocks from RLM output."""
+        cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        cleaned = re.sub(r"<think>.*$", "", cleaned, flags=re.DOTALL)
+        return cleaned.strip()
+
     def _parse_plan_response(self, response: str) -> Dict[str, Any]:
         """Parse LLM planning response."""
+        # Strip RLM reasoning blocks before parsing JSON
+        response = self._strip_think(response)
         # Try to extract JSON from response
         json_match = re.search(r'```(?:json)?\s*\n?(\{.+?\})\s*\n?```', response, re.DOTALL)
         if json_match:

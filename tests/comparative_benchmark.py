@@ -130,24 +130,51 @@ PROBES = [
 ]
 
 
-def query_frank(text):
-    """Send to Frank via Core API (gets full INTROSPECTION block)."""
-    payload = json.dumps({
-        "text": text, "task": "chat.fast",
-        "max_tokens": MAX_TOKENS, "session_id": SESSION_ID,
-        "want_tools": False,
-    }).encode()
-    req = urllib.request.Request(CORE_URL, data=payload,
-                                 headers={"Content-Type": "application/json"})
+def check_llm_health():
+    """Check if LLM is responsive, restart if needed."""
     try:
-        t0 = time.time()
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            data = json.loads(resp.read())
-        elapsed = time.time() - t0
-        text_out = data.get("text", data.get("route", {}).get("text", ""))
-        return {"text": text_out, "elapsed": elapsed, "ok": True}
-    except Exception as e:
-        return {"text": f"TIMEOUT/ERROR: {e}", "elapsed": TIMEOUT, "ok": False}
+        req = urllib.request.Request("http://127.0.0.1:8101/health")
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except:
+        print("  ⚠ LLM unresponsive, waiting 10s...")
+        time.sleep(10)
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8101/health")
+            urllib.request.urlopen(req, timeout=5)
+            return True
+        except:
+            return False
+
+
+def query_frank(text, retries=1):
+    """Send to Frank via Core API (gets full INTROSPECTION block). Retry on timeout."""
+    for attempt in range(retries + 1):
+        payload = json.dumps({
+            "text": text, "task": "chat.fast",
+            "max_tokens": MAX_TOKENS, "session_id": SESSION_ID,
+            "want_tools": False,
+        }).encode()
+        req = urllib.request.Request(CORE_URL, data=payload,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            t0 = time.time()
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            elapsed = time.time() - t0
+            text_out = data.get("text", data.get("route", {}).get("text", ""))
+            return {"text": text_out, "elapsed": elapsed, "ok": True}
+        except Exception as e:
+            if attempt < retries:
+                print(f"  ⚠ Frank timeout (attempt {attempt+1}), checking LLM health...")
+                if check_llm_health():
+                    print(f"  LLM OK, retrying in 5s...")
+                    time.sleep(5)
+                else:
+                    print(f"  LLM DOWN, skipping retry")
+                    return {"text": f"TIMEOUT/ERROR: {e}", "elapsed": TIMEOUT, "ok": False}
+            else:
+                return {"text": f"TIMEOUT/ERROR: {e}", "elapsed": TIMEOUT, "ok": False}
 
 
 def query_bare(text):

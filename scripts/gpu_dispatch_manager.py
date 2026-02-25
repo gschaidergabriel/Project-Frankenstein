@@ -29,10 +29,7 @@ HOST = "127.0.0.1"
 PORT = int(os.environ.get("AICORE_DISPATCH_PORT", "8099"))
 
 # Backend URLs
-LLAMA_GPU_URL = os.environ.get("AICORE_LLAMA_GPU_URL", "http://127.0.0.1:8101")
-LLAMA_CPU_URL = os.environ.get("AICORE_LLAMA_CPU_URL", "http://127.0.0.1:8103")
-QWEN_GPU_URL = os.environ.get("AICORE_QWEN_GPU_URL", "http://127.0.0.1:8102")
-QWEN_CPU_URL = os.environ.get("AICORE_QWEN_CPU_URL", "http://127.0.0.1:8104")
+RLM_GPU_URL = os.environ.get("AICORE_RLM_GPU_URL", "http://127.0.0.1:8101")
 
 # Thresholds
 GPU_BUSY_THRESHOLD = 85  # % - switch to CPU if GPU is busier
@@ -141,7 +138,10 @@ def _estimate_tokens(text: str) -> int:
 
 def decide_backend(model: str, prompt: str, n_predict: int = 256) -> Tuple[str, str]:
     """
-    Decide which backend to use based on current conditions.
+    Decide whether the single RLM backend is healthy and report GPU conditions.
+
+    Single-model architecture: always returns RLM_GPU_URL.
+    The model parameter is ignored (kept for API compatibility).
 
     Returns:
         Tuple of (backend_url, reason)
@@ -150,63 +150,28 @@ def decide_backend(model: str, prompt: str, n_predict: int = 256) -> Tuple[str, 
     input_tokens = _estimate_tokens(prompt)
     total_tokens = input_tokens + n_predict
 
-    # Determine base URLs
-    if model in ("qwen", "coder", "code"):
-        gpu_url = QWEN_GPU_URL
-        cpu_url = QWEN_CPU_URL
-    else:
-        gpu_url = LLAMA_GPU_URL
-        cpu_url = LLAMA_CPU_URL
+    warnings = []
 
-    # Decision logic
-    reasons = []
-    use_gpu = True
-
-    # Check 1: Is GPU available?
     if not gpu_stats.available:
-        use_gpu = False
-        reasons.append("GPU not available")
-
-    # Check 2: GPU temperature
+        warnings.append("GPU not detected")
     if gpu_stats.temp_c > GPU_TEMP_THRESHOLD:
-        use_gpu = False
-        reasons.append(f"GPU too hot ({gpu_stats.temp_c:.0f}°C)")
-
-    # Check 3: GPU busy
+        warnings.append(f"GPU hot ({gpu_stats.temp_c:.0f}°C)")
     if gpu_stats.busy_percent > GPU_BUSY_THRESHOLD:
-        use_gpu = False
-        reasons.append(f"GPU busy ({gpu_stats.busy_percent:.0f}%)")
+        warnings.append(f"GPU busy ({gpu_stats.busy_percent:.0f}%)")
 
-    # Check 4: VRAM availability
     vram_free = gpu_stats.vram_total_mb - gpu_stats.vram_used_mb
     if vram_free < VRAM_MIN_FREE_MB:
-        use_gpu = False
-        reasons.append(f"Low VRAM ({vram_free:.0f}MB free)")
+        warnings.append(f"Low VRAM ({vram_free:.0f}MB free)")
 
-    # Check 5: Token count (long generations better on CPU for iGPU)
-    if total_tokens > TOKEN_GPU_MAX:
-        use_gpu = False
-        reasons.append(f"Long generation ({total_tokens} tokens)")
+    if not _is_service_healthy(RLM_GPU_URL):
+        warnings.append("RLM backend unhealthy!")
 
-    # Check 6: Backend health
-    target_url = gpu_url if use_gpu else cpu_url
-    if not _is_service_healthy(target_url):
-        # Try the other one
-        fallback_url = cpu_url if use_gpu else gpu_url
-        if _is_service_healthy(fallback_url):
-            target_url = fallback_url
-            use_gpu = not use_gpu
-            reasons.append("Primary backend unhealthy, using fallback")
-        else:
-            reasons.append("Both backends unhealthy!")
-
-    # Build reason string
-    if use_gpu:
-        reason = f"GPU: busy={gpu_stats.busy_percent:.0f}%, temp={gpu_stats.temp_c:.0f}°C, tokens={total_tokens}"
+    if warnings:
+        reason = "; ".join(warnings)
     else:
-        reason = "; ".join(reasons) if reasons else "CPU preferred"
+        reason = f"RLM OK: busy={gpu_stats.busy_percent:.0f}%, temp={gpu_stats.temp_c:.0f}°C, tokens={total_tokens}"
 
-    return target_url, reason
+    return RLM_GPU_URL, reason
 
 
 def _update_stats_loop():

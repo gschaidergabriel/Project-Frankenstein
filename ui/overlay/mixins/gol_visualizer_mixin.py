@@ -82,6 +82,7 @@ class AuraVisualizerMixin:
         self._aura_animating = False
         self._aura_photo: tk.PhotoImage | None = None
         self._aura_win: tk.Toplevel | None = None
+        self._aura_crt_win: tk.Toplevel | None = None
 
         self._aura_panel_size: int = 0
 
@@ -267,6 +268,8 @@ class AuraVisualizerMixin:
             self._aura_set_panel_geom(target_w)
             self._aura_animating = False
             self._aura_open = True
+            # Open CRT log strip after AURA finishes opening
+            self.after(50, self._aura_crt_open)
             return
 
         t = elapsed / duration_ms
@@ -283,6 +286,7 @@ class AuraVisualizerMixin:
         self._aura_poller_running = False
         self._aura_hide_tooltip()
         self._aura_notifications.clear()
+        self._aura_crt_close()
 
         self._aura_animating = True
         self._aura_animate_close(
@@ -324,11 +328,163 @@ class AuraVisualizerMixin:
         except Exception:
             pass
 
+    # ──────────────────────────────────────────────────────────────
+    # CRT Log Strip — Old-school monitor next to AURA
+    # ──────────────────────────────────────────────────────────────
+
+    def _aura_crt_open(self):
+        """Open the CRT log strip to the right of AURA."""
+        if self._aura_crt_win and self._aura_crt_win.winfo_exists():
+            return
+        if not self._aura_win or not self._aura_win.winfo_exists():
+            return
+
+        # Calculate position: right edge of AURA → right edge of screen
+        try:
+            from overlay.bsn.constants import get_primary_monitor
+            mon = get_primary_monitor()
+            screen_w = mon["width"]
+        except Exception:
+            screen_w = 1600
+
+        aura_right = (self.winfo_rootx() + self.winfo_width()
+                       + self._aura_panel_size)
+        crt_w = screen_w - aura_right
+        if crt_w < 80:
+            return  # No space
+
+        panel_h = self.winfo_height()
+        crt_x = aura_right
+        crt_y = self.winfo_rooty()
+
+        win = tk.Toplevel(self)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg="#000000")
+        win.geometry(f"{crt_w}x{panel_h}+{crt_x}+{crt_y}")
+
+        self._aura_crt_win = win
+        self._aura_crt_build(win, crt_w, panel_h)
+
+    def _aura_crt_build(self, win, w, h):
+        """Build the CRT log monitor UI — scrollable Text widget."""
+        _bg = "#010301"
+        _fg = "#00cc44"
+        _dim = "#004400"
+        _sep = "#0a1a0a"
+        _font = ("Consolas", 9)
+        _font_sm = ("Consolas", 7)
+
+        outer = tk.Frame(win, bg=_bg)
+        outer.pack(fill="both", expand=True)
+
+        # Header
+        hdr = tk.Frame(outer, bg=_bg, height=24)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Frame(hdr, bg="#003300", height=1).pack(fill="x", side="top")
+        tk.Label(
+            hdr, text="  // DAEMON LOG", bg=_bg, fg="#005500",
+            font=_font_sm, anchor="w",
+        ).pack(fill="x", pady=(3, 0))
+        tk.Frame(outer, bg="#002200", height=1).pack(fill="x")
+
+        # Scrollable text area
+        txt = tk.Text(
+            outer, bg=_bg, fg=_fg, font=_font,
+            wrap="word", padx=8, pady=6,
+            insertbackground=_bg, selectbackground="#003300",
+            highlightthickness=0, borderwidth=0,
+            cursor="arrow", spacing3=2,
+        )
+        scrollbar = tk.Scrollbar(
+            outer, orient="vertical", command=txt.yview,
+            bg="#001a00", troughcolor="#000000",
+            activebackground="#003300", width=6,
+        )
+        txt.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        txt.pack(fill="both", expand=True)
+
+        # Capture scroll events — prevent propagation to overlay chat
+        def _crt_scroll(event):
+            txt.yview_scroll(-1 if event.num == 4 else 1, "units")
+            return "break"
+        txt.bind("<Button-4>", _crt_scroll)
+        txt.bind("<Button-5>", _crt_scroll)
+        outer.bind("<Button-4>", _crt_scroll)
+        outer.bind("<Button-5>", _crt_scroll)
+        win.bind("<Button-4>", _crt_scroll)
+        win.bind("<Button-5>", _crt_scroll)
+
+        # Tags for styling
+        txt.tag_configure("timestamp", foreground=_dim, font=_font_sm)
+        txt.tag_configure("message", foreground=_fg, font=_font)
+        txt.tag_configure("separator", foreground=_sep, font=("Consolas", 4))
+        # Scanline effect via alternating line backgrounds
+        txt.tag_configure("scanline", background="#020502")
+
+        # Render entries
+        entries = getattr(self, "_log_entries", [])
+        for entry in entries[-30:]:
+            ts = entry.get("ts_display", "")
+            cat = entry.get("category", "")[:4].upper()
+            text = entry.get("text", "")
+
+            txt.insert("end", f"{ts} [{cat}]\n", "timestamp")
+            txt.insert("end", f"{text}\n", "message")
+            txt.insert("end", "\u2500" * 30 + "\n", "separator")
+
+        # Apply scanline effect to every other visible line
+        txt.update_idletasks()
+        try:
+            line_count = int(txt.index("end-1c").split(".")[0])
+            for i in range(1, line_count + 1, 2):
+                txt.tag_add("scanline", f"{i}.0", f"{i}.end")
+        except Exception:
+            pass
+
+        txt.configure(state="disabled")
+        txt.see("end")
+        self._aura_crt_text = txt
+
+    def _aura_crt_close(self):
+        """Close the CRT log strip."""
+        if self._aura_crt_win and self._aura_crt_win.winfo_exists():
+            self._aura_crt_win.destroy()
+        self._aura_crt_win = None
+
+    def _aura_crt_reposition(self):
+        """Reposition CRT window when overlay/AURA moves."""
+        if not self._aura_crt_win or not self._aura_crt_win.winfo_exists():
+            return
+        try:
+            from overlay.bsn.constants import get_primary_monitor
+            mon = get_primary_monitor()
+            screen_w = mon["width"]
+        except Exception:
+            screen_w = 1600
+
+        try:
+            aura_right = (self.winfo_rootx() + self.winfo_width()
+                           + self._aura_panel_size)
+            crt_w = screen_w - aura_right
+            if crt_w < 80:
+                self._aura_crt_close()
+                return
+            crt_x = aura_right
+            crt_y = self.winfo_rooty()
+            h = self.winfo_height()
+            self._aura_crt_win.geometry(f"{crt_w}x{h}+{crt_x}+{crt_y}")
+        except Exception:
+            pass
+
     def _aura_on_overlay_configure(self, _event):
         """Keep Aura window glued to the overlay when it moves."""
         if self._aura_open and self._aura_win and not self._aura_animating:
             try:
                 self._aura_set_panel_geom(self._aura_panel_size)
+                self._aura_crt_reposition()
             except Exception:
                 pass
 

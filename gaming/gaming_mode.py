@@ -36,12 +36,9 @@ LOG = logging.getLogger("gaming_mode")
 CONFIG = {
     "check_interval": 1,  # seconds between game checks
     "heavy_services": [
-        {"name": "llama-8101", "port": 8101, "pattern": "llama-server.*8101"},
-        {"name": "llama-8102", "port": 8102, "pattern": "llama-server.*8102"},
+        {"name": "rlm-8101", "port": 8101, "pattern": "llama-server.*8101"},
     ],
-    "keep_services": ["toolboxd", "ollama"],
-    "gaming_llm_model": "tinyllama",
-    "ollama_url": "http://localhost:11434",
+    "keep_services": ["toolboxd"],
 }
 
 # Directories where games are commonly installed (case-insensitive match on cmdline)
@@ -229,8 +226,7 @@ def stop_heavy_services(state: GamingModeState):
 
     # User systemd services for heavy LLM backends
     heavy_systemd_services = [
-        "aicore-llama3-gpu.service",  # Llama 3.1 8B on port 8101
-        "aicore-qwen-gpu.service",   # Qwen Coder 7B on port 8102
+        "aicore-llama3-gpu.service",  # DeepSeek-R1 RLM on port 8101
     ]
 
     for service in heavy_systemd_services:
@@ -305,23 +301,15 @@ def restart_services(state: GamingModeState):
 
 
 def ensure_lightweight_llm():
-    """Make sure tinyllama is loaded in Ollama for voice commands."""
-    LOG.info("Loading lightweight LLM (tinyllama) for voice commands...")
+    """Verify RLM backend is reachable for voice commands."""
+    LOG.info("Checking RLM backend availability for voice commands...")
     try:
-        # Preload tinyllama so it's ready for voice commands
         import urllib.request
-        import json
-
-        data = json.dumps({"model": "tinyllama", "prompt": "hi", "stream": False}).encode()
-        req = urllib.request.Request(
-            "http://localhost:11434/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"}
-        )
-        urllib.request.urlopen(req, timeout=30)
-        LOG.info("Lightweight LLM ready for voice commands")
+        req = urllib.request.Request("http://127.0.0.1:8091/health", method="GET")
+        urllib.request.urlopen(req, timeout=5)
+        LOG.info("RLM backend reachable for voice commands")
     except Exception as e:
-        LOG.warning(f"Could not preload tinyllama: {e}")
+        LOG.warning(f"RLM backend not reachable: {e}")
 
 
 try:

@@ -87,7 +87,7 @@ Give a clear analysis (3-4 sentences): What is this? What does it contain? What 
 
     abstract_text = ""
     try:
-        res = _core_chat(prompt, max_tokens=250, timeout_s=60, task="chat.fast", force="llama")
+        res = _core_chat(prompt, max_tokens=400, timeout_s=180, task="chat.fast", force="llama")
         if res.get("ok"):
             abstract_text = res.get("text", "").strip()
         _debug_log(f"Abstract LLM response: ok={res.get('ok')}")

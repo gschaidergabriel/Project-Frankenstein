@@ -74,8 +74,8 @@ class GenesisConfig:
 
     # === LLM Integration ===
     llm_api_url: str = "http://127.0.0.1:8088/chat"
-    llm_timeout: int = 60
-    llm_max_tokens: int = 500
+    llm_timeout: int = 240   # RLM reasons before answering
+    llm_max_tokens: int = 800
 
     # === Sensors ===
     sensor_interval_system: float = 10.0      # System metrics interval

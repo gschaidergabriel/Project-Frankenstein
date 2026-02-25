@@ -894,7 +894,7 @@ class ChatMixin:
                 self._ui_call(lambda: self._add_message("Frank", "Let me think...", is_system=True))
                 reflect_text_input = (workspace_block + "\n" if workspace_block else "") + "User asks: " + msg
                 reflect_res = _core_chat(
-                    reflect_text_input, max_tokens=120, timeout_s=45, task="chat.fast",
+                    reflect_text_input, max_tokens=200, timeout_s=180, task="chat.fast",
                     no_reflect=True,  # Prevent recursion: reflection pass must NOT trigger reflection
                 )
                 if isinstance(reflect_res, dict) and reflect_res.get("ok"):
@@ -1154,27 +1154,27 @@ class ChatMixin:
         except Exception as e:
             error_str = str(e).lower()
 
-            # Try qwen fallback for context overflow — TRIM context first
+            # Retry with trimmed context for overflow errors
             if "context" in error_str or "exceed" in error_str or "token" in error_str:
-                LOG.warning(f"Context overflow on llama, trimming context for qwen fallback...")
-                qwen_success = False
+                LOG.warning(f"Context overflow, trimming and retrying...")
+                retry_success = False
                 try:
                     trimmed_text = msg
                     trim_tokens = _estimate_tokens(trimmed_text)
                     if trim_tokens > MAX_SAFE_TOKENS:
                         max_chars = int((MAX_SAFE_TOKENS - 200) * CHARS_PER_TOKEN)
                         trimmed_text = trimmed_text[:max_chars] + "... [truncated]"
-                    qwen_max = min(max_tokens, 1000)
-                    LOG.info(f"Qwen retry: {_estimate_tokens(trimmed_text)} tokens (was {_estimate_tokens(text)})")
-                    res = _core_chat(trimmed_text, max_tokens=qwen_max, timeout_s=timeout_s, task=task, force="qwen")
+                    retry_max = min(max_tokens, 1000)
+                    LOG.info(f"Retry with trimmed context: {_estimate_tokens(trimmed_text)} tokens (was {_estimate_tokens(text)})")
+                    res = _core_chat(trimmed_text, max_tokens=retry_max, timeout_s=timeout_s, task=task)
                     if isinstance(res, dict) and res.get("ok"):
-                        qwen_success = True
+                        retry_success = True
                     else:
-                        raise RuntimeError("Qwen fallback returned error")
+                        raise RuntimeError("Trimmed retry returned error")
                 except Exception as e2:
-                    LOG.error(f"Qwen fallback also failed: {e2!r}")
+                    LOG.error(f"Trimmed retry also failed: {e2!r}")
 
-                if not qwen_success:
+                if not retry_success:
                     self._ui_call(self._hide_typing)
                     self._ui_call(lambda: self._add_message("Frank", "The request was too long. Please shorten it.", is_system=True))
                     return

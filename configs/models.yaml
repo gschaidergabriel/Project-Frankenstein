@@ -1,16 +1,9 @@
 models:
-  - id: llama3_8b_q4km
-    # Path resolved via AICORE_MODELS_DIR or ~/.local/share/frank/models
-    filename: Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
-    roles: [chat.fast, audit, reason.hard]
-    quant: Q4_K_M
-    max_ctx: 8192
+  - id: deepseek_r1_8b_q6k
+    # Single RLM — all services route through this model
+    filename: DeepSeek-R1-Distill-Llama-8B-Abliterated.i1-Q6_K.gguf
+    roles: [chat, code, reason, audit, entity]
+    quant: Q6_K
+    max_ctx: 4096
     ram_estimate_gb: 8
-
-  - id: qwen_coder_7b_q4km
-    # Path resolved via AICORE_MODELS_DIR or ~/.local/share/frank/models
-    filename: Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
-    roles: [code.edit, tool.json]
-    quant: Q4_K_M
-    max_ctx: 8192
-    ram_estimate_gb: 7
+    type: rlm

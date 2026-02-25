@@ -96,7 +96,7 @@ PHASE_BUDGET_SEC = {
 }
 
 # LLM settings
-DREAM_LLM_MAX_TOKENS = 500
+DREAM_LLM_MAX_TOKENS = 800  # RLM needs reasoning room + JSON output
 DREAM_LLM_SYSTEM = (
     "Du bist Franks Unterbewusstsein im Traum-Modus. "
     "Du analysierst, verknüpfst und reflektierst frei-assoziativ. "
@@ -396,7 +396,7 @@ class DreamDaemon:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=120.0) as resp:
+                with urllib.request.urlopen(req, timeout=240.0) as resp:
                     data = json.loads(resp.read().decode())
                     if data.get("ok"):
                         return (data.get("text") or "").strip()

@@ -1306,57 +1306,48 @@ class Handler(BaseHTTPRequestHandler):
                     + text
                 )
 
-            # --- Model routing: simple → Chat-LLM (fast), complex → RLM (deep) ---
-            _use_rlm = _is_complex_query(user_text_for_matching)
-            # Force RLM if caller explicitly requests it or if reflection was generated
-            if payload.get("force_rlm") or reflection_text or want_reflect:
-                _use_rlm = True
-
+            # --- Model routing: GPU primary, CPU fallback ---
             route = None
-            if not _use_rlm:
-                # Try Chat-LLM first (Llama 3.1 8B on CPU — fast, no GPU contention)
+            try:
+                with INFER_SEM:
+                    router_payload = {
+                        "text": grounded_text,
+                        "n_predict": max_tokens,
+                        "system": identity,
+                        "temperature": 0.65,
+                    }
+                    if "force" in payload:
+                        router_payload["force"] = payload.get("force")
+
+                    router_timeout = min(max(10, timeout_s + 15), 540)
+
+                    route = http_post_debug(
+                        f"{ROUTER_BASE}/route",
+                        router_payload,
+                        timeout_s=router_timeout,
+                    )
+
+            except Exception as e:
+                # RLM failed → try Chat-LLM (CPU) as fallback
+                LOG.warning("RLM failed (%s), falling back to Chat-LLM", e)
                 route = _chat_llm_call(grounded_text, identity, max_tokens=max_tokens)
                 if route:
-                    LOG.info("Chat-LLM responded (%d chars)", len(route.get("text", "")))
+                    LOG.info("Chat-LLM fallback responded (%d chars)", len(route.get("text", "")))
 
             if route is None:
-                # Complex query or Chat-LLM unavailable → use RLM via router
-                if not _use_rlm:
-                    LOG.info("Chat-LLM unavailable, falling back to RLM")
-                try:
-                    with INFER_SEM:
-                        router_payload = {
-                            "text": grounded_text,
-                            "n_predict": max_tokens,
-                            "system": identity,
-                            "temperature": 0.65,
-                        }
-                        if "force" in payload:
-                            router_payload["force"] = payload.get("force")
-
-                        router_timeout = min(max(10, timeout_s + 15), 540)
-
-                        route = http_post_debug(
-                            f"{ROUTER_BASE}/route",
-                            router_payload,
-                            timeout_s=router_timeout,
-                        )
-
-                except Exception as e:
-                    self._json(
-                        502,
-                        {
-                            "ok": False,
-                            "error": "upstream_failed",
-                            "detail": str(e),
-                            "route": route,
-                            "task": task,
-                            "max_tokens": max_tokens,
-                            "timeout_s": timeout_s,
-                            "infer_concurrency": INFER_MAX_CONCURRENCY,
-                        },
-                    )
-                    return
+                self._json(
+                    502,
+                    {
+                        "ok": False,
+                        "error": "upstream_failed",
+                        "detail": "all LLM backends failed",
+                        "task": task,
+                        "max_tokens": max_tokens,
+                        "timeout_s": timeout_s,
+                        "infer_concurrency": INFER_MAX_CONCURRENCY,
+                    },
+                )
+                return
 
             if not isinstance(route, dict) or route.get("ok") is not True:
                 self._json(

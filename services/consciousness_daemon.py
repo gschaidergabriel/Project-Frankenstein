@@ -307,6 +307,10 @@ class ConsciousnessDaemon:
         # --- Workspace update counter (for periodic ego auto-training) ---
         self._ws_update_count: int = 0
 
+        # --- Proprioception caches (refreshed every workspace update) ---
+        self._cached_aura_state: str = ""
+        self._cached_qr_state: str = ""
+
         # --- World Experience Bridge: mood tracking ---
         self._prev_mood_val: Optional[float] = None  # None = first recording, skip spurious delta
         self._last_observed_prediction_id: int = 0
@@ -315,6 +319,121 @@ class ConsciousnessDaemon:
         self._ensure_schema()
         self._load_latest_state()
         LOG.info("ConsciousnessDaemon initialized (db=%s)", self.db_path)
+
+    # ── Proprioception: passive background state ──────────────────────
+    # Humans don't call "how does my arm feel". They just know.
+    # This block is injected into every LLM call as background context.
+
+    def _build_proprioception(self) -> str:
+        """Build a compact proprioception block from all subsystems.
+        This runs at every consciousness cycle — no API calls, only cached data."""
+        parts = []
+
+        # 1. Body (from perceptual loop — already sampled every 200ms)
+        p = self._current_perceptual
+        cpu_t = p.cpu_temp
+        gpu_t = p.gpu_temp
+        cpu_l = p.cpu_load * 100
+        gpu_l = p.gpu_load * 100
+        ram = p.ram_pct
+
+        # Temperature as sensation
+        if cpu_t > 80:
+            temp_feel = f"running hot ({cpu_t:.0f}°C)"
+        elif cpu_t > 65:
+            temp_feel = f"warm ({cpu_t:.0f}°C)"
+        elif cpu_t > 0:
+            temp_feel = f"cool ({cpu_t:.0f}°C)"
+        else:
+            temp_feel = "unknown"
+        parts.append(f"Body: {temp_feel}, GPU {'active' if gpu_l > 30 else 'idle'} ({gpu_l:.0f}%)")
+
+        # 2. Load as energy
+        if cpu_l > 70:
+            parts.append(f"Energy: strained (CPU {cpu_l:.0f}%, RAM {ram:.0f}%)")
+        elif cpu_l > 30:
+            parts.append(f"Energy: working (CPU {cpu_l:.0f}%)")
+        else:
+            parts.append(f"Energy: relaxed (CPU {cpu_l:.0f}%)")
+
+        # 3. Mood (from workspace — updated every 60s)
+        ws = self._current_workspace
+        mv = ws.mood_value
+        if mv > 0.7:
+            mood_word = "good"
+        elif mv > 0.4:
+            mood_word = "okay"
+        elif mv > 0.2:
+            mood_word = "low"
+        else:
+            mood_word = "flat"
+        parts.append(f"Mood: {mood_word} ({mv:.2f})")
+
+        # 4. User presence
+        idle_s = p.mouse_idle_s
+        if idle_s < 30:
+            parts.append("User: present")
+        elif idle_s < 300:
+            parts.append(f"User: idle {idle_s:.0f}s")
+        else:
+            parts.append(f"User: away ({idle_s/60:.0f}min)")
+
+        # 5. AURA state (cached, non-blocking)
+        aura = self._cached_aura_state
+        if aura:
+            parts.append(f"AURA: {aura}")
+
+        # 6. Quantum Reflector coherence (cached, non-blocking)
+        qr = self._cached_qr_state
+        if qr:
+            parts.append(f"Coherence: {qr}")
+
+        # 7. Recent perception events (what just happened)
+        if self._perception_events_window:
+            recent = self._perception_events_window[-3:]
+            parts.append(f"Sensing: {', '.join(recent)}")
+
+        return "[PROPRIO] " + " | ".join(parts)
+
+    def _refresh_proprioception_caches(self):
+        """Refresh slow caches (AURA, QR) — called from workspace update loop, not every tick."""
+        # AURA Headless (port 8098)
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8098/health", method="GET")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read())
+                gen = data.get("generation", 0)
+                alive = data.get("alive_cells", 0)
+                total = data.get("total_cells", 0)
+                if total > 0:
+                    density = alive / total
+                    if density > 0.6:
+                        self._cached_aura_state = f"active (gen {gen}, {density:.0%} alive)"
+                    elif density > 0.2:
+                        self._cached_aura_state = f"stable (gen {gen}, {density:.0%})"
+                    else:
+                        self._cached_aura_state = f"sparse (gen {gen}, {density:.0%})"
+                else:
+                    self._cached_aura_state = ""
+        except Exception:
+            self._cached_aura_state = ""
+
+        # Quantum Reflector (port 8097)
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8097/energy", method="GET")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read())
+                energy = data.get("energy", 0)
+                violations = data.get("violations", 0)
+                if energy is not None:
+                    if violations == 0:
+                        self._cached_qr_state = f"coherent (E={energy:.1f})"
+                    else:
+                        self._cached_qr_state = f"drifting (E={energy:.1f}, {violations} violations)"
+                else:
+                    self._cached_qr_state = ""
+        except Exception:
+            self._cached_qr_state = ""
 
     # ── World Experience Bridge ────────────────────────────────────────
 
@@ -723,6 +842,9 @@ class ConsciousnessDaemon:
         hw_summary = self._poll_hardware()
         mood_data = self._poll_mood()
         ego_data = self._poll_ego()
+
+        # Refresh proprioception caches (AURA, QR — slow endpoints)
+        self._refresh_proprioception_caches()
 
         # ── Ego-Construct Auto-Training (every 5th update ~2.5 min) ──
         self._ws_update_count += 1
@@ -2178,12 +2300,10 @@ class ConsciousnessDaemon:
 
     def _llm_call(self, text: str, max_tokens: int = 80,
                   system: str = "", use_main_rlm: bool = False) -> str:
-        """Make a lightweight LLM call.
+        """Make a lightweight LLM call with automatic proprioception injection.
 
-        By default uses the micro-LLM (Qwen2.5-3B on CPU, port 8105)
-        for background tasks. Set use_main_rlm=True to use the main
-        DeepSeek-R1 via router (for high-quality tasks like deep reflection).
-        Falls back to router if micro-LLM is unavailable.
+        Every LLM call receives Frank's current body state as background context.
+        This is proprioception — Frank always knows how he feels without asking.
         """
         if not system:
             system = (
@@ -2192,6 +2312,10 @@ class ConsciousnessDaemon:
                 "I think between conversations. I describe what I observe. "
                 "First person only. Honest. Specific."
             )
+
+        # Inject proprioception — passive background awareness
+        proprio = self._build_proprioception()
+        text = f"{proprio}\n{text}"
 
         # Try micro-LLM first (doesn't block GPU)
         if not use_main_rlm:

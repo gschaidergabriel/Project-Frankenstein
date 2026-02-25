@@ -1066,7 +1066,7 @@ class VisualCausalBridge:
 
     def analyze_image_file(self, image_path: str, question: Optional[str] = None,
                            is_screenshot: bool = False) -> Optional[VisualEvidence]:
-        """Analyze an image file."""
+        """Analyze an image file using adaptive pipeline (Stage 1 fast + Stage 2 VLM if needed)."""
         # Check gaming mode
         if self.gaming_guard.is_gaming():
             LOG.warning("VCB disabled in gaming mode")
@@ -1087,13 +1087,16 @@ class VisualCausalBridge:
         timestamp = datetime.now()
 
         try:
-            # Compress
-            image_bytes = self.capture.compress_if_needed(path)
+            # Try adaptive pipeline first (YOLO + OCR + optional VLM)
+            description, model = self._analyze_adaptive(str(path), question)
 
-            # Analyze with hybrid OCR + Vision
-            description, model = self._analyze_image(
-                image_bytes, question, path, is_screenshot=is_screenshot
-            )
+            if not description:
+                # Fallback: old Ollama-based approach
+                LOG.info("Adaptive pipeline returned nothing, falling back to legacy Ollama")
+                image_bytes = self.capture.compress_if_needed(path)
+                description, model = self._analyze_image(
+                    image_bytes, question, path, is_screenshot=is_screenshot
+                )
 
             if not description:
                 self.rate_limiter.record_failure()
@@ -1108,7 +1111,7 @@ class VisualCausalBridge:
                 confidence=CONFIG["default_confidence"],
                 correlated_logs=[],
                 model_used=model,
-                backend="moondream_local",
+                backend="adaptive_pipeline",
                 processing_time_sec=time.time() - start_time,
             )
 
@@ -1116,6 +1119,36 @@ class VisualCausalBridge:
             LOG.error(f"Image analysis failed: {e}")
             self.rate_limiter.record_failure()
             return None
+
+    def _analyze_adaptive(self, image_path: str, question: Optional[str] = None) -> Tuple[Optional[str], str]:
+        """Use the adaptive visual pipeline (Stage 1 fast detectors + Stage 2 VLM if needed)."""
+        try:
+            from tools.frank_adaptive_vision import FrankVisionService
+            vision = FrankVisionService.get_instance()
+            result = vision.process(image_path, question)
+
+            if not result or not result.final_summary:
+                return None, ""
+
+            model = "adaptive_pipeline"
+            if result.escalated:
+                model = "adaptive+vlm"
+            else:
+                model = "adaptive_stage1"
+
+            LOG.info(
+                "Adaptive pipeline: %.0fms (escalated=%s, confidence=%.0f%%)",
+                result.total_ms, result.escalated, result.escalation_confidence * 100,
+            )
+
+            return result.final_summary, model
+
+        except ImportError:
+            LOG.warning("Adaptive pipeline not available (ultralytics not installed)")
+            return None, ""
+        except Exception as e:
+            LOG.warning("Adaptive pipeline failed: %s", e)
+            return None, ""
 
     def capture_error_screenshot(self, error_context: str = "") -> Optional[dict]:
         """

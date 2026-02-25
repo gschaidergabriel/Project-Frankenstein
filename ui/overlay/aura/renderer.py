@@ -116,8 +116,13 @@ class AuraRenderer:
         cell_age: np.ndarray,
         mood_buffer: float = 0.5,
         threat_intensity: float = 0.0,
+        quantum_colors: np.ndarray | None = None,
     ) -> Image.Image:
-        """Full render pass: noise → cells+trails → bloom → output."""
+        """Full render pass: noise → cells+trails → bloom → output.
+
+        quantum_colors: optional (256,256,3) float32 per-cell RGB from quantum
+                        type distribution. If provided, overrides static zone colors.
+        """
 
         # ── Update visual decay (trails) ──
         self._visual_decay *= TRAIL_DECAY
@@ -136,7 +141,9 @@ class AuraRenderer:
         visible = self._visual_decay > 0.01
         if np.any(visible):
             decay = self._visual_decay[visible]
-            colors = self._zone_colors[visible]  # (N, 3)
+            # Use quantum blended colors if available, else static zone colors
+            color_source = quantum_colors if quantum_colors is not None else self._zone_colors
+            colors = color_source[visible]  # (N, 3)
 
             # Mood → saturation
             sat = 0.4 + max(0.0, min(1.0, mood_buffer)) * 0.6

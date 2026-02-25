@@ -60,14 +60,15 @@ QUANTUM_URL = os.environ.get("AURA_QUANTUM_URL", "http://127.0.0.1:8097")
 # --- Zone definitions ---
 # Each zone occupies a region of the 256x256 grid
 ZONE_BOUNDS: Dict[str, Tuple[int, int, int, int]] = {
-    "epq":      (0,   0,   64,  64),    # top-left
-    "mood":     (64,  0,   128, 64),     # top-center-left
-    "thoughts": (128, 0,   192, 64),     # top-center-right
-    "entities": (192, 0,   256, 64),     # top-right
-    "ego":      (0,   64,  64,  128),    # mid-left
-    "quantum":  (64,  64,  128, 128),    # mid-center-left
-    "memory":   (0,   128, 128, 256),    # bottom-left
-    "hw":       (128, 128, 256, 256),    # bottom-right
+    # 4×2 equal grid (64w × 128h each) — matches overlay renderer layout
+    "epq":      (0,   0,   64,  128),   # top-left
+    "mood":     (64,  0,   128, 128),   # top-center-left
+    "thoughts": (128, 0,   192, 128),   # top-center-right
+    "entities": (192, 0,   256, 128),   # top-right
+    "ego":      (0,   128, 64,  256),   # bottom-left
+    "quantum":  (64,  128, 128, 256),   # bottom-center-left
+    "memory":   (128, 128, 192, 256),   # bottom-center-right
+    "hw":       (192, 128, 256, 256),   # bottom-right
 }
 
 # Zone display labels (dynamic, updated from state)
@@ -171,14 +172,44 @@ def _get_ram_usage() -> float:
         return 0.0
 
 
-# --- AURA Headless Core ---
+# --- Quantum dynamics constants ---
+DIFFUSION_RATE = 0.04       # How fast type distributions blend with neighbors
+DECOHERENCE_RATE = 0.002    # How fast dominant types sharpen over time
+NUM_TYPES = 8               # Number of subsystem types
+
+# Zone colors (RGB 0-1 float) — must match overlay renderer
+ZONE_COLORS_RGB = np.array([
+    [0.0, 0.7, 1.0],    # 0=epq: Electric Cyan Blue
+    [1.0, 0.5, 0.0],    # 1=mood: Deep Amber
+    [0.0, 1.0, 0.3],    # 2=thoughts: Neon Green
+    [1.0, 0.0, 0.8],    # 3=entities: Hot Magenta
+    [1.0, 0.85, 0.0],   # 4=ego: Bright Gold
+    [0.0, 1.0, 1.0],    # 5=quantum: Pure Cyan
+    [0.7, 0.3, 1.0],    # 6=memory: Electric Violet
+    [1.0, 0.2, 0.1],    # 7=hw: Neon Red
+], dtype=np.float32)
+
+
+# --- AURA Headless Core (Quantum) ---
 
 class AuraHeadless:
-    """Offscreen AURA — no display, no vision model."""
+    """Quantum-enhanced AURA — Conway GoL with type superposition and diffusion.
+
+    Each cell has:
+    - Binary alive/dead state (standard Conway B3/S23)
+    - type_dist[8]: probability distribution across 8 subsystem types
+      A cell born in the Thoughts zone starts as [0,0,1,0,0,0,0,0].
+      As it interacts with neighbors, probabilities diffuse:
+      [0,0,0.7,0,0,0,0.2,0.1] = mostly Thought, some Memory, hint of HW.
+    - Quantum color: weighted blend of zone colors by type_dist
+    """
+
+    # Zone name → type index
+    ZONE_IDS = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
+                "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
 
     def __init__(self, size: int = GRID_SIZE):
         self.size = size
-        self.grid = np.zeros((size, size), dtype=np.uint8)
         self.generation = 0
         self.history: deque = deque(maxlen=100)
         self.start_time = time.time()
@@ -196,21 +227,45 @@ class AuraHeadless:
         self._lock = threading.Lock()
         self._last_seed_time = 0.0
 
-        # Zone map: each cell knows which subsystem it belongs to (0-7)
-        # This enables color-coded analysis — cross-zone patterns have meaning
+        # Zone map: static assignment (cell → home zone)
         self.zone_map = np.zeros((size, size), dtype=np.uint8)
-        _zone_ids = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
-                     "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
         for zone_name, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
-            self.zone_map[y1:y2, x1:x2] = _zone_ids[zone_name]
+            self.zone_map[y1:y2, x1:x2] = self.ZONE_IDS[zone_name]
 
-        # Initial random seed (sparse, ~5% alive)
+        # ── Binary grid (Conway state) ──
         self.grid = (np.random.random((size, size)) < 0.05).astype(np.uint8)
 
+        # ── Quantum state: type probability distribution per cell ──
+        # type_dist[y, x, t] = probability that cell (y,x) is of type t
+        self.type_dist = np.zeros((size, size, NUM_TYPES), dtype=np.float32)
+        # Initialize: each alive cell gets 100% of its home zone type
+        for zone_name, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
+            zone_id = self.ZONE_IDS[zone_name]
+            alive_in_zone = self.grid[y1:y2, x1:x2] == 1
+            self.type_dist[y1:y2, x1:x2, zone_id][alive_in_zone] = 1.0
+
+        # ── Precomputed quantum color map (updated each tick) ──
+        # quantum_colors[y, x, 3] = blended RGB from type_dist × zone colors
+        self.quantum_colors = np.zeros((size, size, 3), dtype=np.float32)
+        self._update_quantum_colors()
+
     def tick(self):
-        """One GoL step + periodic service data injection."""
+        """One quantum GoL step: Conway + type diffusion + decoherence."""
         with self._lock:
+            old_grid = self.grid.copy()
+
+            # 1. Standard Conway step (binary birth/death)
             self.grid = self._conway_step(self.grid)
+
+            # 2. Quantum type diffusion
+            self._diffuse_types(old_grid)
+
+            # 3. Decoherence (dominant type slowly sharpens)
+            self._decohere()
+
+            # 4. Update blended quantum colors
+            self._update_quantum_colors()
+
             self.generation += 1
 
             # Re-seed from services periodically
@@ -222,7 +277,7 @@ class AuraHeadless:
             self.history.append(self._snapshot_stats())
 
     def _conway_step(self, grid: np.ndarray) -> np.ndarray:
-        """Standard Conway's Game of Life."""
+        """Standard Conway's Game of Life (B3/S23)."""
         neighbors = np.zeros_like(grid, dtype=np.int16)
         for di in (-1, 0, 1):
             for dj in (-1, 0, 1):
@@ -231,9 +286,91 @@ class AuraHeadless:
                 neighbors += np.roll(np.roll(grid, di, 0), dj, 1)
         return ((neighbors == 3) | ((grid == 1) & (neighbors == 2))).astype(np.uint8)
 
+    def _diffuse_types(self, old_grid: np.ndarray):
+        """Quantum type propagation: alive cells blend type_dist with neighbors."""
+        births = (self.grid == 1) & (old_grid == 0)
+        deaths = (self.grid == 0) & (old_grid == 1)
+        surviving = (self.grid == 1) & (old_grid == 1)
+
+        # Compute neighbor-weighted type average
+        neighbor_types = np.zeros_like(self.type_dist)
+        neighbor_count = np.zeros((self.size, self.size), dtype=np.float32)
+        for di in (-1, 0, 1):
+            for dj in (-1, 0, 1):
+                if di == 0 and dj == 0:
+                    continue
+                shifted_types = np.roll(np.roll(self.type_dist, di, 0), dj, 1)
+                shifted_alive = np.roll(np.roll(old_grid, di, 0), dj, 1).astype(np.float32)
+                neighbor_types += shifted_types * shifted_alive[:, :, np.newaxis]
+                neighbor_count += shifted_alive
+
+        # Avoid division by zero
+        safe_count = np.maximum(neighbor_count, 1.0)[:, :, np.newaxis]
+        neighbor_avg = neighbor_types / safe_count
+
+        # Surviving cells: blend slightly toward neighbors (diffusion)
+        if surviving.any():
+            surv_3d = surviving[:, :, np.newaxis]
+            self.type_dist = np.where(
+                surv_3d,
+                self.type_dist * (1.0 - DIFFUSION_RATE) + neighbor_avg * DIFFUSION_RATE,
+                self.type_dist,
+            )
+
+        # Newborn cells: inherit type from alive neighbors
+        if births.any():
+            birth_has_neighbors = births & (neighbor_count > 0)
+            self.type_dist[birth_has_neighbors] = neighbor_avg[birth_has_neighbors]
+            # Births with no alive neighbors (shouldn't happen in Conway) → zone default
+            birth_no_neighbors = births & (neighbor_count == 0)
+            if birth_no_neighbors.any():
+                for zone_name, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
+                    zone_id = self.ZONE_IDS[zone_name]
+                    local_births = birth_no_neighbors[y1:y2, x1:x2]
+                    if local_births.any():
+                        default = np.zeros(NUM_TYPES, dtype=np.float32)
+                        default[zone_id] = 1.0
+                        self.type_dist[y1:y2, x1:x2][local_births] = default
+
+        # Dead cells: fade type_dist (ghost trail)
+        if deaths.any():
+            self.type_dist[deaths] *= 0.5
+
+        # Zero out completely dead cells after fade
+        long_dead = (self.grid == 0)
+        self.type_dist[long_dead] *= 0.9  # slow fade for dead cells
+
+        # Normalize alive cells
+        alive = self.grid == 1
+        if alive.any():
+            sums = self.type_dist[alive].sum(axis=1, keepdims=True)
+            sums[sums == 0] = 1.0
+            self.type_dist[alive] = self.type_dist[alive] / sums
+
+    def _decohere(self):
+        """Decoherence: dominant type slowly strengthens (superposition decays)."""
+        alive = self.grid == 1
+        if not alive.any():
+            return
+        alive_dist = self.type_dist[alive]
+        dominant_idx = alive_dist.argmax(axis=1)
+        # Boost dominant type slightly
+        boost = np.zeros_like(alive_dist)
+        boost[np.arange(len(dominant_idx)), dominant_idx] = DECOHERENCE_RATE
+        alive_dist = alive_dist + boost
+        # Re-normalize
+        sums = alive_dist.sum(axis=1, keepdims=True)
+        sums[sums == 0] = 1.0
+        self.type_dist[alive] = alive_dist / sums
+
+    def _update_quantum_colors(self):
+        """Compute per-cell blended RGB from type_dist × zone colors."""
+        # type_dist: (256,256,8), ZONE_COLORS_RGB: (8,3)
+        # Result: (256,256,3) — weighted sum
+        self.quantum_colors = np.einsum('ijk,kl->ijl', self.type_dist, ZONE_COLORS_RGB)
+
     def _seed_from_services(self):
         """Inject real subsystem data as living cells into zones."""
-        # --- Fetch real data ---
         self._fetch_mood()
         self._fetch_epq()
         self._fetch_quantum()
@@ -241,56 +378,43 @@ class AuraHeadless:
         self._fetch_thoughts()
         self._fetch_entities()
 
-        # --- Seed zones based on activity ---
-        # Higher values → more cells seeded → more GoL activity
-
-        # EPQ zone: seed proportional to personality vector magnitudes
         epq_activity = sum(abs(v) for v in self.epq_vectors.values()) / max(len(self.epq_vectors), 1)
         self._seed_zone("epq", epq_activity)
-
-        # Mood zone: seed proportional to mood intensity (abs value)
         self._seed_zone("mood", abs(self.mood) * 0.8 + 0.1)
-
-        # Thoughts zone: seed from reflection/thought count
         thought_activity = min(self.thought_count / 10.0, 1.0)
         self._seed_zone("thoughts", thought_activity * 0.6 + 0.05)
-
-        # Entities zone: high if entity is active
         entity_activity = 0.6 if self.entity_active else 0.05
         self._seed_zone("entities", entity_activity)
-
-        # Ego zone: proportional to energy level
         self._seed_zone("ego", self.energy_level * 0.5 + 0.1)
-
-        # Quantum zone: proportional to coherence
         self._seed_zone("quantum", self.coherence * 0.6 + 0.1)
-
-        # Memory zone: moderate constant + mood influence
         self._seed_zone("memory", 0.15 + abs(self.mood) * 0.2)
-
-        # HW zone: proportional to temperature and RAM
         hw_stress = (self.hw_temp / 100.0) * 0.4 + self.ram_usage * 0.3
         self._seed_zone("hw", min(hw_stress, 0.8))
 
     def _seed_zone(self, zone: str, intensity: float):
-        """Inject random cells into a zone. intensity is 0..1."""
+        """Inject cells with quantum type initialization."""
         x1, y1, x2, y2 = ZONE_BOUNDS[zone]
+        zone_id = self.ZONE_IDS[zone]
         region = self.grid[y1:y2, x1:x2]
-        # Seed some random cells based on intensity (only if not already dense)
         density = region.sum() / region.size
         if density < intensity:
             seed_count = int((intensity - density) * region.size * 0.05)
             for _ in range(min(seed_count, 100)):
                 ry = np.random.randint(0, y2 - y1)
                 rx = np.random.randint(0, x2 - x1)
-                self.grid[y1 + ry, x1 + rx] = 1
-        # Also inject known patterns for richer dynamics
+                cy, cx = y1 + ry, x1 + rx
+                if self.grid[cy, cx] == 0:
+                    self.grid[cy, cx] = 1
+                    # New cell: 100% home zone type (pure superposition)
+                    self.type_dist[cy, cx] = 0.0
+                    self.type_dist[cy, cx, zone_id] = 1.0
         if intensity > 0.3 and np.random.random() < 0.3:
             self._inject_random_pattern(zone)
 
     def _inject_random_pattern(self, zone: str):
-        """Place a random GoL pattern in a zone."""
+        """Place a GoL pattern with quantum type initialization."""
         x1, y1, x2, y2 = ZONE_BOUNDS[zone]
+        zone_id = self.ZONE_IDS[zone]
         pattern_name = np.random.choice(list(PATTERNS.keys()))
         pattern = PATTERNS[pattern_name]
         ph, pw = pattern.shape
@@ -298,7 +422,12 @@ class AuraHeadless:
         if zw > pw + 2 and zh > ph + 2:
             px = np.random.randint(0, zw - pw)
             py = np.random.randint(0, zh - ph)
+            # Find newly born cells from pattern injection
+            region = self.grid[y1+py:y1+py+ph, x1+px:x1+px+pw]
+            new_cells = (pattern == 1) & (region == 0)
             self.grid[y1+py:y1+py+ph, x1+px:x1+px+pw] |= pattern
+            # Initialize type for new cells
+            self.type_dist[y1+py:y1+py+ph, x1+px:x1+px+pw, zone_id][new_cells] = 1.0
 
     def _fetch_mood(self):
         """Read mood from consciousness DB."""
@@ -463,6 +592,25 @@ class AuraHeadless:
             return 0.0
         return round(-p * np.log2(p) - (1 - p) * np.log2(1 - p), 3)
 
+    def quantum_entropy(self) -> float:
+        """Quantum type entropy — how mixed are the type distributions?
+        High = cells are in superposition (many types). Low = cells are pure."""
+        with self._lock:
+            alive = self.grid == 1
+            if not alive.any():
+                return 0.0
+            dists = self.type_dist[alive]
+        # Per-cell Shannon entropy of type distribution, then average
+        dists = np.clip(dists, 1e-10, 1.0)
+        cell_entropy = -np.sum(dists * np.log2(dists), axis=1)
+        return float(np.mean(cell_entropy))
+
+    def quantum_coherence_score(self) -> float:
+        """How coherent are cells? 1.0 = all pure types, 0.0 = max superposition."""
+        qe = self.quantum_entropy()
+        max_entropy = np.log2(NUM_TYPES)  # ~3.0 for 8 types
+        return max(0.0, 1.0 - qe / max_entropy)
+
     def detect_anomalies(self) -> List[str]:
         """Global anomaly detection."""
         anomalies = []
@@ -527,11 +675,15 @@ class AuraHeadless:
                 f"{self.hw_temp}\u00b0C"
             )
 
+        q_ent = self.quantum_entropy()
+        q_coh = self.quantum_coherence_score()
+
         lines = [
-            f"\u2550\u2550\u2550 AURA INTROSPECT ({depth}) \u2550\u2550\u2550",
+            f"\u2550\u2550\u2550 AURA QUANTUM INTROSPECT ({depth}) \u2550\u2550\u2550",
             f"Gen {self.generation} | {self.hw_temp}\u00b0C | Uptime {uptime_str}",
             "",
             f"STATE: mood={self.mood:.2f} coherence={self.coherence:.2f} entropy={entropy:.2f}",
+            f"QUANTUM: type_entropy={q_ent:.2f} type_coherence={q_coh:.2f}",
             "",
             "ZONES:",
         ]
@@ -579,9 +731,12 @@ class AuraHeadless:
         zones = self.zone_stats()
         result = {
             "generation": self.generation,
+            "quantum": True,
             "global": {
                 "total_alive": int(self.grid.sum()),
                 "entropy": self.compute_entropy(),
+                "quantum_entropy": round(self.quantum_entropy(), 3),
+                "quantum_coherence": round(self.quantum_coherence_score(), 3),
                 "coherence": self.coherence,
                 "mood": self.mood,
                 "temperature": self.hw_temp,
@@ -689,12 +844,14 @@ def introspect_json_endpoint(depth: str = "full"):
 
 @app.get("/grid")
 def grid_endpoint():
-    """Raw grid + zone map export for pattern analyzer.
+    """Raw grid + quantum state export.
 
     Returns base64-encoded 256x256 arrays:
-    - grid_b64: cell states (0/1)
-    - zone_map_b64: zone IDs per cell (0-7)
-    - Full subsystem context for cross-zone pattern analysis
+    - grid_b64: binary cell states (0/1), uint8
+    - zone_map_b64: static zone IDs (0-7), uint8
+    - quantum_colors_b64: per-cell blended RGB (256×256×3), uint8 (0-255)
+    - dominant_type_b64: per-cell dominant type index, uint8
+    - Full subsystem context
     """
     import base64
     _ensure_tick_thread()
@@ -702,11 +859,20 @@ def grid_endpoint():
         grid_bytes = aura.grid.tobytes()
         zone_bytes = aura.zone_map.tobytes()
         gen = aura.generation
+        # Quantum: blended colors quantized to uint8
+        qcolors_u8 = np.clip(aura.quantum_colors * 255, 0, 255).astype(np.uint8)
+        qcolors_bytes = qcolors_u8.tobytes()
+        # Dominant type per cell
+        dominant = aura.type_dist.argmax(axis=2).astype(np.uint8)
+        dominant_bytes = dominant.tobytes()
     return {
         "generation": gen,
         "size": aura.size,
+        "quantum": True,
         "grid_b64": base64.b64encode(grid_bytes).decode("ascii"),
         "zone_map_b64": base64.b64encode(zone_bytes).decode("ascii"),
+        "quantum_colors_b64": base64.b64encode(qcolors_bytes).decode("ascii"),
+        "dominant_type_b64": base64.b64encode(dominant_bytes).decode("ascii"),
         "zone_names": {0: "epq", 1: "mood", 2: "thoughts", 3: "entities",
                        4: "ego", 5: "quantum", 6: "memory", 7: "hw"},
         # Subsystem context

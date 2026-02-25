@@ -36,6 +36,7 @@ _DB_DIR = Path.home() / ".local/share/frank/db"
 _DB_CONSCIOUSNESS = _DB_DIR / "consciousness.db"
 _DB_WORLD_EXP = _DB_DIR / "world_experience.db"
 from overlay.aura.engine import AuraEngine
+from overlay.aura.headless_engine import HeadlessAuraEngine
 from overlay.aura.seeder import seed_grid
 from overlay.aura.renderer import AuraRenderer
 from overlay.aura.events import EventManager
@@ -77,7 +78,8 @@ class AuraVisualizerMixin:
     # ──────────────────────────────────────────────────────────────
 
     def _init_aura_visualizer(self):
-        self._aura_engine = AuraEngine()
+        self._aura_engine = HeadlessAuraEngine()
+        self._aura_using_headless = True
         self._aura_events = EventManager()
         self._aura_open = False
         self._aura_animating = False
@@ -221,11 +223,12 @@ class AuraVisualizerMixin:
         self._aura_pan_x = 128.0
         self._aura_pan_y = 128.0
 
-        # Seed grid
+        # Seed grid (only for local engine — headless manages its own)
         self._aura_poll_state_once()
-        with self._aura_state_lock:
-            grid = seed_grid(self._aura_state)
-        self._aura_engine.set_grid(grid)
+        if not self._aura_using_headless:
+            with self._aura_state_lock:
+                grid = seed_grid(self._aura_state)
+            self._aura_engine.set_grid(grid)
 
         # Create floating window
         win = tk.Toplevel(self)
@@ -1135,7 +1138,12 @@ class AuraVisualizerMixin:
                 mood = self._aura_state["mood_buffer"]
             threat = self._aura_events.threat_intensity
 
-            img = self._aura_renderer.render(grid, cell_age, mood, threat)
+            # Get quantum colors from headless engine (per-cell blended RGB)
+            qcolors = None
+            if self._aura_using_headless and hasattr(self._aura_engine, "get_quantum_colors"):
+                qcolors = self._aura_engine.get_quantum_colors()
+
+            img = self._aura_renderer.render(grid, cell_age, mood, threat, quantum_colors=qcolors)
 
             # Scale to canvas size with zoom (crop + resize)
             cw = self._aura_canvas.winfo_width()
@@ -1242,81 +1250,113 @@ class AuraVisualizerMixin:
         new_state: dict = {}
         online = True
 
-        # ── Read E-PQ + mood_buffer from world_experience.db ──
-        try:
-            row = self._aura_db_query(
-                _DB_WORLD_EXP,
-                "SELECT precision_val, risk_val, empathy_val, "
-                "autonomy_val, vigilance_val, mood_buffer, confidence_anchor "
-                "FROM personality_state ORDER BY id DESC LIMIT 1",
-            )
-            if row:
-                new_state["epq_vectors"] = {
-                    "precision": row[0], "risk": row[1], "empathy": row[2],
-                    "autonomy": row[3], "vigilance": row[4],
-                }
-                new_state["mood_buffer"] = float(row[5])
-                new_state["coherence"] = float(row[6])
-        except Exception:
-            online = False
+        # ── Headless mode: get state from cached headless metadata ──
+        if self._aura_using_headless and getattr(self._aura_engine, "connected", False):
+            meta = self._aura_engine.get_metadata()
+            epq = meta.get("epq_vectors", {})
+            if epq:
+                new_state["epq_vectors"] = epq
+            mood_val = meta.get("mood", 0.0)
+            new_state["mood_buffer"] = abs(mood_val) if mood_val is not None else 0.5
+            cohr = meta.get("coherence", 0.5)
+            new_state["coherence"] = max(0.0, min(1.0, cohr)) if cohr else 0.5
+            new_state["cpu_temp"] = meta.get("hw_temp", 0)
+            new_state["ram_percent"] = meta.get("ram_usage", 0.0) * 100
+            new_state["reflection_count"] = meta.get("thought_count", 0)
+            new_state["online"] = True
 
-        # ── Read live mood from consciousness.db ──
-        try:
-            row = self._aura_db_query(
-                _DB_CONSCIOUSNESS,
-                "SELECT mood_value FROM mood_trajectory "
-                "ORDER BY id DESC LIMIT 1",
-            )
-            if row:
-                new_state["mood_buffer"] = float(row[0])
-        except Exception:
-            pass
+            # Still fetch reflections from DB (headless doesn't cache content)
+            try:
+                rows = self._aura_db_query_all(
+                    _DB_CONSCIOUSNESS,
+                    "SELECT content, trigger FROM reflections "
+                    "ORDER BY id DESC LIMIT 8",
+                )
+                if rows:
+                    new_state["reflections"] = [
+                        {"content": r[0], "trigger": r[1]} for r in rows
+                    ]
+                    new_state["reflection_count"] = len(rows)
+            except Exception:
+                pass
+        else:
+            # ── Fallback: direct DB/API polling ──
 
-        # ── Read recent reflections from consciousness.db ──
-        try:
-            rows = self._aura_db_query_all(
-                _DB_CONSCIOUSNESS,
-                "SELECT content, trigger FROM reflections "
-                "ORDER BY id DESC LIMIT 8",
-            )
-            if rows:
-                reflections = [
-                    {"content": r[0], "trigger": r[1]} for r in rows
-                ]
-                new_state["reflections"] = reflections
-                new_state["reflection_count"] = len(reflections)
-        except Exception:
-            pass
+            # ── Read E-PQ + mood_buffer from world_experience.db ──
+            try:
+                row = self._aura_db_query(
+                    _DB_WORLD_EXP,
+                    "SELECT precision_val, risk_val, empathy_val, "
+                    "autonomy_val, vigilance_val, mood_buffer, confidence_anchor "
+                    "FROM personality_state ORDER BY id DESC LIMIT 1",
+                )
+                if row:
+                    new_state["epq_vectors"] = {
+                        "precision": row[0], "risk": row[1], "empathy": row[2],
+                        "autonomy": row[3], "vigilance": row[4],
+                    }
+                    new_state["mood_buffer"] = float(row[5])
+                    new_state["coherence"] = float(row[6])
+            except Exception:
+                online = False
 
-        # ── Read hardware from toolbox API ──
-        try:
-            data = self._aura_api_post(f"{API_TOOLBOX}/sys/summary")
-            if data:
-                temps = data.get("temps", {})
-                new_state["cpu_temp"] = float(temps.get("max_c", 0))
-                mem = data.get("mem", {}).get("mem_kb", {})
-                total = mem.get("total", 1)
-                used = mem.get("used", 0)
-                new_state["ram_percent"] = (used / max(total, 1)) * 100
-                cpu = data.get("cpu", {})
-                new_state["cpu_load"] = float(cpu.get("load_1m", 0))
-        except Exception:
-            pass
+            # ── Read live mood from consciousness.db ──
+            try:
+                row = self._aura_db_query(
+                    _DB_CONSCIOUSNESS,
+                    "SELECT mood_value FROM mood_trajectory "
+                    "ORDER BY id DESC LIMIT 1",
+                )
+                if row:
+                    new_state["mood_buffer"] = float(row[0])
+            except Exception:
+                pass
 
-        # ── Read coherence from quantum reflector API ──
-        try:
-            data = self._aura_api_get(f"{API_QUANTUM}/status")
-            if data:
-                last = data.get("last_result") or {}
-                energy = last.get("energy")
-                if energy is not None:
-                    new_state["coherence"] = max(
-                        0.0, min(1.0, 1.0 - abs(energy) / 100.0),
-                    )
-        except Exception:
-            pass
+            # ── Read recent reflections from consciousness.db ──
+            try:
+                rows = self._aura_db_query_all(
+                    _DB_CONSCIOUSNESS,
+                    "SELECT content, trigger FROM reflections "
+                    "ORDER BY id DESC LIMIT 8",
+                )
+                if rows:
+                    reflections = [
+                        {"content": r[0], "trigger": r[1]} for r in rows
+                    ]
+                    new_state["reflections"] = reflections
+                    new_state["reflection_count"] = len(reflections)
+            except Exception:
+                pass
 
-        new_state["online"] = online
+            # ── Read hardware from toolbox API ──
+            try:
+                data = self._aura_api_post(f"{API_TOOLBOX}/sys/summary")
+                if data:
+                    temps = data.get("temps", {})
+                    new_state["cpu_temp"] = float(temps.get("max_c", 0))
+                    mem = data.get("mem", {}).get("mem_kb", {})
+                    total = mem.get("total", 1)
+                    used = mem.get("used", 0)
+                    new_state["ram_percent"] = (used / max(total, 1)) * 100
+                    cpu = data.get("cpu", {})
+                    new_state["cpu_load"] = float(cpu.get("load_1m", 0))
+            except Exception:
+                pass
+
+            # ── Read coherence from quantum reflector API ──
+            try:
+                data = self._aura_api_get(f"{API_QUANTUM}/status")
+                if data:
+                    last = data.get("last_result") or {}
+                    energy = last.get("energy")
+                    if energy is not None:
+                        new_state["coherence"] = max(
+                            0.0, min(1.0, 1.0 - abs(energy) / 100.0),
+                        )
+            except Exception:
+                pass
+
+            new_state["online"] = online
 
         with self._aura_state_lock:
             old_mood = self._aura_state.get("mood_buffer", 0.5)
@@ -1399,6 +1439,8 @@ class AuraVisualizerMixin:
     # ──────────────────────────────────────────────────────────────
 
     def _aura_reseed(self):
+        if self._aura_using_headless:
+            return  # Headless service manages its own seeding
         try:
             with self._aura_state_lock:
                 state = dict(self._aura_state)

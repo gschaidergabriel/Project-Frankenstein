@@ -277,6 +277,12 @@ class Snapshot:
     thought_count: int = 0
     entity_active: str = ""
 
+    # Quantum state
+    is_quantum: bool = False
+    dominant_type: Optional[np.ndarray] = None  # 256x256 uint8 (dominant type per cell)
+    quantum_entropy: float = 0.0  # avg type entropy across alive cells
+    quantum_coherence: float = 1.0  # 1=pure types, 0=max superposition
+
     # Computed metrics
     global_density: float = 0.0
     global_entropy: float = 0.0
@@ -314,6 +320,16 @@ def fetch_grid() -> Optional[Snapshot]:
             for zn, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
                 zone_map[y1:y2, x1:x2] = _zids[zn]
 
+        # Quantum state (dominant type per cell)
+        is_quantum = data.get("quantum", False)
+        dominant_type = None
+        if is_quantum and "dominant_type_b64" in data:
+            try:
+                dt_bytes = base64.b64decode(data["dominant_type_b64"])
+                dominant_type = np.frombuffer(dt_bytes, dtype=np.uint8).reshape((sz, sz)).copy()
+            except Exception:
+                pass
+
         return Snapshot(
             ts=time.time(),
             generation=data["generation"],
@@ -327,6 +343,8 @@ def fetch_grid() -> Optional[Snapshot]:
             ram_usage=data.get("ram_usage", 0.0),
             thought_count=data.get("thought_count", 0),
             entity_active=data.get("entity_active", ""),
+            is_quantum=is_quantum,
+            dominant_type=dominant_type,
         )
     except Exception as e:
         LOG.debug("Grid fetch failed: %s", e)
@@ -391,6 +409,18 @@ def compute_metrics(snap: Snapshot, prev_grid: Optional[np.ndarray] = None):
             if density > 0.3:
                 hotspots.append((bx, by, round(density, 3)))
     snap.hotspots = sorted(hotspots, key=lambda x: -x[2])[:10]
+
+    # Quantum metrics: type diffusion analysis
+    if snap.is_quantum and snap.dominant_type is not None:
+        alive = grid == 1
+        if alive.any():
+            dt = snap.dominant_type[alive]
+            # Count how many alive cells have a dominant type different from their home zone
+            home_zone = snap.zone_map[alive]
+            diffused = np.sum(dt != home_zone)
+            total_alive = int(alive.sum())
+            snap.quantum_entropy = round(diffused / max(total_alive, 1), 3)
+            snap.quantum_coherence = round(1.0 - snap.quantum_entropy, 3)
 
     # Cross-zone pattern analysis: detect activity at zone borders
     _analyze_cross_zone(snap)
@@ -831,6 +861,20 @@ def analyze_block(snapshots: List[Snapshot], block_num: int,
     if epq:
         dominant = max(epq, key=lambda k: abs(epq[k])) if epq else ""
         ba.epq_summary = f"{dominant}={epq.get(dominant, 0):.2f}" if dominant else ""
+
+    # Quantum metrics: type diffusion summary
+    quantum_snaps = [s for s in snapshots if s.is_quantum]
+    if quantum_snaps:
+        avg_q_entropy = sum(s.quantum_entropy for s in quantum_snaps) / len(quantum_snaps)
+        avg_q_coherence = sum(s.quantum_coherence for s in quantum_snaps) / len(quantum_snaps)
+        if avg_q_entropy > 0.3:
+            ba.key_events.append(
+                f"Starke Typ-Diffusion ({avg_q_entropy:.0%} Zellen haben fremde Typen) — Subsysteme durchmischen sich"
+            )
+        elif avg_q_entropy > 0.1:
+            ba.key_events.append(
+                f"Moderate Typ-Diffusion ({avg_q_entropy:.0%}) — leichter Quanten-Austausch"
+            )
 
     # Collect cross-zone events from snapshots
     for s in snapshots[-5:]:  # Last 5 snapshots

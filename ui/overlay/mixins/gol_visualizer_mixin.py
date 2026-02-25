@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import math
+import random
 import sqlite3
 import threading
 import time
@@ -367,31 +368,43 @@ class AuraVisualizerMixin:
         self._aura_crt_build(win, crt_w, panel_h)
 
     def _aura_crt_build(self, win, w, h):
-        """Build the CRT log monitor UI — scrollable Text widget."""
-        _bg = "#010301"
-        _fg = "#00cc44"
-        _dim = "#004400"
+        """Build the CRT log monitor — Amstrad/Fallout terminal aesthetic."""
+        _bg = "#0a0a0a"
+        _bg_glow = "#0a0c0a"
+        _fg = "#00FF41"
+        _dim = "#005500"
+        _vdim = "#003300"
         _sep = "#0a1a0a"
-        _font = ("Consolas", 9)
-        _font_sm = ("Consolas", 7)
+        _edge = "#050505"
+        _scanline = "#0d0e0d"
+        _font = ("Courier", 9)
+        _font_sm = ("Courier", 7)
 
-        outer = tk.Frame(win, bg=_bg)
-        outer.pack(fill="both", expand=True)
+        # Outer frame — vignette edge
+        edge = tk.Frame(win, bg=_edge)
+        edge.pack(fill="both", expand=True)
+
+        outer = tk.Frame(edge, bg=_bg)
+        outer.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Top vignette gradient
+        for v in ["#030303", "#050505", "#070707"]:
+            tk.Frame(outer, bg=v, height=1).pack(fill="x", side="top")
 
         # Header
         hdr = tk.Frame(outer, bg=_bg, height=24)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Frame(hdr, bg="#003300", height=1).pack(fill="x", side="top")
+        tk.Frame(hdr, bg=_vdim, height=1).pack(fill="x", side="top")
         tk.Label(
-            hdr, text="  // DAEMON LOG", bg=_bg, fg="#005500",
+            hdr, text="  // DAEMON LOG", bg=_bg, fg=_dim,
             font=_font_sm, anchor="w",
         ).pack(fill="x", pady=(3, 0))
-        tk.Frame(outer, bg="#002200", height=1).pack(fill="x")
+        tk.Frame(outer, bg=_vdim, height=1).pack(fill="x")
 
         # Scrollable text area
         txt = tk.Text(
-            outer, bg=_bg, fg=_fg, font=_font,
+            outer, bg=_bg_glow, fg=_fg, font=_font,
             wrap="word", padx=8, pady=6,
             insertbackground=_bg, selectbackground="#003300",
             highlightthickness=0, borderwidth=0,
@@ -400,29 +413,32 @@ class AuraVisualizerMixin:
         scrollbar = tk.Scrollbar(
             outer, orient="vertical", command=txt.yview,
             bg="#001a00", troughcolor="#000000",
-            activebackground="#003300", width=6,
+            activebackground="#003300", width=4,
         )
         txt.configure(yscrollcommand=scrollbar.set)
+
+        # Bottom vignette
+        bottom_vig = tk.Frame(outer, bg=_bg)
+        bottom_vig.pack(fill="x", side="bottom")
+        for v in ["#070707", "#050505", "#030303"]:
+            tk.Frame(bottom_vig, bg=v, height=1).pack(fill="x")
+
         scrollbar.pack(side="right", fill="y")
         txt.pack(fill="both", expand=True)
 
-        # Capture scroll events — prevent propagation to overlay chat
+        # Scroll isolation
         def _crt_scroll(event):
             txt.yview_scroll(-1 if event.num == 4 else 1, "units")
             return "break"
-        txt.bind("<Button-4>", _crt_scroll)
-        txt.bind("<Button-5>", _crt_scroll)
-        outer.bind("<Button-4>", _crt_scroll)
-        outer.bind("<Button-5>", _crt_scroll)
-        win.bind("<Button-4>", _crt_scroll)
-        win.bind("<Button-5>", _crt_scroll)
+        for widget in (txt, outer, edge, win):
+            widget.bind("<Button-4>", _crt_scroll)
+            widget.bind("<Button-5>", _crt_scroll)
 
-        # Tags for styling
+        # CRT text tags
         txt.tag_configure("timestamp", foreground=_dim, font=_font_sm)
         txt.tag_configure("message", foreground=_fg, font=_font)
-        txt.tag_configure("separator", foreground=_sep, font=("Consolas", 4))
-        # Scanline effect via alternating line backgrounds
-        txt.tag_configure("scanline", background="#020502")
+        txt.tag_configure("separator", foreground=_sep, font=("Courier", 4))
+        txt.tag_configure("scanline", background=_scanline)
 
         # Render entries
         entries = getattr(self, "_log_entries", [])
@@ -435,7 +451,7 @@ class AuraVisualizerMixin:
             txt.insert("end", f"{text}\n", "message")
             txt.insert("end", "\u2500" * 30 + "\n", "separator")
 
-        # Apply scanline effect to every other visible line
+        # Apply scanlines
         txt.update_idletasks()
         try:
             line_count = int(txt.index("end-1c").split(".")[0])
@@ -447,6 +463,70 @@ class AuraVisualizerMixin:
         txt.configure(state="disabled")
         txt.see("end")
         self._aura_crt_text = txt
+        self._aura_crt_flicker_phase = 0.0
+
+        # Start persistent CRT effects
+        self._aura_crt_flicker()
+        self._aura_crt_schedule_tear()
+
+    # ── AURA CRT Effects ──────────────────────────────────────────
+
+    def _aura_crt_flicker(self):
+        """Subtle phosphor flicker — sin-wave + random noise."""
+        crt = getattr(self, "_aura_crt_text", None)
+        if not crt or not crt.winfo_exists():
+            return
+        try:
+            self._aura_crt_flicker_phase += 0.08
+            t = (math.sin(self._aura_crt_flicker_phase) + 1) / 2
+            t = max(0, min(1, t + random.uniform(-0.03, 0.03)))
+            g = int(0xE0 + t * 0x1F)
+            crt.tag_configure("message", foreground=f"#00{g:02x}41")
+            s = int(0x0C + t * 0x04)
+            crt.tag_configure("scanline", background=f"#{s:02x}{s+1:02x}{s:02x}")
+        except Exception:
+            pass
+        self.after(100, self._aura_crt_flicker)
+
+    def _aura_crt_schedule_tear(self):
+        """Schedule next screen tear."""
+        crt = getattr(self, "_aura_crt_text", None)
+        if not crt:
+            return
+        self.after(random.randint(8000, 15000), self._aura_crt_screen_tear)
+
+    def _aura_crt_screen_tear(self):
+        """Brief horizontal VHS-style glitch."""
+        crt = getattr(self, "_aura_crt_text", None)
+        if not crt or not crt.winfo_exists():
+            return
+        try:
+            line_count = int(crt.index("end-1c").split(".")[0])
+            if line_count < 3:
+                self._aura_crt_schedule_tear()
+                return
+            line = random.randint(1, max(1, line_count - 1))
+            shift = random.randint(2, 5)
+            crt.configure(state="normal")
+            crt.insert(f"{line}.0", " " * shift)
+            crt.configure(state="disabled")
+            self.after(random.randint(60, 100),
+                       lambda: self._aura_crt_tear_restore(line, shift))
+        except Exception:
+            pass
+        self._aura_crt_schedule_tear()
+
+    def _aura_crt_tear_restore(self, line: int, count: int):
+        """Remove glitch characters."""
+        crt = getattr(self, "_aura_crt_text", None)
+        if not crt or not crt.winfo_exists():
+            return
+        try:
+            crt.configure(state="normal")
+            crt.delete(f"{line}.0", f"{line}.{count}")
+            crt.configure(state="disabled")
+        except Exception:
+            pass
 
     def _aura_crt_close(self):
         """Close the CRT log strip."""

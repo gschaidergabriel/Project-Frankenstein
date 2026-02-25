@@ -281,7 +281,7 @@ Frank's capabilities span three user levels. See [USECASES.md](USECASES.md) for 
 | **Power User** | PDF/DOCX analysis, business plans, agentic multi-step tasks, web research, desktop automation, USB management, proactive notifications |
 | **IT Expert** | Code review, shell commands, systemd services, security audits, Docker, git workflows, network monitoring, log analysis, regex, cron jobs |
 
-**5 things no cloud AI does:**
+**5 things no cloud AI does simultaneously and locally:**
 1. **Think between conversations** — Consciousness daemon reflects autonomously, dream daemon consolidates memories during idle time (60 min/day budget)
 2. **Research autonomously** — Idle thoughts trigger real research sessions: Frank formulates questions, searches the web, reads his own entity archives, runs analysis code, and synthesizes findings — all unprompted
 3. **Evolve personality over months** — E-PQ vectors shift measurably through user interaction + daily entity conversations + dream consolidation
@@ -450,6 +450,7 @@ Frank is designed for complete privacy:
 - All autonomous entities, consciousness, and dreaming run 100% locally
 - All data stored in `~/.local/share/frank/` (25 SQLite databases)
 - Optional CalDAV integration for Google Calendar/Contacts (user-initiated only)
+- Web search (DuckDuckGo) and Tor/Ahmia are user-initiated outbound calls, not background telemetry — Frank never phones home
 
 ## License
 

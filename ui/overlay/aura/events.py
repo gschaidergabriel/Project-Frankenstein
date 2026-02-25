@@ -69,6 +69,40 @@ class EventManager:
             "max_radius": RIPPLE_MAX_RADIUS,
         })
 
+    def trigger_chat_burst(self) -> np.ndarray:
+        """Create a GoL-optimized explosion for chat.
+
+        Key insight: GoL evolves best at ~38% density.  Too dense (>60%) causes
+        mass die-off from overcrowding.  Too sparse (<20%) fizzles out.
+        38% creates maximum emergent complexity — gliders, oscillators, and
+        long-lived structures that visibly merge zone colors.
+        """
+        rng = np.random.default_rng()
+        mask = np.zeros((GRID_SIZE, GRID_SIZE), dtype=bool)
+        cy, cx = GRID_SIZE // 2, GRID_SIZE // 2
+        rand = rng.random((GRID_SIZE, GRID_SIZE))
+
+        yy, xx = np.ogrid[:GRID_SIZE, :GRID_SIZE]
+        dist = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+
+        # Uniform 38% density disk — GoL sweet spot for emergent patterns
+        mask |= (dist < 40) & (rand < 0.38)
+
+        # Place pulsars at zone boundaries for sustained oscillation
+        for dy, dx in [(-25, 0), (25, 0), (0, -25), (0, 25),
+                        (-20, -20), (-20, 20), (20, -20), (20, 20)]:
+            py, px = cy + dy, cx + dx
+            ph, pw = PULSAR.shape
+            y0 = max(0, py)
+            y1 = min(GRID_SIZE, py + ph)
+            x0 = max(0, px)
+            x1 = min(GRID_SIZE, px + pw)
+            if y1 > y0 and x1 > x0:
+                mask[y0:y1, x0:x1] |= PULSAR[:y1 - y0, :x1 - x0] > 0
+
+        self._pending_injections.append(mask)
+        return mask
+
     def trigger_threat(self):
         """Trigger existential threat flash."""
         self._threat_active = True

@@ -44,7 +44,7 @@ ZONE_COLORS = {
 }
 
 # ── Pseudo-3D rendering constants ──
-GLOW_DOWNSAMPLE = 4           # 256→64 for cheap blur
+GLOW_DOWNSAMPLE = 8           # 256→32 for fast blur
 GLOW_SIGMA = 2.0              # Gaussian blur sigma on downsampled grid
 GLOW_INTENSITY = 0.55         # Additive bloom strength
 TRAIL_DECAY = 0.92            # Per-frame visual decay for dead cell trails
@@ -76,10 +76,10 @@ TRANSITION_WIDTH = 4
 
 # Ripple effect
 RIPPLE_CENTER = (128, 128)
-RIPPLE_MAX_RADIUS = 60
-RIPPLE_RING_THICKNESS = 2
-RIPPLE_DENSITY = 0.3
-RIPPLE_STEP = 2
+RIPPLE_MAX_RADIUS = 80
+RIPPLE_RING_THICKNESS = 4
+RIPPLE_DENSITY = 0.40
+RIPPLE_STEP = 3
 
 # Threat flash
 THREAT_FLASH_MS = 500

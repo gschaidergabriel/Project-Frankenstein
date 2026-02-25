@@ -41,6 +41,8 @@ class HeadlessAuraEngine:
 
         # Injection overlay (for local events like ripples)
         self._injection = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.uint8)
+        # Accumulated injection mask to push to headless
+        self._pending_inject = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.uint8)
 
         # Quantum: per-cell blended RGB from type superposition
         self._quantum_colors = np.zeros((GRID_SIZE, GRID_SIZE, 3), dtype=np.float32)
@@ -74,7 +76,8 @@ class HeadlessAuraEngine:
         grid = self._grids[self._read_idx]
         inj = self._injection
         if inj.any():
-            return np.maximum(grid, inj)
+            # TTL overlay: any value > 0 means alive
+            return np.maximum(grid, (inj > 0).view(np.uint8))
         return grid
 
     def get_cell_age(self) -> np.ndarray:
@@ -96,9 +99,35 @@ class HeadlessAuraEngine:
         pass
 
     def inject_cells(self, mask: np.ndarray):
-        """Inject local event cells (overlaid on headless grid)."""
+        """Inject cells into the live headless simulation + local overlay."""
         with self._lock:
-            self._injection[mask] = 1
+            # TTL=5: overlay persists for ~5 poll cycles (~500ms)
+            self._injection[mask] = 5
+            # Accumulate injection for next headless push
+            self._pending_inject[mask] = 1
+
+    def _push_injections(self):
+        """Push accumulated injections to headless service (called from poll thread)."""
+        with self._lock:
+            if not self._pending_inject.any():
+                return
+            inject_mask = self._pending_inject.copy()
+            self._pending_inject[:] = 0
+
+        try:
+            mask_bytes = inject_mask.tobytes()
+            payload = json.dumps({
+                "cells_b64": base64.b64encode(mask_bytes).decode("ascii"),
+            }).encode()
+            req = urllib.request.Request(
+                f"{HEADLESS_URL}/inject",
+                data=payload,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=0.5)
+        except Exception:
+            pass  # Non-critical
 
     def set_reseed_callback(self, callback):
         """No-op for headless (service reseeds itself)."""
@@ -120,10 +149,13 @@ class HeadlessAuraEngine:
             self._thread = None
 
     def _poll_loop(self):
-        """Main loop: fetch grid from headless at ~10 Hz."""
+        """Main loop: fetch grid from headless at ~10 Hz, push injections."""
         while self._running:
             t0 = time.monotonic()
             try:
+                # Push any accumulated injections to headless first
+                if self._connected:
+                    self._push_injections()
                 self._fetch_grid()
             except Exception as exc:
                 if self._connected:
@@ -173,8 +205,12 @@ class HeadlessAuraEngine:
             self._cell_age[new_born] = 1
             self._cell_age[grid == 0] = 0
 
-            # Decay injection overlay
-            self._injection[:] = 0
+            # Decay injection overlay with TTL:
+            # Clear where headless grid already has cells (absorbed).
+            # Decrement TTL elsewhere — keeps burst visible ~500ms.
+            self._injection[grid == 1] = 0
+            decay_mask = self._injection > 0
+            self._injection[decay_mask] -= 1
 
             # Store quantum colors
             if qcolors is not None:

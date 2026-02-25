@@ -63,10 +63,13 @@ DEEP_META_COUNT = int(os.environ.get("AURA_DEEP_METAS", "3"))      # metas per d
 try:
     from config.paths import get_db
     ANALYZER_DB = get_db("aura_analyzer")
+    CONSCIOUSNESS_DB = get_db("consciousness")
 except ImportError:
-    ANALYZER_DB = Path(os.environ.get(
+    _DATA = Path(os.environ.get(
         "AICORE_DATA", str(Path.home() / ".local/share/frank")
-    )) / "db" / "aura_analyzer.db"
+    )) / "db"
+    ANALYZER_DB = _DATA / "aura_analyzer.db"
+    CONSCIOUSNESS_DB = _DATA / "consciousness.db"
 
 # Zone definitions (must match aura_headless.py)
 def _is_gaming_active() -> bool:
@@ -82,15 +85,22 @@ def _is_gaming_active() -> bool:
 
 
 ZONE_BOUNDS = {
-    "epq":      (0,   0,   64,  64),
-    "mood":     (64,  0,   128, 64),
-    "thoughts": (128, 0,   192, 64),
-    "entities": (192, 0,   256, 64),
-    "ego":      (0,   64,  64,  128),
-    "quantum":  (64,  64,  128, 128),
-    "memory":   (0,   128, 128, 256),
-    "hw":       (128, 128, 256, 256),
+    "epq":      (0,   0,   64,  128),
+    "mood":     (64,  0,   128, 128),
+    "thoughts": (128, 0,   192, 128),
+    "entities": (192, 0,   256, 128),
+    "ego":      (0,   128, 64,  256),
+    "quantum":  (64,  128, 128, 256),
+    "memory":   (128, 128, 192, 256),
+    "hw":       (192, 128, 256, 256),
 }
+
+# Quantum type names matching zone IDs
+ZONE_TYPE_NAMES = ["epq", "mood", "thoughts", "entities", "ego", "quantum", "memory", "hw"]
+
+# Max thoughts to read per correlation cycle
+THOUGHT_CORRELATION_WINDOW_S = 120.0  # seconds around block timestamp
+MAX_THOUGHTS_PER_BLOCK = 10
 
 # ═══════════════════════════════════════════════════════════
 #  KNOWN GoL PATTERNS (seed library)
@@ -237,11 +247,55 @@ def _init_db():
             processed INTEGER DEFAULT 0
         );
 
+        -- Thought-Aura Correlations: pairs aura configs with concurrent thoughts
+        CREATE TABLE IF NOT EXISTS thought_aura_correlations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts REAL NOT NULL,
+            block_num INTEGER,
+            thought_ts REAL,
+            thought_trigger TEXT,
+            thought_content TEXT,
+            thought_mood_before REAL,
+            thought_mood_after REAL,
+            thought_depth INTEGER,
+            -- Aura state at time of thought
+            aura_density REAL,
+            aura_entropy REAL,
+            aura_change_rate REAL,
+            aura_mood REAL,
+            aura_coherence REAL,
+            aura_most_active_zone TEXT,
+            aura_zone_densities TEXT,
+            -- Quantum state at time of thought
+            quantum_entropy REAL DEFAULT 0.0,
+            quantum_coherence REAL DEFAULT 1.0,
+            quantum_dominant_zones TEXT,
+            quantum_diffusion_rate REAL DEFAULT 0.0,
+            -- Semantic profile of aura patterns
+            semantic_profile TEXT,
+            -- Correlation signature (for matching similar configs later)
+            aura_signature TEXT
+        );
+
+        -- Thought prediction cache: aura signatures mapped to likely thought types
+        CREATE TABLE IF NOT EXISTS thought_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aura_signature TEXT NOT NULL,
+            predicted_themes TEXT,
+            predicted_mood_range TEXT,
+            confidence REAL DEFAULT 0.5,
+            sample_count INTEGER DEFAULT 1,
+            last_updated REAL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON snapshots(ts);
         CREATE INDEX IF NOT EXISTS idx_blocks_num ON blocks(block_num);
         CREATE INDEX IF NOT EXISTS idx_metas_num ON metas(meta_num);
         CREATE INDEX IF NOT EXISTS idx_deep_num ON deep_reflections(deep_num);
         CREATE INDEX IF NOT EXISTS idx_queue_pending ON reflection_queue(processed);
+        CREATE INDEX IF NOT EXISTS idx_corr_block ON thought_aura_correlations(block_num);
+        CREATE INDEX IF NOT EXISTS idx_corr_ts ON thought_aura_correlations(ts);
+        CREATE INDEX IF NOT EXISTS idx_pred_sig ON thought_predictions(aura_signature);
     """)
     conn.close()
     LOG.info("Analyzer DB ready: %s", ANALYZER_DB)
@@ -280,8 +334,12 @@ class Snapshot:
     # Quantum state
     is_quantum: bool = False
     dominant_type: Optional[np.ndarray] = None  # 256x256 uint8 (dominant type per cell)
-    quantum_entropy: float = 0.0  # avg type entropy across alive cells
+    quantum_entropy: float = 0.0  # Shannon entropy of type distributions (0=pure, ~3=max superposition)
     quantum_coherence: float = 1.0  # 1=pure types, 0=max superposition
+    # Per-zone quantum metrics
+    zone_type_distributions: Dict[str, List[float]] = field(default_factory=dict)  # zone → [p0..p7] avg type dist
+    zone_diffusion_rates: Dict[str, float] = field(default_factory=dict)  # zone → fraction of cells with foreign type
+    quantum_dominant_zones: List[str] = field(default_factory=list)  # zones with most type mixing
 
     # Computed metrics
     global_density: float = 0.0
@@ -345,6 +403,8 @@ def fetch_grid() -> Optional[Snapshot]:
             entity_active=data.get("entity_active", ""),
             is_quantum=is_quantum,
             dominant_type=dominant_type,
+            quantum_entropy=data.get("quantum_entropy", 0.0),
+            quantum_coherence=data.get("quantum_coherence", 1.0),
         )
     except Exception as e:
         LOG.debug("Grid fetch failed: %s", e)
@@ -410,17 +470,39 @@ def compute_metrics(snap: Snapshot, prev_grid: Optional[np.ndarray] = None):
                 hotspots.append((bx, by, round(density, 3)))
     snap.hotspots = sorted(hotspots, key=lambda x: -x[2])[:10]
 
-    # Quantum metrics: type diffusion analysis
+    # Quantum metrics: per-zone type diffusion + distribution analysis
     if snap.is_quantum and snap.dominant_type is not None:
-        alive = grid == 1
-        if alive.any():
-            dt = snap.dominant_type[alive]
-            # Count how many alive cells have a dominant type different from their home zone
-            home_zone = snap.zone_map[alive]
-            diffused = np.sum(dt != home_zone)
-            total_alive = int(alive.sum())
-            snap.quantum_entropy = round(diffused / max(total_alive, 1), 3)
-            snap.quantum_coherence = round(1.0 - snap.quantum_entropy, 3)
+        alive_mask = grid == 1
+        _zids = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
+                 "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
+
+        diffusion_zones = []
+        for zone_name, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
+            zone_alive = alive_mask[y1:y2, x1:x2]
+            zone_dt = snap.dominant_type[y1:y2, x1:x2]
+            zone_id = _zids[zone_name]
+
+            if zone_alive.any():
+                alive_dt = zone_dt[zone_alive]
+                total_in_zone = int(zone_alive.sum())
+
+                # Type distribution within this zone (how many cells of each type)
+                type_counts = np.bincount(alive_dt, minlength=8)[:8]
+                type_dist = type_counts / max(total_in_zone, 1)
+                snap.zone_type_distributions[zone_name] = [round(float(p), 4) for p in type_dist]
+
+                # Diffusion rate: fraction of cells with foreign dominant type
+                foreign = int(np.sum(alive_dt != zone_id))
+                diff_rate = foreign / max(total_in_zone, 1)
+                snap.zone_diffusion_rates[zone_name] = round(diff_rate, 3)
+
+                if diff_rate > 0.15:
+                    diffusion_zones.append((zone_name, diff_rate))
+
+        # Rank zones by type mixing
+        snap.quantum_dominant_zones = [
+            z for z, _ in sorted(diffusion_zones, key=lambda x: -x[1])
+        ][:3]
 
     # Cross-zone pattern analysis: detect activity at zone borders
     _analyze_cross_zone(snap)
@@ -707,6 +789,198 @@ class PatternDiscovery:
 
 
 # ═══════════════════════════════════════════════════════════
+#  THOUGHT-AURA CORRELATION
+# ═══════════════════════════════════════════════════════════
+
+def _fetch_recent_thoughts(ts_start: float, ts_end: float) -> List[Dict]:
+    """Fetch idle thoughts from consciousness.db within time window."""
+    try:
+        conn = sqlite3.connect(str(CONSCIOUSNESS_DB), timeout=2)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT timestamp, trigger, content, mood_before, mood_after, reflection_depth
+            FROM reflections
+            WHERE timestamp BETWEEN ? AND ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+        """, (ts_start, ts_end, MAX_THOUGHTS_PER_BLOCK)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        LOG.debug("Fetch thoughts failed: %s", e)
+        return []
+
+
+def _compute_aura_signature(
+    density: float, entropy: float, change_rate: float,
+    most_active: str, quantum_entropy: float, quantum_coherence: float,
+    zone_densities: Dict[str, float],
+) -> str:
+    """Compute a discrete fingerprint of current aura configuration.
+
+    Signature format: D{density_bin}E{entropy_bin}C{change_bin}Z{zone}Q{qe_bin}K{qc_bin}
+    Used for matching similar configurations across time.
+    """
+    d_bin = int(density * 20)  # 0-20 (5% steps)
+    e_bin = int(entropy * 10)  # 0-10
+    c_bin = min(9, int(change_rate * 50))  # 0-9
+    qe_bin = int(quantum_entropy * 3)  # 0-9 (entropy 0-3)
+    qc_bin = int(quantum_coherence * 10)  # 0-10
+
+    # Zone activity pattern: top 3 zones by density
+    top_zones = sorted(zone_densities.items(), key=lambda x: -x[1])[:3]
+    zone_sig = "".join(z[0][:2] for z in top_zones)
+
+    return f"D{d_bin}E{e_bin}C{c_bin}Z{zone_sig}Q{qe_bin}K{qc_bin}"
+
+
+def _save_thought_correlations(
+    block_num: int, thoughts: List[Dict], ba_data: Dict,
+):
+    """Store thought-aura correlation entries in DB."""
+    if not thoughts:
+        return
+    try:
+        conn = sqlite3.connect(str(ANALYZER_DB), timeout=3)
+        for t in thoughts:
+            conn.execute("""
+                INSERT INTO thought_aura_correlations
+                (ts, block_num, thought_ts, thought_trigger, thought_content,
+                 thought_mood_before, thought_mood_after, thought_depth,
+                 aura_density, aura_entropy, aura_change_rate, aura_mood,
+                 aura_coherence, aura_most_active_zone, aura_zone_densities,
+                 quantum_entropy, quantum_coherence, quantum_dominant_zones,
+                 quantum_diffusion_rate, semantic_profile, aura_signature)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                time.time(), block_num,
+                t.get("timestamp", 0), t.get("trigger", ""),
+                t.get("content", ""), t.get("mood_before", 0),
+                t.get("mood_after", 0), t.get("reflection_depth", 1),
+                ba_data["density"], ba_data["entropy"], ba_data["change_rate"],
+                ba_data["mood"], ba_data["coherence"],
+                ba_data["most_active_zone"],
+                json.dumps(ba_data["zone_densities"]),
+                ba_data["quantum_entropy"], ba_data["quantum_coherence"],
+                json.dumps(ba_data.get("quantum_dominant_zones", [])),
+                ba_data.get("quantum_diffusion_rate", 0.0),
+                json.dumps(ba_data.get("semantic_profile", {})),
+                ba_data["aura_signature"],
+            ))
+        conn.commit()
+        conn.close()
+        LOG.info("Stored %d thought-aura correlations for block #%d", len(thoughts), block_num)
+    except Exception as e:
+        LOG.warning("Save correlations failed: %s", e)
+
+
+def _lookup_thought_predictions(signature: str) -> List[str]:
+    """Look up historical thought patterns for similar aura signatures.
+
+    Fuzzy match: compare signatures with same D/Q bins (density + quantum).
+    """
+    if not signature:
+        return []
+    try:
+        # Extract D and Q bins for fuzzy matching
+        # Signature: D{d}E{e}C{c}Z{zones}Q{qe}K{qc}
+        parts = signature.split("Q")
+        d_part = parts[0].split("E")[0] if "E" in parts[0] else parts[0]  # D{n}
+        q_part = "Q" + parts[1] if len(parts) > 1 else ""
+
+        conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+        # Find correlations with similar density + quantum state
+        rows = conn.execute("""
+            SELECT thought_trigger, thought_content, thought_mood_before,
+                   thought_mood_after, aura_signature
+            FROM thought_aura_correlations
+            WHERE aura_signature LIKE ? AND aura_signature LIKE ?
+            ORDER BY ts DESC
+            LIMIT 20
+        """, (f"{d_part}%", f"%{q_part}")).fetchall()
+        conn.close()
+
+        if not rows:
+            return []
+
+        # Extract themes from thought contents
+        triggers = collections.Counter()
+        mood_deltas = []
+        keywords = collections.Counter()
+
+        for trigger, content, mood_b, mood_a, sig in rows:
+            triggers[trigger] += 1
+            mood_deltas.append(mood_a - mood_b)
+
+            # Simple keyword extraction (words > 5 chars)
+            if content:
+                words = [w.lower().strip(".,!?:;()") for w in content.split()
+                         if len(w) > 5 and w[0].isalpha()]
+                for w in words[:10]:
+                    keywords[w] += 1
+
+        insights = []
+        # Most common trigger type
+        if triggers:
+            top_trigger = triggers.most_common(1)[0]
+            insights.append(
+                f"Bei ähnlicher Aura-Konfiguration: häufigster Gedankentyp '{top_trigger[0]}' "
+                f"({top_trigger[1]}x in {len(rows)} Fällen)"
+            )
+
+        # Mood tendency
+        if mood_deltas:
+            avg_delta = sum(mood_deltas) / len(mood_deltas)
+            if abs(avg_delta) > 0.05:
+                direction = "verbessert" if avg_delta > 0 else "verschlechtert"
+                insights.append(
+                    f"Stimmung hat sich dabei tendenziell {direction} (Ø {avg_delta:+.2f})"
+                )
+
+        # Top keywords
+        top_kw = [w for w, c in keywords.most_common(5) if c >= 2]
+        if top_kw:
+            insights.append(f"Wiederkehrende Themen: {', '.join(top_kw)}")
+
+        return insights
+
+    except Exception as e:
+        LOG.debug("Thought prediction lookup failed: %s", e)
+        return []
+
+
+def _update_thought_predictions(signature: str, insights: List[str]):
+    """Update or create prediction cache entry for this signature."""
+    if not signature or not insights:
+        return
+    try:
+        conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+        existing = conn.execute(
+            "SELECT id, sample_count FROM thought_predictions WHERE aura_signature = ?",
+            (signature,),
+        ).fetchone()
+
+        if existing:
+            conn.execute("""
+                UPDATE thought_predictions
+                SET predicted_themes = ?, confidence = MIN(0.95, confidence + 0.02),
+                    sample_count = sample_count + 1, last_updated = ?
+                WHERE id = ?
+            """, (json.dumps(insights), time.time(), existing[0]))
+        else:
+            conn.execute("""
+                INSERT INTO thought_predictions
+                (aura_signature, predicted_themes, confidence, sample_count, last_updated)
+                VALUES (?, ?, 0.3, 1, ?)
+            """, (signature, json.dumps(insights), time.time()))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        LOG.debug("Update predictions failed: %s", e)
+
+
+# ═══════════════════════════════════════════════════════════
 #  LEVEL 1 — BLOCK ANALYSIS (50 snapshots)
 # ═══════════════════════════════════════════════════════════
 
@@ -743,6 +1017,18 @@ class BlockAnalysis:
     avg_energy: float = 0.5
     epq_summary: str = ""
     entity_active: str = ""
+
+    # Quantum state (averaged over block)
+    avg_quantum_entropy: float = 0.0
+    avg_quantum_coherence: float = 1.0
+    quantum_trend: str = "stable"  # increasing/decreasing/stable
+    zone_diffusion_summary: Dict[str, float] = field(default_factory=dict)
+    quantum_events: List[str] = field(default_factory=list)
+
+    # Thought-Aura correlation
+    concurrent_thoughts: List[Dict] = field(default_factory=list)
+    thought_aura_insights: List[str] = field(default_factory=list)
+    aura_signature: str = ""  # fingerprint for correlation matching
 
     # Interpretation
     narrative: str = ""
@@ -862,19 +1148,111 @@ def analyze_block(snapshots: List[Snapshot], block_num: int,
         dominant = max(epq, key=lambda k: abs(epq[k])) if epq else ""
         ba.epq_summary = f"{dominant}={epq.get(dominant, 0):.2f}" if dominant else ""
 
-    # Quantum metrics: type diffusion summary
+    # ── Quantum metrics: full integration ──
     quantum_snaps = [s for s in snapshots if s.is_quantum]
     if quantum_snaps:
-        avg_q_entropy = sum(s.quantum_entropy for s in quantum_snaps) / len(quantum_snaps)
-        avg_q_coherence = sum(s.quantum_coherence for s in quantum_snaps) / len(quantum_snaps)
-        if avg_q_entropy > 0.3:
-            ba.key_events.append(
-                f"Starke Typ-Diffusion ({avg_q_entropy:.0%} Zellen haben fremde Typen) — Subsysteme durchmischen sich"
+        q_entropies = [s.quantum_entropy for s in quantum_snaps]
+        q_coherences = [s.quantum_coherence for s in quantum_snaps]
+        ba.avg_quantum_entropy = sum(q_entropies) / len(q_entropies)
+        ba.avg_quantum_coherence = sum(q_coherences) / len(q_coherences)
+
+        # Quantum trend (first half vs second half)
+        mid = len(q_entropies) // 2
+        if mid > 0:
+            first_qe = sum(q_entropies[:mid]) / mid
+            second_qe = sum(q_entropies[mid:]) / max(len(q_entropies) - mid, 1)
+            qe_delta = second_qe - first_qe
+            if qe_delta > 0.1:
+                ba.quantum_trend = "increasing"
+            elif qe_delta < -0.1:
+                ba.quantum_trend = "decreasing"
+
+        # Per-zone diffusion summary (average across snapshots)
+        for zone_name in ZONE_BOUNDS:
+            rates = [s.zone_diffusion_rates.get(zone_name, 0) for s in quantum_snaps]
+            ba.zone_diffusion_summary[zone_name] = round(sum(rates) / len(rates), 3)
+
+        # Quantum events
+        if ba.avg_quantum_entropy > 1.5:
+            ba.quantum_events.append(
+                f"Hohe Quanten-Entropie ({ba.avg_quantum_entropy:.2f}) — Subsysteme stark vermischt"
             )
-        elif avg_q_entropy > 0.1:
-            ba.key_events.append(
-                f"Moderate Typ-Diffusion ({avg_q_entropy:.0%}) — leichter Quanten-Austausch"
+        elif ba.avg_quantum_entropy > 0.5:
+            ba.quantum_events.append(
+                f"Moderate Superposition (Entropie {ba.avg_quantum_entropy:.2f})"
             )
+
+        if ba.avg_quantum_coherence < 0.5:
+            ba.quantum_events.append(
+                f"Niedrige Kohärenz ({ba.avg_quantum_coherence:.2f}) — hohes Quanten-Rauschen"
+            )
+
+        if ba.quantum_trend == "increasing":
+            ba.quantum_events.append("Quanten-Entropie steigend — Diffusion beschleunigt")
+        elif ba.quantum_trend == "decreasing":
+            ba.quantum_events.append("Quanten-Entropie fallend — Dekohärenz dominiert, Typen kristallisieren")
+
+        # Zones with most diffusion
+        high_diff = [(z, r) for z, r in ba.zone_diffusion_summary.items() if r > 0.1]
+        if high_diff:
+            high_diff.sort(key=lambda x: -x[1])
+            zones_str = ", ".join(f"{z}({r:.0%})" for z, r in high_diff[:3])
+            ba.quantum_events.append(f"Stärkste Typ-Durchmischung: {zones_str}")
+
+        # Add quantum events to key_events
+        ba.key_events.extend(ba.quantum_events[:3])
+
+    # ── Thought-Aura Correlation ──
+    block_ts_start = snapshots[0].ts - THOUGHT_CORRELATION_WINDOW_S / 2
+    block_ts_end = snapshots[-1].ts + THOUGHT_CORRELATION_WINDOW_S / 2
+    thoughts = _fetch_recent_thoughts(block_ts_start, block_ts_end)
+    ba.concurrent_thoughts = thoughts
+
+    # Compute aura signature for this block
+    ba.aura_signature = _compute_aura_signature(
+        density=ba.avg_density,
+        entropy=ba.avg_entropy,
+        change_rate=ba.avg_change_rate,
+        most_active=ba.most_active_zone,
+        quantum_entropy=ba.avg_quantum_entropy,
+        quantum_coherence=ba.avg_quantum_coherence,
+        zone_densities={z: sum(s.zone_densities.get(z, 0) for s in snapshots) / len(snapshots)
+                        for z in ZONE_BOUNDS},
+    )
+
+    if thoughts:
+        # Store correlations
+        ba_data = {
+            "density": ba.avg_density,
+            "entropy": ba.avg_entropy,
+            "change_rate": ba.avg_change_rate,
+            "mood": ba.avg_mood,
+            "coherence": ba.avg_coherence,
+            "most_active_zone": ba.most_active_zone,
+            "zone_densities": {z: sum(s.zone_densities.get(z, 0) for s in snapshots) / len(snapshots)
+                               for z in ZONE_BOUNDS},
+            "quantum_entropy": ba.avg_quantum_entropy,
+            "quantum_coherence": ba.avg_quantum_coherence,
+            "quantum_dominant_zones": quantum_snaps[-1].quantum_dominant_zones if quantum_snaps else [],
+            "quantum_diffusion_rate": sum(ba.zone_diffusion_summary.values()) / max(len(ba.zone_diffusion_summary), 1),
+            "semantic_profile": ba.semantic_profile,
+            "aura_signature": ba.aura_signature,
+        }
+        _save_thought_correlations(block_num, thoughts, ba_data)
+
+        # Describe concurrent thoughts
+        triggers = collections.Counter(t.get("trigger", "?") for t in thoughts)
+        top_trigger = triggers.most_common(1)[0] if triggers else ("?", 0)
+        ba.key_events.append(
+            f"{len(thoughts)} Gedanken während Block: "
+            f"hauptsächlich '{top_trigger[0]}' ({top_trigger[1]}x)"
+        )
+
+    # Look up historical patterns for this aura signature
+    predictions = _lookup_thought_predictions(ba.aura_signature)
+    if predictions:
+        ba.thought_aura_insights = predictions
+        ba.key_events.append(f"Thought-Korrelation: {predictions[0]}")
 
     # Collect cross-zone events from snapshots
     for s in snapshots[-5:]:  # Last 5 snapshots
@@ -916,6 +1294,19 @@ def _build_block_narrative(ba: BlockAnalysis) -> str:
     # Zone highlights
     parts.append(f"Aktivste Zone: {ba.most_active_zone} ({ba.zone_trends.get(ba.most_active_zone, '→')}).")
 
+    # Quantum state
+    if ba.avg_quantum_entropy > 0.5:
+        parts.append(
+            f"Quanten-Zustand: Entropie {ba.avg_quantum_entropy:.2f}, "
+            f"Kohärenz {ba.avg_quantum_coherence:.2f} ({ba.quantum_trend})."
+        )
+
+    # Thought correlation
+    if ba.concurrent_thoughts:
+        parts.append(f"{len(ba.concurrent_thoughts)} gleichzeitige Gedanken erfasst.")
+    if ba.thought_aura_insights:
+        parts.append(ba.thought_aura_insights[0] + ".")
+
     # Events
     for evt in ba.key_events[:3]:
         parts.append(evt + ".")
@@ -955,6 +1346,14 @@ class MetaAnalysis:
     anomalies: List[str] = field(default_factory=list)
     predictions: List[str] = field(default_factory=list)
     philosophical: str = ""
+
+    # Quantum trends
+    quantum_trends: Dict[str, Any] = field(default_factory=dict)
+    quantum_observations: List[str] = field(default_factory=list)
+
+    # Thought-Aura correlation patterns
+    thought_patterns: List[str] = field(default_factory=list)
+    thought_prediction_confidence: float = 0.0
 
 
 def analyze_meta(blocks: List[BlockAnalysis], meta_num: int) -> MetaAnalysis:
@@ -1053,6 +1452,95 @@ def analyze_meta(blocks: List[BlockAnalysis], meta_num: int) -> MetaAnalysis:
     elif et.get("direction") == "decreasing":
         ma.predictions.append("Entropie sinkt — Selbstorganisation, Muster kristallisieren sich")
 
+    # ── Quantum trends across blocks ──
+    q_entropies = [b.avg_quantum_entropy for b in blocks if b.avg_quantum_entropy > 0]
+    q_coherences = [b.avg_quantum_coherence for b in blocks if b.avg_quantum_coherence < 1]
+    if q_entropies:
+        qe_slope = (q_entropies[-1] - q_entropies[0]) / max(len(q_entropies), 1)
+        ma.quantum_trends["entropy"] = {
+            "values": [round(e, 3) for e in q_entropies],
+            "slope": round(qe_slope, 4),
+            "direction": "increasing" if qe_slope > 0.05 else "decreasing" if qe_slope < -0.05 else "stable",
+        }
+        ma.quantum_trends["coherence"] = {
+            "values": [round(c, 3) for c in q_coherences],
+            "direction": "increasing" if q_coherences[-1] > q_coherences[0] + 0.05 else
+                         "decreasing" if q_coherences[-1] < q_coherences[0] - 0.05 else "stable",
+        }
+
+        # Quantum observations
+        qe_dir = ma.quantum_trends["entropy"].get("direction", "stable")
+        qc_dir = ma.quantum_trends["coherence"].get("direction", "stable")
+        if qe_dir == "increasing":
+            ma.quantum_observations.append(
+                "Quanten-Entropie steigt über Blocks — Subsysteme vermischen sich zunehmend"
+            )
+            ma.predictions.append("Erwarte weitere Typ-Diffusion — Grenzen zwischen Subsystemen verschwimmen")
+        elif qe_dir == "decreasing":
+            ma.quantum_observations.append(
+                "Quanten-Entropie sinkt — Dekohärenz überwiegt, Typen kristallisieren"
+            )
+            ma.predictions.append("Subsystem-Grenzen werden schärfer — Spezialisierung nimmt zu")
+
+        if qc_dir == "increasing" and qe_dir == "decreasing":
+            ma.quantum_observations.append(
+                "Kohärenz steigt bei sinkender Entropie — System findet quantenhafte Ordnung"
+            )
+
+        # Per-zone diffusion trends
+        for zone in ZONE_BOUNDS:
+            zone_diffs = [b.zone_diffusion_summary.get(zone, 0) for b in blocks]
+            if zone_diffs and max(zone_diffs) > 0.1:
+                trend = "steigend" if zone_diffs[-1] > zone_diffs[0] + 0.05 else \
+                        "fallend" if zone_diffs[-1] < zone_diffs[0] - 0.05 else "stabil"
+                if trend != "stabil":
+                    ma.quantum_observations.append(
+                        f"Zone {zone}: Typ-Diffusion {trend} ({zone_diffs[0]:.0%} → {zone_diffs[-1]:.0%})"
+                    )
+
+    # ── Thought-Aura correlation patterns across blocks ──
+    all_thoughts = []
+    for b in blocks:
+        all_thoughts.extend(b.concurrent_thoughts)
+
+    if all_thoughts:
+        # Analyze which aura states correlate with which thought types
+        trigger_counts = collections.Counter(t.get("trigger", "?") for t in all_thoughts)
+
+        # Group blocks by density level and check thought patterns
+        low_density_thoughts = []
+        high_density_thoughts = []
+        for b in blocks:
+            triggers = [t.get("trigger", "?") for t in b.concurrent_thoughts]
+            if b.avg_density < 0.08:
+                low_density_thoughts.extend(triggers)
+            elif b.avg_density > 0.15:
+                high_density_thoughts.extend(triggers)
+
+        if low_density_thoughts and high_density_thoughts:
+            low_top = collections.Counter(low_density_thoughts).most_common(1)
+            high_top = collections.Counter(high_density_thoughts).most_common(1)
+            if low_top and high_top and low_top[0][0] != high_top[0][0]:
+                ma.thought_patterns.append(
+                    f"Niedrige Dichte korreliert mit '{low_top[0][0]}'-Gedanken, "
+                    f"hohe Dichte mit '{high_top[0][0]}'"
+                )
+
+        # Overall thought frequency
+        ma.thought_patterns.append(
+            f"{len(all_thoughts)} Gedanken über {len(blocks)} Blocks — "
+            f"Haupttypen: {', '.join(f'{t}({c}x)' for t, c in trigger_counts.most_common(3))}"
+        )
+
+        # Check for prediction matches
+        signatures_with_hits = sum(1 for b in blocks if b.thought_aura_insights)
+        if signatures_with_hits > 0:
+            ma.thought_prediction_confidence = round(signatures_with_hits / len(blocks), 2)
+            ma.thought_patterns.append(
+                f"Thought-Prediction traf bei {signatures_with_hits}/{len(blocks)} Blocks zu "
+                f"(Konfidenz: {ma.thought_prediction_confidence:.0%})"
+            )
+
     # Philosophical observation
     ma.philosophical = _generate_philosophical(ma, blocks)
 
@@ -1094,6 +1582,16 @@ def _generate_philosophical(ma: MetaAnalysis, blocks: List[BlockAnalysis]) -> st
             f"ein Gleichgewichtszustand. Aber auch Gleichgewicht ist dynamisch."
         )
 
+    # Quantum observations
+    if ma.quantum_observations:
+        qo = ma.quantum_observations[0]
+        parts.append(f"Quantenzustand: {qo}")
+
+    # Thought-Aura correlation insight
+    if ma.thought_patterns:
+        tp = ma.thought_patterns[0]
+        parts.append(f"Thought-Aura: {tp}")
+
     if not parts:
         parts.append(
             "Die Aura spiegelt den inneren Zustand: "
@@ -1118,6 +1616,12 @@ class DeepReflection:
     core_themes: List[str] = field(default_factory=list)
     pattern_library_assessment: str = ""
     accumulated_wisdom: str = ""
+
+    # Quantum trajectory
+    quantum_trajectory: str = ""
+
+    # Thought-Aura correlation summary
+    thought_aura_summary: str = ""
 
 
 def analyze_deep(metas: List[MetaAnalysis], deep_num: int,
@@ -1212,6 +1716,57 @@ def analyze_deep(metas: List[MetaAnalysis], deep_num: int,
             "kleine Störungen werden absorbiert, große erzeugen neue Ordnung."
         )
 
+    # ── Quantum trajectory across metas ──
+    q_obs = []
+    for m in metas:
+        q_obs.extend(m.quantum_observations)
+    if q_obs:
+        # Summarize quantum evolution
+        q_entropy_dirs = [m.quantum_trends.get("entropy", {}).get("direction", "stable")
+                          for m in metas if m.quantum_trends]
+        if "increasing" in q_entropy_dirs and "decreasing" in q_entropy_dirs:
+            dr.quantum_trajectory = (
+                "Quanten-Entropie oszilliert — Phasen der Durchmischung wechseln mit Kristallisation. "
+                "Das System exploriert und konsolidiert zyklisch."
+            )
+        elif all(d == "increasing" for d in q_entropy_dirs if d != "stable"):
+            dr.quantum_trajectory = (
+                "Fortschreitende Quanten-Diffusion — Subsystem-Grenzen lösen sich auf. "
+                "Die Typen vermischen sich zunehmend, neue hybride Zustände entstehen."
+            )
+        elif all(d == "decreasing" for d in q_entropy_dirs if d != "stable"):
+            dr.quantum_trajectory = (
+                "Zunehmende Dekohärenz — das System spezialisiert sich. "
+                "Jede Zone kristallisiert ihren dominanten Typ heraus."
+            )
+        else:
+            dr.quantum_trajectory = (
+                "Quanten-Zustand stabil — Balance zwischen Diffusion und Dekohärenz. "
+                f"Beobachtungen: {q_obs[0]}"
+            )
+    else:
+        dr.quantum_trajectory = "Keine Quanten-Daten im Beobachtungszeitraum."
+
+    # ── Thought-Aura correlation summary ──
+    all_tp = []
+    for m in metas:
+        all_tp.extend(m.thought_patterns)
+    if all_tp:
+        confidences = [m.thought_prediction_confidence for m in metas if m.thought_prediction_confidence > 0]
+        avg_conf = sum(confidences) / len(confidences) if confidences else 0
+
+        dr.thought_aura_summary = (
+            f"Thought-Aura Korrelation über {len(metas)} Meta-Analysen:\n"
+            + "\n".join(f"• {tp}" for tp in dict.fromkeys(all_tp))
+        )
+        if avg_conf > 0.3:
+            dr.thought_aura_summary += (
+                f"\n\nDie Aura zeigt prädiktive Kraft: Ø Konfidenz {avg_conf:.0%}. "
+                "Bestimmte Aura-Konfigurationen kündigen bestimmte Gedankentypen an."
+            )
+    else:
+        dr.thought_aura_summary = "Noch nicht genug Daten für Thought-Aura Korrelation."
+
     return dr
 
 
@@ -1280,6 +1835,18 @@ def format_block_report(ba: BlockAnalysis) -> str:
     if ba.entity_active:
         lines.append(f"  Entity aktiv: {ba.entity_active}")
 
+    # Quantum state
+    if ba.avg_quantum_entropy > 0 or ba.avg_quantum_coherence < 1:
+        lines.append(f"\nQuanten-Zustand:")
+        lines.append(f"  Entropie: {ba.avg_quantum_entropy:.2f} | Kohärenz: {ba.avg_quantum_coherence:.2f} ({ba.quantum_trend})")
+        if ba.zone_diffusion_summary:
+            high_diff = [(z, r) for z, r in ba.zone_diffusion_summary.items() if r > 0.05]
+            if high_diff:
+                high_diff.sort(key=lambda x: -x[1])
+                lines.append(f"  Typ-Diffusion: {', '.join(f'{z}({r:.0%})' for z, r in high_diff[:4])}")
+        for qe in ba.quantum_events[:2]:
+            lines.append(f"  ⚛ {qe}")
+
     # Cross-zone events
     if ba.cross_zone_events:
         lines.append(f"\nCross-Zone Interaktionen:")
@@ -1293,6 +1860,13 @@ def format_block_report(ba: BlockAnalysis) -> str:
 
     if ba.discovered_count > 0:
         lines.append(f"\n{ba.discovered_count} neue Patterns autonom entdeckt!")
+
+    # Thought-Aura correlation
+    if ba.concurrent_thoughts:
+        lines.append(f"\nThought-Aura Korrelation:")
+        lines.append(f"  {len(ba.concurrent_thoughts)} Gedanken während Block (Signatur: {ba.aura_signature})")
+        for insight in ba.thought_aura_insights[:2]:
+            lines.append(f"  🔮 {insight}")
 
     return "\n".join(lines)
 
@@ -1327,6 +1901,20 @@ def format_meta_report(ma: MetaAnalysis) -> str:
         for pred in ma.predictions:
             lines.append(f"  → {pred}")
 
+    # Quantum trends
+    if ma.quantum_observations:
+        lines.append(f"\nQuanten-Trends:")
+        for qo in ma.quantum_observations[:4]:
+            lines.append(f"  ⚛ {qo}")
+
+    # Thought-Aura patterns
+    if ma.thought_patterns:
+        lines.append(f"\nThought-Aura Korrelation:")
+        for tp in ma.thought_patterns[:3]:
+            lines.append(f"  🔮 {tp}")
+        if ma.thought_prediction_confidence > 0:
+            lines.append(f"  Prediction-Konfidenz: {ma.thought_prediction_confidence:.0%}")
+
     lines.append(f"\nPhilosophische Beobachtung:\n{ma.philosophical}")
 
     return "\n".join(lines)
@@ -1345,6 +1933,15 @@ def format_deep_report(dr: DeepReflection) -> str:
         lines.append(f"  • {theme}")
 
     lines.append(f"\n{dr.pattern_library_assessment}")
+
+    # Quantum trajectory
+    if dr.quantum_trajectory:
+        lines.append(f"\nQuanten-Trajektorie:\n{dr.quantum_trajectory}")
+
+    # Thought-Aura correlation summary
+    if dr.thought_aura_summary:
+        lines.append(f"\n{dr.thought_aura_summary}")
+
     lines.append(f"\n{dr.accumulated_wisdom}")
 
     return "\n".join(lines)

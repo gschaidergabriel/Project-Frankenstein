@@ -842,6 +842,44 @@ def introspect_json_endpoint(depth: str = "full"):
     return JSONResponse(aura.introspect_json(depth))
 
 
+@app.post("/inject")
+def inject_endpoint(body: dict):
+    """Inject cells into the live simulation.
+
+    Body: {"cells_b64": base64-encoded uint8 256x256 mask (1=inject)}
+    Or:   {"positions": [[y,x], [y,x], ...]}
+    """
+    import base64
+    _ensure_tick_thread()
+    count = 0
+    with aura._lock:
+        if "cells_b64" in body:
+            mask_bytes = base64.b64decode(body["cells_b64"])
+            mask = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(
+                aura.size, aura.size,
+            )
+            inject = mask > 0
+            aura.grid[inject] = 1
+            # Newborn cells inherit type from their zone
+            ys, xs = np.where(inject)
+            for y, x in zip(ys, xs):
+                zid = int(aura.zone_map[y, x])
+                aura.type_dist[y, x] = 0.0
+                aura.type_dist[y, x, zid] = 1.0
+            count = int(inject.sum())
+        elif "positions" in body:
+            for pos in body["positions"]:
+                y, x = int(pos[0]), int(pos[1])
+                if 0 <= y < aura.size and 0 <= x < aura.size:
+                    aura.grid[y, x] = 1
+                    zid = int(aura.zone_map[y, x])
+                    aura.type_dist[y, x] = 0.0
+                    aura.type_dist[y, x, zid] = 1.0
+                    count += 1
+    LOG.info(f"Injected {count} cells into live simulation")
+    return {"ok": True, "injected": count}
+
+
 @app.get("/grid")
 def grid_endpoint():
     """Raw grid + quantum state export.
@@ -884,4 +922,7 @@ def grid_endpoint():
         "energy_level": aura.energy_level,
         "thought_count": aura.thought_count,
         "entity_active": aura.entity_active,
+        # Quantum scalar metrics
+        "quantum_entropy": round(float(aura.quantum_entropy()), 4),
+        "quantum_coherence": round(float(aura.quantum_coherence_score()), 4),
     }

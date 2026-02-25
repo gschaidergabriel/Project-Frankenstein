@@ -63,8 +63,17 @@ _BTN_BORDER_CLR = "#00cc44"
 _BTN_BORDER_HOVER = "#00fff9"
 
 
+try:
+    from PIL import ImageTk as _ImageTk
+    _HAS_IMAGETK = True
+except ImportError:
+    _HAS_IMAGETK = False
+
+
 def _pil_to_tkphoto(pil_img: Image.Image) -> tk.PhotoImage:
-    """Convert PIL Image → tk.PhotoImage via PPM (no ImageTk needed)."""
+    """Convert PIL Image → tk.PhotoImage. Uses ImageTk (fast) or PPM fallback."""
+    if _HAS_IMAGETK:
+        return _ImageTk.PhotoImage(pil_img)
     buf = io.BytesIO()
     pil_img.save(buf, format="PPM")
     return tk.PhotoImage(data=buf.getvalue())
@@ -112,6 +121,7 @@ class AuraVisualizerMixin:
         self._aura_poller_running = False
         self._aura_render_active = False
         self._aura_last_floater: float = 0.0
+        self._aura_frame_count: int = 0
 
         # Tooltip state
         self._aura_tooltip_win: tk.Toplevel | None = None
@@ -670,22 +680,53 @@ class AuraVisualizerMixin:
             pw - 14, 37, text="", fill="#FF331A",
             font=_font, anchor="e")
 
-        # ── ABOUT section (y=50 sep, y=62 header, y=76+ text) ──
+        # ── ABOUT section — 2-column layout to use width, not height ──
         hud.create_line(10, 50, pw - 10, 50, fill="#161B22", width=1)
 
         _df = ("Consolas", 7)
+        _dfs = ("Consolas", 6)
         _dc = "#3a4550"
-        hud.create_text(12, 62, text="ABOUT", fill="#0d5c2e",
+        _dh = "#4a7060"
+        _ls = 10  # line spacing
+
+        hud.create_text(12, 54, text="ABOUT", fill="#0d5c2e",
                          font=("Consolas", 6), anchor="nw")
 
-        hud.create_text(12, 76, anchor="nw", fill=_dc, font=_df,
-            text="Frank's AI consciousness as a cellular automaton.")
-        hud.create_text(12, 88, anchor="nw", fill=_dc, font=_df,
-            text="Conway's Game of Life \u2014 256\u00d7256 cells at 10 Hz.")
-        hud.create_text(12, 100, anchor="nw", fill=_dc, font=_df,
-            text="Each zone maps a live subsystem to evolving cells.")
-        hud.create_text(12, 112, anchor="nw", fill="#303840", font=_df,
-            text="Density \u2192 activity    Trails \u2192 recent    Pulse \u2192 alive")
+        # Left column (x=12): Description + Reading guide
+        _lx = 12
+        _y = 65
+        hud.create_text(_lx, _y, anchor="nw", fill="#4a6a5a", font=_dfs,
+            text="AURA \u2014 Autonomous Universal Resonance Automaton")
+        _y += _ls
+        hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
+            text="Frank's consciousness as a quantum cellular automaton.")
+        _y += _ls
+        hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
+            text="256\u00d7256 Game of Life at 10 Hz. 8 zones \u2192 live subsystems.")
+        _y += _ls
+        hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
+            text="Fed by real data: mood, thoughts, E-PQ, entities, HW.")
+        _y += _ls
+        hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
+            text="Seeded by real subsystem data. Patterns emerge autonomously.")
+
+        # Right column (x=pw/2): Quantum + Reading guide
+        _rx = pw // 2 + 10
+        _ry = 65
+        hud.create_text(_rx, _ry, anchor="nw", fill=_dh, font=_dfs,
+            text="QUANTUM SUPERPOSITION")
+        _ry += _ls
+        hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
+            text="Each cell: 8D type vector [p\u2080..p\u2087]. Colors = weighted blend.")
+        _ry += _ls
+        hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
+            text="Diffusion \u2192 color gradients. Decoherence \u2192 crystallization.")
+        _ry += _ls + 2
+        hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
+            text="Density=activity  Trails=recent  Blend=superposition")
+        _ry += _ls
+        hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
+            text="Border glow=cross-zone flow  Pulse=alive cells")
 
         # ── ZONES legend — squares + hover (y=130 sep, y=145 items) ──
         hud.create_line(10, 130, pw - 10, 130, fill="#161B22", width=1)
@@ -1109,7 +1150,7 @@ class AuraVisualizerMixin:
         self._aura_prev_epq = dict(epq)
 
     # ──────────────────────────────────────────────────────────────
-    # Render Loop (~30 FPS, main thread)
+    # Render Loop (~50 FPS, main thread)
     # ──────────────────────────────────────────────────────────────
 
     def _aura_render_loop(self):
@@ -1178,8 +1219,10 @@ class AuraVisualizerMixin:
                     self._aura_canvas_img, image=self._aura_photo,
                 )
 
-            self._aura_update_info()
-            self._aura_render_notifications()
+            self._aura_frame_count += 1
+            if self._aura_frame_count % 3 == 0:
+                self._aura_update_info()
+                self._aura_render_notifications()
 
             # Periodic floater injection (~every 8 s)
             now = time.monotonic()
@@ -1191,7 +1234,7 @@ class AuraVisualizerMixin:
             LOG.debug("Aura render error: %s", e)
 
         elapsed_ms = (time.monotonic() - t0) * 1000
-        delay = max(16, 33 - int(elapsed_ms))
+        delay = max(8, 20 - int(elapsed_ms))  # target ~50 FPS
         self.after(delay, self._aura_render_loop)
 
     def _aura_update_info(self):
@@ -1424,7 +1467,14 @@ class AuraVisualizerMixin:
 
     def _aura_on_chat_message(self):
         if self._aura_open:
-            self._aura_events.trigger_chat_ripple()
+            if self._aura_using_headless:
+                # Massive burst for headless — dense circle crossing all zones
+                burst_mask = self._aura_events.trigger_chat_burst()
+                self._aura_engine.inject_cells(burst_mask)
+                # Also fire expanding ripple for additional visual flair
+                self._aura_events.trigger_chat_ripple()
+            else:
+                self._aura_events.trigger_chat_ripple()
 
     def _aura_on_threat(self):
         if self._aura_open:

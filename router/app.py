@@ -58,8 +58,8 @@ DEFAULT_N_PREDICT = int(os.environ.get("AICORE_N_PREDICT", "2048"))
 
 # Think overhead: max_tokens in chat/completions is TOTAL (reasoning + answer).
 # Router ensures a minimum budget so the RLM can reason AND produce an answer.
-RLM_TOKEN_MULTIPLIER = float(os.environ.get("AICORE_RLM_TOKEN_MULTIPLIER", "3.0"))
-RLM_TOKEN_MIN = 1024  # absolute minimum — RLM needs ~200-400 tokens just to think
+RLM_TOKEN_MULTIPLIER = float(os.environ.get("AICORE_RLM_TOKEN_MULTIPLIER", "2.5"))
+RLM_TOKEN_MIN = 512  # Was 1024 — small consciousness calls don't need 1024 min
 
 # HTTP timeout — DeepSeek R1 thinks before answering, needs time
 RLM_HTTP_TIMEOUT_SEC = float(os.environ.get("AICORE_RLM_HTTP_TIMEOUT_SEC", "480.0"))

@@ -33,6 +33,23 @@ except ImportError:
 ROUTER_BASE = os.environ.get("AICORE_ROUTER_BASE", "http://127.0.0.1:8091").rstrip("/")
 MODELD_BASE = os.environ.get("AICORE_MODELD_BASE", "http://127.0.0.1:8090").rstrip("/")  # legacy
 
+# Chat-LLM: Llama-3.1-8B on CPU for casual/simple chat (frees GPU RLM for complex tasks)
+CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8102")
+CHAT_LLM_TIMEOUT_S = 120.0  # CPU inference — generous for 8B
+
+# Keywords that signal "use the heavy RLM" (chain-of-thought, deep reasoning)
+_COMPLEX_Q_KEYWORDS = re.compile(
+    r"(explain|erkläre|analyze|analysiere|research|forsch|debug|code|program"
+    r"|implement|refactor|why does|warum|how does.*work|wie funktioniert"
+    r"|compare|vergleich|trade.?off|pros.?and.?cons|step.?by.?step"
+    r"|mathemat|calculat|berechn|algorithm|logic|proof"
+    r"|translate|übersetz|summarize|zusammenfass"
+    r"|deep|tief|philosophi|consciousness|bewusstsein|meaning of"
+    r"|darknet|tor\s|hack|security|exploit"
+    r"|write.*essay|write.*article|write.*story|schreib.*text)",
+    re.IGNORECASE
+)
+
 # --- Output-Feedback-Loop: Analyze responses and update personality modules ---
 _FEEDBACK_AVAILABLE = False
 _fb_analyze_response = None
@@ -390,6 +407,48 @@ _FALLBACK_IDENTITY = (
     "NEVER simulate actions (*opens…*, *checks…*). Never invent data.\n"
     "I never refer to myself in third person. I never say 'Frank does X'. I say 'I do X'.\n"
 )
+
+def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
+                   temperature: float = 0.65) -> Optional[Dict[str, Any]]:
+    """Call the Chat-LLM (Llama 3.1 8B on CPU) directly via /v1/chat/completions.
+    Returns dict with 'ok', 'text', 'model' or None on failure."""
+    url = f"{CHAT_LLM_URL}/v1/chat/completions"
+    payload = json.dumps({
+        "messages": [
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_text},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": 0.9,
+        "repeat_penalty": 1.1,
+    }).encode()
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=CHAT_LLM_TIMEOUT_S) as resp:
+            data = json.loads(resp.read().decode())
+            choices = data.get("choices", [])
+            if choices:
+                msg = choices[0].get("message", {})
+                text = (msg.get("content") or "").strip()
+                if text:
+                    return {"ok": True, "text": text, "model": "llama-3.1-8b", "ts": time.time()}
+    except Exception as e:
+        LOG.warning("Chat-LLM call failed: %s", e)
+    return None
+
+
+def _is_complex_query(text: str) -> bool:
+    """Detect if a query needs the heavy RLM (DeepSeek R1) or can use the fast Chat-LLM."""
+    # Long messages are likely complex
+    if len(text) > 300:
+        return True
+    return bool(_COMPLEX_Q_KEYWORDS.search(text))
+
 
 def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None,
                        profile: str = "default") -> str:
@@ -1247,41 +1306,57 @@ class Handler(BaseHTTPRequestHandler):
                     + text
                 )
 
+            # --- Model routing: simple → Chat-LLM (fast), complex → RLM (deep) ---
+            _use_rlm = _is_complex_query(user_text_for_matching)
+            # Force RLM if caller explicitly requests it or if reflection was generated
+            if payload.get("force_rlm") or reflection_text or want_reflect:
+                _use_rlm = True
+
             route = None
-            try:
-                with INFER_SEM:
-                    router_payload = {
-                        "text": grounded_text,
-                        "n_predict": max_tokens,
-                        "system": identity,
-                        "temperature": 0.65,
-                    }
-                    if "force" in payload:
-                        router_payload["force"] = payload.get("force")
+            if not _use_rlm:
+                # Try Chat-LLM first (Llama 3.1 8B on CPU — fast, no GPU contention)
+                route = _chat_llm_call(grounded_text, identity, max_tokens=max_tokens)
+                if route:
+                    LOG.info("Chat-LLM responded (%d chars)", len(route.get("text", "")))
 
-                    router_timeout = min(max(10, timeout_s + 15), 540)
+            if route is None:
+                # Complex query or Chat-LLM unavailable → use RLM via router
+                if not _use_rlm:
+                    LOG.info("Chat-LLM unavailable, falling back to RLM")
+                try:
+                    with INFER_SEM:
+                        router_payload = {
+                            "text": grounded_text,
+                            "n_predict": max_tokens,
+                            "system": identity,
+                            "temperature": 0.65,
+                        }
+                        if "force" in payload:
+                            router_payload["force"] = payload.get("force")
 
-                    route = http_post_debug(
-                        f"{ROUTER_BASE}/route",
-                        router_payload,
-                        timeout_s=router_timeout,
+                        router_timeout = min(max(10, timeout_s + 15), 540)
+
+                        route = http_post_debug(
+                            f"{ROUTER_BASE}/route",
+                            router_payload,
+                            timeout_s=router_timeout,
+                        )
+
+                except Exception as e:
+                    self._json(
+                        502,
+                        {
+                            "ok": False,
+                            "error": "upstream_failed",
+                            "detail": str(e),
+                            "route": route,
+                            "task": task,
+                            "max_tokens": max_tokens,
+                            "timeout_s": timeout_s,
+                            "infer_concurrency": INFER_MAX_CONCURRENCY,
+                        },
                     )
-
-            except Exception as e:
-                self._json(
-                    502,
-                    {
-                        "ok": False,
-                        "error": "upstream_failed",
-                        "detail": str(e),
-                        "route": route,
-                        "task": task,
-                        "max_tokens": max_tokens,
-                        "timeout_s": timeout_s,
-                        "infer_concurrency": INFER_MAX_CONCURRENCY,
-                    },
-                )
-                return
+                    return
 
             if not isinstance(route, dict) or route.get("ok") is not True:
                 self._json(

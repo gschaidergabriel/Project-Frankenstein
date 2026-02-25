@@ -92,6 +92,7 @@ DB_PATHS = {
     "muse": DB_DIR / "muse.db",
     "quantum_reflector": DB_DIR / "quantum_reflector.db",
     "dream": DB_DIR / "dream.db",
+    "autonomous_research": DB_DIR / "autonomous_research.db",
 }
 
 # State files (JSON)

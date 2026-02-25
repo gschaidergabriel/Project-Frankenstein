@@ -457,7 +457,7 @@ def _ask_frank(message: str, session_id: str) -> Optional[str]:
 
 
 def _generate_echo(prompt: str, system_prompt: str) -> Optional[str]:
-    """Generate Echo's response via Ollama (mistral:7b-instruct) or Router fallback."""
+    """Generate Echo's response via Router (DeepSeek-R1 RLM)."""
     if _HAS_ENTITY_LLM:
         return generate_entity("muse", prompt, system_prompt, n_predict=512)
     payload = {

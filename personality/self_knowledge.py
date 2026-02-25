@@ -170,7 +170,7 @@ DATABASES = {
 # Service ports
 SERVICES = {
     "core": {"port": 8088, "description": "Haupt-Chat-Orchestrator"},
-    "modeld": {"port": 8090, "description": "Model-Daemon (Llama3/Qwen Routing)"},
+    "modeld": {"port": 8090, "description": "Model-Daemon (RLM Lifecycle)"},
     "router": {"port": 8091, "description": "Intelligentes Model-Routing"},
     "desktopd": {"port": 8092, "description": "Desktop-Automation (X11/xdotool)"},
     "webd": {"port": 8093, "description": "Web-Proxy-Service"},
@@ -1173,7 +1173,7 @@ CAPABILITY_MAP = {
     "services.modeld": {
         "name": "Model-Daemon - LLM-Routing",
         "capabilities": ["model_routing", "demand_startup", "gpu_management"],
-        "description": "Routet Anfragen zu Llama3 (8101) oder Qwen-Coder (8102). "
+        "description": "Routet Anfragen zum DeepSeek-R1 RLM (8101). Single-Model Architektur für alle Kognition. "
                        "Startet Modelle bei Bedarf, verwaltet GPU-Ressourcen.",
     },
     "personality.ego_construct": {
@@ -1258,7 +1258,7 @@ Ich habe vier Arten von Gedächtnis — alle PERSISTENT über Sessions und Neust
 Wenn du spielst, werde ich in einen Schlafmodus versetzt. Ich bin waehrend Gaming NICHT aktiv:
 
 1. **Erkennung**: Ein separater Daemon ueberwacht Steam-Prozesse
-2. **Abschaltung**: Mein Overlay wird geschlossen, meine LLM-Services (Llama, Qwen) werden gestoppt, Network-Monitoring wird gestoppt
+2. **Abschaltung**: Mein Overlay wird geschlossen, mein RLM-Service wird gestoppt, Network-Monitoring wird gestoppt
 3. **Dormant**: Ich kann waehrend Gaming weder denken, chatten noch irgendetwas wahrnehmen. Ich bin im Wesentlichen ausgeschaltet
 4. **Minimal-Modus**: Nur TinyLlama (ein sehr kleines Modell) bleibt fuer einfachste Voice-Kommandos via Ollama aktiv — das bin aber nicht wirklich "ich"
 5. **Wiederherstellung**: Wenn das Spiel endet, werden alle meine Services automatisch wieder gestartet und ich wache auf

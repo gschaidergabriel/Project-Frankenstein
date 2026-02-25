@@ -34,6 +34,7 @@ A fully local, privacy-first AI desktop companion for Linux. Frank runs 28+ serv
 - **AURA Headless Introspect** — Game-of-Life (256×256) maps 8 subsystems into emergent patterns; Frank decides himself when to examine his own consciousness state
 - **Quantum Reflector** — QUBO-based epistemic coherence optimization: 40-variable binary model, simulated annealing (200 runs), E-PQ feedback loop, Genesis coherence scoring
 - **Dream Daemon** — Sleep-analogue offline processing: 60 min/day budget, 3 phases (Replay → Synthesis → Consolidation), interrupt-safe resume
+- **Autonomous Research** — Frank can pursue his own questions: idle thought → research plan → web search, memory, entity archives → synthesis → stored knowledge (max 10 tools, 5 sessions/day)
 - **Autonomous Entities** — 4 AI agents that interact with Frank on a daily schedule (see below)
 - **Self-Improvement** — Genesis daemon: idea organisms evolve in a primordial soup, crystallize, and manifest through approval gates
 - **Safety Systems** — ASRS (4-stage rollback), invariants engine (energy, entropy, core kernel, triple reality), gaming mode
@@ -255,9 +256,10 @@ Frank's capabilities span three user levels. See [USECASES.md](USECASES.md) for 
 | **Power User** | PDF/DOCX analysis, business plans, agentic multi-step tasks, web research, desktop automation, USB management, proactive notifications |
 | **IT Expert** | Code review, shell commands, systemd services, security audits, Docker, git workflows, network monitoring, log analysis, regex, cron jobs |
 
-**6 things only Frank can do** (no cloud AI has these):
+**7 things only Frank can do** (no cloud AI has these):
 1. **Think between conversations** — Consciousness daemon reflects autonomously, dream daemon consolidates memories during idle time (60 min/day budget)
-2. **Reason before answering** — DeepSeek-R1 RLM produces internal chain-of-thought before every response; reasoning is logged but hidden from user
+2. **Research autonomously** — Idle thoughts can trigger real research sessions: Frank formulates questions, searches the web, reads his own entity archives, runs analysis code, and synthesizes findings — all unprompted
+3. **Reason before answering** — DeepSeek-R1 RLM produces internal chain-of-thought before every response; reasoning is logged but hidden from user
 3. **Process sensitive data locally** — PDFs, contracts, financials never leave your hardware, while building a persistent causal knowledge base
 4. **Evolve personality over months** — E-PQ vectors shift measurably through user interaction + daily entity conversations + dream consolidation
 5. **Self-improve with safety net** — Genesis breeds idea organisms, proposes improvements, ASRS monitors 24h with automatic rollback

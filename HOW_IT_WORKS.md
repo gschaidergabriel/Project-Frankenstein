@@ -14,14 +14,14 @@ You (voice/text) ──► Chat Overlay ──► Core ──► Router ──�
 
 ## Two Brains, One System
 
-Frank uses **two local LLMs** running via llama.cpp on your GPU:
+Frank uses a **local Reasoning LM (RLM)** running via llama.cpp on your GPU:
 
 | Model | Purpose | When |
 |-------|---------|------|
-| **Llama 3.1 8B** | General chat, reasoning | Always on |
-| **Qwen 2.5 Coder 7B** | Code generation | On demand |
+| **DeepSeek-R1-Distill-Llama-8B RLM** | All cognition: chat, reasoning, code | Always on |
+| **Qwen 2.5 Coder 7B** | Code generation (legacy) | On demand |
 
-The **Router** (port 8091) decides which model handles each request. Say "write me a Python script" and it routes to Qwen. Say "how's my CPU doing?" and Llama handles it. If both can't fit in VRAM simultaneously, the Router swaps them automatically (Memory Pressure Control).
+The **Router** (port 8091) routes all requests to the DeepSeek-R1 RLM. The single-model architecture eliminates VRAM swapping and simplifies inference. Qwen remains available as a legacy on-demand fallback for specialized code tasks.
 
 **Vision** uses Ollama with LLaVA — Frank can take screenshots and describe what's on your screen, entirely locally.
 
@@ -113,8 +113,8 @@ Port 8093  ─ Webd         (web search)
 Port 8094  ─ Ingestd      (document ingestion)
 Port 8096  ─ Toolboxd     (system tools, skills, todos)
 Port 8097  ─ Quantum Reflector (epistemic coherence, QUBO optimization)
-Port 8101  ─ Llama 3.1    (general LLM, llama.cpp)
-Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp, on-demand)
+Port 8101  ─ DeepSeek-R1  (RLM, llama.cpp — all cognition)
+Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp, legacy on-demand)
 Port 8103  ─ Whisper      (speech-to-text, GPU)
 Port 11434 ─ Ollama       (vision models)
 
@@ -187,8 +187,8 @@ Each entity has its own personality vectors, session memory, and E-PQ feedback l
 - **Ollama** for vision models (LLaVA)
 - **tkinter** for the chat overlay
 - **FastAPI** for the router
-- **SQLite** for all 29 databases
-- **systemd** user services (24 services)
+- **SQLite** for all 29+ databases
+- **systemd** user services (28+ services)
 - **Vulkan/CUDA** for GPU acceleration
 
 No cloud dependencies. No API keys. No telemetry. Everything runs on your hardware.

@@ -75,7 +75,7 @@ MAX_PREDICTIONS = 100       # Keep last 100 predictions
 MAX_MOOD_POINTS = 200       # Keep last 200 mood trajectory points
 MAX_WORKSPACE_HISTORY = 20  # Keep last 20 workspace snapshots
 IDLE_THINK_MAX_TOKENS = 200  # RLM needs room to reason + answer
-CONSOLIDATION_MAX_TOKENS = 150  # RLM reasoning overhead
+CONSOLIDATION_MAX_TOKENS = 200  # RLM reasoning overhead
 
 # --- Perceptual Feedback Loop (RPT) ---
 PERCEPTION_TICK_S = 1.0              # Was 0.2 — 1Hz statt 5Hz (5x weniger Samples)
@@ -1315,8 +1315,53 @@ class ConsciousnessDaemon:
                         self._maybe_aura_introspect(result.strip())
                     except Exception as ae:
                         LOG.debug("AURA introspect skipped: %s", ae)
+                # Autonomous Research: Frank can pursue research questions
+                # Every 6th thought, check if this thought is worth researching
+                if self._idle_think_count % 6 == 0:
+                    try:
+                        self._maybe_autonomous_research(result.strip())
+                    except Exception as re_:
+                        LOG.debug("Research skipped: %s", re_)
         except Exception as e:
             LOG.warning("Idle think LLM call failed: %s", e)
+
+    # ── Autonomous Research (voluntary) ─────────────────────────────────
+
+    def _maybe_autonomous_research(self, thought: str):
+        """Frank decides if an idle thought is worth researching autonomously.
+
+        Uses the Autonomous Research engine to:
+        1. Decide if the thought contains a research question
+        2. Create a research plan (max 10 tool calls)
+        3. Execute it with restricted tools (read-only + web + memory)
+        4. Synthesize findings and store in memory
+        """
+        try:
+            from services.autonomous_research import get_research
+            research = get_research()
+            synthesis = research.maybe_research(thought)
+            if synthesis:
+                LOG.info("Autonomous research completed: %s", synthesis[:100])
+                self._notify("Research Finding", synthesis.strip())
+                # Store as deep reflection
+                self._store_reflection(
+                    trigger="autonomous_research",
+                    content=synthesis.strip(),
+                    mood_before=self._current_workspace.mood_value,
+                    mood_after=self._current_workspace.mood_value,
+                    reflection_depth=3,
+                )
+                # World Experience observation
+                self._observe_world(
+                    "consciousness.research", "consciousness.knowledge",
+                    relation="discovers", evidence=0.3,
+                    metadata_effect={"trigger": "autonomous_research",
+                                     "thought": thought[:100]},
+                )
+        except ImportError:
+            LOG.debug("Autonomous research module not available")
+        except Exception as e:
+            LOG.warning("Autonomous research failed: %s", e)
 
     # ── AURA Self-Introspection (voluntary) ────────────────────────────
 
@@ -2162,7 +2207,7 @@ class ConsciousnessDaemon:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=180.0) as resp:
+        with urllib.request.urlopen(req, timeout=360.0) as resp:
             data = json.loads(resp.read().decode())
             if data.get("ok"):
                 return (data.get("text") or "").strip()

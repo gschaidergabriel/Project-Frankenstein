@@ -147,6 +147,8 @@ FEATURE_PATTERNS = {
     # Dream Daemon
     "dream_daemon": ("Dream Consolidation", "Sleep-analogue offline processing: 60min/day budget, 3 phases (Replay → Synthesis → Consolidation), interrupt-safe resume, 45min idle trigger, writes dream reflections to consciousness.db", "meta", "core", "LLM contention with consciousness daemon can cause timeouts"),
     "dream_state": ("Dream State Tracker", "Persistent dream budget, phase/step/IDs for interrupt-resume, 24h rolling reset", "meta", "core", ""),
+    # Autonomous Research
+    "autonomous_research": ("Autonomous Research", "Frank can autonomously research his own questions during idle time — web search, memory search, entity archive, code sandbox. Plans, executes, synthesizes, stores. Max 10 tool calls, 5 sessions/day, 1h cooldown", "meta", "core", "Only low-risk tools, 15min idle gate, no fs_write/bash"),
     # Atlas Entity
     "atlas_agent": ("Atlas Architecture Mentor", "Autonomous entity that teaches Frank about his own system architecture via structured daily conversations, tracks technical understanding with 4-vector personality (precision, encouragement, rapport, patience)", "entities", "core", "1x daily, 10-12min sessions, max 10 turns"),
     "atlas_pq": ("Atlas Personality Construct", "4-vector adaptive personality for Atlas mentoring sessions — rapport only grows, precision/encouragement adapt per turn", "entities", "core", "Learning rate 0.02/turn, 0.05/session"),

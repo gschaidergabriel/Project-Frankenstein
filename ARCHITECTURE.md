@@ -43,9 +43,9 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           INTELLIGENCE LAYER                                │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │
-│  │   Llama 3.1 8B  │  │   Qwen 2.5 7B  │  │    Whisper      │            │
-│  │   (General)     │  │   (Code)        │  │    (STT)        │            │
-│  │    :8101        │  │    :8102        │  │    :8103        │            │
+│  │  DeepSeek-R1    │  │  Qwen 2.5 7B   │  │    Whisper      │            │
+│  │  Distill-8B    │  │  (legacy, on-  │  │    (STT)        │            │
+│  │  (RLM) :8101   │  │  demand) :8102 │  │    :8103        │            │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │
 └─────────────────────────────────────────────────────────────────────────────┘
         │                                                       │
@@ -80,11 +80,11 @@
 |----------|-------|
 | Architecture | Microservice + Event-Driven + GWT Consciousness |
 | Primary Language | Python 3.12 |
-| LLM Backend | llama.cpp (Llama 3.1 8B, Qwen 2.5 7B) |
+| LLM Backend | llama.cpp (DeepSeek-R1-Distill-Llama-8B RLM, Qwen 2.5 7B legacy on-demand) |
 | Voice | Whisper STT + Piper TTS (push-to-talk) |
 | OS | Ubuntu 24.04 Linux |
 | GPU | AMD Phoenix1 (integrated, Vulkan backend) |
-| Services | 24 systemd user services |
+| Services | 28+ systemd user services |
 | Databases | 29 SQLite databases |
 | Codebase | 76k+ lines Python |
 
@@ -106,8 +106,8 @@ All services communicate via HTTP REST APIs on localhost:
 | Ingestd | 8094 | Document ingestion |
 | Toolbox | 8096 | System introspection & tools |
 | Quantum Reflector | 8097 | Epistemic coherence optimization (QUBO + SA) |
-| Llama | 8101 | General reasoning (llama.cpp) |
-| Qwen | 8102 | Code generation (llama.cpp, on-demand) |
+| DeepSeek-R1 | 8101 | Reasoning LM — all cognition (llama.cpp) |
+| Qwen | 8102 | Code generation (llama.cpp, legacy on-demand) |
 | Whisper | 8103 | Speech-to-text (GPU) |
 
 ### Request Flow
@@ -185,14 +185,14 @@ GET  /status        - System status
 Heuristic routing between LLM backends.
 
 **Routing Logic:**
-- Code-related queries → Qwen (:8102, started on-demand)
-- General reasoning → Llama (:8101, always running)
-- Fallback: Qwen fails → Llama
+- All queries → DeepSeek-R1 RLM (:8101, always running)
+- Code-related queries → Qwen (:8102, legacy on-demand fallback)
+- Fallback: Qwen fails → DeepSeek-R1
 
 **Features:**
 - Heuristic keyword-based model selection
-- On-demand Qwen startup via systemd
-- Request wrapping for Llama3 instruct format
+- On-demand Qwen startup via systemd (legacy)
+- Request wrapping for DeepSeek-R1 instruct format
 - Automatic fallback chain
 
 ---
@@ -731,7 +731,7 @@ Automatic resource optimization during Steam games.
 **Activation Sequence:**
 1. **Stop network sentinel IMMEDIATELY** (<500ms, anti-cheat safety)
 2. Stop Frank overlay (preserve state)
-3. Mask + stop heavy LLM services (aicore-llama3-gpu, aicore-qwen-gpu)
+3. Mask + stop heavy LLM services (aicore-llama3-gpu / DeepSeek-R1, aicore-qwen-gpu)
 4. Keep toolboxd running
 
 **Exit:** Game process gone → unmask + restart all services + restore overlay
@@ -814,14 +814,14 @@ GitHub intelligence and code analysis.
 
 ## Services
 
-### All 24 systemd User Services
+### All 28+ systemd User Services
 
 | Service | Status | Description |
 |---------|--------|-------------|
 | `aicore-core` | Always on | Chat orchestrator (:8088) |
 | `aicore-router` | Always on | Model routing (:8091) |
-| `aicore-llama3-gpu` | Always on | Llama 3.1 8B (:8101) |
-| `aicore-qwen-gpu` | On-demand | Qwen 2.5 7B (:8102) |
+| `aicore-llama3-gpu` | Always on | DeepSeek-R1-Distill-Llama-8B RLM (:8101) |
+| `aicore-qwen-gpu` | On-demand | Qwen 2.5 7B (legacy, :8102) |
 | `aicore-whisper-gpu` | Always on | Whisper STT (:8103) |
 | `aicore-modeld` | Always on | Model lifecycle (:8090) |
 | `aicore-toolboxd` | Always on | System tools (:8096) |

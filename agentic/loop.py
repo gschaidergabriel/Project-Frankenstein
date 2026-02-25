@@ -610,7 +610,7 @@ class AgentLoop:
 
             def _do_request():
                 try:
-                    with urllib.request.urlopen(req, timeout=300) as resp:
+                    with urllib.request.urlopen(req, timeout=360) as resp:
                         result = json.loads(resp.read().decode("utf-8"))
                         _result_box.append(result.get("text", result.get("response", "")))
                 except Exception as exc:

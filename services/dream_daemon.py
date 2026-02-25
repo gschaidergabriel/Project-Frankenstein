@@ -396,7 +396,7 @@ class DreamDaemon:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=240.0) as resp:
+                with urllib.request.urlopen(req, timeout=360.0) as resp:
                     data = json.loads(resp.read().decode())
                     if data.get("ok"):
                         return (data.get("text") or "").strip()

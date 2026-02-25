@@ -1279,7 +1279,7 @@ class Handler(BaseHTTPRequestHandler):
                     if "force" in payload:
                         router_payload["force"] = payload.get("force")
 
-                    router_timeout = min(max(10, timeout_s + 15), 300)
+                    router_timeout = min(max(10, timeout_s + 15), 540)
 
                     route = http_post_debug(
                         f"{ROUTER_BASE}/route",

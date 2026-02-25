@@ -205,7 +205,7 @@ Always answer concisely. Be friendly but precise."""
         api_messages = [msg.to_dict() for msg in self.messages]
 
         payload = {
-            "model": "llama-3.1-8b",
+            "model": "deepseek-r1-8b",
             "messages": api_messages,
             "max_tokens": 300,
             "temperature": 0.7,

@@ -93,6 +93,7 @@ DB_PATHS = {
     "quantum_reflector": DB_DIR / "quantum_reflector.db",
     "dream": DB_DIR / "dream.db",
     "autonomous_research": DB_DIR / "autonomous_research.db",
+    "aura_analyzer": DB_DIR / "aura_analyzer.db",
 }
 
 # State files (JSON)

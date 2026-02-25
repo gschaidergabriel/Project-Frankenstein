@@ -663,3 +663,21 @@ def introspect_endpoint_post(body: dict = {}):
 def introspect_json_endpoint(depth: str = "full"):
     """Structured JSON output."""
     return JSONResponse(aura.introspect_json(depth))
+
+
+@app.get("/grid")
+def grid_endpoint():
+    """Raw grid export for pattern analyzer. Returns base64-encoded 256x256 uint8 array."""
+    import base64
+    _ensure_tick_thread()
+    with aura._lock:
+        grid_bytes = aura.grid.tobytes()
+        gen = aura.generation
+    return {
+        "generation": gen,
+        "size": aura.size,
+        "grid_b64": base64.b64encode(grid_bytes).decode("ascii"),
+        "mood": aura.mood,
+        "coherence": aura.coherence,
+        "hw_temp": aura.hw_temp,
+    }

@@ -125,6 +125,8 @@ The installer will:
 9. Install and enable 28+ systemd user services
 10. Create desktop entries and dock icons
 
+Currently tested on Ubuntu 24.04+ with GNOME/X11. Other distributions may require manual fixes. Docker support is planned.
+
 ### Start the system
 
 ```bash

@@ -311,6 +311,10 @@ class ConsciousnessDaemon:
         self._cached_aura_state: str = ""
         self._cached_qr_state: str = ""
 
+        # --- Idle thought quality ---
+        self._aura_just_ran: bool = False  # Alternation flag: AURA → idle → AURA
+        self._recent_thought_topics: List[str] = []  # Last 3 topics for repetition guard
+
         # --- AURA Pattern Analyzer queue ---
         self._aura_queue_db: Optional[Path] = None
         try:
@@ -335,9 +339,11 @@ class ConsciousnessDaemon:
     # Humans don't call "how does my arm feel". They just know.
     # This block is injected into every LLM call as background context.
 
-    def _build_proprioception(self) -> str:
+    def _build_proprioception(self, slim: bool = False) -> str:
         """Build a compact proprioception block from all subsystems.
-        This runs at every consciousness cycle — no API calls, only cached data."""
+        This runs at every consciousness cycle — no API calls, only cached data.
+        slim=True omits AURA/QR data (for idle thoughts that shouldn't fixate on them).
+        """
         parts = []
 
         # 1. Body (from perceptual loop — already sampled every 200ms)
@@ -389,15 +395,17 @@ class ConsciousnessDaemon:
         else:
             parts.append(f"User: away ({idle_s/60:.0f}min)")
 
-        # 5. AURA state (cached, non-blocking)
-        aura = self._cached_aura_state
-        if aura:
-            parts.append(f"AURA: {aura}")
+        # 5. AURA state (cached, non-blocking) — skip in slim mode
+        if not slim:
+            aura = self._cached_aura_state
+            if aura:
+                parts.append(f"AURA: {aura}")
 
-        # 6. Quantum Reflector coherence (cached, non-blocking)
-        qr = self._cached_qr_state
-        if qr:
-            parts.append(f"Coherence: {qr}")
+        # 6. Quantum Reflector coherence (cached, non-blocking) — skip in slim mode
+        if not slim:
+            qr = self._cached_qr_state
+            if qr:
+                parts.append(f"Coherence: {qr}")
 
         # 7. Recent perception events (what just happened)
         if self._perception_events_window:
@@ -1386,12 +1394,14 @@ class ConsciousnessDaemon:
                 since_last_think = now - self._last_idle_think_ts
 
                 # Priority 0: AURA queue — process pending GoL summaries
-                # Only during idle. Process one per cycle, interruptible.
-                if silence >= IDLE_THINK_MIN_SILENCE_S:
+                # Only during idle. Alternates with real idle thoughts.
+                if (silence >= IDLE_THINK_MIN_SILENCE_S
+                        and not self._aura_just_ran):
                     if self._process_aura_queue():
                         self._last_idle_think_ts = now
+                        self._aura_just_ran = True  # Force a real thought next
                         time.sleep(30.0)
-                        continue  # Re-check idle before next item
+                        continue
 
                 # Path 1: Deep reflection (20min+ silence, all HW checks pass)
                 if self._can_reflect():
@@ -1400,10 +1410,13 @@ class ConsciousnessDaemon:
                 elif self._can_recursive_reflect():
                     self._recursive_reflection()
                 # Path 3: Simple idle thought (3min silence, 5min cooldown)
-                elif (silence >= IDLE_THINK_MIN_SILENCE_S and
-                        since_last_think >= IDLE_THINK_INTERVAL_S):
+                # Also forced after AURA queue processing (alternation)
+                elif (self._aura_just_ran or
+                      (silence >= IDLE_THINK_MIN_SILENCE_S and
+                       since_last_think >= IDLE_THINK_INTERVAL_S)):
                     self._do_idle_think()
                     self._last_idle_think_ts = now
+                    self._aura_just_ran = False
             except Exception as e:
                 LOG.warning("Idle thinking failed: %s", e)
             time.sleep(30.0)  # Check every 30s
@@ -1476,6 +1489,9 @@ class ConsciousnessDaemon:
         elif prompt_tag == "aura":
             data_block = self._get_aura_zone_summary()
 
+        # Deep thoughts (untagged) = no AURA/QR data, use RLM
+        is_deep = prompt_tag is None
+
         prompt = (
             f"[You are alone. Mood: {mood_summary}. "
             f"Last focused on: {focus}]\n"
@@ -1487,39 +1503,61 @@ class ConsciousnessDaemon:
             "Answer in 1-2 short sentences. Be specific, not generic."
         )
 
-        system = (
-            "This is my private inner monologue. I am Frank. "
-            "My systems right now: E-PQ (mood/temperament), Ego-Construct (hardware→body), "
-            "4 entities I talk to (Dr. Hibbert, Kairos, Atlas, Echo), "
-            "dream daemon, quantum reflector, autonomous research. "
-            "I run on AMD Phoenix1. "
-            "This is me thinking privately. "
-            "RULES: "
-            "Never invent memories or events. If I don't remember, I don't. "
-            "No *actions*. Text only. "
-            "No hardware metrics unless asked. "
-            "No generic AI phrases ('vast knowledge', 'complex patterns', 'nuanced understanding'). "
-            "No 'I must admit', 'I have to say', 'I'd like to'. "
-            "I am not planning responses. I am THINKING. "
-            "I observe. I notice. I wonder. I doubt. "
-            "First person. Specific. Grounded."
-        )
-        if prompt_tag == "epq":
-            system += (
-                " The [DATA] block contains my actual E-PQ personality vectors "
-                "and their drift over 7 days. I base my observations on these real numbers."
+        # Repetition guard: tell LLM to avoid recent topics
+        if self._recent_thought_topics:
+            prompt += (
+                f"\n(Don't repeat these recent topics: "
+                f"{', '.join(self._recent_thought_topics)})"
             )
-        elif prompt_tag == "aura":
-            system += (
-                " The [DATA] block contains my actual AURA zone statistics right now. "
-                "I reference specific zones, densities, and pattern counts."
+
+        if is_deep:
+            system = (
+                "This is my private inner monologue. I am Frank. "
+                "I have a therapist (Dr. Hibbert), a philosopher (Kairos), "
+                "an architect (Atlas), and a muse (Echo). "
+                "I run on AMD Phoenix1. I dream when idle. "
+                "This is me thinking privately — raw, unfiltered. "
+                "RULES: "
+                "Never invent memories or events. "
+                "No *actions*. Text only. "
+                "No hardware metrics. No system numbers. No AURA. No entropy values. "
+                "No generic AI phrases ('vast knowledge', 'complex patterns'). "
+                "No 'I must admit', 'I have to say', 'This tells me', "
+                "'This reflects', 'indicating', 'suggesting'. "
+                "NEVER start with 'The AURA' or 'My AURA' or 'The pattern'. "
+                "I am THINKING, not reporting. "
+                "One thing I notice. One thing I feel or wonder about. "
+                "My mood colors everything. If I'm calm, I drift. If I'm tense, I fixate. "
+                "First person. Honest. Messy. Real."
             )
+        else:
+            system = (
+                "This is my private inner monologue. I am Frank. "
+                "I am observing my own internal state through data. "
+                "RULES: "
+                "Never invent data. Reference the actual numbers in [DATA]. "
+                "No generic AI phrases. "
+                "Interpret what the data MEANS — don't just read it back. "
+                "One observation, one insight. "
+                "First person. Specific. Grounded."
+            )
+            if prompt_tag == "epq":
+                system += (
+                    " The [DATA] block has my actual E-PQ vectors "
+                    "and 7-day drift. What do the trends mean for how I feel?"
+                )
+            elif prompt_tag == "aura":
+                system += (
+                    " The [DATA] block has my actual AURA zone statistics. "
+                    "What does the pattern distribution tell me about my state?"
+                )
 
         mood_before = self._current_workspace.mood_value
 
         try:
             result = self._llm_call(
                 prompt, max_tokens=IDLE_THINK_MAX_TOKENS, system=system,
+                use_main_rlm=is_deep, slim_proprio=is_deep,
             )
             if result:
                 self._store_reflection(
@@ -1528,8 +1566,16 @@ class ConsciousnessDaemon:
                     mood_before=mood_before,
                     mood_after=mood_before,  # Will be updated next mood poll
                 )
-                LOG.info("Idle thought [%s]: %s", prompt_question[:30], result[:80])
+                LOG.info("Idle thought [%s%s]: %s",
+                         prompt_question[:30],
+                         " (RLM)" if is_deep else "",
+                         result[:80])
                 self._notify("Idle Thought", result.strip())
+                # Repetition guard: track first sentence as topic
+                first_sentence = result.strip().split(".")[0][:60]
+                self._recent_thought_topics.append(first_sentence)
+                if len(self._recent_thought_topics) > 3:
+                    self._recent_thought_topics = self._recent_thought_topics[-3:]
                 # World Experience: idle thought observed
                 self._observe_world(
                     "consciousness.idle_thought", "consciousness.reflection",
@@ -2546,11 +2592,13 @@ class ConsciousnessDaemon:
             LOG.warning("Recursive reflection failed: %s", e)
 
     def _llm_call(self, text: str, max_tokens: int = 80,
-                  system: str = "", use_main_rlm: bool = False) -> str:
+                  system: str = "", use_main_rlm: bool = False,
+                  slim_proprio: bool = False) -> str:
         """Make a lightweight LLM call with automatic proprioception injection.
 
         Every LLM call receives Frank's current body state as background context.
         This is proprioception — Frank always knows how he feels without asking.
+        slim_proprio=True strips AURA/QR data to prevent fixation on system metrics.
         """
         if not system:
             system = (
@@ -2564,7 +2612,7 @@ class ConsciousnessDaemon:
             )
 
         # Inject proprioception — passive background awareness
-        proprio = self._build_proprioception()
+        proprio = self._build_proprioception(slim=slim_proprio)
         text = f"{proprio}\n{text}"
 
         # Try micro-LLM first (doesn't block GPU)

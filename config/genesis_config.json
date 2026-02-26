@@ -1,0 +1,29 @@
+{
+  "emotion_decay_rate": 0.15,
+  "emotion_baseline": 0.3,
+  "max_organisms": 100,
+  "seed_energy": 0.3,
+  "metabolism_cost": 0.03,
+  "energy_cap": 20.0,
+  "senescence_start": 300,
+  "senescence_rate": 0.002,
+  "growth_threshold": 0.5,
+  "reproduction_threshold": 0.7,
+  "crystal_threshold": 0.6,
+  "mutation_rate": 0.08,
+  "stirring_threshold": 0.5,
+  "awakening_threshold": 0.7,
+  "active_threshold": 0.75,
+  "resonance_threshold": 0.5,
+  "emotion_coupling": {
+    "curiosity->boredom": -0.3,
+    "curiosity->drive": 0.4,
+    "frustration->drive": 0.3,
+    "frustration->satisfaction": -0.5,
+    "satisfaction->concern": -0.4,
+    "boredom->curiosity": 0.2,
+    "concern->drive": 0.2,
+    "boredom->drive": -0.2,
+    "satisfaction->boredom": 0.1
+  }
+}

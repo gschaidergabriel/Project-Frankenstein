@@ -206,11 +206,13 @@ class IdeaOrganism:
         if self.energy < 0.05:
             return "die"
 
-        # Can crystallize if mature, sufficient energy, and good fitness
+        # Can crystallize if mature, sufficient energy, good fitness,
+        # AND passes the crystal quality validator (Gate 3)
         if (self.stage == IdeaStage.MATURE and
             self.energy > config.crystal_threshold and
             self.age > 15 and
-            self.average_fitness > 0.45):
+            self.average_fitness > 0.45 and
+            self._validate_crystal()):
             return "crystallize"
 
         # Can grow if enough energy
@@ -227,10 +229,16 @@ class IdeaOrganism:
 
         return "survive"
 
+    # Approaches considered generic (no real plan)
+    _GENERIC_APPROACHES = {"optimization", "refactoring", "unknown", "config_change"}
+
     def calculate_fitness(self, environment: Dict) -> float:
         """
         Calculate how well this idea fits the current environment.
         This is NATURAL SELECTION!
+
+        Includes specificity bonus: specific proposals survive longer,
+        generic ones die faster. Evolution optimizes toward quality.
         """
         fitness = 0.0
         factors = 0
@@ -280,7 +288,94 @@ class IdeaOrganism:
         if self.stage == IdeaStage.SEED and self.age > 10:
             fitness *= 0.9
 
-        return fitness / max(factors, 1)
+        base_fitness = fitness / max(factors, 1)
+
+        # ── Specificity bonus/malus ──
+        # Specific proposals get a survival advantage over generic ones
+        specificity = self._calculate_specificity()
+        # Range: -0.15 (very generic) to +0.15 (very specific)
+        base_fitness += (specificity - 0.5) * 0.3
+
+        return max(0.0, base_fitness)
+
+    def _calculate_specificity(self) -> float:
+        """
+        Score how specific/actionable this idea is (0.0-1.0).
+        Used for fitness bonus AND crystal validation.
+        """
+        score = 0.0
+        total = 4.0
+
+        # 1. Target has function name or line number (not just file)?
+        target = self.genome.target
+        if ":" in target:
+            score += 1.0  # e.g. "services/foo.py:bar_func" or "foo.py:123"
+        elif "/" in target:
+            score += 0.3  # At least has path context
+
+        # 2. Approach is concrete (not generic)?
+        if self.genome.approach not in self._GENERIC_APPROACHES:
+            score += 1.0  # e.g. "parallel", "new_tool", "lazy_load"
+        else:
+            score += 0.0  # "optimization", "refactoring" = generic
+
+        # 3. Has evidence/metric in metadata?
+        meta = self.genome.metadata
+        if meta.get("evidence") or meta.get("metric"):
+            score += 1.0
+        elif meta.get("detail") and len(meta.get("detail", "")) > 15:
+            score += 0.5  # Some detail is better than none
+
+        # 4. Has a concrete check type (from sensor analysis)?
+        if meta.get("check"):
+            score += 1.0
+
+        return score / total
+
+    def _validate_crystal(self) -> bool:
+        """
+        GATE 3: Crystal quality validator.
+        Even if an organism is fit enough to crystallize, it must
+        pass this quality check. Generic ideas stay alive and can
+        mutate toward specificity, but they don't get to crystallize.
+
+        Must score >= 2 out of 4:
+        1. Specific target (has function/line, not just filename)
+        2. Concrete approach (not just "optimization"/"refactoring")
+        3. Has evidence/metric/detail
+        4. Not a known noise pattern
+        """
+        score = 0
+        genome = self.genome
+
+        # 1. Specific target?
+        if ":" in genome.target:
+            score += 1
+        elif genome.idea_type == "fix" and "/" in genome.target:
+            score += 1  # Fix with path context is acceptable
+
+        # 2. Concrete approach?
+        if genome.approach not in self._GENERIC_APPROACHES:
+            score += 1
+
+        # 3. Has evidence/metric?
+        meta = genome.metadata
+        if meta.get("evidence") or meta.get("metric"):
+            score += 1
+        elif meta.get("detail") and len(meta.get("detail", "")) > 10:
+            score += 1
+
+        # 4. Not noise?
+        noise_patterns = {"gtk_widget", "systemctl", "timed out", "Restart FAILED"}
+        target_lower = genome.target.lower()
+        if not any(noise in target_lower for noise in noise_patterns):
+            score += 1
+
+        passed = score >= 2
+        if not passed:
+            LOG.debug(f"Crystal rejected (quality={score}/4): "
+                     f"{genome.idea_type}/{genome.target}/{genome.approach}")
+        return passed
 
     def can_grow(self) -> bool:
         """Check if organism can grow to next stage."""

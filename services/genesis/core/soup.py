@@ -62,6 +62,10 @@ class PrimordialSoup:
         # History for analysis
         self.history: List[Dict] = []
 
+        # Persistent dedup: signatures of observations we've already seen
+        # Survives across restarts via state serialization
+        self._seen_signatures: set = set()
+
         # Periodic culling counter
         self._tick_count = 0
 
@@ -301,18 +305,82 @@ class PrimordialSoup:
                 dist[t] = dist.get(t, 0) + 1
             return dist
 
+    # ── Noise patterns that should never enter the soup ──
+    _NOISE_TARGETS = {"test", "tests/", "test_", "__pycache__", ".pyc"}
+    _GENERIC_APPROACHES = {"optimization", "refactoring", "unknown"}
+
+    def _validate_observation(self, observation: Dict) -> bool:
+        """
+        GATE 1: Schema validation. Observations must have substance.
+        Returns True if observation is worth seeding.
+        """
+        target = observation.get("target", "")
+        approach = observation.get("approach", "")
+        detail = observation.get("detail", "")
+        metric = observation.get("metric", "")
+        evidence = observation.get("evidence", "")
+        check = observation.get("check", "")
+
+        # Hard reject: no target at all
+        if not target or target == "unknown":
+            return False
+
+        # Hard reject: test files (low priority, not production issues)
+        if any(noise in target.lower() for noise in self._NOISE_TARGETS):
+            return False
+
+        # Score the observation quality
+        quality = 0
+
+        # Has function/line specificity (not just "datei.py")?
+        if ":" in target or "." in target.split("/")[-1].split(":")[0]:
+            quality += 1  # e.g. "services/foo.py:bar" or "foo.py:123"
+
+        # Has concrete approach (not just "optimization")?
+        if approach and approach not in self._GENERIC_APPROACHES:
+            quality += 1
+
+        # Has metric or evidence?
+        if metric or evidence or (detail and len(detail) > 10):
+            quality += 1
+
+        # Has a concrete check type from a sensor?
+        if check:
+            quality += 1
+
+        # Must score at least 2 out of 4
+        if quality < 2:
+            LOG.debug(f"Observation rejected (quality={quality}/4): "
+                     f"{observation.get('type')}/{target}/{approach}")
+            return False
+
+        return True
+
     def inject_observation(self, observation: Dict):
         """
         Inject an observation as a potential seed.
         Observations from sensors become seeds.
-        Deduplicates: won't inject if same type+target+approach already exists.
+
+        Three filters:
+        1. Schema validation (quality gate)
+        2. Persistent dedup (seen-signatures set)
+        3. Live organism/crystal dedup
         """
+        # GATE 1: Schema validation
+        if not self._validate_observation(observation):
+            return
+
         obs_type = observation.get("type", "optimization")
         obs_target = observation.get("target", "unknown")
         obs_approach = observation.get("approach", "unknown")
+        signature = f"{obs_type}/{obs_target}/{obs_approach}"
 
-        # Dedup: skip if we already have enough of this exact type+target+approach
+        # Dedup: check persistent signature set first (fast path)
         with self.lock:
+            if signature in self._seen_signatures:
+                return
+
+            # Also check live organisms + crystals
             existing = sum(
                 1 for o in self.organisms
                 if o.genome.idea_type == obs_type
@@ -326,9 +394,15 @@ class PrimordialSoup:
                 and c.genome.approach == obs_approach
             )
             if existing + crystal_existing >= 1:
-                LOG.debug(f"Skipping duplicate seed: {obs_type}/{obs_target}/{obs_approach} "
-                         f"(already {existing} organisms + {crystal_existing} crystals)")
+                self._seen_signatures.add(signature)
                 return
+
+            # Mark as seen
+            self._seen_signatures.add(signature)
+            # Cap the set size to prevent unbounded growth
+            if len(self._seen_signatures) > 5000:
+                sigs = list(self._seen_signatures)
+                self._seen_signatures = set(sigs[len(sigs)//2:])
 
         # Create genome from observation
         _META_KEYS = ("detail", "check", "exc_type", "location", "error_count")
@@ -375,6 +449,7 @@ class PrimordialSoup:
                 },
                 "total_births": self.total_births,
                 "total_deaths": self.total_deaths,
+                "seen_signatures": list(self._seen_signatures),
             }
 
     def from_dict(self, data: Dict):
@@ -384,6 +459,7 @@ class PrimordialSoup:
             self.crystals = [IdeaOrganism.from_dict(c) for c in data.get("crystals", [])]
             self.total_births = data.get("total_births", 0)
             self.total_deaths = data.get("total_deaths", 0)
+            self._seen_signatures = set(data.get("seen_signatures", []))
 
             stats = data.get("stats", {})
             self.stats.births = stats.get("births", 0)

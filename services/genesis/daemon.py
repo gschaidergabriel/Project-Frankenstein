@@ -183,23 +183,29 @@ class GenesisDaemon:
 
     def _main_loop(self):
         """The main daemon loop."""
-        watchdog_counter = 0
+        last_watchdog = time.monotonic()
 
         while self.running:
             try:
+                # Pet watchdog before tick (sensors can block 30+s)
+                now = time.monotonic()
+                if now - last_watchdog >= 25:
+                    sd_notify("WATCHDOG=1")
+                    sd_notify(f"STATUS=State: {self.state.value}, Tick: {self.tick_count}")
+                    last_watchdog = now
+
                 # Get tick interval based on state
                 interval = self._get_tick_interval()
 
                 # Run one tick
                 self._tick()
 
-                # Notify systemd watchdog every few ticks
-                # WatchdogSec=120, so we notify every ~30s to be safe
-                watchdog_counter += interval
-                if watchdog_counter >= 30:
+                # Pet watchdog after tick too
+                now = time.monotonic()
+                if now - last_watchdog >= 25:
                     sd_notify("WATCHDOG=1")
                     sd_notify(f"STATUS=State: {self.state.value}, Tick: {self.tick_count}")
-                    watchdog_counter = 0
+                    last_watchdog = now
 
                 # Sleep
                 time.sleep(interval)
@@ -278,6 +284,9 @@ class GenesisDaemon:
 
             except Exception as e:
                 LOG.warning(f"Sensor {sensor.name} error: {e}")
+
+            # Pet watchdog between sensors (some block 30+s)
+            sd_notify("WATCHDOG=1")
 
     def _update_state(self):
         """Update contemplation state based on conditions."""

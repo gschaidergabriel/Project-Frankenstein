@@ -73,7 +73,9 @@ class ErrorTremor(BaseSensor):
         super().__init__("error_tremor")
 
         # Track what we've read per log file
+        # Initialized to current file sizes so we only scan NEW content
         self.last_positions: Dict[str, int] = {}
+        self._init_offsets = True  # Seek to EOF on first scan
 
         # Structured error records
         self.recent_errors: List[Dict] = []
@@ -234,6 +236,19 @@ class ErrorTremor(BaseSensor):
     def _scan_logs(self) -> List[Dict]:
         """Scan all known log files for new errors."""
         new_errors = []
+
+        # On first scan after startup, seek all logs to EOF
+        # so we only catch NEW errors, not historical ones
+        if self._init_offsets:
+            self._init_offsets = False
+            for log_path in self._known_logs:
+                if log_path.exists() and log_path.name not in _SKIP_LOG_FILES:
+                    try:
+                        self.last_positions[str(log_path)] = log_path.stat().st_size
+                    except OSError:
+                        pass
+            LOG.info("ErrorTremor: initialized log offsets to EOF (skipping historical errors)")
+            return new_errors
 
         for log_path in self._known_logs:
             if not log_path.exists():

@@ -31,6 +31,37 @@ _TB_FILE_RE = re.compile(r'^\s+File "([^"]+)", line (\d+), in (\S+)')
 # Regex for exception lines (e.g. "ValueError: something went wrong")
 _EXCEPTION_RE = re.compile(r'^(\w+(?:\.\w+)*(?:Error|Exception|Warning|Interrupt))\s*:\s*(.+)')
 
+# ── Noise Filters ────────────────────────────────────────────────
+# Log files to skip entirely (removed/irrelevant components)
+_SKIP_LOG_FILES = {
+    "live_wallpaper.log",
+    "neural_cybercore.log",
+    "wallpaper_events.log",
+}
+
+# Substrings in log paths — skip any log whose path contains these
+_SKIP_PATH_FRAGMENTS = {"live_wallpaper"}
+
+# Lines matching ANY of these regexes are noise, not actionable bugs
+_NOISE_PATTERNS = [
+    re.compile(r'Gtk-CRITICAL', re.I),
+    re.compile(r'Gtk-WARNING', re.I),
+    re.compile(r'Gdk-CRITICAL', re.I),
+    re.compile(r'Gdk-WARNING', re.I),
+    re.compile(r'GLib-CRITICAL', re.I),
+    re.compile(r'GLib-GObject-WARNING', re.I),
+    re.compile(r"gtk_widget_measure.*assertion.*failed"),
+    re.compile(r"timed out after \d+ sec"),            # systemctl timeouts
+    re.compile(r"Max restarts.*reached, giving up"),   # watchdog restart spam
+    re.compile(r"Restart command succeeded but service not active"),
+    re.compile(r"DeprecationWarning"),
+    re.compile(r"ResourceWarning"),
+    re.compile(r"RuntimeWarning.*found in sys\.modules"),
+]
+
+# Traceback file paths — skip tracebacks originating from removed code
+_SKIP_TB_PATHS = {"live_wallpaper", "neural_cybercore"}
+
 
 class ErrorTremor(BaseSensor):
     """
@@ -155,6 +186,12 @@ class ErrorTremor(BaseSensor):
             exc_type = parts[0]
             location = parts[1] if len(parts) > 1 else "unknown"
 
+            # Skip observations from removed/noisy sources
+            if any(frag in location for frag in _SKIP_PATH_FRAGMENTS | _SKIP_TB_PATHS):
+                continue
+            if any(np.search(freq_key) for np in _NOISE_PATTERNS):
+                continue
+
             # Choose approach based on error type
             if any(kw in exc_type.lower() for kw in ("timeout", "connection", "socket")):
                 approach = "config_change"
@@ -202,6 +239,12 @@ class ErrorTremor(BaseSensor):
             if not log_path.exists():
                 continue
 
+            # Skip excluded log files
+            if log_path.name in _SKIP_LOG_FILES:
+                continue
+            if any(frag in str(log_path) for frag in _SKIP_PATH_FRAGMENTS):
+                continue
+
             try:
                 path_key = str(log_path)
                 last_pos = self.last_positions.get(path_key, 0)
@@ -239,10 +282,21 @@ class ErrorTremor(BaseSensor):
         while i < len(lines):
             line = lines[i]
 
+            # Skip noise lines (Gtk-CRITICAL, systemctl timeouts, etc.)
+            if any(np.search(line) for np in _NOISE_PATTERNS):
+                i += 1
+                continue
+
             # Check for "Traceback (most recent call last):" to start TB capture
             if "Traceback (most recent call last)" in line:
                 tb_error = self._extract_traceback(lines, i, log_path)
                 if tb_error:
+                    # Skip tracebacks from removed code
+                    tb_file = tb_error.get("tb_file", "")
+                    if any(frag in tb_file for frag in _SKIP_TB_PATHS):
+                        i += tb_error.get("_lines_consumed", 1)
+                        continue
+
                     errors.append(tb_error)
                     self.recent_errors.append(tb_error)
                     self.error_count_window.append(datetime.now())

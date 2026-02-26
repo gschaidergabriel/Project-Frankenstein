@@ -1,5 +1,5 @@
 {
-  "emotion_decay_rate": 0.15,
+  "emotion_decay_rate": 0.25,
   "emotion_baseline": 0.3,
   "max_organisms": 100,
   "seed_energy": 0.3,
@@ -11,9 +11,9 @@
   "reproduction_threshold": 0.7,
   "crystal_threshold": 0.6,
   "mutation_rate": 0.08,
-  "stirring_threshold": 0.5,
-  "awakening_threshold": 0.7,
-  "active_threshold": 0.75,
+  "stirring_threshold": 0.4,
+  "awakening_threshold": 0.55,
+  "active_threshold": 0.65,
   "resonance_threshold": 0.5,
   "emotion_coupling": {
     "curiosity->boredom": -0.3,
@@ -25,5 +25,7 @@
     "concern->drive": 0.2,
     "boredom->drive": -0.2,
     "satisfaction->boredom": 0.1
-  }
+  },
+  "max_cpu_for_awakening": 0.5,
+  "max_cpu_for_active": 0.7
 }

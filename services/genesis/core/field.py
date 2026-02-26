@@ -60,11 +60,15 @@ class MotivationalField:
         Apply wave contributions from the WaveBus.
         This is how sensory input affects the field.
         """
+        # Cap total contribution per emotion per tick to ±0.1
+        MAX_WAVE_PER_TICK = 0.1
+
         for emotion, contribution in contributions.items():
             if hasattr(self, emotion):
                 current = getattr(self, emotion)
+                clamped = max(-MAX_WAVE_PER_TICK, min(MAX_WAVE_PER_TICK, contribution))
                 # Waves add to emotion, but with diminishing returns
-                new_value = current + contribution * (1 - current * 0.5)
+                new_value = current + clamped * (1 - current * 0.5)
                 setattr(self, emotion, min(1.0, max(0.0, new_value)))
 
     def evolve(self, dt: float = 1.0):

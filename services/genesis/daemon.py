@@ -263,8 +263,8 @@ class GenesisDaemon:
             elif self.state == ContemplationState.REFLECTING:
                 self._process_reflecting()
 
-            # 6. Periodic maintenance
-            if self.tick_count % 100 == 0:
+            # 6. Periodic maintenance (every 50 ticks for fresher state snapshots)
+            if self.tick_count % 50 == 0:
                 self._maintenance()
 
     def _sense(self):
@@ -299,6 +299,10 @@ class GenesisDaemon:
         system_load = 0.5
         if user_sensor:
             user_active = user_sensor.is_user_active()
+
+        # One-time override: GENESIS_FORCE_ACTIVE=1 bypasses user-idle check
+        if os.environ.get("GENESIS_FORCE_ACTIVE") == "1":
+            user_active = False
         if system_sensor:
             metrics = system_sensor.get_current_metrics()
             system_load = metrics.get("cpu", 0.5)
@@ -647,9 +651,8 @@ class GenesisDaemon:
 
     def _maintenance(self):
         """Periodic maintenance tasks."""
-        # Save state
-        if self.tick_count % 500 == 0:
-            self._save_state()
+        # Save state every maintenance call (every 50 ticks)
+        self._save_state()
 
         # Clean up old data
         if len(self.stats["state_history"]) > 1000:

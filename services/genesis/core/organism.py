@@ -500,6 +500,7 @@ class IdeaOrganism:
                 "origin": self.genome.origin,
                 "feature_id": self.genome.feature_id,
                 "traits": self.genome.traits,
+                "metadata": self.genome.metadata,
                 "mutations": self.genome.mutations,
             },
             "energy": self.energy,
@@ -522,6 +523,7 @@ class IdeaOrganism:
             origin=genome_data.get("origin", "spontaneous"),
             feature_id=genome_data.get("feature_id"),
             traits=genome_data.get("traits", {}),
+            metadata=genome_data.get("metadata", {}),
             mutations=genome_data.get("mutations", 0),
         )
 

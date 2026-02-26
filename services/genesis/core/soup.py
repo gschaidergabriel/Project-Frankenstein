@@ -405,7 +405,8 @@ class PrimordialSoup:
                 self._seen_signatures = set(sigs[len(sigs)//2:])
 
         # Create genome from observation
-        _META_KEYS = ("detail", "check", "exc_type", "location", "error_count")
+        _META_KEYS = ("detail", "check", "exc_type", "location", "error_count",
+                      "metric", "evidence")
         genome = IdeaGenome(
             idea_type=obs_type,
             target=obs_target,

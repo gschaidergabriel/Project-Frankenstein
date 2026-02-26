@@ -91,23 +91,55 @@ class CodeAnalyzer(BaseSensor):
 
         return waves
 
+    # Map check types to concrete approaches
+    _CHECK_APPROACHES = {
+        "long_function": "split_function",
+        "bare_except": "add_exception_type",
+        "nested_try": "flatten_error_handling",
+        "duplicate_name": "rename_or_remove_duplicate",
+        "todo_comment": "implement_todo",
+        "file_too_long": "extract_module",
+    }
+
     def get_observations(self) -> List[Dict[str, Any]]:
-        """Return un-emitted findings as observations for the soup."""
+        """Return un-emitted findings as observations for the soup.
+
+        Each observation includes:
+        - target: file:function or file:line (specific)
+        - metric: what exactly is wrong (measurable)
+        - evidence: the detail string from AST analysis
+        - approach: concrete fix strategy (not generic "refactoring")
+        - check: sensor check type for tracking
+        """
         observations = []
         for key, finding in self._findings.items():
             if key in self._emitted_keys:
                 continue
+
+            target = finding["target"]
+
+            # Skip test files — not production issues
+            if any(t in target.lower() for t in ("test", "tests/", "test_")):
+                self._emitted_keys.add(key)
+                continue
+
+            check = finding.get("check", "")
+            detail = finding.get("detail", "")
+            approach = self._CHECK_APPROACHES.get(check, "refactoring")
+
             obs = {
                 "type": finding["obs_type"],
-                "target": finding["target"],
-                "approach": "refactoring",
+                "target": target,
+                "approach": approach,
                 "origin": "code_analysis",
                 "strength": finding.get("strength", 0.5),
                 "novelty": 0.6,
                 "risk": 0.2,
                 "impact": finding.get("impact", 0.5),
-                "detail": finding.get("detail", ""),
-                "check": finding.get("check", ""),
+                "detail": detail,
+                "check": check,
+                "metric": detail,      # e.g. "bar_func() is 120 lines"
+                "evidence": f"AST analysis: {check} in {target}",
             }
             observations.append(obs)
             self._emitted_keys.add(key)

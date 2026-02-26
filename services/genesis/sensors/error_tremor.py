@@ -202,13 +202,16 @@ class ErrorTremor(BaseSensor):
 
             observations.append({
                 "type": "fix",
-                "target": f"{exc_type} in {location}",
+                "target": f"{location}:{exc_type}",
                 "approach": approach,
                 "origin": "error_analysis",
                 "strength": min(1.0, count / 10),
                 "novelty": 0.4,
                 "risk": 0.3,
                 "impact": 0.7,
+                "check": "recurring_error",
+                "metric": f"{count} occurrences in last hour",
+                "evidence": f"{exc_type}: recurring {count}x in {location}",
             })
 
         return observations

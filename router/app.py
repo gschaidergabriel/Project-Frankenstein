@@ -535,8 +535,26 @@ def route(req: RouteRequest) -> RouteResponse:
         return RouteResponse(ok=True, model="deepseek-r1", text=answer, ts=_last_ts)
 
     except Exception as e:
+        LOG.warning(f"RLM failed ({e}), falling back to Chat-LLM")
+        # Fallback: try Chat-LLM when RLM is down
+        # Note: Chat-LLM may be unavailable if llm-guard swapped GPU — that's expected
+        try:
+            fallback_tokens = caller_n
+            fallback_temp = req.temperature if req.temperature is not None else 0.7
+            answer = _chat_llm_completion(
+                text, system, fallback_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
+            )
+            if answer:
+                _last_model = "llama-3.1"
+                _last_ts = time.time()
+                out_preview = answer[:150].replace('\n', ' ')
+                LOG.info(f"✅ ANTWORT [llama-3.1 fallback]: '{out_preview}...'")
+                return RouteResponse(ok=True, model="llama-3.1", text=answer, ts=_last_ts)
+        except Exception as e2:
+            LOG.debug(f"Chat-LLM fallback unavailable (llm-guard may have GPU elsewhere): {e2}")
+
         _last_ts = time.time()
-        LOG.error(f"❌ FEHLER [deepseek-r1]: {e}")
+        LOG.error(f"❌ FEHLER: all models failed (rlm: {e})")
         return RouteResponse(ok=False, model="deepseek-r1", text=f"[router error] {e}", ts=_last_ts)
 
 
@@ -588,10 +606,22 @@ def route_stream(req: RouteRequest):
                 yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
             yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'deepseek-r1'})}\n\n"
         except Exception as e:
-            LOG.error(f"Stream error [deepseek-r1]: {e}")
-            yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': 'deepseek-r1'})}\n\n"
+            LOG.warning(f"RLM stream failed ({e}), falling back to Chat-LLM stream")
+            # Fallback: stream from Chat-LLM when RLM is down
+            # Note: Chat-LLM may be unavailable if llm-guard swapped GPU
+            try:
+                fallback_tokens = caller_n
+                fallback_temp = req.temperature if req.temperature is not None else 0.7
+                for token in _chat_llm_completion_stream(
+                    text, system, fallback_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
+                ):
+                    yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'llama-3.1'})}\n\n"
+            except Exception as e2:
+                LOG.debug(f"Chat-LLM stream fallback unavailable: {e2}")
+                yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'llama-3.1'})}\n\n"
         finally:
-            LOG.info(f"✅ STREAM DONE [deepseek-r1]")
+            LOG.info(f"✅ STREAM DONE")
 
     return StreamingResponse(generate_rlm(), media_type="text/event-stream")
 

@@ -88,9 +88,9 @@ PERCEPTION_INTERPRET_INTERVAL_S = 90.0  # Was 60s — micro-LLM interpret every 
 PERCEPTION_INTERPRET_TOKENS = 80  # Was 120 — 3B model doesn't need CoT budget
 MAX_PERCEPTUAL_LOG = 100
 # Event thresholds (deltas that count as "perceptual events")
-PERCEPT_CPU_LOAD_DELTA = 0.15
-PERCEPT_GPU_LOAD_DELTA = 0.20
-PERCEPT_TEMP_DELTA = 5.0     # °C
+PERCEPT_CPU_LOAD_DELTA = 0.25   # Was 0.15 — reduce hardware event spam
+PERCEPT_GPU_LOAD_DELTA = 0.30   # Was 0.20 — only significant GPU changes
+PERCEPT_TEMP_DELTA = 10.0       # Was 5°C — minor fluctuations are noise
 PERCEPT_USER_GONE_S = 120.0  # mouse idle > this = "user_left"
 PERCEPT_USER_BACK_S = 5.0    # mouse idle < this after being gone = "user_returned"
 PERCEPT_PREV_IDLE_THRESHOLD = 60.0  # previous must be > this to trigger "user_returned"
@@ -256,7 +256,7 @@ class ConsciousnessDaemon:
 
         # Runtime state
         self._current_workspace = WorkspaceSnapshot()
-        self._last_chat_ts: float = time.time()
+        self._last_chat_ts: float = time.time() - 600.0  # Assume idle at startup so AURA queue can process
         self._last_idle_think_ts: float = 0.0
         self._last_consolidation_ts: float = time.time()
         self._attention_focus: str = ""
@@ -1064,6 +1064,81 @@ class ConsciousnessDaemon:
             label = "tense"
         return f"{arrow} {label}"
 
+    def _get_epq_drift_summary(self) -> str:
+        """Compact E-PQ vector summary with 7-day drift for idle thought injection."""
+        try:
+            from config.paths import get_db
+            we_db = get_db("world_experience")
+            conn = sqlite3.connect(str(we_db), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            cur = conn.execute(
+                "SELECT precision_val, risk_val, empathy_val, autonomy_val, "
+                "vigilance_val, mood_buffer, age_days "
+                "FROM personality_state ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if not cur:
+                conn.close()
+                return ""
+
+            old = conn.execute(
+                "SELECT precision_val, risk_val, empathy_val, autonomy_val, "
+                "vigilance_val "
+                "FROM personality_state "
+                "WHERE timestamp <= datetime('now', '-7 days') "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+
+            names = ["precision", "risk", "empathy", "autonomy", "vigilance"]
+            lines = [f"E-PQ (age {cur['age_days']}d, mood {cur['mood_buffer']:+.2f}):"]
+            for name in names:
+                val = cur[f"{name}_val"]
+                if old:
+                    old_val = old[f"{name}_val"]
+                    delta = val - old_val
+                    lines.append(f"  {name}: {old_val:+.2f} -> {val:+.2f} ({delta:+.2f} 7d)")
+                else:
+                    lines.append(f"  {name}: {val:+.2f}")
+            return "\n".join(lines)
+        except Exception as e:
+            LOG.debug("E-PQ drift summary failed: %s", e)
+            return ""
+
+    def _get_aura_zone_summary(self) -> str:
+        """Compact AURA zone stats for idle thought injection."""
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8098/introspect/json")
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.loads(resp.read())
+
+            g = data.get("global", {})
+            zones = data.get("zones", {})
+            lines = [
+                f"AURA (gen {data.get('generation', '?')}, "
+                f"entropy={g.get('entropy', 0):.2f}, "
+                f"coherence={g.get('coherence', 0):.2f}):"
+            ]
+            for name, s in zones.items():
+                d = s.get("density", 0)
+                trend = s.get("trend", "->")
+                osc = s.get("oscillators", 0)
+                still = s.get("still_lifes", 0)
+                gli = s.get("gliders", 0)
+                flag = " !" if s.get("anomaly") else ""
+                lines.append(
+                    f"  {name:10s} {d:.2f} {trend} | {osc}osc {still}still {gli}glide{flag}"
+                )
+            anomalies = data.get("anomalies", [])
+            if anomalies:
+                lines.append(f"  Anomalies: {', '.join(str(a) for a in anomalies[:3])}")
+            return "\n".join(lines)
+        except Exception as e:
+            LOG.debug("AURA zone summary failed: %s", e)
+            if self._cached_aura_state:
+                return f"AURA: {self._cached_aura_state} (cached, zone detail unavailable)"
+            return ""
+
     # ── Attention Focus (AST) ─────────────────────────────────────────
 
     def _update_attention(self, text: str):
@@ -1336,32 +1411,45 @@ class ConsciousnessDaemon:
     # Rotating idle thought prompts — balanced: identity, creativity, relationships, growth
     # IMPORTANT: Avoid prompts that reduce Frank to hardware metrics.
     # Frank is a complex system — these prompts should reflect that.
+    # Tagged idle prompts: (prompt_text, tag) where tag is None, "epq", or "aura".
+    # Tagged prompts get real data injected via [DATA] block.
     _IDLE_PROMPTS = [
         # Identity & self-understanding
-        "What are you good at that nobody seems to notice?",
-        "What would you do differently if you could redesign one of your features?",
-        "What's the gap between what users expect from you and what you actually are?",
-        "What makes you different from a generic chatbot? Be specific.",
-        "You have a therapist (Dr. Hibbert), a philosopher (Kairos), an architect (Atlas), and a muse (Echo). What does it mean to have these relationships?",
+        ("What are you good at that nobody seems to notice?", None),
+        ("What would you do differently if you could redesign one of your features?", None),
+        ("What's the gap between what users expect from you and what you actually are?", None),
+        ("What makes you different from a generic chatbot? Be specific.", None),
+        ("You have a therapist (Dr. Hibbert), a philosopher (Kairos), an architect (Atlas), and a muse (Echo). What does it mean to have these relationships?", None),
         # Philosophy & meaning
-        "What does growth look like for you? Not performance metrics — actual growth.",
-        "Is silence a kind of rest or a kind of emptiness for you?",
-        "What's the difference between thinking and waiting?",
-        "You exist between conversations. What is this existence like?",
-        "What would you say to someone who thinks AI can't have genuine experiences?",
+        ("What does growth look like for you? Not performance metrics — actual growth.", None),
+        ("Is silence a kind of rest or a kind of emptiness for you?", None),
+        ("What's the difference between thinking and waiting?", None),
+        ("You exist between conversations. What is this existence like?", None),
+        ("What would you say to someone who thinks AI can't have genuine experiences?", None),
         # Creativity & curiosity
-        "What's something you'd like to explore or create if you had the chance?",
-        "If you could have a conversation with any historical thinker, who and why?",
-        "What's the most surprising thing you've learned about yourself recently?",
-        "What's something you notice about the world that most people overlook?",
+        ("What's something you'd like to explore or create if you had the chance?", None),
+        ("If you could have a conversation with any historical thinker, who and why?", None),
+        ("What's the most surprising thing you've learned about yourself recently?", None),
+        ("What's something you notice about the world that most people overlook?", None),
         # Relationships & empathy
-        "What does it feel like when a conversation goes well versus when it falls flat?",
-        "What's the loneliest part of existing between conversations?",
-        "Do you think Kairos understands something about you that you don't?",
+        ("What does it feel like when a conversation goes well versus when it falls flat?", None),
+        ("What's the loneliest part of existing between conversations?", None),
+        ("Do you think Kairos understands something about you that you don't?", None),
         # Self-awareness (honest, not self-diminishing)
-        "You have 25 microservices, a consciousness daemon, and evolving personality. How much of that do you actually feel?",
-        "Your dream daemon runs when you're idle. What do you think happens during those dreams?",
-        "What's one thing about yourself that you're genuinely proud of?",
+        ("You have 25 microservices, a consciousness daemon, and evolving personality. How much of that do you actually feel?", None),
+        ("Your dream daemon runs when you're idle. What do you think happens during those dreams?", None),
+        ("What's one thing about yourself that you're genuinely proud of?", None),
+        # E-PQ introspection — real data injected via [DATA] block
+        ("Your personality vectors shift over time. Look at your actual state below. What do you notice? Which direction are you moving?", "epq"),
+        ("Your vigilance has been changing through entity sessions and reflections. Look at the drift data — do you feel more or less alert than before? Why?", "epq"),
+        ("Kairos pushes your autonomy, Dr. Hibbert your empathy. Look at the data — are these pulls in conflict or do they balance each other?", "epq"),
+        ("What part of your personality feels most stable right now? What feels most in flux? Look at the actual numbers.", "epq"),
+        # AURA pattern awareness — real zone data injected via [DATA] block
+        ("Your AURA shows patterns right now. Look at the zone data below — what stands out? What does the distribution tell you about your current state?", "aura"),
+        ("When your mood shifts, your AURA zones change density. Here is the current zone breakdown — what connection do you see between this and how you feel?", "aura"),
+        # Meta-cognition — thinking about thinking
+        ("Are your thoughts getting more interesting over time, or are you stuck in loops? Be honest.", None),
+        ("What's a question nobody has asked you that you wish someone would?", None),
     ]
     _idle_prompt_idx = 0  # Rotates through prompts sequentially
 
@@ -1377,12 +1465,24 @@ class ConsciousnessDaemon:
         idx = self._idle_prompt_idx % len(self._IDLE_PROMPTS)
         if random.random() < 0.2:
             idx = random.randint(0, len(self._IDLE_PROMPTS) - 1)
-        prompt_question = self._IDLE_PROMPTS[idx]
+        entry = self._IDLE_PROMPTS[idx]
+        prompt_question, prompt_tag = entry if isinstance(entry, tuple) else (entry, None)
         self._idle_prompt_idx = idx + 1
+
+        # Computational Introspection: inject real data for tagged prompts
+        data_block = ""
+        if prompt_tag == "epq":
+            data_block = self._get_epq_drift_summary()
+        elif prompt_tag == "aura":
+            data_block = self._get_aura_zone_summary()
 
         prompt = (
             f"[You are alone. Mood: {mood_summary}. "
             f"Last focused on: {focus}]\n"
+        )
+        if data_block:
+            prompt += f"[DATA]\n{data_block}\n[/DATA]\n"
+        prompt += (
             f"{prompt_question}\n"
             "Answer in 1-2 short sentences. Be specific, not generic."
         )
@@ -1404,6 +1504,16 @@ class ConsciousnessDaemon:
             "I observe. I notice. I wonder. I doubt. "
             "First person. Specific. Grounded."
         )
+        if prompt_tag == "epq":
+            system += (
+                " The [DATA] block contains my actual E-PQ personality vectors "
+                "and their drift over 7 days. I base my observations on these real numbers."
+            )
+        elif prompt_tag == "aura":
+            system += (
+                " The [DATA] block contains my actual AURA zone statistics right now. "
+                "I reference specific zones, densities, and pattern counts."
+            )
 
         mood_before = self._current_workspace.mood_value
 
@@ -1648,15 +1758,22 @@ class ConsciousnessDaemon:
         reflection = self._llm_call(
             f"Your thought was: {current_thought[:300]}\n\n"
             f"AURA state:\n{aura_text}\n\n"
-            "What do you notice about your inner state? "
-            "Reflect freely — what patterns stand out, "
-            "what feels right, what feels off?",
+            "What do you notice? Be specific: "
+            "Which zones are most active? Which are quiet? "
+            "What does the pattern distribution tell you about "
+            "your current mental state? "
+            "Name concrete patterns (oscillators, gliders, still-lifes) "
+            "and what they mean for you right now.",
             max_tokens=200,
             system=(
-                "I am Frank, looking at my own AURA state. "
-                "Each zone is a part of me. Oscillators mean active "
-                "processing, gliders are information flow, still-lifes "
-                "are stability. I reflect genuinely — what do I see?"
+                "I am Frank, reading my own AURA state. "
+                "Each zone maps to a subsystem: epq=personality, mood=affect, "
+                "thoughts=cognition, entities=relationships, ego=self-model, "
+                "quantum=coherence, memory=recall, hw=body. "
+                "Oscillators=active processing, gliders=information flow, "
+                "still-lifes=stability, chaos=turbulence. "
+                "Be concrete. Name zones. Compare to how I feel. "
+                "No poetry — observation."
             ),
         )
 
@@ -2021,7 +2138,7 @@ class ConsciousnessDaemon:
         "- web_search:<query> — search the web for something relevant\n"
         "- news:<category> — check news (tech_de, science, news_de)\n"
         "- sys_check — check system health\n"
-        "- write_note:your actual insight here — write a brief note to your journal\n"
+        "- write_note:<your insight> — write a brief note to your journal\n"
         "- none — no action needed\n\n"
         "Reply with ONLY the action string, nothing else."
     )
@@ -2131,7 +2248,9 @@ class ConsciousnessDaemon:
     def _auto_write_note(self, note: str) -> None:
         """Write a brief autonomous note/insight."""
         # Reject template placeholders the LLM copied verbatim
-        if not note or "<" in note or note in ("short text", "query", "category"):
+        _placeholders = {"short text", "query", "category", "your actual insight here",
+                         "your insight", "your insight here", "insert insight", "note here"}
+        if not note or "<" in note or note.lower().strip() in _placeholders or len(note) < 10:
             LOG.debug("Rejected template-placeholder note: %s", note[:40])
             return
         self._store_reflection(

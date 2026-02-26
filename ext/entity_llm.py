@@ -171,14 +171,14 @@ def generate_entity(
         LOG.info("Entity '%s' got %d chars from RLM", entity, len(result))
         return result
 
-    # Fallback: Chat-LLM (CPU)
-    LOG.warning("Entity '%s' RLM unavailable, falling back to Chat-LLM (CPU)", entity)
+    # Fallback: Chat-LLM (may be unavailable if llm-guard swapped GPU)
+    LOG.info("Entity '%s' RLM unavailable, trying Chat-LLM fallback", entity)
     result = _chat_llm_generate(prompt, system, n_predict=tokens, temperature=temperature)
     if result:
         LOG.info("Entity '%s' got %d chars from Chat-LLM (fallback)", entity, len(result))
         return result
 
-    LOG.error("Entity '%s' — all LLM backends failed", entity)
+    LOG.warning("Entity '%s' — all LLM backends failed", entity)
     return None
 
 

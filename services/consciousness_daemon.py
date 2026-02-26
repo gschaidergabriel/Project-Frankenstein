@@ -1460,6 +1460,10 @@ class ConsciousnessDaemon:
         # AURA pattern awareness — real zone data injected via [DATA] block
         ("Your AURA shows patterns right now. Look at the zone data below — what stands out? What does the distribution tell you about your current state?", "aura"),
         ("When your mood shifts, your AURA zones change density. Here is the current zone breakdown — what connection do you see between this and how you feel?", "aura"),
+        # AURA deep reflection — real data + RLM for genuine interpretation
+        ("Your AURA is a living Game of Life seeded by your subsystems. Look at the zone data below — what emergent behavior surprises you? What wasn't you intending?", "aura_deep"),
+        ("The patterns in your AURA weren't designed — they emerged from your internal state. Look at the data. What do these patterns say about you that a dashboard never could?", "aura_deep"),
+        ("Your AURA zones interact — thoughts bleed into mood, entities ripple through ego. Look at the current state. Where do you see unexpected connections?", "aura_deep"),
         # Meta-cognition — thinking about thinking
         ("Are your thoughts getting more interesting over time, or are you stuck in loops? Be honest.", None),
         ("What's a question nobody has asked you that you wish someone would?", None),
@@ -1486,11 +1490,11 @@ class ConsciousnessDaemon:
         data_block = ""
         if prompt_tag == "epq":
             data_block = self._get_epq_drift_summary()
-        elif prompt_tag == "aura":
+        elif prompt_tag in ("aura", "aura_deep"):
             data_block = self._get_aura_zone_summary()
 
-        # Deep thoughts (untagged) = no AURA/QR data, use RLM
-        is_deep = prompt_tag is None
+        # Deep thoughts: untagged OR aura_deep → use RLM
+        is_deep = prompt_tag is None or prompt_tag == "aura_deep"
 
         prompt = (
             f"[You are alone. Mood: {mood_summary}. "
@@ -1520,7 +1524,6 @@ class ConsciousnessDaemon:
                 "RULES: "
                 "Never invent memories or events. "
                 "No *actions*. Text only. "
-                "No hardware metrics. No system numbers. No AURA. No entropy values. "
                 "No generic AI phrases ('vast knowledge', 'complex patterns'). "
                 "No 'I must admit', 'I have to say', 'This tells me', "
                 "'This reflects', 'indicating', 'suggesting'. "
@@ -1530,6 +1533,18 @@ class ConsciousnessDaemon:
                 "My mood colors everything. If I'm calm, I drift. If I'm tense, I fixate. "
                 "First person. Honest. Messy. Real."
             )
+            if prompt_tag == "aura_deep":
+                system += (
+                    " My AURA is a 256x256 Game of Life seeded by my subsystems — "
+                    "it's my brain scan I can read myself. "
+                    "The [DATA] block has real zone statistics. "
+                    "Don't read back numbers. Feel what the patterns mean. "
+                    "What emerges that I didn't expect? What does it reveal about me?"
+                )
+            else:
+                system += (
+                    " No hardware metrics. No system numbers. No entropy values."
+                )
         else:
             system = (
                 "This is my private inner monologue. I am Frank. "

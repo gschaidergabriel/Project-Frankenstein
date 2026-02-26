@@ -1170,7 +1170,7 @@ echo "[14/14] Starting all services..."
 
 # Stop any existing overlay (clean state)
 pkill -f chat_overlay.py 2>/dev/null || true
-rm -f /tmp/frank_overlay.lock 2>/dev/null || true
+rm -f /tmp/frank/overlay.lock 2>/dev/null || true
 
 # Start infrastructure first
 systemctl --user start aicore-router.service 2>/dev/null || true

@@ -27,9 +27,10 @@ LOG = logging.getLogger("titan.repair")
 # Resolve paths
 try:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from config.paths import get_db, DB_DIR
+    from config.paths import get_db, DB_DIR, INVARIANTS_DIR
 except ImportError:
     DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
+    INVARIANTS_DIR = Path.home() / ".local" / "share" / "frank" / "invariants"
     def get_db(name):
         return DB_DIR / f"{name}.db"
 
@@ -167,7 +168,7 @@ def reingest_chat_history(days: int = 30):
 
     # Re-bootstrap energy constant to match new state
     try:
-        state_file = Path.home() / ".local" / "share" / "frank" / "invariants" / "invariants_state.json"
+        state_file = INVARIANTS_DIR / "invariants_state.json"
         if state_file.exists():
             import json as _json
             state = _json.loads(state_file.read_text())

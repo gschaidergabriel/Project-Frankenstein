@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F.R.A.N.K. // Web Interface</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Scanline overlay -->
+    <div class="scanlines"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <span class="logo">F<span class="logo-dot">.</span>R<span class="logo-dot">.</span>A<span class="logo-dot">.</span>N<span class="logo-dot">.</span>K<span class="logo-dot">.</span></span>
+            <span class="header-sep">//</span>
+            <span class="header-label">WEB INTERFACE</span>
+        </div>
+        <div class="header-right">
+            <span class="connection-status" id="connStatus">
+                <span class="status-dot" id="connDot"></span>
+                <span id="connText">CONNECTING</span>
+            </span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-grid">
+        <!-- Left: Chat Panel -->
+        <section class="panel chat-panel">
+            <div class="panel-header">
+                <span class="panel-icon">&#x1F4AC;</span>
+                <span class="panel-title">CHAT</span>
+                <span class="panel-subtitle">// NEURAL LINK</span>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages rendered by JS -->
+            </div>
+            <div class="chat-input-area">
+                <div class="input-wrapper">
+                    <textarea id="chatInput" placeholder="Message Frank..." rows="1" autofocus></textarea>
+                    <button class="send-btn" id="sendBtn" title="Send">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Center: AURA Panel -->
+        <section class="panel aura-panel">
+            <div class="panel-header">
+                <span class="panel-icon">&#x1F9EC;</span>
+                <span class="panel-title">AURA</span>
+                <span class="panel-subtitle">// INNER LIFE</span>
+                <span class="aura-gen" id="auraGen">GEN 0</span>
+            </div>
+            <div class="aura-container">
+                <canvas id="auraCanvas" width="256" height="256"></canvas>
+                <canvas id="auraBloom" width="256" height="256"></canvas>
+            </div>
+            <div class="aura-hud">
+                <div class="hud-row">
+                    <div class="hud-item">
+                        <span class="hud-label">MOOD</span>
+                        <div class="hud-bar"><div class="hud-bar-fill mood-bar" id="moodBar"></div></div>
+                        <span class="hud-value" id="moodVal">0.00</span>
+                    </div>
+                    <div class="hud-item">
+                        <span class="hud-label">COHR</span>
+                        <div class="hud-bar"><div class="hud-bar-fill cohr-bar" id="cohrBar"></div></div>
+                        <span class="hud-value" id="cohrVal">0.00</span>
+                    </div>
+                </div>
+                <div class="zone-legend" id="zoneLegend">
+                    <span class="zone-tag" data-zone="epq" style="--zc:#00B3FF">EPQ</span>
+                    <span class="zone-tag" data-zone="mood" style="--zc:#FF8000">Mood</span>
+                    <span class="zone-tag" data-zone="thoughts" style="--zc:#00FF4D">Thoughts</span>
+                    <span class="zone-tag" data-zone="entities" style="--zc:#FF00CC">Entities</span>
+                    <span class="zone-tag" data-zone="ego" style="--zc:#FFD900">Ego</span>
+                    <span class="zone-tag" data-zone="quantum" style="--zc:#00FFFF">Quantum</span>
+                    <span class="zone-tag" data-zone="memory" style="--zc:#B34DFF">Memory</span>
+                    <span class="zone-tag" data-zone="hw" style="--zc:#FF331A">HW</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right: Daemon Log Panel -->
+        <section class="panel log-panel">
+            <div class="panel-header">
+                <span class="panel-icon">&#x1F4DF;</span>
+                <span class="panel-title">DAEMON LOG</span>
+                <span class="panel-subtitle">// ACTIVITY</span>
+            </div>
+            <div class="log-messages" id="logMessages">
+                <!-- Log entries rendered by JS -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-services">
+            <span class="svc-indicator" id="svcCore"><span class="svc-dot"></span>Core</span>
+            <span class="svc-indicator" id="svcLlm"><span class="svc-dot"></span>LLM</span>
+            <span class="svc-indicator" id="svcTools"><span class="svc-dot"></span>Tools</span>
+            <span class="svc-indicator" id="svcAura"><span class="svc-dot"></span>AURA</span>
+        </div>
+        <div class="status-metrics">
+            <span class="metric" id="metricTemp">CPU: --°C</span>
+            <span class="metric-sep">|</span>
+            <span class="metric" id="metricCpu">CPU: --%</span>
+            <span class="metric-sep">|</span>
+            <span class="metric" id="metricGpu">GPU: --%</span>
+            <span class="metric-sep">|</span>
+            <span class="metric" id="metricRam">RAM: --%</span>
+        </div>
+    </footer>
+
+    <script src="/static/aura.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

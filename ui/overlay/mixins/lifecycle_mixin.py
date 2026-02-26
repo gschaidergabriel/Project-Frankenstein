@@ -17,20 +17,18 @@ from overlay.bsn.constants import (
 )
 from overlay.bsn.controller import LayoutController
 
-try:
-    from config.paths import get_state
-    _LAST_MONITOR_FILE = get_state("last_monitor")  # creates parent if needed
-    _SESSION_FILE = get_state("frank_session")
-except ImportError:
-    _LAST_MONITOR_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "last_monitor.json"
-    _SESSION_FILE = Path.home() / ".local" / "share" / "frank" / "state" / "frank_session.json"
+from config.paths import get_state
+_LAST_MONITOR_FILE = get_state("last_monitor")
+_SESSION_FILE = get_state("frank_session")
 try:
     from config.paths import TEMP_FILES as _LM_TF
     USER_CLOSED_SIGNAL = _LM_TF["user_closed"]
     GAMING_LOCK = _LM_TF["gaming_lock"]
+    FULL_SHUTDOWN_SIGNAL = _LM_TF["full_shutdown"]
 except ImportError:
     USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
     GAMING_LOCK = Path("/tmp/frank/gaming_lock")
+    FULL_SHUTDOWN_SIGNAL = Path("/tmp/frank/full_shutdown")
 
 # Shutdown reasons — only USER_INITIATED writes the user_closed signal
 SHUTDOWN_USER = "user_closed"        # User clicked X or tray quit
@@ -93,15 +91,19 @@ class LifecycleMixin:
         reason = getattr(self, '_shutdown_reason', SHUTDOWN_USER)
 
         if reason == SHUTDOWN_USER:
-            # User explicitly closed — tell watchdog NOT to auto-restart
+            # User explicitly closed — full shutdown: stop all services + unload LLMs
             try:
                 USER_CLOSED_SIGNAL.write_text(json.dumps({
                     "timestamp": time.time(),
                     "reason": reason,
                 }))
-                LOG.info(f"User close signal written (reason={reason}) — watchdog will not auto-restart")
+                FULL_SHUTDOWN_SIGNAL.write_text(json.dumps({
+                    "timestamp": time.time(),
+                    "reason": reason,
+                }))
+                LOG.info(f"Full shutdown signal written — all services + LLMs will stop")
             except Exception as e:
-                LOG.debug(f"Failed to write user-close signal: {e}")
+                LOG.debug(f"Failed to write shutdown signals: {e}")
         else:
             LOG.info(f"Shutdown reason={reason} — NOT writing user_closed signal (watchdog may restart)")
 

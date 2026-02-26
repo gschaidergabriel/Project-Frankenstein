@@ -32,7 +32,7 @@ from overlay.aura.config import (
 )
 
 # Database paths
-_DB_DIR = Path.home() / ".local/share/frank/db"
+from config.paths import DB_DIR as _DB_DIR
 _DB_CONSCIOUSNESS = _DB_DIR / "consciousness.db"
 _DB_WORLD_EXP = _DB_DIR / "world_experience.db"
 from overlay.aura.engine import AuraEngine

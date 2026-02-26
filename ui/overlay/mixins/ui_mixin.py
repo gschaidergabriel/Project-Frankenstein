@@ -744,18 +744,24 @@ class UiMixin:
         def _check():
             import urllib.request
             checks = {
-                "Core":  "http://127.0.0.1:8088/health",
-                "LLM":   "http://127.0.0.1:8101/health",
-                "Tools": "http://127.0.0.1:8096/health",
+                "Core":  ["http://127.0.0.1:8088/health"],
+                "LLM":   ["http://127.0.0.1:8101/health",
+                           "http://127.0.0.1:8102/health"],
+                "Tools": ["http://127.0.0.1:8096/health"],
             }
             results = {}
-            for name, url in checks.items():
-                try:
-                    req = urllib.request.Request(url, method="GET")
-                    with urllib.request.urlopen(req, timeout=2) as resp:
-                        results[name] = resp.status == 200
-                except Exception:
-                    results[name] = False
+            for name, urls in checks.items():
+                ok = False
+                for url in urls:
+                    try:
+                        req = urllib.request.Request(url, method="GET")
+                        with urllib.request.urlopen(req, timeout=2) as resp:
+                            if resp.status == 200:
+                                ok = True
+                                break
+                    except Exception:
+                        pass
+                results[name] = ok
 
             # Voice: check Whisper server (PTT backend) via TCP connect
             import socket

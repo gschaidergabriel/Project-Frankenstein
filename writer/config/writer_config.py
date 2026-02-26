@@ -76,6 +76,11 @@ class SaveConfig:
 # Base directory for writer package (portable — no hardcoded paths)
 _WRITER_PKG_DIR = Path(__file__).resolve().parent.parent
 
+try:
+    from config.paths import AICORE_CONFIG as _WRITER_CONFIG_BASE
+except ImportError:
+    _WRITER_CONFIG_BASE = Path.home() / ".config" / "frank"
+
 
 @dataclass
 class WriterConfig:
@@ -88,7 +93,7 @@ class WriterConfig:
     save_config: SaveConfig = field(default_factory=SaveConfig)
 
     # Paths — B8 FIX: use relative paths derived from package location
-    config_dir: Path = field(default_factory=lambda: Path.home() / ".config" / "frank" / "writer")
+    config_dir: Path = field(default_factory=lambda: _WRITER_CONFIG_BASE / "writer")
     data_dir: Path = field(default_factory=lambda: _WRITER_PKG_DIR / "data")
     schemas_dir: Path = field(default_factory=lambda: _WRITER_PKG_DIR / "schemas")
 

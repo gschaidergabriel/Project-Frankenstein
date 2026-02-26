@@ -367,8 +367,8 @@ class ASRSOrchestrator:
 
         # Write to notification file for Frank to pick up
         try:
-            from config.paths import get_temp as _orch_get_temp
-            notif_file = _orch_get_temp("asrs_notification.json")
+            from config.paths import TEMP_FILES as _orch_temp_files
+            notif_file = _orch_temp_files["asrs_notification"]
         except ImportError:
             notif_file = Path("/tmp/frank/asrs_notification.json")
         notif_file.write_text(json.dumps(notification, indent=2))

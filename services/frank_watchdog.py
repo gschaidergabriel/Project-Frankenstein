@@ -74,13 +74,15 @@ MONITORED_SERVICES = {
         "reset_after": 300,
         "description": "Model Router",
     },
-    "aicore-llama3-gpu": {
+    # NOTE: LLM services (llama3-gpu, chat-llm, micro-llm) are managed
+    # by llm-guard.service (LLM Manager) — do NOT monitor them here.
+    "llm-guard": {
         "critical": True,
-        "restart_delay": 2,
-        "max_restarts": 10,
-        "cooldown": 60,
-        "reset_after": 600,
-        "description": "Llama3 GPU (Primary LLM)",
+        "restart_delay": 1,
+        "max_restarts": 20,
+        "cooldown": 15,
+        "reset_after": 300,
+        "description": "LLM Manager (GPU swap + guard)",
     },
     "aicore-toolboxd": {
         "critical": True,
@@ -90,18 +92,58 @@ MONITORED_SERVICES = {
         "reset_after": 300,
         "description": "System Toolbox",
     },
+    "aura-headless": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 10,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "AURA Headless Introspect",
+    },
+    "aura-analyzer": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 10,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "AURA Pattern Analyzer",
+    },
+    "aicore-quantum-reflector": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 10,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "Quantum Reflector (Epistemic Coherence)",
+    },
+    "aicore-consciousness": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 10,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "Consciousness Stream Daemon",
+    },
+    "aicore-whisper-gpu": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 10,
+        "cooldown": 60,
+        "reset_after": 600,
+        "description": "Whisper STT Server (GPU)",
+    },
 }
 
 CHECK_INTERVAL = 15  # Check every 15 seconds
 OVERLAY_FREEZE_THRESHOLD = 30  # Overlay heartbeat stale after 30s → frozen
 try:
-    from config.paths import get_temp as _wd_get_temp, TEMP_FILES as _wd_temp_files
-    HEALTH_FILE = _wd_get_temp("watchdog_health.json")
-    USER_CLOSED_SIGNAL = _wd_temp_files.get("user_closed", _wd_get_temp("user_closed"))
-    GAMING_LOCK = _wd_temp_files.get("gaming_lock", _wd_get_temp("gaming_lock"))
-    MPC_LLAMA_PARKED = _wd_get_temp("mpc_llama_parked")
-    OVERLAY_HEARTBEAT = _wd_temp_files.get("overlay_heartbeat", _wd_get_temp("overlay_heartbeat"))
-    OVERLAY_LOCK = _wd_temp_files.get("overlay_lock", _wd_get_temp("overlay.lock"))
+    from config.paths import TEMP_FILES as _wd_temp_files
+    HEALTH_FILE = _wd_temp_files["watchdog_health"]
+    USER_CLOSED_SIGNAL = _wd_temp_files["user_closed"]
+    GAMING_LOCK = _wd_temp_files["gaming_lock"]
+    MPC_LLAMA_PARKED = _wd_temp_files["mpc_llama_parked"]
+    OVERLAY_HEARTBEAT = _wd_temp_files["overlay_heartbeat"]
+    OVERLAY_LOCK = _wd_temp_files["overlay_lock"]
 except ImportError:
     HEALTH_FILE = Path("/tmp/frank/watchdog_health.json")
     USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
@@ -109,6 +151,35 @@ except ImportError:
     MPC_LLAMA_PARKED = Path("/tmp/frank/mpc_llama_parked")
     OVERLAY_HEARTBEAT = Path("/tmp/frank/overlay_heartbeat")
     OVERLAY_LOCK = Path("/tmp/frank/overlay.lock")
+
+try:
+    FULL_SHUTDOWN_SIGNAL = _wd_temp_files["full_shutdown"]
+except NameError:
+    FULL_SHUTDOWN_SIGNAL = Path("/tmp/frank/full_shutdown")
+
+# All services to stop on full shutdown (LLMs handled by llm-guard)
+FULL_SHUTDOWN_SERVICES = [
+    "aicore-consciousness",
+    "aicore-entities",
+    "aicore-genesis",
+    "aicore-genesis-watchdog",
+    "aicore-invariants",
+    "aicore-quantum-reflector",
+    "aicore-asrs",
+    "aura-headless",
+    "aura-analyzer",
+    "aicore-dream",
+    "aicore-gaming-mode",
+    "aicore-modeld",
+    "aicore-desktopd",
+    "aicore-whisper-gpu",
+    "aicore-ingestd",
+    "aicore-webd",
+    "aicore-webui",
+    "aicore-toolboxd",
+    "aicore-core",
+    "aicore-router",
+]
 
 # ============================================================================
 # State tracking
@@ -243,8 +314,8 @@ def write_health(trackers: dict, overall_healthy: bool):
 # ============================================================================
 
 try:
-    from config.paths import get_temp as _wd_get_temp2
-    RESTART_REQUEST_FILE = _wd_get_temp2("restart_request.json")
+    from config.paths import TEMP_FILES as _wd_temp_files2
+    RESTART_REQUEST_FILE = _wd_temp_files2["restart_request"]
 except ImportError:
     RESTART_REQUEST_FILE = Path("/tmp/frank/restart_request.json")
 
@@ -324,8 +395,42 @@ def main():
         for name, config in MONITORED_SERVICES.items()
     }
 
+    _shutdown_active = False  # True while in full shutdown state
+
     while running:
         try:
+            # ── Full shutdown check ──────────────────────────────
+            if FULL_SHUTDOWN_SIGNAL.exists() and not _shutdown_active:
+                _shutdown_active = True
+                LOG.info("=" * 60)
+                LOG.info("FULL SHUTDOWN — stopping all Frank services")
+                LOG.info("=" * 60)
+                for svc in FULL_SHUTDOWN_SERVICES:
+                    if is_service_active(svc):
+                        LOG.info(f"  Stopping {svc}...")
+                        try:
+                            subprocess.run(
+                                ["systemctl", "--user", "stop", svc],
+                                capture_output=True, timeout=15,
+                            )
+                        except Exception:
+                            pass
+                LOG.info("All services stopped. Watchdog paused until restart.")
+
+            # While in shutdown state, skip all monitoring
+            if _shutdown_active:
+                # Check if shutdown signal was cleared (Frank restarting)
+                if not USER_CLOSED_SIGNAL.exists():
+                    LOG.info("Shutdown cleared — resuming watchdog")
+                    _shutdown_active = False
+                    # Reset all trackers
+                    for t in trackers.values():
+                        t.restart_count = 0
+                        t.gave_up = False
+                else:
+                    time.sleep(5)
+                    continue
+
             overall_healthy = True
 
             for name, tracker in trackers.items():

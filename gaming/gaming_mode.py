@@ -313,8 +313,8 @@ def ensure_lightweight_llm():
 
 
 try:
-    from config.paths import TEMP_FILES
-    GAMING_LOCK = TEMP_FILES["gaming_lock"]
+    from config.paths import TEMP_FILES as _GM_TF
+    GAMING_LOCK = _GM_TF["gaming_lock"]
 except ImportError:
     GAMING_LOCK = Path("/tmp/frank/gaming_lock")
 
@@ -382,9 +382,9 @@ def is_frank_running() -> bool:
 
 
 try:
-    from config.paths import TEMP_FILES as _TF, get_temp as _get_temp
+    from config.paths import TEMP_FILES as _TF
     USER_CLOSED_SIGNAL = _TF["user_closed"]
-    FRANK_STDERR_LOG = _get_temp("overlay_stderr.log")
+    FRANK_STDERR_LOG = _TF["overlay_stderr_log"]
 except ImportError:
     USER_CLOSED_SIGNAL = Path("/tmp/frank/user_closed")
     FRANK_STDERR_LOG = Path("/tmp/frank/overlay_stderr.log")

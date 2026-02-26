@@ -94,6 +94,7 @@ DB_PATHS = {
     "dream": DB_DIR / "dream.db",
     "autonomous_research": DB_DIR / "autonomous_research.db",
     "aura_analyzer": DB_DIR / "aura_analyzer.db",
+    "aicore": DB_DIR / "aicore.sqlite",
 }
 
 # State files (JSON)
@@ -112,6 +113,9 @@ STATE_PATHS = {
     "email_config": STATE_DIR / "email_config.json",
     "email_outbox": STATE_DIR / "email_outbox.json",
 }
+
+# Event journal (daily JSONL logs)
+JOURNAL_DIR = AICORE_DATA / "journal"
 
 # Special data directories
 ADI_PROFILES_DIR = AICORE_DATA / "adi_profiles"
@@ -144,7 +148,7 @@ def ensure_dirs():
     """Create all required data directories. Called by install.sh and on first run."""
     for d in [
         AICORE_DATA, AICORE_CONFIG, AICORE_LOG, DB_DIR, STATE_DIR,
-        ADI_PROFILES_DIR, ASRS_BACKUP_DIR, INVARIANTS_DIR,
+        JOURNAL_DIR, ADI_PROFILES_DIR, ASRS_BACKUP_DIR, INVARIANTS_DIR,
         ERROR_SCREENSHOTS_DIR, SYSTEM_CONTROL_DIR, MODELS_DIR, VOICES_DIR,
         TRAINING_LOG_DIR, SANDBOX_DIR,
     ]:
@@ -198,11 +202,22 @@ TEMP_FILES = {
     # Overlay signals
     "overlay_lock": TEMP_DIR / "overlay.lock",
     "overlay_show": TEMP_DIR / "overlay_show",
+    "overlay_heartbeat": TEMP_DIR / "overlay_heartbeat",
+    "overlay_stderr_log": TEMP_DIR / "overlay_stderr.log",
+
+    # Tray
     "tray_toggle": TEMP_DIR / "tray_toggle",
+    "tray_quit": TEMP_DIR / "tray_quit",
+    "tray_log": TEMP_DIR / "tray.log",
 
     # Gaming mode
     "gaming_lock": TEMP_DIR / "gaming_lock",
+    "gaming_mode_state": TEMP_DIR / "gaming_mode_state.json",
     "user_closed": TEMP_DIR / "user_closed",
+
+    # Shutdown / startup signals
+    "full_shutdown": TEMP_DIR / "full_shutdown",
+    "full_startup": TEMP_DIR / "full_startup",
 
     # Agentic approval
     "approval_queue": TEMP_DIR / "approval_queue.json",
@@ -214,6 +229,57 @@ TEMP_FILES = {
     # Icons cache
     "icons_dir": TEMP_DIR / "icons",
 
-    # Overlay watchdog
-    "overlay_heartbeat": TEMP_DIR / "overlay_heartbeat",
+    # Watchdog
+    "watchdog_health": TEMP_DIR / "watchdog_health.json",
+    "restart_request": TEMP_DIR / "restart_request.json",
+    "restart_result": TEMP_DIR / "restart_result.json",
+    "mpc_llama_parked": TEMP_DIR / "mpc_llama_parked",
+
+    # LLM Guard
+    "llm_guard_health": TEMP_DIR / "llm_guard_health.json",
+
+    # News scanner
+    "news_scanner_state": TEMP_DIR / "news_scanner_state.json",
+    "news_scanner_log": TEMP_DIR / "news_scanner.log",
+
+    # Notification daemon
+    "notification_state": TEMP_DIR / "notification_state.json",
+    "notification_daemon_log": TEMP_DIR / "notification_daemon.log",
+
+    # Genesis
+    "genesis_popup_result": TEMP_DIR / "genesis_popup_result.json",
+    "genesis_pending_proposals": TEMP_DIR / "genesis_pending_proposals.json",
+    "genesis_notification": TEMP_DIR / "genesis_notification.json",
+    "genesis_health": TEMP_DIR / "genesis_health.json",
+    "genesis_shown": TEMP_DIR / "genesis_shown.json",
+
+    # ASRS
+    "asrs_notification": TEMP_DIR / "asrs_notification.json",
+    "asrs_safe_mode": TEMP_DIR / "aicore_safe_mode",
+    "asrs_daemon_log": TEMP_DIR / "asrs_daemon.log",
+    "asrs_monitor_queue": TEMP_DIR / "asrs_monitor_queue.json",
+
+    # Gateway
+    "gateway_log": TEMP_DIR / "gateway.log",
+
+    # E-WISH
+    "ewish_daemon_log": TEMP_DIR / "ewish_daemon.log",
+    "ewish_daemon_state": TEMP_DIR / "ewish_daemon_state.json",
+    "user_patterns": TEMP_DIR / "user_patterns.json",
+
+    # Proactive controller
+    "proactive_state": TEMP_DIR / "proactive_state.json",
+
+    # FAS / ADI / E-WISH dim signals
+    "fas_dim_signal": TEMP_DIR / "fas_dim_signal",
+    "adi_dim_signal": TEMP_DIR / "adi_dim_signal",
+    "adi_apply_signal": TEMP_DIR / "adi_apply_signal",
+    "ewish_dim_signal": TEMP_DIR / "ewish_dim_signal",
+    "ewish_popup_state": TEMP_DIR / "ewish_popup_state.json",
+
+    # Vision debug
+    "vision_debug_log": TEMP_DIR / "vision_debug.log",
+
+    # Calendar
+    "reminded_uids": TEMP_DIR / "reminded_uids.txt",
 }

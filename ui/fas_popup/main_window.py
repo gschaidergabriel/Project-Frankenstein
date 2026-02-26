@@ -757,10 +757,7 @@ class FASPopupWindow(Gtk.ApplicationWindow):
         feature_id = feature.get("id", 0)
         feature_name = feature.get("name", "unknown")
         # Use same directory as A.S.R.S. for consistency
-        try:
-            from config.paths import ASRS_BACKUP_DIR as _ASRS_BACKUP_DIR
-        except ImportError:
-            _ASRS_BACKUP_DIR = Path.home() / ".local" / "share" / "frank" / "asrs_backups"
+        from config.paths import ASRS_BACKUP_DIR as _ASRS_BACKUP_DIR
         backup_dir = _ASRS_BACKUP_DIR / f"baseline_{feature_id}_{int(time.time())}"
 
         try:

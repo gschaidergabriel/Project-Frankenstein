@@ -45,7 +45,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # ---------------- config ----------------
 
 try:
-    from config.paths import AICORE_ROOT as _TOOLBOX_SRC_ROOT, DB_DIR, TOOLS_DIR as _TOOLBOX_TOOLS_DIR
+    from config.paths import AICORE_ROOT as _TOOLBOX_SRC_ROOT, DB_DIR, AICORE_LOG, TOOLS_DIR as _TOOLBOX_TOOLS_DIR
     _TOOLBOX_PROJECT_ROOT = str(_TOOLBOX_SRC_ROOT.parent.parent)
 except ImportError:
     _TOOLBOX_SRC_ROOT = Path(__file__).resolve().parents[1]  # tools/ -> opt/aicore
@@ -53,6 +53,7 @@ except ImportError:
     DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
     DB_DIR.mkdir(parents=True, exist_ok=True)
     _TOOLBOX_TOOLS_DIR = _TOOLBOX_SRC_ROOT / "tools"
+    AICORE_LOG = Path.home() / ".local" / "share" / "frank" / "logs"
 
 HOST = os.environ.get("AICORE_TOOLBOX_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AICORE_TOOLBOX_PORT", "8096"))
@@ -199,7 +200,7 @@ def _cache_set(key: str, val: Any) -> None:
 
 # ---------------- entity session logs ----------------
 
-_ENTITY_LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs"
+_ENTITY_LOG_DIR = AICORE_LOG
 _ENTITY_PREFIX_MAP = {
     "kairos": "mirror_kairos",
     "hibbert": "therapist_hibbert",

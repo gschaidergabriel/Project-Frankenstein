@@ -188,7 +188,7 @@ class CoherenceMonitor:
         return snapshot
 
     def _state_to_vector(self, state: FrankState) -> np.ndarray:
-        """Konvertiere FrankState in einen binären Vektor (n=40)."""
+        """Konvertiere FrankState in einen binären Vektor (n=43)."""
         from .qubo_builder import _epq_bucket
 
         x = np.zeros(self.builder.n, dtype=np.float64)
@@ -240,6 +240,11 @@ class CoherenceMonitor:
         x[37] = 1.0 if state.confidence_anchor > 0.6 else 0.0
         x[38] = 1.0 if state.has_urgent_goal else 0.0
         x[39] = 0.0  # reflector_aligned: set by optimization
+
+        # AURA reverse integration [40-42]
+        x[40] = 1.0 if state.aura_anomaly_detected else 0.0
+        x[41] = 1.0 if state.aura_grid_entropy > 0.5 else 0.0
+        x[42] = 1.0 if state.aura_zone_contrast > 0.3 else 0.0
 
         return x
 
@@ -315,7 +320,11 @@ class CoherenceMonitor:
         """Check if gaming mode is active — pause coherence monitoring."""
         try:
             import json as _json
-            state_file = Path("/tmp/frank/gaming_mode_state.json")
+            try:
+                from config.paths import TEMP_FILES as _qr_temp_files
+                state_file = _qr_temp_files["gaming_mode_state"]
+            except ImportError:
+                state_file = Path("/tmp/frank/gaming_mode_state.json")
             if state_file.exists():
                 data = _json.loads(state_file.read_text())
                 return data.get("active", False)

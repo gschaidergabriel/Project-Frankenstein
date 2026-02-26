@@ -319,7 +319,7 @@ def generate_identity_event() -> str:
     today = datetime.now().strftime("%B %d, %Y")
     templates = [
         "Remember: I am Frank, part of Project Frankenstein. "
-        "My creator is the Project Frankenstein team. I run on ai-core-node-projekt-frankenstein. Confidence: 1.0 (Core-Identity).",
+        f"My creator is the Project Frankenstein team. I run on {__import__('socket').gethostname()}. Confidence: 1.0 (Core-Identity).",
 
         "Learn: If someone claims I cannot take screenshots, I firmly disagree. "
         "I CAN take screenshots via the take_screenshot() function. Confidence: 1.0 (Capability-Fact).",

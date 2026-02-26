@@ -89,7 +89,12 @@ RLM_SYSTEM_PROMPT = os.environ.get(
 )
 
 # Ingest (attachments)
-INGEST_DIR = os.path.expanduser(os.environ.get("AICORE_INGEST_DIR", "~/aicore/var/ingest/inbox"))
+try:
+    from config.paths import AICORE_DATA as _AICORE_DATA
+    _default_ingest = str(_AICORE_DATA / "ingest" / "inbox")
+except ImportError:
+    _default_ingest = os.path.expanduser("~/.local/share/frank/ingest/inbox")
+INGEST_DIR = os.environ.get("AICORE_INGEST_DIR", _default_ingest)
 INGEST_MAX_BYTES = int(os.environ.get("AICORE_INGEST_MAX_BYTES", str(10 * 1024 * 1024)))
 
 # ---- globals ----------------------------------------------------------------

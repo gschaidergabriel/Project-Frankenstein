@@ -314,11 +314,8 @@ TOOLBOX_BASE = os.environ.get("AICORE_TOOLBOX_BASE", "http://127.0.0.1:8096").rs
 def _get_or_create_session_id() -> str:
     """Get persistent session ID. New ID only on fresh boot (different boot_id)."""
     import json as _json
-    try:
-        from config.paths import get_state as _get_state
-        session_file = _get_state("frank_session")
-    except ImportError:
-        session_file = Path.home() / ".local" / "share" / "frank" / "state" / "frank_session.json"
+    from config.paths import get_state as _get_state
+    session_file = _get_state("frank_session")
 
     def _read_boot_id() -> str:
         try:

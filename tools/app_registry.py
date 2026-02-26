@@ -37,6 +37,11 @@ import difflib
 
 LOG = logging.getLogger("app_registry")
 
+try:
+    from config.paths import AICORE_CONFIG
+except ImportError:
+    AICORE_CONFIG = Path.home() / ".config" / "frank"
+
 # Desktop entry search paths
 DESKTOP_ENTRY_PATHS = [
     Path("/usr/share/applications"),
@@ -71,7 +76,7 @@ DEFAULT_ALLOWLIST = {
 }
 
 # Policy file path
-POLICY_FILE = Path.home() / ".config/aicore/app_policy.json"
+POLICY_FILE = AICORE_CONFIG / "app_policy.json"
 
 
 @dataclass

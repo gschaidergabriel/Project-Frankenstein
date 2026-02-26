@@ -20,7 +20,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 LOG = logging.getLogger("aicore.core")
 
 ROOT = Path(__file__).resolve().parents[1]
-CFG_PATH = ROOT / "configs" / "paths.json"
 
 # Add personality module to path
 sys.path.insert(0, str(ROOT))
@@ -524,27 +523,30 @@ _REFLECT_SYSTEM = (
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-_DEFAULT_CFG = {
-    "journal_dir": "/var/aicore/journal",
-    "db": "/var/aicore/events.db",
-}
-
 def load_cfg() -> dict:
+    """Build path config dynamically from config.paths (no hardcoded paths)."""
     try:
-        cfg = json.loads(CFG_PATH.read_text(encoding="utf-8"))
-        if not isinstance(cfg, dict):
-            return _DEFAULT_CFG.copy()
-        # Ensure required keys exist
-        for key, default_val in _DEFAULT_CFG.items():
-            if key not in cfg:
-                cfg[key] = default_val
-        return cfg
-    except FileNotFoundError:
-        return _DEFAULT_CFG.copy()
-    except json.JSONDecodeError:
-        return _DEFAULT_CFG.copy()
+        from config.paths import (
+            AICORE_ROOT, AICORE_DATA, AICORE_LOG,
+            JOURNAL_DIR, MODELS_DIR, get_db,
+        )
+        return {
+            "base": str(AICORE_ROOT),
+            "data": str(AICORE_DATA),
+            "log": str(AICORE_LOG),
+            "db": str(get_db("aicore")),
+            "journal_dir": str(JOURNAL_DIR),
+            "workspace_dir": str(AICORE_DATA / "workspace"),
+            "models_dir": str(MODELS_DIR),
+        }
     except Exception:
-        return _DEFAULT_CFG.copy()
+        # Fallback: derive from this file's location
+        _root = Path(__file__).resolve().parents[1]
+        _data = Path.home() / ".local" / "share" / "frank"
+        return {
+            "journal_dir": str(_data / "journal"),
+            "db": str(_data / "db" / "aicore.sqlite"),
+        }
 
 def http_post(url: str, payload: dict, timeout_s: int = 600) -> dict:
     data = json.dumps(payload).encode("utf-8")

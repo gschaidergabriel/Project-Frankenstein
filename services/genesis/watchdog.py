@@ -176,8 +176,8 @@ def write_health_status(is_healthy: bool, details: dict):
     """Write health status to file for monitoring."""
     try:
         try:
-            from config.paths import get_temp as _gw_get_temp
-            status_file = _gw_get_temp("genesis_health.json")
+            from config.paths import TEMP_FILES as _gw_temp_files
+            status_file = _gw_temp_files["genesis_health"]
         except ImportError:
             status_file = Path("/tmp/frank/genesis_health.json")
         import json

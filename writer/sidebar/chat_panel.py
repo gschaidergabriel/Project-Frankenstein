@@ -18,7 +18,11 @@ from dataclasses import dataclass, asdict
 from writer.sidebar.intent_parser import IntentParser, Intent
 
 # Persistent chat history file
-CHAT_HISTORY_PATH = Path.home() / ".config" / "frank" / "writer" / "chat_history.json"
+try:
+    from config.paths import AICORE_CONFIG
+    CHAT_HISTORY_PATH = AICORE_CONFIG / "writer" / "chat_history.json"
+except ImportError:
+    CHAT_HISTORY_PATH = Path.home() / ".config" / "frank" / "writer" / "chat_history.json"
 MAX_HISTORY_MESSAGES = 100
 
 

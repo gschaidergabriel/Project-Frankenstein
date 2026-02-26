@@ -46,7 +46,7 @@ ZONE_COLORS = {
 # ── Pseudo-3D rendering constants ──
 GLOW_DOWNSAMPLE = 8           # 256→32 for fast blur
 GLOW_SIGMA = 2.0              # Gaussian blur sigma on downsampled grid
-GLOW_INTENSITY = 0.55         # Additive bloom strength
+GLOW_INTENSITY = 0.0          # Additive bloom strength (disabled)
 TRAIL_DECAY = 0.92            # Per-frame visual decay for dead cell trails
 BASE_NOISE_DENSITY = 0.06     # 6% static background noise
 BREATH_PERIOD_S = 4.0         # Sinus breathing cycle (seconds)

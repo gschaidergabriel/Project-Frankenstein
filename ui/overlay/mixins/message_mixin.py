@@ -4,6 +4,7 @@ Extracted from chat_overlay_monolith.py lines ~4880-5241.
 Plain mixin class; all `self.*` references resolve at runtime via MRO.
 """
 
+import sqlite3
 import time
 import tkinter as tk
 from pathlib import Path
@@ -16,6 +17,9 @@ from overlay.widgets.search_result_card import SearchResultCard
 from overlay.widgets.file_action_bar import FileActionBar
 from overlay.services.search import _open_url
 from overlay.helpers.context_suggestions import get_context_suggestions
+from config.paths import get_db
+
+_CHAT_DB = get_db("chat_memory")
 
 
 class MessageMixin:
@@ -102,6 +106,44 @@ class MessageMixin:
         # Force window to process pending events
         self.update_idletasks()
         self.update()
+
+    # ---------- WebUI ↔ Overlay Chat Sync ----------
+
+    def _get_max_message_id(self) -> int:
+        """Get the highest message ID in chat_memory.db."""
+        try:
+            conn = sqlite3.connect(str(_CHAT_DB), timeout=2)
+            row = conn.execute("SELECT MAX(id) FROM messages").fetchone()
+            conn.close()
+            return row[0] or 0
+        except Exception:
+            return 0
+
+    def _poll_webui_chat_sync(self):
+        """Poll DB for new messages from WebUI and display them."""
+        try:
+            conn = sqlite3.connect(str(_CHAT_DB), timeout=2)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, sender, text, is_user FROM messages "
+                "WHERE id > ? AND session_id = 'webui' ORDER BY id ASC",
+                (self._webui_sync_last_id,),
+            ).fetchall()
+            conn.close()
+
+            for row in rows:
+                self._webui_sync_last_id = row["id"]
+                sender = row["sender"]
+                text = row["text"]
+                is_user = bool(row["is_user"])
+                # Display with persist=False — already in DB
+                self._add_message(sender, text, is_user=is_user, persist=False)
+                LOG.info(f"WebUI sync: {sender}: {text[:60]}...")
+        except Exception as e:
+            LOG.debug(f"WebUI sync poll error: {e}")
+
+        # Schedule next poll (500ms)
+        self.after(500, self._poll_webui_chat_sync)
 
     def _update_user_bubbles(self, new_name: str):
         """Update sender label on all existing user bubbles (live rename)."""

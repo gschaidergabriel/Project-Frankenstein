@@ -29,18 +29,15 @@ class ProposalQueueManager:
 
     def __init__(self, config: dict = None):
         self.config = config or {}
-        try:
-            from config.paths import get_db as _get_db
-            _default_db = str(_get_db("fas_scavenger"))
-        except ImportError:
-            _default_db = str(Path.home() / ".local" / "share" / "frank" / "db" / "fas_scavenger.db")
+        from config.paths import get_db as _get_db, get_state as _get_state
+        _default_db = str(_get_db("fas_scavenger"))
         self.db_path = Path(self.config.get(
             "db_path",
             _default_db
         ))
         self.state_file = Path(self.config.get(
             "popup_state_file",
-            str(Path.home() / ".local" / "share" / "frank" / "state" / "fas_popup_state.json")
+            str(_get_state("fas_popup_state"))
         ))
 
         # Trigger thresholds

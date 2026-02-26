@@ -19,9 +19,9 @@ LOG = logging.getLogger("genesis.fas_connector")
 # System Python (not venv) — GTK4/gi only available there
 SYSTEM_PYTHON = "/usr/bin/python3"
 try:
-    from config.paths import get_temp as _fas_get_temp
-    RESULT_FILE = _fas_get_temp("genesis_popup_result.json")
-    PENDING_FILE = _fas_get_temp("genesis_pending_proposals.json")
+    from config.paths import TEMP_FILES as _fas_temp_files
+    RESULT_FILE = _fas_temp_files["genesis_popup_result"]
+    PENDING_FILE = _fas_temp_files["genesis_pending_proposals"]
 except ImportError:
     RESULT_FILE = Path("/tmp/frank/genesis_popup_result.json")
     PENDING_FILE = Path("/tmp/frank/genesis_pending_proposals.json")
@@ -47,8 +47,8 @@ class FASConnector:
     def __init__(self):
         self.popup_script = _FAS_POPUP_SCRIPT
         try:
-            from config.paths import get_temp as _fas_get_temp2
-            self.notification_file = _fas_get_temp2("genesis_notification.json")
+            from config.paths import TEMP_FILES as _fas_temp_files2
+            self.notification_file = _fas_temp_files2["genesis_notification"]
         except ImportError:
             self.notification_file = Path("/tmp/frank/genesis_notification.json")
         self.popup_process = None

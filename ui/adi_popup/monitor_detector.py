@@ -44,11 +44,8 @@ MANUFACTURER_NAMES = {
 }
 
 # Profile storage location
-try:
-    from config.paths import ADI_PROFILES_DIR
-    PROFILES_DIR = ADI_PROFILES_DIR
-except ImportError:
-    PROFILES_DIR = Path.home() / ".local" / "share" / "frank" / "adi_profiles"
+from config.paths import ADI_PROFILES_DIR
+PROFILES_DIR = ADI_PROFILES_DIR
 
 
 @dataclass

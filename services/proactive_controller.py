@@ -35,8 +35,8 @@ LOG = logging.getLogger("proactive_controller")
 # ── State ─────────────────────────────────────────────────────────
 
 try:
-    from config.paths import get_temp as _pc_get_temp
-    _STATE_FILE = _pc_get_temp("proactive_state.json")
+    from config.paths import TEMP_FILES as _pc_temp_files
+    _STATE_FILE = _pc_temp_files["proactive_state"]
 except ImportError:
     _STATE_FILE = Path("/tmp/frank/proactive_state.json")
 

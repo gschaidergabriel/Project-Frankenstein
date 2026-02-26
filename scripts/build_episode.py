@@ -1,9 +1,15 @@
 import json
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DB_PATH = Path.home() / "aicore/var/lib/aicore/db/aicore.sqlite"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from config.paths import get_db
+    DB_PATH = get_db("aicore")
+except ImportError:
+    DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "aicore.sqlite"
 
 def iso(dt): return dt.isoformat()
 

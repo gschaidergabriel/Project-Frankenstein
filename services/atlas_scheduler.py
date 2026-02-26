@@ -132,8 +132,8 @@ def _check_not_gaming() -> bool:
     """Return True if NOT gaming."""
     try:
         try:
-            from config.paths import get_temp
-            state_file = get_temp("gaming_mode_state.json")
+            from config.paths import TEMP_FILES
+            state_file = TEMP_FILES["gaming_mode_state"]
         except ImportError:
             state_file = Path("/tmp/frank/gaming_mode_state.json")
         if state_file.exists():

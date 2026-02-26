@@ -923,8 +923,10 @@ class AgencyAssertor:
     def _ensure_tables(self):
         """Erstellt Tabellen falls nicht vorhanden."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
             cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS agency_assertions (
                     id TEXT PRIMARY KEY,
@@ -1016,7 +1018,7 @@ class AgencyAssertor:
     def _save_assertion(self, assertion: AgencyAssertion):
         """Speichert Assertion in DB."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO agency_assertions
@@ -1090,8 +1092,10 @@ class EgoConstruct:
     def _ensure_ego_state_table(self):
         """Erstellt ego_state Tabelle falls nicht vorhanden."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
             cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ego_state (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1144,7 +1148,7 @@ class EgoConstruct:
         """Speichert Ego-State in DB."""
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = sqlite3.connect(self.db_path, timeout=10.0)
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO ego_state

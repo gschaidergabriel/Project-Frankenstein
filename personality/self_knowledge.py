@@ -71,7 +71,7 @@ CORE_IDENTITY = {
     "programming_language": "Python 3",
     "llm_backend": "Local LLM via Ollama (Vulkan/CUDA GPU acceleration)",
     "runs_on": "Local Linux machine (no cloud)",
-    "hostname": "ai-core-node",
+    "hostname": __import__("socket").gethostname(),
 
     # What Frank IS (not negotiable)
     "what_i_am": [

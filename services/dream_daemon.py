@@ -490,7 +490,11 @@ class DreamDaemon:
     def _is_gaming_active() -> bool:
         """Check if gaming mode is active — no dreaming during gaming."""
         try:
-            state_file = Path("/tmp/frank/gaming_mode_state.json")
+            try:
+                from config.paths import TEMP_FILES as _dream_tf
+                state_file = _dream_tf["gaming_mode_state"]
+            except ImportError:
+                state_file = Path("/tmp/frank/gaming_mode_state.json")
             if state_file.exists():
                 import json as _json
                 data = _json.loads(state_file.read_text())

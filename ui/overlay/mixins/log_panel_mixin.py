@@ -15,9 +15,11 @@ import tkinter as tk
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from config.paths import AICORE_DATA
+
 LOG = logging.getLogger("frank_overlay")
 
-_LOG_FILE = Path.home() / ".local/share/frank/log_panel.json"
+_LOG_FILE = AICORE_DATA / "log_panel.json"
 _MAX_PERSISTENT = 30
 
 LOG_CATEGORIES = frozenset({

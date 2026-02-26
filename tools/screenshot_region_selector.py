@@ -105,7 +105,11 @@ def _run_selector_gui(callback: Callable[[str], None]):
                     return
                 # Crop and save
                 cropped = self._pixmap.copy(rect)
-                out = Path(f"/tmp/frank_region_{int(time.time())}.png")
+                try:
+                    from config.paths import TEMP_DIR as _TEMP_DIR
+                except ImportError:
+                    _TEMP_DIR = Path("/tmp/frank")
+                out = _TEMP_DIR / f"region_{int(time.time())}.png"
                 cropped.save(str(out), "PNG")
                 LOG.info("Region: %dx%d → %s", rect.width(), rect.height(), out)
                 self.close()
@@ -116,7 +120,11 @@ def _run_selector_gui(callback: Callable[[str], None]):
                 self.close()
 
     # Take screenshot first (before overlay appears)
-    tmp = f"/tmp/frank_region_bg_{int(time.time())}.png"
+    try:
+        from config.paths import TEMP_DIR as _TEMP_DIR_bg
+    except ImportError:
+        _TEMP_DIR_bg = Path("/tmp/frank")
+    tmp = str(_TEMP_DIR_bg / f"region_bg_{int(time.time())}.png")
     env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
     for cmd in [
         ["gnome-screenshot", "-f", tmp],
@@ -228,7 +236,11 @@ def _analyze_and_send(image_path: str):
 # ═══════════════════════════════════════════════════════════
 
 HOTKEY = os.environ.get("FRANK_REGION_HOTKEY", "ctrl+shift+f")
-LOCK_FILE = Path("/tmp/frank_region_selector.lock")
+try:
+    from config.paths import TEMP_DIR as _TEMP_DIR_lock
+    LOCK_FILE = _TEMP_DIR_lock / "region_selector.lock"
+except ImportError:
+    LOCK_FILE = Path("/tmp/frank/region_selector.lock")
 
 
 def _hotkey_daemon():

@@ -35,8 +35,8 @@ from typing import Dict, List, Optional, Set, Tuple
 
 # Setup logging
 try:
-    from config.paths import get_temp as _asrs_get_temp2
-    LOG_FILE = _asrs_get_temp2("asrs_daemon.log")
+    from config.paths import TEMP_FILES as _asrs_temp_files
+    LOG_FILE = _asrs_temp_files["asrs_daemon_log"]
 except ImportError:
     LOG_FILE = Path("/tmp/frank/asrs_daemon.log")
 LOG = logging.getLogger("asrs.daemon")
@@ -49,8 +49,8 @@ LOG.propagate = False
 
 # Paths
 try:
-    from config.paths import get_temp as _asrs_get_temp, get_runtime as _asrs_get_runtime
-    SIGNAL_FILE = _asrs_get_temp("asrs_monitor_queue.json")
+    from config.paths import get_runtime as _asrs_get_runtime, TEMP_FILES as _asrs_temp_files2
+    SIGNAL_FILE = _asrs_temp_files2["asrs_monitor_queue"]
     SOCKET_PATH = _asrs_get_runtime("asrs_daemon.sock")
 except ImportError:
     SIGNAL_FILE = Path("/tmp/frank/asrs_monitor_queue.json")

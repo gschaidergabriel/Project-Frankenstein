@@ -39,11 +39,11 @@ except ImportError:
     DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "news_scanner.db"
 SOURCES_FILE = AICORE_ROOT / "services" / "news_scanner_sources.json"
 try:
-    from config.paths import get_temp as _ns_get_temp, get_runtime as _ns_get_runtime
-    GAMING_STATE_FILE = _ns_get_temp("gaming_mode_state.json")
-    STATE_FILE = _ns_get_temp("news_scanner_state.json")
+    from config.paths import get_temp as _ns_get_temp, get_runtime as _ns_get_runtime, TEMP_FILES as _ns_temp_files
+    GAMING_STATE_FILE = _ns_temp_files["gaming_mode_state"]
+    STATE_FILE = _ns_temp_files["news_scanner_state"]
     PID_FILE = _ns_get_runtime("news_scanner.pid")
-    LOG_FILE = _ns_get_temp("news_scanner.log")
+    LOG_FILE = _ns_temp_files["news_scanner_log"]
 except ImportError:
     GAMING_STATE_FILE = Path("/tmp/frank/gaming_mode_state.json")
     STATE_FILE = Path("/tmp/frank/news_scanner_state.json")

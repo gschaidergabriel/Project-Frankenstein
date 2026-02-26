@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-qubo_builder.py — Frank-State → QUBO Matrix (v2)
+qubo_builder.py — Frank-State → QUBO Matrix (v3)
 
-Schema v2: 40 Variablen
+Schema v3: 43 Variablen
     [0-3]   Entity:     therapist, mirror, atlas, muse              (one-hot)
     [4-6]   Intent:     update, review, creative                     (one-hot)
     [7-9]   Phase:      idle, engaged, reflecting                    (one-hot)
@@ -20,21 +20,26 @@ Schema v2: 40 Variablen
     [37]    Confidence: anchor_high                                   (binary)
     [38]    Goal:       has_urgent_goal                               (binary)
     [39]    Coherence:  reflector_aligned (current ≈ optimal)        (binary)
+    [40]    AURA:       aura_anomaly_detected                        (binary)
+    [41]    AURA:       aura_grid_entropy_high                       (binary)
+    [42]    AURA:       aura_zone_contrast_high                      (binary)
 
-Changes from v1 (n=20):
-    - E-PQ discretized into low/mid/high (one-hot) instead of binary
-    - Added task load, engagement level, prediction surprise,
-      confidence anchor, goal urgency, self-coherence flag
-    - Incremental rebuild: only recalculate changed linear indices
-    - Sensitive state_changed(): cumulative drift detection
+Changes from v2 (n=40):
+    - AURA reverse integration: QR reads AURA grid anomalies, entropy,
+      zone contrast to close the feedback loop
+    - 3 new binary variables for AURA state awareness
+    - HTTP fetch from AURA headless /introspect/json with crash-safe fallback
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -45,7 +50,11 @@ LOG = logging.getLogger("quantum_reflector.qubo_builder")
 
 # ============ VARIABLE SCHEMA ============
 
-N_VARIABLES = 40
+N_VARIABLES = 43
+
+# AURA headless URL (configurable via env, default localhost:8098)
+AURA_URL = os.environ.get("AURA_HEADLESS_URL", "http://127.0.0.1:8098")
+AURA_FETCH_TIMEOUT = 3.0  # seconds — crash-safe, never blocks QR
 
 LABELS = [
     # Entities (one-hot, idx 0-3)
@@ -74,6 +83,8 @@ LABELS = [
     "engagement_absent", "engagement_passive", "engagement_active",
     # Binaries (idx 36-39)
     "surprise_high", "confidence_high", "goal_urgent", "reflector_aligned",
+    # AURA reverse integration (idx 40-42)
+    "aura_anomaly_detected", "aura_entropy_high", "aura_zone_contrast_high",
 ]
 
 # Index groups
@@ -196,6 +207,22 @@ IMPLICATIONS = {
     # --- Coherence aligned → stability ---
     (39, 13): -0.3,   # aligned + positive mood
     (39, 25): -0.2,   # aligned + autonomy_mid (balanced)
+
+    # --- AURA reverse integration ---
+    # Anomaly detected → heightened vigilance + reflecting
+    (40, 29): -0.9,   # aura_anomaly + vigilance_high
+    (40, 9): -0.6,    # aura_anomaly + reflecting
+    (40, 14): -0.3,   # aura_anomaly + negative mood (anomaly = tension)
+
+    # High grid entropy → creative intent, risk tolerance
+    (41, 6): -0.7,    # aura_entropy_high + creative
+    (41, 20): -0.5,   # aura_entropy_high + risk_high
+    (41, 17): 0.4,    # aura_entropy_high + precision_high (entropy ≠ precision)
+
+    # High zone contrast → engaged phase, focus mode
+    (42, 8): -0.6,    # aura_zone_contrast_high + engaged
+    (42, 12): -0.5,   # aura_zone_contrast_high + focus
+    (42, 29): -0.4,   # aura_zone_contrast_high + vigilance_high
 }
 
 
@@ -225,6 +252,10 @@ class FrankState:
     has_urgent_goal: bool = False
     surprise_level: float = 0.0
     chat_recency_s: float = 9999.0
+    # AURA reverse integration
+    aura_anomaly_detected: bool = False
+    aura_grid_entropy: float = 0.0
+    aura_zone_contrast: float = 0.0
     # Timestamp
     read_at: float = 0.0
 
@@ -394,6 +425,33 @@ class QUBOBuilder:
         else:
             state.current_phase = "engaged"
 
+        # === AURA reverse integration (crash-safe HTTP fetch) ===
+        try:
+            req = urllib.request.Request(
+                f"{AURA_URL}/introspect/json?depth=full",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=AURA_FETCH_TIMEOUT) as resp:
+                aura_data = json.loads(resp.read().decode("utf-8"))
+
+            # Anomalies
+            anomalies = aura_data.get("anomalies", [])
+            state.aura_anomaly_detected = len(anomalies) > 0
+
+            # Grid entropy
+            g = aura_data.get("global", {})
+            state.aura_grid_entropy = float(g.get("entropy", 0.0))
+
+            # Zone contrast: max density - min density across zones
+            zones = aura_data.get("zones", {})
+            if zones:
+                densities = [z.get("density", 0.0) for z in zones.values()]
+                state.aura_zone_contrast = max(densities) - min(densities)
+        except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
+            LOG.debug("AURA fetch skipped (service down?): %s", exc)
+        except Exception as exc:
+            LOG.warning("AURA fetch unexpected error: %s", exc)
+
         self._last_state = state
         return state
 
@@ -479,6 +537,19 @@ class QUBOBuilder:
 
         # Coherence aligned [39]
         h[39] = -0.2  # Weakly encouraged; low coupling impact
+
+        # === AURA reverse integration [40-42] ===
+        # Grounding penalty 3.0 when inactive, encouragement when active
+        # (same pattern as other binaries: must outweigh coupling sum)
+
+        # Anomaly detected [40]
+        h[40] = -0.5 if state.aura_anomaly_detected else 3.0
+
+        # Grid entropy high [41] — threshold: 0.5 (mid-range Shannon entropy)
+        h[41] = -0.5 if state.aura_grid_entropy > 0.5 else 3.0
+
+        # Zone contrast high [42] — threshold: 0.3 (significant density spread)
+        h[42] = -0.5 if state.aura_zone_contrast > 0.3 else 3.0
 
         self._last_linear = h.copy()
         return h
@@ -581,6 +652,25 @@ class QUBOBuilder:
             h[38] = -0.5 if new_state.has_urgent_goal else 0.1
             changed_indices.add(38)
 
+        # AURA anomaly?
+        if old_state.aura_anomaly_detected != new_state.aura_anomaly_detected:
+            h[40] = -0.5 if new_state.aura_anomaly_detected else 3.0
+            changed_indices.add(40)
+
+        # AURA entropy threshold crossing?
+        old_ent_high = old_state.aura_grid_entropy > 0.5
+        new_ent_high = new_state.aura_grid_entropy > 0.5
+        if old_ent_high != new_ent_high:
+            h[41] = -0.5 if new_ent_high else 3.0
+            changed_indices.add(41)
+
+        # AURA zone contrast threshold crossing?
+        old_ctr_high = old_state.aura_zone_contrast > 0.3
+        new_ctr_high = new_state.aura_zone_contrast > 0.3
+        if old_ctr_high != new_ctr_high:
+            h[42] = -0.5 if new_ctr_high else 3.0
+            changed_indices.add(42)
+
         if not changed_indices:
             return None  # Nothing changed
 
@@ -656,6 +746,14 @@ class QUBOBuilder:
         if (old.surprise_level > 0.3) != (new_state.surprise_level > 0.3):
             return True
 
+        # AURA state changes
+        if old.aura_anomaly_detected != new_state.aura_anomaly_detected:
+            return True
+        if (old.aura_grid_entropy > 0.5) != (new_state.aura_grid_entropy > 0.5):
+            return True
+        if (old.aura_zone_contrast > 0.3) != (new_state.aura_zone_contrast > 0.3):
+            return True
+
         return False
 
     def interpret_solution(self, x: np.ndarray) -> Dict[str, Any]:
@@ -700,5 +798,8 @@ class QUBOBuilder:
             "confidence_high": x[37] > 0.5,
             "goal_urgent": x[38] > 0.5,
             "reflector_aligned": x[39] > 0.5,
+            "aura_anomaly_detected": x[40] > 0.5,
+            "aura_entropy_high": x[41] > 0.5,
+            "aura_zone_contrast_high": x[42] > 0.5,
             "active_labels": [LABELS[i] for i in range(self.n) if x[i] > 0.5],
         }

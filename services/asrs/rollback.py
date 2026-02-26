@@ -308,8 +308,8 @@ class RollbackExecutor:
 
         # Create safe mode flag
         try:
-            from config.paths import get_temp as _rb_get_temp
-            safe_mode_file = _rb_get_temp("aicore_safe_mode")
+            from config.paths import TEMP_FILES as _rb_temp_files
+            safe_mode_file = _rb_temp_files["asrs_safe_mode"]
         except ImportError:
             safe_mode_file = Path("/tmp/frank/aicore_safe_mode")
         try:

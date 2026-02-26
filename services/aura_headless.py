@@ -764,7 +764,11 @@ class AuraHeadless:
 
 def _is_gaming_active() -> bool:
     try:
-        state_file = Path("/tmp/frank/gaming_mode_state.json")
+        try:
+            from config.paths import TEMP_FILES as _ah_temp_files
+            state_file = _ah_temp_files["gaming_mode_state"]
+        except ImportError:
+            state_file = Path("/tmp/frank/gaming_mode_state.json")
         if state_file.exists():
             data = json.loads(state_file.read_text())
             return data.get("active", False)

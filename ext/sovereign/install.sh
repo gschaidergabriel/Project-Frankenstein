@@ -39,7 +39,7 @@ fi
 
 echo "[3/4] Erstelle Log-Datei..."
 sudo touch /var/log/frank-execute.log
-sudo chown ai-core-node:ai-core-node /var/log/frank-execute.log
+sudo chown "$(whoami):$(whoami)" /var/log/frank-execute.log
 echo "      ✓ /var/log/frank-execute.log"
 
 echo "[4/4] Teste Installation..."

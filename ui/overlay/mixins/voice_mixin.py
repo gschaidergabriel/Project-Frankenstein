@@ -23,6 +23,7 @@ from overlay.constants import (
     SYS_HINTS_RE, SELF_AWARE_RE, SELF_AWARE_EXCLUDE_RE,
     DARKNET_RE,
 )
+from config.paths import AICORE_DATA, VOICES_DIR
 from overlay.file_utils import _maybe_path
 from overlay.services.toolbox import _core_reflect
 from overlay.http_helpers import _http_post_json
@@ -265,8 +266,8 @@ class VoiceMixin:
     def _get_kokoro(cls):
         """Lazy-load Kokoro TTS (heavy ONNX model, only load once)."""
         if cls._kokoro_instance is None:
-            model = Path.home() / ".local/share/frank/kokoro/kokoro-v1.0.onnx"
-            voices = Path.home() / ".local/share/frank/kokoro/voices-v1.0.bin"
+            model = AICORE_DATA / "kokoro" / "kokoro-v1.0.onnx"
+            voices = AICORE_DATA / "kokoro" / "voices-v1.0.bin"
             if model.exists() and voices.exists():
                 try:
                     # Use all CPU cores for ONNX inference
@@ -413,7 +414,7 @@ class VoiceMixin:
         """Generate German speech with Piper (Thorsten voice)."""
         LOG.info("TTS Piper: starting synthesis...")
         piper_bin = Path.home() / ".local/bin/piper"
-        voice_model = Path.home() / ".local/share/frank/voices/de_DE-thorsten-high.onnx"
+        voice_model = VOICES_DIR / "de_DE-thorsten-high.onnx"
 
         if not piper_bin.exists() or not voice_model.exists():
             LOG.error(f"Piper TTS unavailable: piper={piper_bin.exists()}, voice={voice_model.exists()}")

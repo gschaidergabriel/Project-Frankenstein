@@ -1,10 +1,17 @@
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
-JOURNAL_DIR = Path.home() / "aicore/var/lib/aicore/journal"
-DB_PATH = Path.home() / "aicore/var/lib/aicore/db/aicore.sqlite"
-STATE_FILE = Path.home() / "aicore/var/lib/aicore/db/materializer.state"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from config.paths import JOURNAL_DIR, get_db, DB_DIR
+    DB_PATH = get_db("aicore")
+    STATE_FILE = DB_DIR / "materializer.state"
+except ImportError:
+    JOURNAL_DIR = Path.home() / ".local" / "share" / "frank" / "journal"
+    DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "aicore.sqlite"
+    STATE_FILE = Path.home() / ".local" / "share" / "frank" / "db" / "materializer.state"
 
 def load_state():
     if STATE_FILE.exists():

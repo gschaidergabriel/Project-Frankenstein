@@ -317,7 +317,7 @@ class ConsciousnessDaemon:
             self._aura_queue_db = get_db("aura_analyzer")
         except Exception:
             _candidate = Path(os.environ.get(
-                "AICORE_DATA", str(Path.home() / "aicore/data")
+                "AICORE_DATA", str(Path.home() / ".local" / "share" / "frank")
             )) / "db" / "aura_analyzer.db"
             if _candidate.exists():
                 self._aura_queue_db = _candidate
@@ -1268,8 +1268,8 @@ class ConsciousnessDaemon:
         # Primary: gaming mode state file (covers all game types)
         try:
             try:
-                from config.paths import get_temp as _cs_get_temp
-                state_file = _cs_get_temp("gaming_mode_state.json")
+                from config.paths import TEMP_FILES as _cs_temp_files
+                state_file = _cs_temp_files["gaming_mode_state"]
             except ImportError:
                 state_file = Path("/tmp/frank/gaming_mode_state.json")
             if state_file.exists():

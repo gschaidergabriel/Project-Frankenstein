@@ -75,7 +75,11 @@ except ImportError:
 def _is_gaming_active() -> bool:
     """Check if gaming mode is active — all analysis pauses during gaming."""
     try:
-        state_file = Path("/tmp/frank/gaming_mode_state.json")
+        try:
+            from config.paths import TEMP_FILES as _ap_temp_files
+            state_file = _ap_temp_files["gaming_mode_state"]
+        except ImportError:
+            state_file = Path("/tmp/frank/gaming_mode_state.json")
         if state_file.exists():
             data = json.loads(state_file.read_text())
             return data.get("active", False)

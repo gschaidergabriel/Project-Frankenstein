@@ -12,10 +12,7 @@ from overlay.genesis.proposal import GenesisProposal
 from overlay.genesis.popup import GenesisNotificationPopup
 
 
-try:
-    from config.paths import TRAINING_LOG_DIR
-except ImportError:
-    TRAINING_LOG_DIR = Path.home() / ".local" / "share" / "frank" / "logs" / "training"
+from config.paths import TRAINING_LOG_DIR
 
 PROPOSALS_FILE = TRAINING_LOG_DIR / "proposals.jsonl"
 try:

@@ -336,13 +336,9 @@ class AgenticMixin:
             if any(h in query_lower for h in _self_analysis_hints):
                 # Dynamically resolve paths — works on any system
                 import subprocess as _sp
-                try:
-                    from config.paths import AICORE_ROOT, AICORE_DATA
-                    _src_root = str(AICORE_ROOT)
-                    _db_dir = str(AICORE_DATA / "db")
-                except ImportError:
-                    _src_root = str(Path(__file__).resolve().parents[4])
-                    _db_dir = str(Path.home() / ".local" / "share" / "frank" / "db")
+                from config.paths import AICORE_ROOT, DB_DIR
+                _src_root = str(AICORE_ROOT)
+                _db_dir = str(DB_DIR)
 
                 try:
                     _find = _sp.run(

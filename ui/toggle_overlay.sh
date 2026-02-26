@@ -8,7 +8,9 @@
 #   toggle - Toggle visibility (default)
 
 ACTION="${1:-toggle}"
-RESTORE_FILE="/tmp/frank_overlay_show"
+FRANK_TMP="${FRANK_TEMP_DIR:-/tmp/frank}"
+mkdir -p "$FRANK_TMP"
+RESTORE_FILE="$FRANK_TMP/overlay_show"
 
 show_overlay() {
     # Touch the restore signal file - the overlay will detect this and show itself

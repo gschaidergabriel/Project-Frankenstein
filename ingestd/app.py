@@ -25,7 +25,11 @@ from docx import Document
 HOST = os.environ.get("INGESTD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("INGESTD_PORT", "8094"))
 
-AICORE_VAR = Path.home() / "aicore" / "var" / "lib" / "aicore"
+try:
+    from config.paths import AICORE_DATA
+    AICORE_VAR = AICORE_DATA
+except ImportError:
+    AICORE_VAR = Path.home() / ".local" / "share" / "frank"
 ART_DIR = AICORE_VAR / "artifacts"
 POLICY_PATH = AICORE_VAR / "file_access.json"
 

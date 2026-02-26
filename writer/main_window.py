@@ -29,12 +29,18 @@ from writer.editor.formatting_toolbar import FormattingToolbar
 from writer.editor.spell_checker import SpellChecker
 from writer.editor.version_history import VersionHistory
 
+try:
+    from config.paths import AICORE_DATA, AICORE_CONFIG
+except ImportError:
+    AICORE_DATA = Path.home() / ".local" / "share" / "frank"
+    AICORE_CONFIG = Path.home() / ".config" / "frank"
+
 
 class FrankWriterWindow(Adw.ApplicationWindow):
     """Main Frank Writer Window"""
 
-    AUTOSAVE_DIR = Path.home() / ".local" / "share" / "frank" / "writer" / "autosave"
-    RECENT_FILES_PATH = Path.home() / ".config" / "frank" / "writer" / "recent_files.json"
+    AUTOSAVE_DIR = AICORE_DATA / "writer" / "autosave"
+    RECENT_FILES_PATH = AICORE_CONFIG / "writer" / "recent_files.json"
     MAX_RECENT = 25
 
     def __init__(self, application, config, initial_context=None):

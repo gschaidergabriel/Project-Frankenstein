@@ -6,9 +6,9 @@ Wants=graphical-session.target
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/python3 /home/ai-core-node/aicore/opt/aicore/services/fas_popup_daemon.py
+ExecStart=/usr/bin/python3 %h/aicore/opt/aicore/services/fas_popup_daemon.py
 Environment=DISPLAY=:0
-Environment=PYTHONPATH=/home/ai-core-node/aicore/opt/aicore
+Environment=PYTHONPATH=%h/aicore/opt/aicore
 
 # Auto-restart on failure
 Restart=always

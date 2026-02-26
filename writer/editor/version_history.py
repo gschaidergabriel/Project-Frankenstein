@@ -13,7 +13,11 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-HISTORY_DIR = Path.home() / ".local" / "share" / "frank" / "writer" / "versions"
+try:
+    from config.paths import AICORE_DATA
+    HISTORY_DIR = AICORE_DATA / "writer" / "versions"
+except ImportError:
+    HISTORY_DIR = Path.home() / ".local" / "share" / "frank" / "writer" / "versions"
 MAX_VERSIONS_PER_DOC = 50
 
 

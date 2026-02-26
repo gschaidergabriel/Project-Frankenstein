@@ -23,7 +23,10 @@ from datetime import datetime
 CORE_URL = "http://127.0.0.1:8088"
 TOOLBOX_URL = "http://127.0.0.1:8096"
 QUANTUM_URL = "http://127.0.0.1:8097"
-DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
+try:
+    from config.paths import DB_DIR
+except ImportError:
+    DB_DIR = Path.home() / ".local" / "share" / "frank" / "db"
 SESSION_ID = f"consciousness-benchmark-{int(time.time())}"
 PAUSE_BETWEEN_TESTS = 8
 OUTPUT_DIR = Path(__file__).parent

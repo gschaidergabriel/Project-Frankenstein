@@ -35,12 +35,12 @@ try:
 except ImportError:
     AICORE_ROOT = Path(__file__).resolve().parents[1]
 try:
-    from config.paths import get_temp as _nd_get_temp, get_runtime as _nd_get_runtime, TEMP_DIR as _nd_temp_dir
-    STATE_FILE = _nd_get_temp("notification_state.json")
+    from config.paths import get_runtime as _nd_get_runtime, TEMP_FILES as _nd_temp_files
+    STATE_FILE = _nd_temp_files["notification_state"]
     PID_FILE = _nd_get_runtime("notification_daemon.pid")
-    LOG_FILE = _nd_get_temp("notification_daemon.log")
-    NOTIFICATION_DIR = _nd_temp_dir / "notifications"
-    GAMING_MODE_FILE = _nd_get_temp("gaming_mode_state.json")
+    LOG_FILE = _nd_temp_files["notification_daemon_log"]
+    NOTIFICATION_DIR = _nd_temp_files["notifications_dir"]
+    GAMING_MODE_FILE = _nd_temp_files["gaming_mode_state"]
 except ImportError:
     STATE_FILE = Path("/tmp/frank/notification_state.json")
     PID_FILE = Path(f"/run/user/{os.getuid()}/frank/notification_daemon.pid")

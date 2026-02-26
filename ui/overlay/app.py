@@ -150,11 +150,8 @@ class ChatOverlay(
         # Conversation history for context
         self._chat_history: List[Dict[str, str]] = []
         self._chat_history_max = 50
-        try:
-            from config.paths import get_state
-            self._chat_history_file = get_state("chat_history")
-        except ImportError:
-            self._chat_history_file = Path.home() / ".local" / "share" / "frank" / "state" / "chat_history.json"
+        from config.paths import get_state
+        self._chat_history_file = get_state("chat_history")
 
         # Persistent conversation memory (SQLite + FTS5)
         try:
@@ -318,6 +315,11 @@ class ChatOverlay(
         self._seen_notification_ids = set()
         self.after(25000, self._notification_poll_timer)
         LOG.info("Notification poll timer scheduled")
+
+        # WebUI ↔ Overlay chat sync (poll DB for external messages)
+        self._webui_sync_last_id = self._get_max_message_id()
+        self.after(2000, self._poll_webui_chat_sync)
+        LOG.info("WebUI chat sync polling started")
 
         # System tray icon for minimize-to-tray
         self._tray_available = start_tray_icon()

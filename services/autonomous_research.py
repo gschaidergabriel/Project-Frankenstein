@@ -75,10 +75,11 @@ ALLOWED_TOOLS = frozenset({
 
 # DB path
 try:
-    from config.paths import get_db
+    from config.paths import get_db, get_state as _ar_get_state
     DB_PATH = get_db("autonomous_research")
 except ImportError:
     DB_PATH = Path.home() / ".local" / "share" / "frank" / "db" / "autonomous_research.db"
+    _ar_get_state = None
 
 # Tool endpoint mapping (subset of agentic/tools.py)
 _TOOL_ENDPOINTS: Dict[str, str] = {
@@ -519,12 +520,13 @@ class AutonomousResearch:
     def _is_gaming(self) -> bool:
         """Check if gaming mode is active."""
         try:
-            from config.paths import get_state
-            flag = get_state("gaming_mode_active")
+            if _ar_get_state:
+                flag = _ar_get_state("gaming_mode_active")
+            else:
+                flag = Path.home() / ".local" / "share" / "frank" / "state" / "gaming_mode_active"
             return flag.exists()
         except Exception:
-            gaming_flag = Path.home() / ".local" / "share" / "frank" / "state" / "gaming_mode_active"
-            return gaming_flag.exists()
+            return False
 
     def _update_budget(self):
         """Increment today's session count."""

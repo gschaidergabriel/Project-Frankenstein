@@ -41,7 +41,7 @@ except ImportError:
 
 # ============ LOGGING ============
 
-LOG_DIR = AICORE_LOG if "AICORE_LOG" in dir() else Path.home() / ".local" / "share" / "frank" / "logs"
+LOG_DIR = AICORE_LOG
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(

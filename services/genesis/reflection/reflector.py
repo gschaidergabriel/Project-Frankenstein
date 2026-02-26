@@ -248,15 +248,12 @@ Answer as JSON:
         return True
 
     def _call_llm(self, prompt: str) -> Optional[str]:
-        """Call the LLM API."""
+        """Call the RLM via router (:8091/route)."""
         try:
             payload = {
                 "text": prompt,
-                "want_tools": False,
-                "max_tokens": self.config.llm_max_tokens,
-                "timeout_s": self.config.llm_timeout,
-                "task": "reflection",
-                "force": "llama",
+                "force": "rlm",
+                "n_predict": self.config.llm_max_tokens,
             }
 
             req = urllib.request.Request(

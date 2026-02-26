@@ -76,8 +76,8 @@ class GenesisConfig:
     user_inactive_threshold: int = 300        # Seconds of user inactivity (5 min)
 
     # === LLM Integration ===
-    llm_api_url: str = "http://127.0.0.1:8088/chat"
-    llm_timeout: int = 240   # RLM reasons before answering
+    llm_api_url: str = "http://127.0.0.1:8091/route"
+    llm_timeout: int = 480   # RLM reasons before answering
     llm_max_tokens: int = 800
 
     # === Sensors ===

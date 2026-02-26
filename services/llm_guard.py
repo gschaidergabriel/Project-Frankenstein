@@ -24,6 +24,7 @@ import os
 import signal
 import subprocess
 import time
+import urllib.request
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -284,6 +285,65 @@ def _write_health(gpu_mode: str, idle_s: float, swapping: bool):
 
 
 # ---------------------------------------------------------------------------
+# HTTP health checks — detect hung llama-server processes
+# ---------------------------------------------------------------------------
+
+# Consecutive HTTP failures per port before force-restart
+HTTP_FAIL_THRESHOLD = 3
+_http_fail_counts: dict[int, int] = {}
+
+
+def _http_health_check(port: int, timeout: float = 5.0) -> bool:
+    """Ping llama-server /health endpoint. Returns True if healthy."""
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/health",
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def _check_llm_http_health(port: int, service_name: str):
+    """
+    Check HTTP health for a running LLM service.
+    If systemd says active but HTTP fails HTTP_FAIL_THRESHOLD times
+    consecutively, force-restart the service.
+    """
+    if not _is_service_active(service_name):
+        _http_fail_counts[port] = 0
+        return
+
+    if _http_health_check(port):
+        if _http_fail_counts.get(port, 0) > 0:
+            LOG.info(f"[HTTP] {service_name}:{port} recovered")
+        _http_fail_counts[port] = 0
+        return
+
+    _http_fail_counts[port] = _http_fail_counts.get(port, 0) + 1
+    count = _http_fail_counts[port]
+    LOG.warning(
+        f"[HTTP] {service_name}:{port} unresponsive "
+        f"({count}/{HTTP_FAIL_THRESHOLD})"
+    )
+
+    if count >= HTTP_FAIL_THRESHOLD:
+        LOG.error(
+            f"[HTTP] {service_name}:{port} hung — force-restarting"
+        )
+        _http_fail_counts[port] = 0
+        # Kill the hung process, then restart
+        subprocess.run(
+            ["systemctl", "--user", "kill", "--signal=SIGKILL", service_name],
+            capture_output=True, timeout=5,
+        )
+        time.sleep(2)
+        _start_service(service_name)
+
+
+# ---------------------------------------------------------------------------
 # Model swap
 # ---------------------------------------------------------------------------
 
@@ -513,6 +573,13 @@ def main():
                 LOG.warning(f"CPU background LLM ({CPU_BG}) down, restarting")
                 _start_service(CPU_BG)
                 _stats["cpu_bg_restarts"] += 1
+
+            # ── 5b. HTTP health checks (detect hung processes) ────────
+            if _gpu_mode == "chat":
+                _check_llm_http_health(GPU_CHAT_PORT, GPU_CHAT)
+            else:
+                _check_llm_http_health(GPU_REASON_PORT, GPU_REASON)
+            _check_llm_http_health(CPU_BG_PORT, CPU_BG)
 
             # ── 6. Kill rogue llama-server processes ─────────────────
             servers = _find_llama_servers()

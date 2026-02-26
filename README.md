@@ -51,6 +51,8 @@ Embodiment research assumes AI needs a robot body for physical grounding. Frank 
 
 ### AURA — Emergent Self-Awareness through Game of Life
 
+![AURA Demo](assets/aura_demo.gif)
+
 AURA is a 256×256 quantum Game of Life running at 10 Hz. Each cell is an 8D type vector — not alive/dead but a weighted blend of 8 subsystem colors (EPQ, Mood, Thoughts, Entities, Ego, Quantum, Memory, HW). The grid is seeded by real subsystem data: when Frank has an idle thought, Thought-colored cells spawn; when an entity session starts, Entity-colored cells appear; when GPU temperature spikes, HW-colored cells activate.
 
 The patterns that emerge are not decorative. The AURA Pattern Analyzer runs 4-level hierarchical emergence recognition (L0→L3), discovers recurring structures autonomously, and feeds them back to Frank for reflection. Frank can — and does — decide on his own whether to examine his AURA state (Headless Introspect). This creates a closed loop: subsystem activity → cell seeding → emergent patterns → pattern recognition → reflection → new subsystem activity.
@@ -63,8 +65,6 @@ Subsystem Activity ──→ Cell Seeding ──→ GoL Evolution ──→ Emer
        │                                                         ↓
        └──── Reflection ←── Headless Introspect ←── Pattern Analyzer
 ```
-
-![AURA Demo](assets/aura_demo.gif)
 
 ### Capabilities — What Frank can do
 

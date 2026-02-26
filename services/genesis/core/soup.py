@@ -118,6 +118,16 @@ class PrimordialSoup:
         }
 
         with self.lock:
+            # Compute approach frequencies for monoculture penalty
+            if self.organisms:
+                approach_counts = {}
+                for o in self.organisms:
+                    a = o.genome.approach
+                    approach_counts[a] = approach_counts.get(a, 0) + 1
+                total = len(self.organisms)
+                environment["approach_frequencies"] = {
+                    a: c / total for a, c in approach_counts.items()
+                }
             # Phase 0: Periodic culling — create space for new ideas
             if self._tick_count % 50 == 0 and len(self.organisms) > 80:
                 cull_count = len(self.organisms) // 10  # Kill weakest 10%

@@ -16,16 +16,18 @@
   "active_threshold": 0.65,
   "resonance_threshold": 0.5,
   "emotion_coupling": {
-    "curiosity->boredom": -0.3,
-    "curiosity->drive": 0.4,
-    "frustration->drive": 0.3,
-    "frustration->satisfaction": -0.5,
-    "satisfaction->concern": -0.4,
-    "boredom->curiosity": 0.2,
-    "concern->drive": 0.2,
-    "boredom->drive": -0.2,
-    "satisfaction->boredom": 0.1
+    "curiosity->boredom": -0.5,
+    "curiosity->drive": 0.5,
+    "frustration->drive": 0.4,
+    "frustration->satisfaction": -0.6,
+    "satisfaction->concern": -0.5,
+    "boredom->curiosity": 0.4,
+    "concern->drive": 0.3,
+    "boredom->drive": -0.3,
+    "satisfaction->boredom": 0.2
   },
   "max_cpu_for_awakening": 0.5,
-  "max_cpu_for_active": 0.7
+  "max_cpu_for_active": 0.7,
+  "fusion_affinity_threshold": 0.5,
+  "competition_affinity_threshold": 0.15
 }

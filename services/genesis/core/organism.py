@@ -63,7 +63,7 @@ class IdeaGenome:
     mutations: int = 0
 
     def mutate(self) -> "IdeaGenome":
-        """Create a mutated copy of this genome."""
+        """Create a mutated copy of this genome. Preserves metadata from parent."""
         new_genome = copy.deepcopy(self)
         new_genome.mutations += 1
 
@@ -89,6 +89,8 @@ class IdeaGenome:
                 if random.random() < 0.3:
                     new_genome.traits[trait] = random.random()
 
+        # Metadata is inherited via deepcopy — child keeps parent's
+        # evidence/metric/check so Gate 3 can evaluate it
         return new_genome
 
     def crossover(self, other: "IdeaGenome") -> "IdeaGenome":
@@ -230,7 +232,7 @@ class IdeaOrganism:
         return "survive"
 
     # Approaches considered generic (no real plan)
-    _GENERIC_APPROACHES = {"optimization", "refactoring", "unknown", "config_change"}
+    _GENERIC_APPROACHES = {"optimization", "refactoring", "unknown"}
 
     def calculate_fitness(self, environment: Dict) -> float:
         """
@@ -296,6 +298,16 @@ class IdeaOrganism:
         # Range: -0.15 (very generic) to +0.15 (very specific)
         base_fitness += (specificity - 0.5) * 0.3
 
+        # ── Monoculture penalty ──
+        # If one approach dominates >40% of the population, penalize it
+        # to create niche pressure and maintain diversity
+        approach_freqs = environment.get("approach_frequencies", {})
+        if approach_freqs:
+            my_freq = approach_freqs.get(self.genome.approach, 0)
+            if my_freq > 0.4:
+                # Linear penalty: 40%→0%, 60%→-10%, 80%→-20%, 100%→-30%
+                base_fitness -= (my_freq - 0.4) * 0.5
+
         return max(0.0, base_fitness)
 
     def _calculate_specificity(self) -> float:
@@ -339,11 +351,12 @@ class IdeaOrganism:
         pass this quality check. Generic ideas stay alive and can
         mutate toward specificity, but they don't get to crystallize.
 
-        Must score >= 2 out of 4:
+        Must score >= 2 out of 5:
         1. Specific target (has function/line, not just filename)
         2. Concrete approach (not just "optimization"/"refactoring")
-        3. Has evidence/metric/detail
+        3. Has evidence/metric/detail in metadata
         4. Not a known noise pattern
+        5. Has a concrete origin (sensor, not spontaneous reproduction)
         """
         score = 0
         genome = self.genome
@@ -371,9 +384,14 @@ class IdeaOrganism:
         if not any(noise in target_lower for noise in noise_patterns):
             score += 1
 
+        # 5. Has a concrete origin?
+        if genome.origin in ("code_analysis", "error_analysis", "observation",
+                             "github", "fusion"):
+            score += 1
+
         passed = score >= 2
         if not passed:
-            LOG.debug(f"Crystal rejected (quality={score}/4): "
+            LOG.debug(f"Crystal rejected (quality={score}/5): "
                      f"{genome.idea_type}/{genome.target}/{genome.approach}")
         return passed
 
@@ -426,10 +444,10 @@ class IdeaOrganism:
         """
         Calculate affinity for fusion with another organism.
         Returns affinity score (0-1).
-        """
-        # Similar genomes can fuse
-        genome_similarity = self.genome.similarity(other.genome)
 
+        Fusion is most valuable when ideas share context (same type/target area)
+        but bring different approaches — combining perspectives.
+        """
         # Both must have enough energy
         if self.energy < 0.3 or other.energy < 0.3:
             return 0.0
@@ -438,12 +456,35 @@ class IdeaOrganism:
         if other.id in self.child_ids or other.id in self.parent_ids:
             return 0.0
 
-        # Similar but not identical is best for fusion
-        # (too similar = no benefit, too different = incompatible)
-        optimal_similarity = 0.6
-        similarity_score = 1 - abs(genome_similarity - optimal_similarity) / optimal_similarity
+        affinity = 0.0
 
-        return similarity_score * genome_similarity
+        # Same idea_type is a prerequisite (fix+fix or optimization+optimization)
+        if self.genome.idea_type == other.genome.idea_type:
+            affinity += 0.3
+        else:
+            # Different types CAN fuse (fix + optimization = hybrid)
+            affinity += 0.15
+
+        # Different approaches are the sweet spot for fusion
+        # (combining caching + parallel = potentially better than either alone)
+        if self.genome.approach != other.genome.approach:
+            affinity += 0.4
+        else:
+            affinity += 0.05  # Same approach = little value in fusing
+
+        # Related targets boost affinity (same file/module)
+        target_a = self.genome.target.split(":")[0]
+        target_b = other.genome.target.split(":")[0]
+        if target_a == target_b:
+            affinity += 0.3  # Same file/module
+        elif "/" in target_a and "/" in target_b:
+            # Same directory?
+            dir_a = "/".join(target_a.split("/")[:-1])
+            dir_b = "/".join(target_b.split("/")[:-1])
+            if dir_a and dir_a == dir_b:
+                affinity += 0.15
+
+        return min(1.0, affinity)
 
     def fuse_with(self, other: "IdeaOrganism") -> "IdeaOrganism":
         """

@@ -108,8 +108,8 @@ class MotivationalField:
             if source in old_values and target in old_values:
                 source_val = old_values[source]
                 # Only active if source is above threshold
-                if source_val > 0.4:
-                    effect = (source_val - 0.4) * strength * dt * 0.1
+                if source_val > 0.35:
+                    effect = (source_val - 0.35) * strength * dt * 0.3
                     coupling_effects[target] += effect
 
         # Apply coupling effects

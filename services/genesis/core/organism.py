@@ -180,8 +180,11 @@ class IdeaOrganism:
         from ..config import get_config
         config = get_config()
 
-        # 1. Existence costs energy
-        self.energy -= config.metabolism_cost
+        # 1. Existence costs energy (base + senescence)
+        cost = config.metabolism_cost
+        if self.age > config.senescence_start:
+            cost += config.senescence_rate * (self.age - config.senescence_start)
+        self.energy -= cost
 
         # 2. Gain energy from environment based on fitness
         fitness = self.calculate_fitness(environment)
@@ -193,18 +196,21 @@ class IdeaOrganism:
         energy_gain = fitness * environment.get("available_energy", 0.1)
         self.energy += energy_gain
 
-        # 3. Age
+        # 3. Energy cap — no hoarding
+        self.energy = min(self.energy, config.energy_cap)
+
+        # 4. Age
         self.age += 1
 
-        # 4. Determine action
-        if self.energy <= 0:
+        # 5. Determine action
+        if self.energy < 0.05:
             return "die"
 
-        # Can crystallize if mature and very high energy
+        # Can crystallize if mature, sufficient energy, and good fitness
         if (self.stage == IdeaStage.MATURE and
             self.energy > config.crystal_threshold and
             self.age > 15 and
-            self.average_fitness > 0.6):
+            self.average_fitness > 0.45):
             return "crystallize"
 
         # Can grow if enough energy
@@ -302,7 +308,7 @@ class IdeaOrganism:
 
     def reproduce(self) -> "IdeaOrganism":
         """Create offspring (costs energy)."""
-        self.energy *= 0.6  # Reproduction costs
+        self.energy *= 0.5  # Reproduction costs (was 0.6 — more expensive now)
 
         child_genome = self.genome.mutate()
         child = IdeaOrganism(
@@ -316,7 +322,8 @@ class IdeaOrganism:
         return child
 
     def mutate(self):
-        """Mutate in place."""
+        """Mutate in place (costs energy)."""
+        self.energy *= 0.9  # Mutation is not free
         self.genome = self.genome.mutate()
         LOG.debug(f"Organism {self.id} mutated")
 

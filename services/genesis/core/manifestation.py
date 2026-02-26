@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 import json
 import logging
+import math
 import urllib.request
 import urllib.error
 
@@ -250,10 +251,12 @@ class ManifestationGate:
         # 3. Energy resonance (high energy = strong idea)
         factors.append(min(1.0, organism.energy))
 
-        # 4. Age resonance (not too young, not too old)
-        optimal_age = 20
-        age_factor = 1 - abs(organism.age - optimal_age) / (optimal_age * 2)
-        factors.append(max(0, age_factor))
+        # 4. Age resonance (logarithmic — works for ages 1 to 1M+)
+        # Peak at ~200 ticks, gentle falloff, never goes below 0.2
+        log_age = math.log1p(organism.age)
+        optimal_log = math.log1p(200)
+        age_factor = max(0.2, 1 - abs(log_age - optimal_log) / (optimal_log * 2))
+        factors.append(age_factor)
 
         # 5. Risk resonance (low risk preferred)
         risk = genome.traits.get("risk", 0.5)

@@ -62,6 +62,9 @@ class PrimordialSoup:
         # History for analysis
         self.history: List[Dict] = []
 
+        # Periodic culling counter
+        self._tick_count = 0
+
         LOG.info("Primordial Soup initialized")
 
     def seed(self, genome: IdeaGenome, energy: float = None) -> IdeaOrganism:
@@ -101,6 +104,7 @@ class PrimordialSoup:
         3. Natural selection
         """
         new_crystals = []
+        self._tick_count += 1
 
         # Build environment from field
         environment = {
@@ -110,6 +114,18 @@ class PrimordialSoup:
         }
 
         with self.lock:
+            # Phase 0: Periodic culling — create space for new ideas
+            if self._tick_count % 50 == 0 and len(self.organisms) > 80:
+                cull_count = len(self.organisms) // 10  # Kill weakest 10%
+                ranked = sorted(self.organisms,
+                                key=lambda o: o.average_fitness - (o.age * 0.0001))
+                for victim in ranked[:cull_count]:
+                    self.organisms.remove(victim)
+                    self.total_deaths += 1
+                    self.stats.deaths += 1
+                if cull_count > 0:
+                    LOG.info(f"Periodic cull: removed {cull_count} weakest organisms")
+
             # Phase 1: Each organism lives its life
             actions = []
             for org in self.organisms:

@@ -114,6 +114,14 @@ class MotivationalField:
             new_value = current + effect
             setattr(self, emotion, min(1.0, max(0.0, new_value)))
 
+        # 2b. Saturation dampening — prevent convergence at 1.0
+        # Quadratic penalty above 0.75: emotions naturally settle at 0.6-0.8
+        for emotion in old_values:
+            current = getattr(self, emotion)
+            if current > 0.75:
+                penalty = (current - 0.75) ** 2 * 2.0
+                setattr(self, emotion, max(0.0, current - penalty))
+
         # 3. Non-linear interactions (emergent dynamics)
         self._apply_nonlinear_dynamics()
 
@@ -127,24 +135,20 @@ class MotivationalField:
         """
         # Frustration and satisfaction are antagonistic
         if self.frustration > 0.7 and self.satisfaction > 0.5:
-            # High frustration suppresses satisfaction
-            self.satisfaction *= 0.95
+            self.satisfaction *= 0.90  # Strong suppression (was 0.95)
 
         # Extreme boredom can flip to curiosity (looking for stimulation)
         if self.boredom > 0.8:
             self.curiosity += (self.boredom - 0.8) * 0.1
-            self.boredom *= 0.98
+            self.boredom *= 0.93  # Stronger flip (was 0.98)
 
-        # High drive amplifies other active emotions
-        if self.drive > 0.7:
-            if self.curiosity > 0.5:
-                self.curiosity *= 1.02
-            if self.frustration > 0.5:
-                self.frustration *= 1.01
+        # High drive causes exhaustion (was: amplified curiosity — positive feedback!)
+        if self.drive > 0.8:
+            self.drive *= 0.95  # Exhaustion at hyperdrive
 
         # Satisfaction is self-limiting (hedonic treadmill)
         if self.satisfaction > 0.8:
-            self.satisfaction *= 0.99
+            self.satisfaction *= 0.97  # Stronger treadmill (was 0.99)
 
         # Clamp all values
         for emotion in ["curiosity", "frustration", "satisfaction",
@@ -214,17 +218,17 @@ class MotivationalField:
         Calculate energy available for the Primordial Soup.
         High activation = more energy for ideas to grow.
         """
-        base_energy = 0.1  # Always some background energy
+        base_energy = 0.08  # Background energy (was 0.1)
 
-        # Active states provide more energy
+        # Active states provide more energy (reduced budgets)
         state = self.get_dominant_state()
         state_bonus = {
-            EmotionState.CURIOUS_ACTIVE: 0.4,
-            EmotionState.FRUSTRATED_ACTIVE: 0.3,
-            EmotionState.CONCERNED_WATCHFUL: 0.2,
-            EmotionState.BORED_PASSIVE: 0.15,
-            EmotionState.CONTENT_PASSIVE: 0.05,
-            EmotionState.NEUTRAL: 0.1,
+            EmotionState.CURIOUS_ACTIVE: 0.30,       # was 0.4
+            EmotionState.FRUSTRATED_ACTIVE: 0.22,    # was 0.3
+            EmotionState.CONCERNED_WATCHFUL: 0.15,   # was 0.2
+            EmotionState.BORED_PASSIVE: 0.10,        # was 0.15
+            EmotionState.CONTENT_PASSIVE: 0.05,      # was 0.05
+            EmotionState.NEUTRAL: 0.08,              # was 0.1
         }
 
         return base_energy + state_bonus.get(state, 0.1) * self.get_activation_level()

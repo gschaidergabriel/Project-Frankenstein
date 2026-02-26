@@ -42,16 +42,19 @@ class GenesisConfig:
 
     # === Thresholds ===
     # Motivational Field
-    emotion_decay_rate: float = 0.01          # How fast emotions return to baseline
+    emotion_decay_rate: float = 0.05          # How fast emotions return to baseline (was 0.01)
     emotion_baseline: float = 0.3             # Neutral emotion level
 
     # Soup
     max_organisms: int = 100                  # Maximum ideas in the soup
     seed_energy: float = 0.3                  # Starting energy for seeds
-    metabolism_cost: float = 0.02             # Energy cost per tick
+    metabolism_cost: float = 0.025            # Energy cost per tick (was 0.02)
+    energy_cap: float = 50.0                  # Max energy per organism (prevents hoarding)
+    senescence_start: int = 500               # Age (ticks) when senescence begins
+    senescence_rate: float = 0.001            # Extra energy cost per tick after senescence
     growth_threshold: float = 0.6             # Energy needed to grow
-    reproduction_threshold: float = 0.85      # Energy needed to reproduce
-    crystal_threshold: float = 0.9            # Energy needed to crystallize
+    reproduction_threshold: float = 0.75      # Energy needed to reproduce (was 0.85)
+    crystal_threshold: float = 0.7            # Energy needed to crystallize (was 0.9)
     mutation_rate: float = 0.05               # Chance of mutation per tick
     fusion_affinity_threshold: float = 0.8    # Affinity needed for fusion
     competition_affinity_threshold: float = 0.2  # Below this, ideas compete

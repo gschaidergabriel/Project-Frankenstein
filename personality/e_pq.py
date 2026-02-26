@@ -306,6 +306,32 @@ class EPQ:
             self._save_state("initial_creation")
             self._birth_date = datetime.now()
 
+    def _refresh_state(self):
+        """Reload personality vectors from DB before every event.
+
+        Each service process (core, consciousness, dream, genesis) has its
+        own EPQ singleton.  Without this refresh the in-memory vectors go
+        stale and a chat event in core/app.py overwrites a homeostasis
+        reset that was persisted by consciousness or dream daemon.
+        """
+        try:
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT precision_val, risk_val, empathy_val, autonomy_val, "
+                "vigilance_val, mood_buffer, age_days "
+                "FROM personality_state ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                self._state.precision_val = row["precision_val"]
+                self._state.risk_val = row["risk_val"]
+                self._state.empathy_val = row["empathy_val"]
+                self._state.autonomy_val = row["autonomy_val"]
+                self._state.vigilance_val = row["vigilance_val"]
+                self._state.mood_buffer = row["mood_buffer"]
+                self._state.age_days = row["age_days"]
+        except Exception as exc:
+            LOG.debug("E-PQ refresh failed (using cached state): %s", exc)
+
     def _ensure_snapshots(self):
         """Ensure at least one golden snapshot exists and create weekly ones."""
         conn = self._get_conn()
@@ -483,6 +509,10 @@ class EPQ:
             Dict with personality changes and response hints
         """
         data = data or {}
+
+        # Sync with DB — another process may have modified vectors
+        self._refresh_state()
+
         weight = EVENT_WEIGHTS.get(event_type, 0.1)
         learning_rate = self._get_learning_rate()
 
@@ -498,6 +528,12 @@ class EPQ:
 
         # Calculate vector changes based on event type
         changes = self._calculate_changes(event_type, sentiment, weight, learning_rate, data=data)
+
+        # Guard: cap per-event vector delta (mood excluded — transient)
+        MAX_DELTA = 0.15
+        for key in list(changes):
+            if key != "mood":
+                changes[key] = max(-MAX_DELTA, min(MAX_DELTA, changes[key]))
 
         # Apply changes
         old_state = self._state.to_dict()
@@ -684,9 +720,9 @@ class EPQ:
         # Genesis-driven personality adjustments (vector-targeted via data dict)
         elif event_type == "genesis_personality_boost":
             target = data.get("target_vector", "")
-            amount = data.get("amount", 0.1)
+            amount = min(data.get("amount", 0.1), 0.5)   # cap genesis amount
             if target in ("precision", "risk", "empathy", "autonomy", "vigilance"):
-                changes[target] = delta * amount * 5.0  # Amplified intentional change
+                changes[target] = delta * amount * 3.0    # was 5.0 — caused snap-to-ceiling
                 changes["mood"] = delta * 0.3
         elif event_type == "genesis_personality_dampen":
             target = data.get("target_vector", "")

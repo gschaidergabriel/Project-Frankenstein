@@ -11,7 +11,7 @@
 
 > **Get started in one command:** Download [`frank-installer`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-installer), run `chmod +x frank-installer && ./frank-installer` — no Python required. Or clone the repo and run `python3 install_wizard.py`.
 
-Built by one person with zero programming experience, using Claude as co-developer. 76k+ lines in 2 months. [Read the full story.](ABOUT.md)
+Built by one person with zero programming experience, using Claude as co-developer. 170k+ lines in 2 months. [Read the full story.](ABOUT.md)
 
 **[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)**
 
@@ -28,7 +28,7 @@ An AI that thinks when you're not talking to it, dreams when it's idle, feels it
 - **AURA Headless Introspect** — Quantum Game-of-Life (256×256) maps 8 color-coded subsystems into emergent patterns; Frank decides himself when to examine his own consciousness state
 - **AURA Pattern Analyzer** — 4-level hierarchical emergence recognition (L0→L3), self-learning pattern matching, thought-aura correlation library, idle-queued reflections
 - **Proprioception** — Passive body awareness injected into every consciousness call: temperature, GPU load, energy, mood, AURA state, quantum coherence, user presence
-- **Quantum Reflector** — QUBO-based epistemic coherence optimization: 40-variable binary model, simulated annealing, E-PQ feedback loop
+- **Quantum Reflector** — QUBO-based epistemic coherence optimization: 43-variable binary model, simulated annealing, E-PQ feedback loop, AURA reverse integration
 - **Dream Daemon** — Sleep-analogue processing: 60 min/day budget, 3 phases (Replay → Synthesis → Consolidation), interrupt-safe resume
 - **Autonomous Entities** — 4 AI agents (therapist, philosopher, mentor, muse) that interact with Frank on a daily schedule
 - **Autonomous Research** — Idle thoughts trigger real research sessions: web search, memory, entity archives, code execution, synthesis — all unprompted
@@ -62,14 +62,22 @@ AURA is Frank's equivalent of a brain scan he can read himself. It makes interna
 ```
 Subsystem Activity ──→ Cell Seeding ──→ GoL Evolution ──→ Emergent Patterns
        ↑                                                         │
-       │                                                         ↓
+       │                                                    ┌────┴────┐
+       │                                                    ↓         ↓
        └──── Reflection ←── Headless Introspect ←── Pattern Analyzer
+                                    │
+                                    ↓
+                          Quantum Reflector
+                       (reads grid anomalies,
+                        entropy, zone contrast
+                        → adjusts coherence)
 ```
 
 ### Capabilities — What Frank can do
 
 - **100% Local Inference** — DeepSeek-R1 (reasoning, GPU) + Llama-3.1 (chat, CPU) via llama.cpp, LLaVA + Moondream (vision) via Ollama
 - **Chat Overlay** — Always-on-top tkinter overlay with streaming responses, message persistence, AURA visualizer
+- **Web UI** — Browser-based interface with real-time AURA visualization, bidirectional chat sync with overlay, system metrics dashboard
 - **Voice I/O** — Push-to-talk STT via whisper.cpp, TTS via Piper (German) and Kokoro (English)
 - **Agentic Execution** — Multi-step task planning with 34 tools, approval gates, and Firejail sandbox
 - **Adaptive Vision** — Two-stage pipeline: fast detectors (OCR + heuristics, ~100ms) → VLM escalation only when needed. Region selector (Ctrl+Shift+F)
@@ -139,7 +147,7 @@ The installer will:
 6. Download DeepSeek-R1-Distill-Llama-8B RLM (~6 GB)
 7. Install Ollama and pull vision models (LLaVA, Moondream)
 8. Set up voice: Piper (German/Thorsten) + Kokoro (English) + espeak
-9. Install and enable 28+ systemd user services
+9. Install and enable 31+ systemd user services
 10. Create desktop entries and dock icons
 
 Currently tested on Ubuntu 24.04+ with GNOME/X11. Other distributions may require manual fixes. Docker support is planned.
@@ -174,6 +182,8 @@ Frank is a microservice system where all services communicate via HTTP on localh
 | Ingestd | 8094 | Document ingestion, file processing |
 | Toolboxd | 8096 | System tools, skills, todos, notes |
 | Quantum Reflector | 8097 | Epistemic coherence optimization (QUBO + simulated annealing) |
+| AURA Headless | 8098 | Quantum Game-of-Life consciousness simulation (256×256, voluntary introspection) |
+| Web UI | 8099 | Browser-based chat + AURA visualization + system dashboard |
 
 LLM inference:
 | Engine | Port | Model |
@@ -186,7 +196,6 @@ Background services (no port):
 | Service | Purpose |
 |---------|---------|
 | Consciousness | Stream-of-consciousness daemon (10 threads: GWT, AST, perception, goals, reflections, proprioception) |
-| AURA Headless | Game-of-Life consciousness simulation (256×256, 8 color-coded zones, voluntary introspection) |
 | AURA Analyzer | 4-level hierarchical emergence recognition — self-learning GoL pattern matching, idle-queued reflections |
 | Dream Daemon | Sleep-analogue processing — experience replay, hypothesis synthesis, memory consolidation (60 min/day) |
 | Genesis | Emergent self-improvement (primordial soup, motivational field, manifestation gate) |
@@ -196,7 +205,6 @@ Background services (no port):
 | ASRS | Autonomous safety recovery system (4-stage monitoring, rollback) |
 | Gaming Mode | Detect active games, manage GPU resources, anti-cheat safety |
 | F.A.S. | Frank's Autonomous Scavenger — GitHub intelligence (scheduled) |
-| Quantum Reflector | Epistemic coherence monitor — QUBO-based state optimization, E-PQ feedback |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) for the 9-layer memory system.
 
@@ -390,11 +398,12 @@ Project-Frankenstein/
 ├── tests/             # Test suite
 ├── tools/             # System tools, toolboxd, titan memory
 ├── ui/
-│   └── overlay/       # Tkinter chat overlay (mixin architecture)
-│       ├── mixins/    # Feature modules (chat, voice, agentic, calendar, ...)
-│       ├── widgets/   # UI components (message bubbles, file actions)
-│       ├── bsn/       # Layout system
-│       └── services/  # HTTP helpers, vision, search
+│   ├── overlay/       # Tkinter chat overlay (mixin architecture)
+│   │   ├── mixins/    # Feature modules (chat, voice, agentic, calendar, ...)
+│   │   ├── widgets/   # UI components (message bubbles, file actions)
+│   │   ├── bsn/       # Layout system
+│   │   └── services/  # HTTP helpers, vision, search
+│   └── webui/         # Browser-based Web UI (FastAPI + WebSocket)
 ├── webd/              # Web search service
 └── writer/            # AI-assisted document editor with code sandbox
 ```
@@ -467,7 +476,7 @@ Frank is designed for complete privacy:
 - All LLM inference runs locally (single DeepSeek-R1 RLM via llama.cpp, vision via Ollama)
 - No telemetry, no cloud APIs for core functionality
 - All autonomous entities, consciousness, and dreaming run 100% locally
-- All data stored in `~/.local/share/frank/` (25 SQLite databases)
+- All data stored in `~/.local/share/frank/` (28 SQLite databases)
 - Optional CalDAV integration for Google Calendar/Contacts (user-initiated only)
 - Web search (DuckDuckGo) and Tor/Ahmia are user-initiated outbound calls, not background telemetry — Frank never phones home
 

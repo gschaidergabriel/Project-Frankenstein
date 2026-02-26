@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AICORE_DIR="$(dirname "$SCRIPT_DIR")"
 OVERLAY_SCRIPT="$SCRIPT_DIR/chat_overlay.py"
 VENV_PYTHON="$(dirname "$AICORE_DIR")/venv/bin/python3"
-ICON="$AICORE_DIR/assets/icons/frank-overlay.svg"
+ICON="$AICORE_DIR/assets/icons/frank-overlay.png"
 LOG_FILE="/tmp/overlay.log"
 
 # Use venv python if available, else system python

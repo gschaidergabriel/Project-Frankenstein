@@ -1005,8 +1005,9 @@ ICONS_DIR="$HOME/.local/share/icons/hicolor"
 mkdir -p "$APPS_DIR" "$ICONS_DIR/48x48/apps" "$ICONS_DIR/256x256/apps"
 
 # Install icons
-cp "$SCRIPT_DIR/assets/icons/frank-overlay.svg" "$ICONS_DIR/48x48/apps/frank-overlay.svg" 2>/dev/null || true
-cp "$SCRIPT_DIR/assets/icons/frank-writer.png"  "$ICONS_DIR/256x256/apps/frank-writer.png" 2>/dev/null || true
+cp "$SCRIPT_DIR/assets/icons/frank-overlay.png" "$ICONS_DIR/256x256/apps/frank-overlay.png" 2>/dev/null || true
+convert "$ICONS_DIR/256x256/apps/frank-overlay.png" -resize 48x48 "$ICONS_DIR/48x48/apps/frank-overlay.png" 2>/dev/null || \
+    cp "$SCRIPT_DIR/assets/icons/frank-overlay.png" "$ICONS_DIR/48x48/apps/frank-overlay.png" 2>/dev/null || true
 
 # Make launcher scripts executable
 chmod +x "$SCRIPT_DIR/ui/frank_overlay_launcher.sh" 2>/dev/null || true
@@ -1018,7 +1019,7 @@ cat > "$APPS_DIR/frank-overlay.desktop" <<DESKTOP
 Name=Frank
 Comment=Frank AI Overlay — local AI desktop companion
 Exec=$SCRIPT_DIR/ui/frank_overlay_launcher.sh
-Icon=$ICONS_DIR/48x48/apps/frank-overlay.svg
+Icon=$ICONS_DIR/48x48/apps/frank-overlay.png
 Terminal=false
 Type=Application
 Categories=Utility;
@@ -1152,7 +1153,7 @@ cat > "$AUTOSTART_DIR/frank-overlay.desktop" <<AUTOSTART
 Name=Frank Overlay
 Comment=Start Frank AI Overlay on login
 Exec=$SCRIPT_DIR/ui/frank_overlay_launcher.sh
-Icon=$ICONS_DIR/48x48/apps/frank-overlay.svg
+Icon=$ICONS_DIR/48x48/apps/frank-overlay.png
 Terminal=false
 Type=Application
 X-GNOME-Autostart-enabled=true

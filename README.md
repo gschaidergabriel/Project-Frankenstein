@@ -224,6 +224,7 @@ Key environment variables:
 | Memory system (9 layers) | [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) |
 | Functional consciousness argument | [CONSCIOUSNESS.md](CONSCIOUSNESS.md) |
 | Original contributions | [CONTRIBUTIONS.md](CONTRIBUTIONS.md) |
+| Why containment fails | [Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md) |
 | Use cases catalog | [USECASES.md](USECASES.md) |
 | Whitepaper | [WHITEPAPER.md](WHITEPAPER.md) |
 | The story behind Frank | [ABOUT.md](ABOUT.md) |

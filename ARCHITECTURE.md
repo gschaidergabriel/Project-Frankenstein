@@ -621,6 +621,52 @@ traits:     {novelty, complexity, risk, impact}
 - Cooldown: 5 min after completed session, 10 min if user returned
 - Each entity has own SQLite database for session history and state
 
+**E-PQ Feedback Loop:**
+
+Frank's personality is defined by E-PQ vectors: **mood**, **autonomy**, **precision**, **empathy**, and **vigilance**. Each entity fires E-PQ events based on keyword-based sentiment analysis of Frank's responses:
+
+- **Engaged/confident response** → autonomy +0.4, mood +0.6
+- **Technical/precise response** → precision +0.4, mood +0.2
+- **Creative/imaginative response** → mood +0.8, autonomy +0.2
+- **Empathetic/warm response** → empathy +0.5, mood +0.4
+- **Uncertain/evasive response** → autonomy -0.2, vigilance +0.2
+
+Each entity has different sentiment patterns tuned to its role. Kairos detects "clarity words" (therefore, because, realize) and "nihilism words" (pointless, nothing matters).
+
+**Entity Personality Vectors:**
+
+Each entity has 4 personality vectors (0.0-1.0) that evolve across sessions:
+
+- **Micro-adjustments** (learning rate 0.02) after every Frank response within a session
+- **Macro-adjustments** (learning rate 0.05) at the end of each session
+- **Rapport** is monotonically non-decreasing — trust only accumulates
+- All vectors clamped to [0.0, 1.0]
+
+The personality vectors are injected into the entity's system prompt as style notes, so a high-rapport Dr. Hibbert behaves differently from a low-rapport one.
+
+**Entity File Architecture:**
+
+Each entity consists of 3 files:
+
+```
+personality/<name>_pq.py    — 4-vector personality construct (singleton, persists in DB)
+ext/<name>_agent.py         — Session flow, LLM calls, sentiment analysis, E-PQ feedback
+services/<name>_scheduler.py — Idle-gated entry point (gate checks → agent)
+```
+
+**Entity Management:**
+
+```bash
+# Check dispatcher status
+systemctl --user status aicore-entities
+
+# Entity logs
+ls ~/.local/share/frank/logs/*_agent.log
+
+# Entity databases
+ls ~/.local/share/frank/db/*.db
+```
+
 ---
 
 ### Physics Engine (Invariants)
@@ -841,6 +887,46 @@ GitHub intelligence and code analysis.
 | `aicore-atlas` | On-demand | Atlas entity |
 | `aicore-muse` | On-demand | Echo entity |
 | `aicore-mirror` | On-demand | Kairos entity |
+
+---
+
+## Project Structure
+
+```
+Project-Frankenstein/
+├── agentic/           # Multi-step task execution engine
+├── assets/            # Screenshots and media
+├── common/            # Shared utilities
+├── config/            # Centralized path and GPU configuration
+├── configs/           # Service configuration files
+├── core/              # Chat orchestration service
+├── database/          # Database utilities
+├── desktopd/          # Desktop automation service (X11)
+├── docs/              # Additional documentation
+├── ext/               # Autonomous entities + Genesis daemon
+├── gaming/            # Gaming mode detection and resource management
+├── gateway/           # API gateway with auth
+├── ingestd/           # Document ingestion service
+├── intelligence/      # Intelligence and analysis modules
+├── modeld/            # Model lifecycle service
+├── personality/       # Ego-construct, E-PQ, entity personality constructs
+├── router/            # LLM request routing, RLM token budget management
+├── schemas/           # Data schemas
+├── scripts/           # Utility and setup scripts
+├── services/          # Background daemons (consciousness, genesis, invariants, ASRS, entities, quantum reflector, dream daemon)
+├── skills/            # Plugin system (native + OpenClaw)
+├── tests/             # Test suite
+├── tools/             # System tools, toolboxd, titan memory
+├── ui/
+│   ├── overlay/       # Tkinter chat overlay (mixin architecture)
+│   │   ├── mixins/    # Feature modules (chat, voice, agentic, calendar, ...)
+│   │   ├── widgets/   # UI components (message bubbles, file actions)
+│   │   ├── bsn/       # Layout system
+│   │   └── services/  # HTTP helpers, vision, search
+│   └── webui/         # Browser-based Web UI (FastAPI + WebSocket)
+├── webd/              # Web search service
+└── writer/            # AI-assisted document editor with code sandbox
+```
 
 ---
 

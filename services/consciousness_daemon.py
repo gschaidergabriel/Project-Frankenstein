@@ -90,6 +90,8 @@ MAX_PERCEPTUAL_LOG = 100
 # Event thresholds (deltas that count as "perceptual events")
 PERCEPT_CPU_LOAD_DELTA = 0.25   # Was 0.15 — reduce hardware event spam
 PERCEPT_GPU_LOAD_DELTA = 0.30   # Was 0.20 — only significant GPU changes
+PERCEPT_GPU_COOLDOWN_S = 60.0   # Min seconds between GPU events (prevents self-inference loop)
+PERCEPT_RAM_DELTA = 10.0        # >10% RAM change = event
 PERCEPT_TEMP_DELTA = 10.0       # Was 5°C — minor fluctuations are noise
 PERCEPT_USER_GONE_S = 120.0  # mouse idle > this = "user_left"
 PERCEPT_USER_BACK_S = 5.0    # mouse idle < this after being gone = "user_returned"
@@ -962,12 +964,9 @@ class ConsciousnessDaemon:
                 energy_level=energy,
             )
 
-            # Persist every 5th update (~2.5 min)
+            # Persist every 5th update (~5 min)
             conn = self._get_conn()
-            count = conn.execute(
-                "SELECT COUNT(*) FROM workspace_state"
-            ).fetchone()[0]
-            if count == 0 or (count % 5 == 0):
+            if self._ws_update_count % 5 == 0:
                 ws = self._current_workspace
                 conn.execute(
                     "INSERT INTO workspace_state "
@@ -989,26 +988,31 @@ class ConsciousnessDaemon:
                 conn.commit()
 
     def _poll_hardware(self) -> str:
-        """Poll hardware summary from toolbox."""
+        """Poll hardware summary from toolbox via core proxy."""
         try:
             req = urllib.request.Request(
-                f"{CORE_BASE}/toolbox/summary",
-                method="GET",
+                f"{CORE_BASE}/tools/sys/summary",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
             )
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
                 data = json.loads(resp.read().decode())
                 if data.get("ok"):
                     # Extract key metrics
                     cpu = data.get("cpu", {})
-                    ram = data.get("ram", {})
+                    mem = data.get("mem", {})
                     temp = data.get("temps", {})
                     parts = []
                     if cpu.get("model"):
                         parts.append(cpu["model"][:30])
-                    if ram.get("used_gb") and ram.get("total_gb"):
-                        parts.append(f"RAM {ram['used_gb']:.1f}/{ram['total_gb']:.0f}GB")
-                    if temp.get("cpu_temp"):
-                        parts.append(f"CPU:{temp['cpu_temp']}°C")
+                    mem_kb = mem.get("mem_kb", {})
+                    if mem_kb.get("used") and mem_kb.get("total"):
+                        used_gb = mem_kb["used"] / 1048576
+                        total_gb = mem_kb["total"] / 1048576
+                        parts.append(f"RAM {used_gb:.1f}/{total_gb:.0f}GB")
+                    if temp.get("max_temp_c"):
+                        parts.append(f"CPU:{temp['max_temp_c']:.0f}°C")
                     return " | ".join(parts) if parts else ""
         except Exception:
             pass
@@ -1044,21 +1048,39 @@ class ConsciousnessDaemon:
 
     # ── Mood Trajectory ───────────────────────────────────────────────
 
+    _MOOD_BASELINE = 0.0       # Neutral baseline
+    _MOOD_DECAY_RATE = 0.03    # ~3% per recording cycle (every 120s)
+    _EPQ_BLEND = 0.15          # 15% pull toward E-PQ (event responsiveness)
+
     def _mood_recording_loop(self):
-        """Record mood trajectory points (~60s)."""
+        """Record mood trajectory points (~120s) with cumulative hedonic adaptation.
+
+        Mood decays cumulatively toward baseline (hedonic adaptation).
+        E-PQ mood_value serves as a pull signal (not absolute replacement),
+        so events that change mood_buffer are still reflected.
+        """
         while self._running:
             try:
                 mood_str = self._poll_mood()
-                # Extract numeric mood if available
-                mood_val = 0.0
+                # Extract E-PQ mood as input signal
+                epq_mood = 0.0
                 try:
                     sys.path.insert(0, str(_AICORE_ROOT))
                     from personality.e_pq import get_personality_context
                     ctx = get_personality_context()
                     if ctx and "mood_value" in ctx:
-                        mood_val = float(ctx["mood_value"])
+                        epq_mood = float(ctx["mood_value"])
                 except Exception:
                     pass
+                # Cumulative hedonic adaptation:
+                # Decay from PREVIOUS recorded value (not raw E-PQ), so decay accumulates.
+                # Blend with E-PQ to preserve event responsiveness.
+                if self._prev_mood_val is not None:
+                    decayed = (self._prev_mood_val * (1 - self._MOOD_DECAY_RATE)
+                               + self._MOOD_BASELINE * self._MOOD_DECAY_RATE)
+                    mood_val = decayed * (1 - self._EPQ_BLEND) + epq_mood * self._EPQ_BLEND
+                else:
+                    mood_val = epq_mood  # First recording: use E-PQ directly
                 self._record_mood(mood_val, source="system")
             except Exception as e:
                 LOG.warning("Mood recording failed: %s", e)
@@ -1448,12 +1470,15 @@ class ConsciousnessDaemon:
                 silence = now - self._last_chat_ts
                 since_last_think = now - self._last_idle_think_ts
 
-                # Priority 0: AURA queue — process pending GoL summaries
-                # Only during idle. Alternates with real idle thoughts.
+                # AURA queue — process pending GoL summaries (rate limited)
+                # Max 1 per 5 minutes to prevent AURA dominating idle thoughts.
+                _aura_cooldown = getattr(self, '_last_aura_process_ts', 0)
                 if (silence >= IDLE_THINK_MIN_SILENCE_S
-                        and not self._aura_just_ran):
+                        and not self._aura_just_ran
+                        and (now - _aura_cooldown) >= 300.0):
                     if self._process_aura_queue():
                         self._last_idle_think_ts = now
+                        self._last_aura_process_ts = now
                         self._aura_just_ran = True  # Force a real thought next
                         time.sleep(30.0)
                         continue
@@ -2480,6 +2505,9 @@ class ConsciousnessDaemon:
 
     def _auto_web_search(self, query: str) -> None:
         """Perform an autonomous web search via webd."""
+        if not query or "<" in query or len(query) < 3 or query in ("query", "search query", "something"):
+            LOG.debug("Rejected template-placeholder web search: %s", query[:40])
+            return
         import urllib.request, json
         payload = json.dumps({"query": query, "limit": 3}).encode()
         req = urllib.request.Request(
@@ -2510,6 +2538,10 @@ class ConsciousnessDaemon:
 
     def _auto_news_check(self, category: str = "tech_de") -> None:
         """Check news via webd."""
+        _valid_cats = {"tech_de", "science", "news_de"}
+        if not category or "<" in category or category not in _valid_cats:
+            LOG.debug("Rejected invalid news category: %s", category[:20])
+            return
         import urllib.request, json
         payload = json.dumps({"category": category, "limit": 3}).encode()
         req = urllib.request.Request(
@@ -2885,10 +2917,13 @@ class ConsciousnessDaemon:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=360.0) as resp:
-            data = json.loads(resp.read().decode())
-            if data.get("ok"):
-                return (data.get("text") or "").strip()
+        try:
+            with urllib.request.urlopen(req, timeout=360.0) as resp:
+                data = json.loads(resp.read().decode())
+                if data.get("ok"):
+                    return (data.get("text") or "").strip()
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError) as e:
+            LOG.warning("LLM router call failed (graceful degradation): %s", e)
         return ""
 
     def _micro_llm_call(self, text: str, max_tokens: int,
@@ -3410,12 +3445,23 @@ class ConsciousnessDaemon:
         elif cpu_delta < -PERCEPT_CPU_LOAD_DELTA:
             events.append("cpu_drop")
 
-        # GPU load changes
+        # GPU load changes (with cooldown to prevent self-inference detection loop)
         gpu_delta = state.gpu_load - prev.gpu_load
-        if gpu_delta > PERCEPT_GPU_LOAD_DELTA:
-            events.append("gpu_spike")
-        elif gpu_delta < -PERCEPT_GPU_LOAD_DELTA:
-            events.append("gpu_drop")
+        gpu_cooldown_ok = (state.timestamp - getattr(self, '_last_gpu_event_ts', 0)) > PERCEPT_GPU_COOLDOWN_S
+        if gpu_cooldown_ok:
+            if gpu_delta > PERCEPT_GPU_LOAD_DELTA:
+                events.append("gpu_spike")
+                self._last_gpu_event_ts = state.timestamp
+            elif gpu_delta < -PERCEPT_GPU_LOAD_DELTA:
+                events.append("gpu_drop")
+                self._last_gpu_event_ts = state.timestamp
+
+        # RAM pressure changes
+        ram_delta = state.ram_pct - prev.ram_pct
+        if ram_delta > PERCEPT_RAM_DELTA:
+            events.append("ram_pressure")
+        elif ram_delta < -PERCEPT_RAM_DELTA:
+            events.append("ram_release")
 
         # Temperature changes
         if abs(state.cpu_temp - prev.cpu_temp) > PERCEPT_TEMP_DELTA:

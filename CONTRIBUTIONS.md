@@ -1,8 +1,11 @@
 # Original Contributions
 
-Frank builds on established theories and open-source tools. This document distinguishes what is novel from what is adapted.
+> [!NOTE]
+> Frank builds on established theories and open-source tools. This document distinguishes what is novel from what is adapted. For the formal mapping of theory to code, see the [GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md).
 
-## New architectures (no published precedent)
+---
+
+## New Architectures (No Published Precedent)
 
 | Contribution | What's new | What it builds on |
 |---|---|---|
@@ -18,7 +21,9 @@ Frank builds on established theories and open-source tools. This document distin
 | **Invariants Engine** | Physics-inspired conservation laws as safety constraints: energy conservation, entropy bound, core kernel protection | No precedent for applying physical conservation law analogues as AI safety invariants |
 | **Consciousness Stream** | 10 parallel threads (GWT, AST, perception, experience space, goals, reflection, predictions, mood, coherence, proprioception) as running daemons | GWT was proposed theoretically (Goldstein & Kirk-Giannini, 2024); Frank runs it as a 10-thread daemon |
 
-## New combinations of existing ideas
+---
+
+## New Combinations of Existing Ideas
 
 | Contribution | What's combined |
 |---|---|
@@ -27,6 +32,11 @@ Frank builds on established theories and open-source tools. This document distin
 | **Gaming Mode** | Game detection + GPU resource management + anti-cheat safety + automatic consciousness reduction |
 | **Skill Hybrid Format** | Native Python plugins + LLM-mediated OpenClaw skills (SKILL.md with YAML) + hot-reload |
 
-## Not original (existing technologies and theories)
+---
+
+## Not Original (Existing Technologies and Theories)
+
+> [!TIP]
+> Standing on the shoulders of giants — these are the foundations Frank is built on.
 
 Global Workspace Theory (Baars, 1988) · Attention Schema Theory (Graziano, 2013) · Embodied Cognition Theory (Varela, Thompson & Rosch, 1991) · Big Five personality research · Conway's Game of Life (1970) · Sleep-dependent memory consolidation (neuroscience) · QUBO / Simulated Annealing (optimization research) · Microservice architecture · llama.cpp, Ollama, whisper.cpp, Piper, DeepSeek-R1 · Firejail, xdotool, wmctrl · CalDAV, DuckDuckGo, Tor/Ahmia

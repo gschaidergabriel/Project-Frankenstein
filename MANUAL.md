@@ -827,7 +827,7 @@ export AICORE_GPU_BACKEND=cpu      # CPU-only (no GPU acceleration)
 
 | Directory | Contents |
 |-----------|----------|
-| `~/.local/share/frank/db/` | All 29 SQLite databases |
+| `~/.local/share/frank/db/` | All 25 SQLite databases |
 | `~/.local/share/frank/models/` | GGUF model files (~13 GB) |
 | `~/.local/share/frank/voices/` | TTS voice models |
 | `~/.local/share/frank/logs/` | Service log files |

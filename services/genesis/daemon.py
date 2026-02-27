@@ -293,8 +293,15 @@ class GenesisDaemon:
             # Pet watchdog between sensors (some block 30+s)
             sd_notify("WATCHDOG=1")
 
+    _MIN_STATE_DURATION_S = 10.0  # Minimum time in any state before downgrade
+
     def _update_state(self):
-        """Update contemplation state based on conditions."""
+        """Update contemplation state based on conditions.
+
+        Includes hysteresis: states must be held for _MIN_STATE_DURATION_S
+        before a downgrade transition can occur, preventing oscillation.
+        Upgrades (toward active) are always immediate.
+        """
         activation = self.field.get_activation_level()
         user_sensor = self._get_sensor("user_presence")
         system_sensor = self._get_sensor("system_pulse")
@@ -312,35 +319,41 @@ class GenesisDaemon:
             metrics = system_sensor.get_current_metrics()
             system_load = metrics.get("cpu", 0.5)
 
+        # Hysteresis: time in current state
+        time_in_state = (datetime.now() - self.last_state_change).total_seconds()
+        can_downgrade = time_in_state >= self._MIN_STATE_DURATION_S
+
         # State transition logic
         old_state = self.state
 
         if self.state == ContemplationState.DORMANT:
-            # Transition to stirring if activation high and conditions good
+            # Upgrade: always immediate
             if (activation > self.config.stirring_threshold and
                 not user_active and
                 system_load < self.config.max_cpu_for_awakening):
                 self.state = ContemplationState.STIRRING
 
         elif self.state == ContemplationState.STIRRING:
-            # Transition to awakening or back to dormant
-            if user_active or system_load > self.config.max_cpu_for_awakening:
+            # Downgrade: only after min duration
+            if can_downgrade and (user_active or system_load > self.config.max_cpu_for_awakening):
                 self.state = ContemplationState.DORMANT
+            # Upgrade: always immediate
             elif activation > self.config.awakening_threshold:
                 self.state = ContemplationState.AWAKENING
 
         elif self.state == ContemplationState.AWAKENING:
-            # Transition to active or back
-            if user_active or system_load > self.config.max_cpu_for_active:
+            # Downgrade: only after min duration
+            if can_downgrade and (user_active or system_load > self.config.max_cpu_for_active):
                 self.state = ContemplationState.STIRRING
+            # Upgrade: always immediate
             elif activation > self.config.active_threshold:
                 self.state = ContemplationState.ACTIVE
 
         elif self.state == ContemplationState.ACTIVE:
-            # Check for manifestation or go back
+            # Downgrade: only after min duration (except user_active which is always immediate)
             if user_active:
                 self.state = ContemplationState.DORMANT
-            elif system_load > self.config.max_cpu_for_active:
+            elif can_downgrade and system_load > self.config.max_cpu_for_active:
                 self.state = ContemplationState.AWAKENING
 
         elif self.state == ContemplationState.PRESENTING:

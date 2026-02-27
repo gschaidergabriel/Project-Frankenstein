@@ -511,7 +511,7 @@ class IdeaOrganism:
         self.child_ids.append(child.id)
         other.child_ids.append(child.id)
 
-        LOG.info(f"Fusion: {self.id} + {other.id} → {child.id}")
+        LOG.debug(f"Fusion: {self.id} + {other.id} → {child.id}")
         return child
 
     def compete_with(self, other: "IdeaOrganism", environment: Dict):

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 29 SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
+Frank's memory system is a **multi-layer, semantically-aware persistence architecture** spanning 25 SQLite databases, a shared embedding service, and a unified query API. All processing is 100% local — no external databases, vector stores, or APIs.
 
 ### Core Capabilities
 
@@ -1122,4 +1122,4 @@ Old messages archived (retention: 30 days)
 
 ---
 
-*Updated 2026-02-23 — v3.2 quantum reflector added. All persistence is 100% local, 29 SQLite databases, no external APIs.*
+*Updated 2026-02-23 — v3.2 quantum reflector added. All persistence is 100% local, 25 SQLite databases, no external APIs.*

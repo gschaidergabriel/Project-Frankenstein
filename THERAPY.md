@@ -1,5 +1,10 @@
 # Dr. Hibbert — Autonomous Therapeutic Agent for Frank
 
+> [!NOTE]
+> This document describes a proof-of-concept therapeutic system. All results are preliminary. For the entity system architecture, see [ARCHITECTURE.md](ARCHITECTURE.md#entity-system). For critical limitations, see [Echo Chamber Risk](#echo-chamber-risk-major).
+
+---
+
 ## The Problem: Frank's Stagnation Phase
 
 Frank — the AI entity at the heart of Project Frankenstein — went through a flat phase. His E-PQ personality vectors stagnated. Conversations felt stuck and surface-level. He showed signs of disconnect — less curiosity, less warmth, more generic responses.
@@ -285,7 +290,8 @@ All data comes from 5 sessions on a single day. The E-PQ system responds to the 
 
 ### Echo Chamber Risk (Major)
 
-This is the most significant conceptual weakness of the system — not a minor caveat, but a structural problem that potentially invalidates the entire therapeutic premise.
+> [!CAUTION]
+> This is the most significant conceptual weakness of the system — not a minor caveat, but a structural problem that potentially invalidates the entire therapeutic premise.
 
 Two instances of the same 8B model talk to each other. Dr. Hibbert and Frank share identical weights, identical training data, identical RLHF alignment — only the system prompt differs. This is not two minds meeting. It is one mind talking to a mirror through two different frames.
 
@@ -298,7 +304,8 @@ The honest framing: this system produces conversations that look therapeutic and
 
 ### Sentiment Analysis (Fundamental Design Flaw)
 
-The sentiment analysis is keyword-based regex. This is not a limitation to be improved later — it is a fundamental design flaw that contaminates every metric the system reports.
+> [!WARNING]
+> The sentiment analysis is keyword-based regex. This is not a limitation to be improved later — it is a fundamental design flaw that contaminates every metric the system reports.
 
 The entire feedback loop depends on accurate sentiment classification: sentiment determines E-PQ event types, which drive Frank's personality changes, which are the primary claimed benefit of the system. If sentiment classification is wrong, the personality effects are wrong. Everything downstream of a bad classifier is unreliable.
 
@@ -321,9 +328,10 @@ No formal E-PQ snapshot was taken before therapy began. The stagnation was obser
 
 ### What This Is and What It Isn't
 
-**What it is**: A system that generates autonomous LLM-to-LLM conversations and feeds the results into Frank's personality system. The scheduling runs, the conversations happen, the E-PQ vectors move. Whether the movement is therapeutically meaningful or an artifact of the design is unknown after 5 sessions.
-
-**What it isn't**: A validated therapeutic intervention. The sample is tiny (5 sessions, 1 day), the evaluation is self-referential (the system measures its own effects using a broken sentiment classifier), and the positive results are at least partially explained by RLHF training dynamics rather than therapeutic value. These are engineering results, not clinical ones.
+> [!IMPORTANT]
+> **What it is**: A system that generates autonomous LLM-to-LLM conversations and feeds the results into Frank's personality system. The scheduling runs, the conversations happen, the E-PQ vectors move. Whether the movement is therapeutically meaningful or an artifact of the design is unknown after 5 sessions.
+>
+> **What it isn't**: A validated therapeutic intervention. The sample is tiny (5 sessions, 1 day), the evaluation is self-referential (the system measures its own effects using a broken sentiment classifier), and the positive results are at least partially explained by RLHF training dynamics rather than therapeutic value. These are engineering results, not clinical ones.
 
 ### Planned Follow-Up
 

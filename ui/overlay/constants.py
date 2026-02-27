@@ -129,6 +129,24 @@ def _check_singleton() -> bool:
             return _try_lock()
         except PermissionError:
             pass  # Process exists but we can't signal it
+
+        # Process is alive.  If systemd is starting us, the old PID is an
+        # orphan (systemd only starts us when it believes the service is dead).
+        if os.environ.get("INVOCATION_ID"):
+            LOG.warning(f"Orphaned overlay PID {pid} — killing for systemd restart")
+            try:
+                os.kill(pid, 15)   # SIGTERM
+            except (ProcessLookupError, PermissionError):
+                pass
+            _time.sleep(2)
+            try:
+                os.kill(pid, 9)    # SIGKILL
+            except (ProcessLookupError, PermissionError):
+                pass
+            _time.sleep(0.5)
+            LOCK_FILE.unlink(missing_ok=True)
+            return _try_lock()
+
         LOG.error(f"Another instance is already running (PID {pid})")
         return False
 

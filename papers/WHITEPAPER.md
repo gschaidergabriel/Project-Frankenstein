@@ -8,7 +8,7 @@
 
 ## Abstract
 
-Current AI systems treat language models as monolithic black boxes: a prompt enters, a response exits, and the internal reasoning remains opaque. Project Frankenstein (Frank) takes a different approach. It wraps a commodity 8B-parameter local LLM in 24 persistent services, 29 SQLite databases, and 76,000 lines of deterministic, inspectable scaffolding. The result is a system where every personality shift has a traceable cause, every memory retrieval has logged metrics, every knowledge write passes through physics-like constraints, and the LLM itself is reduced to what it actually is: a stateless text generator. This paper describes the architecture and argues — with concrete structural evidence, not speculation — that this design pattern addresses the black-box problem not by opening the model, but by making it irrelevant which model runs inside.
+Current AI systems treat language models as monolithic black boxes: a prompt enters, a response exits, and the internal reasoning remains opaque. Project Frankenstein (Frank) takes a different approach. It wraps a commodity 8B-parameter local LLM in 36 persistent services, 25 SQLite databases, and 200,000+ lines of deterministic, inspectable scaffolding. The result is a system where every personality shift has a traceable cause, every memory retrieval has logged metrics, every knowledge write passes through physics-like constraints, and the LLM itself is reduced to what it actually is: a stateless text generator. This paper describes the architecture and argues — with concrete structural evidence, not speculation — that this design pattern addresses the black-box problem not by opening the model, but by making it irrelevant which model runs inside.
 
 ---
 
@@ -36,7 +36,7 @@ Layer 5: User Interface (Overlay, Voice, Desktop)
 Layer 4: Orchestration (Core, Router, Toolbox)
 Layer 3: Cognition (Consciousness, Personality, Ego-Construct)
 Layer 2: Constraint Enforcement (Invariants, ASRS, Triple Reality)
-Layer 1: Persistence (29 SQLite databases, WAL mode)
+Layer 1: Persistence (25 SQLite databases, WAL mode)
 ```
 
 The LLM (Llama 3.1 8B or Qwen 2.5 Coder 7B via llama.cpp) sits at Layer 4. It receives a fully constructed prompt and returns text. It holds no state between calls. Everything that constitutes "Frank's mind" exists in Layers 1-3.

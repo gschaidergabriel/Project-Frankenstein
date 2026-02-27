@@ -1,5 +1,5 @@
 {
-  "emotion_decay_rate": 0.25,
+  "emotion_decay_rate": 0.15,
   "emotion_baseline": 0.3,
   "max_organisms": 100,
   "seed_energy": 0.3,
@@ -13,7 +13,7 @@
   "mutation_rate": 0.08,
   "stirring_threshold": 0.4,
   "awakening_threshold": 0.55,
-  "active_threshold": 0.65,
+  "active_threshold": 0.58,
   "resonance_threshold": 0.5,
   "emotion_coupling": {
     "curiosity->boredom": -0.5,

@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 # --- Logging Setup ---
@@ -551,7 +551,12 @@ def route(req: RouteRequest) -> RouteResponse:
         )
 
         if not answer:
-            raise RuntimeError("RLM returned empty answer")
+            if reasoning:
+                # RLM burned all tokens thinking — use reasoning as answer
+                LOG.warning(f"RLM answer empty but reasoning present ({len(reasoning)} chars) — using reasoning")
+                answer = reasoning
+            else:
+                raise RuntimeError("RLM returned empty answer")
 
         if reasoning:
             LOG.info(f"💭 REASONING: {len(reasoning)} chars internal thinking")
@@ -583,7 +588,10 @@ def route(req: RouteRequest) -> RouteResponse:
 
         _last_ts = time.time()
         LOG.error(f"❌ FEHLER: all models failed (rlm: {e})")
-        return RouteResponse(ok=False, model="deepseek-r1", text=f"[router error] {e}", ts=_last_ts)
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "model": "none", "text": f"[router error] {e}", "ts": _last_ts},
+        )
 
 
 @app.post("/route/stream")

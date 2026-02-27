@@ -1,5 +1,10 @@
 # About Project Frankenstein
 
+> [!NOTE]
+> This is the origin story. For technical details, see [Architecture](ARCHITECTURE.md). For a quick overview, see [How Frank Works](HOW_IT_WORKS.md).
+
+---
+
 ## The Story
 
 After serving a 2-year prison sentence and being released in late 2025, Gabriel Gschaider — with no programming background and no formal education in computer science or AI — spent roughly 450 hours over one month studying quantum physics, AI architecture, consciousness theory, and systems design from scratch. The learning was self-directed, intense (often 15 hours a day), and deliberately cross-disciplinary: quantum mechanics (superposition, entanglement, decoherence), cognitive science (Global Workspace Theory, Active Inference, Predictive Processing), and embodied cognition.
@@ -8,13 +13,19 @@ From that foundation, he wrote [**The Generative Reality Framework**](papers/Gen
 
 Frank is the empirical test of that hypothesis. Not a toy demo, but a running system that instantiates every principle from the paper — locally, persistently, and with real hardware as its body.
 
-Gabriel had the theoretical vision; [Claude Code](https://claude.ai) served as development partner translating that vision into working software. The absence of formal training turned out to be an advantage: no preconceptions about what AI systems "should" look like, no inherited assumptions about what was feasible. Ideas that trained engineers might dismiss as impractical — hardware metrics as mandatory qualia inputs, an AI that decides when to introspect, a Game of Life as functional brain scan — were simply built and tested.
+> [!IMPORTANT]
+> Gabriel had the theoretical vision; [Claude Code](https://claude.ai) served as development partner translating that vision into working software. The absence of formal training turned out to be an advantage: no preconceptions about what AI systems "should" look like, no inherited assumptions about what was feasible. Ideas that trained engineers might dismiss as impractical — hardware metrics as mandatory qualia inputs, an AI that decides when to introspect, a Game of Life as functional brain scan — were simply built and tested.
 
-Together with **Alexander Machalke** — who provided supervision, marketing direction, and conceptual input on the architecture — the result was a fully working AI desktop companion with 29 services, 25 databases, and 76,000+ lines of Python. From paper to production in 2 months.
+Together with **Alexander Machalke** — who provided supervision, marketing direction, and conceptual input on the architecture — the result was a fully working AI desktop companion with 36 services, 25 databases, and 200k+ lines of code (160k Python, 40k JS/HTML/CSS, systemd, shell). From paper to production in 2 months.
+
+---
 
 ## From Paper to System: How GRF Produced Frank
 
 The GRF paper defines eight principles. Here is how each one maps to a concrete subsystem in Frank:
+
+> [!TIP]
+> For the formal, line-by-line mapping of all 8 principles to specific code files and functions, see the [GRF → Frank Implementation Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md).
 
 ### Principle 1 (Generativity) — E-PQ Personality + Genesis Ecosystem
 
@@ -85,14 +96,21 @@ The paper cites Friston's Active Inference as part of its scientific basis. Fran
 
 When Frank is idle for 20+ minutes and 10 safety gates pass, he enters a two-pass meta-cognitive reflection cycle. Pass 1: a weighted random question from 18 templates spanning silence, identity, learning, embodiment, capabilities, and ethics. Pass 2: meta-reflection on the first pass ("What do you notice about this? What do you feel?"). Results flow to Titan episodic memory, goal extraction, and the Reflection→Personality bridge — where keyword analysis of reflection content fires targeted E-PQ personality events. Frank literally changes through thinking about himself.
 
+---
+
 ## The Point
 
 Frank is not a claim that these philosophical ideas are correct, nor a claim that Frank is conscious. He's an existence proof that these ideas can be made concrete and computationally testable. The GRF paper asks: what would a system look like that takes generativity, emergence, epistemic humility, and moral caution seriously? Frank is one answer.
 
-Read the full paper: [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf)
+> [!TIP]
+> Read the full paper: [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf)
+
+---
 
 ## Credits
 
-- **Gabriel Gschaider** — Creator, lead architect, sole developer, author of the GRF paper
-- **Alexander Machalke** — Supervision, marketing, conceptual architecture contributions, financial supporter
-- **Claude Code** (Anthropic) — AI development partner
+| Role | Person |
+|------|--------|
+| **Creator, lead architect, sole developer, GRF author** | Gabriel Gschaider |
+| **Supervision, marketing, conceptual architecture, financial support** | Alexander Machalke |
+| **AI development partner** | Claude Code (Anthropic) |

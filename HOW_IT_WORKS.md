@@ -1,5 +1,8 @@
 # How Frank Works in 5 Minutes
 
+> [!NOTE]
+> This is the quick overview. For the complete command reference, see the [User Manual](MANUAL.md). For full architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## The Big Picture
 
 Frank is a **local AI desktop companion** that runs entirely on your machine. No cloud, no API keys, no data leaving your computer. You talk to Frank through a chat overlay or voice, and he can see your screen, control apps, remember conversations, and evolve his personality over time.
@@ -40,7 +43,8 @@ When you type "what's my CPU temperature?", here's what happens:
 
 ## Personality — Not Just a Chatbot
 
-Frank has a multi-layered personality system that makes him feel different from a generic assistant:
+> [!IMPORTANT]
+> Frank has a multi-layered personality system that makes him feel different from a generic assistant. These aren't static prompts — they evolve through interaction.
 
 **E-PQ (5-Vector Personality)**
 Five personality dimensions that evolve through interactions:
@@ -69,7 +73,7 @@ Frank thinks even when you're not talking to him. This is the heart of the syste
 
 ## Memory — He Actually Remembers
 
-Frank has a 9-layer memory system across 29 SQLite databases. The key layers:
+Frank has a 9-layer memory system across 25 SQLite databases. The key layers:
 
 **Chat Memory (Hybrid Search)**
 Recent conversations are stored with 384-dim semantic embeddings (MiniLM-L6-v2). Search uses FTS5 keyword + vector cosine + RRF fusion — finding both exact keyword matches and semantically similar messages with no keyword overlap.
@@ -189,13 +193,16 @@ Each entity has its own personality vectors, session memory, and E-PQ feedback l
 
 ## Built With
 
-- **Python 3.12** for all services
-- **llama.cpp** for local LLM inference
-- **Ollama** for vision models (LLaVA)
-- **tkinter** for the chat overlay
-- **FastAPI** for the router
-- **SQLite** for all 29+ databases
-- **systemd** user services (28+ services)
-- **Vulkan/CUDA** for GPU acceleration
+| Component | Technology |
+|-----------|------------|
+| **Language** | Python 3.12 |
+| **LLM Inference** | llama.cpp (local GPU/CPU) |
+| **Vision** | Ollama (LLaVA, Moondream) |
+| **Chat Overlay** | tkinter |
+| **Router** | FastAPI |
+| **Storage** | 25 SQLite databases |
+| **Services** | 36 systemd user services |
+| **GPU** | Vulkan / CUDA / ROCm / CPU fallback |
 
-No cloud dependencies. No API keys. No telemetry. Everything runs on your hardware.
+> [!TIP]
+> No cloud dependencies. No API keys. No telemetry. Everything runs on your hardware.

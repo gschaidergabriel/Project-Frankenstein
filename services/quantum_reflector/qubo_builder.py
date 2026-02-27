@@ -108,8 +108,8 @@ ONE_HOT_GROUPS: List[Tuple[int, ...]] = [
 ]
 
 # E-PQ discretization thresholds
-EPQ_LOW_THRESHOLD = -0.25
-EPQ_HIGH_THRESHOLD = 0.25
+EPQ_LOW_THRESHOLD = -0.10
+EPQ_HIGH_THRESHOLD = 0.10
 
 # ============ CONSTRAINT STRENGTHS ============
 

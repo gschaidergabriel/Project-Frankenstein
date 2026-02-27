@@ -33,8 +33,8 @@ LOG = logging.getLogger("quantum_reflector.monitor")
 POLL_INTERVAL = 5.0          # Sekunden zwischen State-Checks
 ENERGY_HISTORY_SIZE = 200    # Rolling Window für Trend-Erkennung
 TREND_WINDOW = 20            # Letzte N Werte für Trend-Berechnung
-IMPROVEMENT_THRESHOLD = 0.95 # Energy < 95% des Moving Average = Verbesserung
-DEGRADATION_THRESHOLD = 1.10 # Energy > 110% des Moving Average = Verschlechterung
+IMPROVEMENT_REL_THRESHOLD = 0.02  # Energy mindestens 2% besser als Moving Avg
+DEGRADATION_REL_THRESHOLD = 0.05  # Energy mindestens 5% schlechter als Moving Avg
 PERIODIC_SOLVE_INTERVAL = 300.0  # Force re-solve every 5min even without state change
 
 
@@ -143,10 +143,12 @@ class CoherenceMonitor:
                 return "stable"
             mean_recent = np.mean(recent)
             mean_older = np.mean(older)
-            if mean_recent < mean_older * IMPROVEMENT_THRESHOLD:
-                return "improving"
-            elif mean_recent > mean_older * DEGRADATION_THRESHOLD:
-                return "degrading"
+            if abs(mean_older) > 0.01:
+                rel_delta = (mean_recent - mean_older) / abs(mean_older)
+                if rel_delta < -IMPROVEMENT_REL_THRESHOLD:
+                    return "improving"
+                elif rel_delta > DEGRADATION_REL_THRESHOLD:
+                    return "degrading"
             return "stable"
 
     def solve_once(self) -> CoherenceSnapshot:
@@ -374,12 +376,15 @@ class CoherenceMonitor:
                 self._last_solve_time = time.time()
 
                 # Trend prüfen und ggf. Callback feuern
+                # Use absolute relative delta — works correctly for negative energies
                 ma = self.moving_average
-                if ma is not None and self.on_coherence_change:
-                    if snapshot.energy < ma * IMPROVEMENT_THRESHOLD:
+                if ma is not None and self.on_coherence_change and abs(ma) > 0.01:
+                    rel_delta = (snapshot.energy - ma) / abs(ma)
+                    # For QUBO: lower energy = better, so negative rel_delta = improvement
+                    if rel_delta < -IMPROVEMENT_REL_THRESHOLD:
                         self._store_event("improvement", snapshot.energy, ma)
                         self.on_coherence_change("improvement", snapshot, ma)
-                    elif snapshot.energy > ma * DEGRADATION_THRESHOLD:
+                    elif rel_delta > DEGRADATION_REL_THRESHOLD:
                         self._store_event("degradation", snapshot.energy, ma)
                         self.on_coherence_change("degradation", snapshot, ma)
 

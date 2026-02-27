@@ -86,8 +86,8 @@
 | OS | Ubuntu 24.04 Linux |
 | GPU | AMD Phoenix1 (integrated, Vulkan backend) |
 | Services | 34 systemd user services |
-| Databases | 29 SQLite databases |
-| Codebase | 76k+ lines Python |
+| Databases | 25 SQLite databases |
+| Codebase | 200k+ lines (160k Python, 40k JS/HTML/CSS, systemd, shell) |
 
 ---
 

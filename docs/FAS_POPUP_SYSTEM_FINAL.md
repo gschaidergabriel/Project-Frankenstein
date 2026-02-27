@@ -1,15 +1,21 @@
-# F.A.S. Proposal Popup System - Final Concept v2.0
+# F.A.S. Proposal Popup System — Final Concept v2.0
+
+> [!NOTE]
+> **Design document** — This describes the planned F.A.S. (Frankenstein Autonomous Scavenger) popup system for presenting discovered features to the user. See [Genesis](ARCHITECTURE.md#self-improvement-engine-genesis) for the underlying self-improvement architecture.
 
 ## Overview
 
 A fully autonomous feature proposal system that:
-- Intelligently chooses the right moment
-- Is unmissable but not annoying
-- Is operable with just a few clicks
-- Explains Frank's use cases
-- Provides sound feedback
-- Is manually accessible via hotkey
-- Has an archive for rejected features
+
+| Goal | Description |
+|------|-------------|
+| **Smart timing** | Intelligently chooses the right moment |
+| **Non-intrusive** | Unmissable but not annoying |
+| **Simple** | Operable with just a few clicks |
+| **Contextual** | Explains Frank's use cases |
+| **Feedback** | Provides sound feedback |
+| **Accessible** | Manually accessible via `Super+F` hotkey |
+| **Recoverable** | Archive for rejected features |
 
 ---
 
@@ -801,4 +807,5 @@ Phase 7: Polish & Testing
 
 ## Ready for Implementation?
 
-This concept defines a complete, well-thought-out system. Let me know when you're ready and I'll begin with Phase 1.
+> [!TIP]
+> This concept defines a complete, well-thought-out system. Implementation follows the 7-phase plan above — each phase is self-contained and testable independently.

@@ -227,8 +227,14 @@ class CoreAwareness:
         # Ensure database directory exists
         DATABASE_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Load existing database
+        # Load existing database or bootstrap with initial scan
         self._load_database()
+        if not self.database.modules:
+            LOG.info("Empty database — running initial scan")
+            try:
+                self.full_scan()
+            except Exception as e:
+                LOG.warning("Initial scan failed: %s", e)
 
     def _load_database(self):
         """Load database from disk."""

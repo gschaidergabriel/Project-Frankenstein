@@ -382,7 +382,7 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
 # toolboxd (local tools API)
 TOOLBOX_BASE = os.environ.get("AICORE_TOOLBOX_BASE", "http://127.0.0.1:8096").rstrip("/")
 TOOLBOX_TIMEOUT_S = float(os.environ.get("AICORE_TOOLBOX_TIMEOUT_S", "2.0"))
-TOOLBOX_CTX_TTL_S = float(os.environ.get("AICORE_TOOLBOX_CTX_TTL_S", "5.0"))
+TOOLBOX_CTX_TTL_S = float(os.environ.get("AICORE_TOOLBOX_CTX_TTL_S", "30.0"))
 
 # Hard cap: concurrent /chat generations
 INFER_MAX_CONCURRENCY = int(os.environ.get("AICORE_CORE_INFER_MAX_CONCURRENCY", "2"))

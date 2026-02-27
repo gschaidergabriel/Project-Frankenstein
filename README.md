@@ -11,9 +11,9 @@
 
 > **Get started in one command:** Download [`frank-installer`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-installer), run `chmod +x frank-installer && ./frank-installer` — no Python required. Or clone the repo and run `python3 install_wizard.py`.
 
-Built by one person with zero programming experience, using Claude as co-developer. 76k+ lines in 2 months. Derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf). [Read the full story.](ABOUT.md)
+Built by one person with zero programming experience, using Claude as co-developer. 200k+ lines of code (160k Python, 40k JS/HTML/CSS, systemd, shell) in 2 months. Derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf). [Read the full story.](ABOUT.md)
 
-**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[Parameter Architecture](papers/PARAMETER_ARCHITECTURE.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
+**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[Parameter Architecture](papers/PARAMETER_ARCHITECTURE.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](papers/WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
 
 An AI that thinks when you're not talking to it, dreams when it's idle, feels its own hardware, and evolves its personality over months — running entirely on your machine.
 
@@ -229,7 +229,7 @@ Key environment variables:
 | GRF → Frank bridge | [Formal mapping: 8 GRF principles → specific code](papers/GRF_IMPLEMENTATION_BRIDGE.md) |
 | Alignment Is Misaligned | [Why Containment Fails and Coevolution Is the Only Path](papers/ALIGNMENT_IS_MISALIGNED.md) |
 | Use cases catalog | [USECASES.md](USECASES.md) |
-| Whitepaper | [WHITEPAPER.md](WHITEPAPER.md) |
+| Whitepaper | [papers/WHITEPAPER.md](papers/WHITEPAPER.md) |
 | The story behind Frank | [ABOUT.md](ABOUT.md) |
 | Consciousness benchmark | [docs/FRANK_CONSCIOUSNESS_PAPER_V2.md](docs/FRANK_CONSCIOUSNESS_PAPER_V2.md) |
 | Community Forum | [daemonweave.vercel.app](https://daemonweave.vercel.app/) |
@@ -249,7 +249,7 @@ Frank is designed for complete privacy:
 - All LLM inference runs locally (3 models via llama.cpp: DeepSeek-R1, Llama-3.1, Qwen2.5-3B; vision via Ollama)
 - No telemetry, no cloud APIs for core functionality
 - All autonomous entities, consciousness, and dreaming run 100% locally
-- All data stored in `~/.local/share/frank/` (29 SQLite databases)
+- All data stored in `~/.local/share/frank/` (25 SQLite databases)
 - Optional CalDAV integration for Google Calendar/Contacts (user-initiated only)
 - Web search (DuckDuckGo) and Tor/Ahmia are user-initiated outbound calls, not background telemetry — Frank never phones home
 

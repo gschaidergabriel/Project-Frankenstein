@@ -1,5 +1,8 @@
 # Benchmark: Frank vs. Bare Llama 3.1 8B
 
+> [!NOTE]
+> This benchmark measures what the architecture adds on top of the base model. Same hardware, same weights, same quantization — the only variable is the 36-service scaffold surrounding the LLM.
+
 **Date:** 2026-02-15
 **Method:** 21-probe comparative benchmark across 8 capability categories
 **Systems under test:**

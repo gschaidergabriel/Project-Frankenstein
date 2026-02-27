@@ -188,6 +188,8 @@ def _start_service(name: str) -> bool:
         )
         if r.returncode == 0:
             LOG.info(f"  {name} started")
+            _service_start_ts[name] = time.time()
+            _http_fail_counts.clear()  # reset counters on fresh start
             return True
         LOG.warning(f"  {name} start failed: {r.stderr.strip()}")
         return False
@@ -292,6 +294,11 @@ def _write_health(gpu_mode: str, idle_s: float, swapping: bool):
 HTTP_FAIL_THRESHOLD = 3
 _http_fail_counts: dict[int, int] = {}
 
+# Grace period: skip HTTP checks for N seconds after a service start/restart
+# (llama-server needs 30-60s to load models before /health responds)
+HTTP_GRACE_PERIOD_S = 90
+_service_start_ts: dict[str, float] = {}
+
 
 def _http_health_check(port: int, timeout: float = 5.0) -> bool:
     """Ping llama-server /health endpoint. Returns True if healthy."""
@@ -314,6 +321,11 @@ def _check_llm_http_health(port: int, service_name: str):
     """
     if not _is_service_active(service_name):
         _http_fail_counts[port] = 0
+        return
+
+    # Grace period — skip checks while model is still loading
+    started = _service_start_ts.get(service_name, 0)
+    if started and (time.time() - started) < HTTP_GRACE_PERIOD_S:
         return
 
     if _http_health_check(port):

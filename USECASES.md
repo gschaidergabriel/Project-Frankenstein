@@ -1,8 +1,9 @@
 # Frank — Use Cases
 
-*Last updated: 2026-02-24 v1.1*
+*Last updated: 2026-02-28 v1.2*
 
-What Frank can actually do. No marketing promises, only real capabilities that are implemented and tested in code.
+> [!NOTE]
+> What Frank can actually do. No marketing promises, only real capabilities that are implemented and tested in code. For the complete command reference, see the [User Manual](MANUAL.md).
 
 ---
 
@@ -102,6 +103,9 @@ Upload a PDF with a business idea → Frank reads the document (`doc_read`), res
 **Trigger:** Keywords "business plan", "business idea", "market analysis"
 **Mode:** Works as a skill (fast, 1 LLM call) or in Agentic Mode (more thorough, multiple research steps).
 
+> [!TIP]
+> All advanced use cases work best in **Agentic Mode** — type `/agent` followed by your request, or just describe what you want and Frank will decide whether to use tools.
+
 ### Agentic Mode — Solve Multi-Step Tasks Autonomously
 
 Frank works independently in up to 20 steps: read files, research the web, execute code, write results. Examples:
@@ -150,7 +154,7 @@ Use cases that require Linux knowledge and use the deeper system capabilities.
 
 ### Code Review and Explanation
 
-Paste code → Frank analyzes correctness, security, performance and maintainability. Or: "Explain what this code does" → line-by-line explanation. Automatically routed to Qwen 2.5 (code LLM).
+Paste code → Frank analyzes correctness, security, performance and maintainability. Or: "Explain what this code does" → line-by-line explanation. Automatically routed to the reasoning LLM (DeepSeek-R1).
 
 **Trigger:** Keywords "code review", "explain the code", "what does this code do"
 
@@ -229,7 +233,8 @@ Encrypted password storage (AES-128-CBC, PBKDF2 600k iterations). Master passwor
 
 ## 5 Use Cases Only Frank Can Do
 
-Capabilities that exist in no cloud AI assistant (ChatGPT, Copilot, Gemini, Alexa) — not because they are technically impossible, but because they combine persistent local system access with temporality and self-modification.
+> [!IMPORTANT]
+> Capabilities that exist in no cloud AI assistant (ChatGPT, Copilot, Gemini, Alexa) — not because they are technically impossible, but because they combine persistent local system access with temporality and self-modification.
 
 ### 1. An AI Companion That Thinks Between Conversations
 
@@ -275,4 +280,6 @@ Additionally, the Invariants Engine protects Frank's knowledge base with physics
 
 ---
 
-*25 skills, 34 agent tools, 29 SQLite databases, 26 systemd services. All local, all open source.*
+---
+
+*25 skills, 40 agent tools, 25 SQLite databases, 36 systemd services. All local, all open source.*

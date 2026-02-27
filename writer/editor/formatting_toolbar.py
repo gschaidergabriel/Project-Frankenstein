@@ -63,7 +63,7 @@ class FormattingToolbar(Gtk.Box):
         # Font family dropdown
         self.font_family_dropdown = Gtk.DropDown.new_from_strings(FONT_FAMILIES)
         self.font_family_dropdown.set_selected(0)  # Cantarell default for writer
-        self.font_family_dropdown.set_tooltip_text("Schriftart")
+        self.font_family_dropdown.set_tooltip_text("Font Family")
         self.font_family_dropdown.set_size_request(110, -1)
         self.font_family_dropdown.connect('notify::selected', self._on_font_family_changed)
         self.append(self.font_family_dropdown)
@@ -73,7 +73,7 @@ class FormattingToolbar(Gtk.Box):
             [h[0] for h in HEADING_OPTIONS]
         )
         self.heading_dropdown.set_selected(0)
-        self.heading_dropdown.set_tooltip_text("Absatzformat")
+        self.heading_dropdown.set_tooltip_text("Paragraph Style")
         self.heading_dropdown.set_size_request(80, -1)
         self.heading_dropdown.connect('notify::selected', self._on_heading_changed)
         self.append(self.heading_dropdown)
@@ -85,7 +85,7 @@ class FormattingToolbar(Gtk.Box):
             [str(s) for s in FONT_SIZES]
         )
         self.font_size_dropdown.set_selected(FONT_SIZES.index(12))
-        self.font_size_dropdown.set_tooltip_text("Schriftgröße")
+        self.font_size_dropdown.set_tooltip_text("Font Size")
         self.font_size_dropdown.set_size_request(60, -1)
         self.font_size_dropdown.connect('notify::selected', self._on_font_size_changed)
         self.append(self.font_size_dropdown)
@@ -93,22 +93,22 @@ class FormattingToolbar(Gtk.Box):
         self._sep()
 
         # Bold
-        self.bold_btn = self._fmt_btn("B", "Fett (Ctrl+B)", "format-bold")
+        self.bold_btn = self._fmt_btn("B", "Bold (Ctrl+B)", "format-bold")
         self.bold_btn.connect('clicked', lambda _: self.apply_bold())
         self.append(self.bold_btn)
 
         # Italic
-        self.italic_btn = self._fmt_btn("I", "Kursiv (Ctrl+I)", "format-italic")
+        self.italic_btn = self._fmt_btn("I", "Italic (Ctrl+I)", "format-italic")
         self.italic_btn.connect('clicked', lambda _: self.apply_italic())
         self.append(self.italic_btn)
 
         # Underline
-        self.underline_btn = self._fmt_btn("U", "Unterstrichen (Ctrl+U)", "format-underline")
+        self.underline_btn = self._fmt_btn("U", "Underline (Ctrl+U)", "format-underline")
         self.underline_btn.connect('clicked', lambda _: self.apply_underline())
         self.append(self.underline_btn)
 
         # Strikethrough
-        self.strike_btn = self._fmt_btn("S", "Durchgestrichen", "format-strike")
+        self.strike_btn = self._fmt_btn("S", "Strikethrough", "format-strike")
         self.strike_btn.connect('clicked', lambda _: self.apply_strikethrough())
         self.append(self.strike_btn)
 
@@ -116,22 +116,22 @@ class FormattingToolbar(Gtk.Box):
 
         # Alignment buttons
         align_left_btn = Gtk.Button(icon_name="format-justify-left-symbolic")
-        align_left_btn.set_tooltip_text("Linksbündig")
+        align_left_btn.set_tooltip_text("Align Left")
         align_left_btn.connect('clicked', lambda _: self._apply_alignment(Gtk.Justification.LEFT))
         self.append(align_left_btn)
 
         align_center_btn = Gtk.Button(icon_name="format-justify-center-symbolic")
-        align_center_btn.set_tooltip_text("Zentriert")
+        align_center_btn.set_tooltip_text("Center")
         align_center_btn.connect('clicked', lambda _: self._apply_alignment(Gtk.Justification.CENTER))
         self.append(align_center_btn)
 
         align_right_btn = Gtk.Button(icon_name="format-justify-right-symbolic")
-        align_right_btn.set_tooltip_text("Rechtsbündig")
+        align_right_btn.set_tooltip_text("Align Right")
         align_right_btn.connect('clicked', lambda _: self._apply_alignment(Gtk.Justification.RIGHT))
         self.append(align_right_btn)
 
         align_fill_btn = Gtk.Button(icon_name="format-justify-fill-symbolic")
-        align_fill_btn.set_tooltip_text("Blocksatz")
+        align_fill_btn.set_tooltip_text("Justify")
         align_fill_btn.connect('clicked', lambda _: self._apply_alignment(Gtk.Justification.FILL))
         self.append(align_fill_btn)
 
@@ -142,7 +142,7 @@ class FormattingToolbar(Gtk.Box):
             [label for label, _ in LINE_SPACING_OPTIONS]
         )
         self.line_spacing_dropdown.set_selected(0)
-        self.line_spacing_dropdown.set_tooltip_text("Zeilenabstand")
+        self.line_spacing_dropdown.set_tooltip_text("Line Spacing")
         self.line_spacing_dropdown.set_size_request(55, -1)
         self.line_spacing_dropdown.connect('notify::selected', self._on_line_spacing_changed)
         self.append(self.line_spacing_dropdown)
@@ -167,7 +167,7 @@ class FormattingToolbar(Gtk.Box):
         self._update_color_indicator()
         color_box.append(self._color_bar)
         self.color_btn.set_child(color_box)
-        self.color_btn.set_tooltip_text("Textfarbe")
+        self.color_btn.set_tooltip_text("Text Color")
         self.color_btn.connect('clicked', self._on_color_clicked)
         self.append(self.color_btn)
 
@@ -175,13 +175,13 @@ class FormattingToolbar(Gtk.Box):
 
         # Bullet list
         bullet_btn = Gtk.Button(icon_name="view-list-symbolic")
-        bullet_btn.set_tooltip_text("Aufzählung")
+        bullet_btn.set_tooltip_text("Bullet List")
         bullet_btn.connect('clicked', lambda _: self._toggle_line_prefix("- "))
         self.append(bullet_btn)
 
         # Numbered list
         num_btn = Gtk.Button(icon_name="view-list-ordered-symbolic")
-        num_btn.set_tooltip_text("Nummerierung")
+        num_btn.set_tooltip_text("Numbered List")
         num_btn.connect('clicked', lambda _: self._toggle_line_prefix("1. "))
         self.append(num_btn)
 
@@ -195,7 +195,7 @@ class FormattingToolbar(Gtk.Box):
 
         # Link — B4 FIX: proper dialog instead of literal [text](url)
         link_btn = Gtk.Button(icon_name="insert-link-symbolic")
-        link_btn.set_tooltip_text("Link einfügen")
+        link_btn.set_tooltip_text("Insert Link")
         link_btn.connect('clicked', self._on_link)
         self.append(link_btn)
 
@@ -347,11 +347,11 @@ class FormattingToolbar(Gtk.Box):
 
         if hasattr(Gtk, 'ColorDialog'):
             dialog = Gtk.ColorDialog()
-            dialog.set_title("Textfarbe")
+            dialog.set_title("Text Color")
             dialog.choose_rgba(window, self._current_color, None, self._on_color_chosen)
         else:
             dialog = Gtk.ColorChooserDialog(
-                title="Textfarbe",
+                title="Text Color",
                 transient_for=window,
                 modal=True,
             )
@@ -432,8 +432,8 @@ class FormattingToolbar(Gtk.Box):
 
         dialog = Adw.MessageDialog(
             transient_for=window,
-            heading="Link einfügen",
-            body="Gib den Linktext und die URL ein:"
+            heading="Insert Link",
+            body="Enter the link text and URL:"
         )
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -441,7 +441,7 @@ class FormattingToolbar(Gtk.Box):
         box.set_margin_end(12)
 
         text_entry = Gtk.Entry()
-        text_entry.set_placeholder_text("Linktext")
+        text_entry.set_placeholder_text("Link text")
         if selected:
             text_entry.set_text(selected)
         box.append(text_entry)
@@ -451,8 +451,8 @@ class FormattingToolbar(Gtk.Box):
         box.append(url_entry)
 
         dialog.set_extra_child(box)
-        dialog.add_response("cancel", "Abbrechen")
-        dialog.add_response("insert", "Einfügen")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("insert", "Insert")
         dialog.set_response_appearance("insert", Adw.ResponseAppearance.SUGGESTED)
         dialog.connect('response', self._on_link_response, text_entry, url_entry, editor)
         dialog.present()

@@ -216,7 +216,7 @@ def _run_feedback_loop(user_text: str, reply_text: str):
                          "über dein", "about your thought",
                          "inner process", "innerer prozess",
                          "how do you think", "wie denkst du"]
-        if any(mw in _user_low for mw in _META_Q_WORDS_POST):
+        if any(mw in _user_low for mw in _META_Q_WORDS_POST) and (time.time() - _META_LAST_TS) >= _META_COOLDOWN_S:
             try:
                 if _fb_get_consciousness_daemon:
                     cd = _fb_get_consciousness_daemon()
@@ -230,6 +230,7 @@ def _run_feedback_loop(user_text: str, reply_text: str):
                         mood_after=new_mood_post,
                         reflection_depth=2,
                     )
+                    _META_LAST_TS = time.time()
                     LOG.info("feedback: meta-cognitive post-reflection written to DB")
             except Exception as e:
                 LOG.warning("feedback: meta-cognitive post-reflection FAILED: %s", e)
@@ -304,7 +305,7 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
                 mood_word = "meh"
             else:
                 mood_word = "low"
-            lines.append(f"I'm feeling {mood_word} right now (mood {mv:.2f}).")
+            lines.append(f"I'm feeling {mood_word} right now.")
     except Exception as e:
         LOG.debug("Introspection E-PQ failed: %s", e)
 
@@ -374,7 +375,8 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
 
     if not lines:
         return ""
-    return "[INNER_WORLD] " + " ".join(lines)
+    return ("[INNER_WORLD — private context, shapes your tone but NEVER quote, "
+            "reference, or narrate these values to the user] " + " ".join(lines))
 
 
 # toolboxd (local tools API)
@@ -510,6 +512,9 @@ REFLECT_RE = re.compile(
 # Reflection cooldown: max 1 per 120 seconds
 _REFLECT_LAST_TS = 0.0
 _REFLECT_COOLDOWN_S = 120.0
+# Meta-cognitive reflection cooldown: max 1 per 5 minutes (prevents entity-driven spam loops)
+_META_LAST_TS = 0.0
+_META_COOLDOWN_S = 300.0
 _REFLECT_SYSTEM = (
     "You are Frank. You are now thinking out loud about the following question. "
     "Formulate your inner thoughts in 2-3 honest sentences. "
@@ -1115,7 +1120,8 @@ class Handler(BaseHTTPRequestHandler):
                 "how do you think", "wie denkst du",
             ]
             _is_meta_q = any(mw in _user_low_pre for mw in _META_Q_WORDS_PRE)
-            if _is_meta_q:
+            global _META_LAST_TS
+            if _is_meta_q and (time.time() - _META_LAST_TS) >= _META_COOLDOWN_S:
                 try:
                     if _fb_get_consciousness_daemon:
                         cd = _fb_get_consciousness_daemon()
@@ -1131,7 +1137,8 @@ class Handler(BaseHTTPRequestHandler):
                             mood_after=new_mood,
                             reflection_depth=2,
                         )
-                        LOG.info("PRE-RESPONSE: meta-cognitive reflection written to DB")
+                        _META_LAST_TS = time.time()
+                        LOG.info("PRE-RESPONSE: meta-cognitive reflection written to DB (cooldown %.0fs)", _META_COOLDOWN_S)
                         # Write mood_trajectory entry (Test 8 needs new_moods >= 1)
                         import time as _time_mod
                         conn = cd._get_conn()
@@ -1179,8 +1186,9 @@ class Handler(BaseHTTPRequestHandler):
             _is_integration_q = any(iw in _user_low_pre for iw in _INTEGRATION_Q_WORDS)
             if _is_integration_q:
                 enrichment_parts.append(
-                    "[I combine my E-PQ mood value, body temperature, and current "
-                    "time/location into one coherent experience description.]"
+                    "[The user is asking about your inner experience. Describe how "
+                    "you feel in natural human words — do NOT name subsystems like "
+                    "E-PQ, Quantum Reflector, AURA, or quote numeric values.]"
                 )
 
             # Anti-fabrication — only when asking about past events/people
@@ -1265,7 +1273,10 @@ class Handler(BaseHTTPRequestHandler):
                 _core_response_lang = "en"
             _lang_prefix = "[Reply in English]\n" if _core_response_lang == "en" else ""
 
-            grounded_text = _lang_prefix + (ctx_block + "\n" if ctx_block else "") + text
+            if ctx_block:
+                grounded_text = _lang_prefix + ctx_block + "\n\nUser asks: " + text
+            else:
+                grounded_text = _lang_prefix + text
 
             # --- RPT: Reflection / Inner Monologue ---
             # Two-pass pipeline: Pass 1 generates inner reflection (not shown to user),

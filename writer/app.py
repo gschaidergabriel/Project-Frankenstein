@@ -317,7 +317,7 @@ class FrankWriterApp(Adw.Application):
             developers=["Frank AI Core Team"],
             copyright="2026 Frank AI System",
             license_type=Gtk.License.MIT_X11,
-            comments="AI-Nativer Dokument- & Code-Editor\n\nLokal. Privat. Intelligent.",
+            comments="AI-Native Document & Code Editor\n\nLocal. Private. Intelligent.",
             website="https://frank.local",
         )
         about.set_transient_for(self.window)

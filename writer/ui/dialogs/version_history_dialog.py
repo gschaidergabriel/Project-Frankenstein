@@ -19,7 +19,7 @@ class VersionHistoryDialog(Adw.Window):
 
     def __init__(self, parent, document, on_restore: Callable):
         super().__init__(
-            title="Versionsverlauf",
+            title="Version History",
             default_width=700,
             default_height=500,
             transient_for=parent,
@@ -39,7 +39,7 @@ class VersionHistoryDialog(Adw.Window):
         header.set_show_end_title_buttons(True)
 
         # Save snapshot button
-        save_btn = Gtk.Button(label="Snapshot speichern")
+        save_btn = Gtk.Button(label="Save Snapshot")
         save_btn.add_css_class("suggested-action")
         save_btn.connect('clicked', self._on_save_snapshot)
         header.pack_start(save_btn)
@@ -72,7 +72,7 @@ class VersionHistoryDialog(Adw.Window):
         preview_box.set_margin_bottom(6)
 
         # Info bar
-        self.info_label = Gtk.Label(label="Version auswählen...")
+        self.info_label = Gtk.Label(label="Select a version...")
         self.info_label.set_halign(Gtk.Align.START)
         self.info_label.add_css_class("dim-label")
         preview_box.append(self.info_label)
@@ -94,7 +94,7 @@ class VersionHistoryDialog(Adw.Window):
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         btn_box.set_halign(Gtk.Align.END)
 
-        self.restore_btn = Gtk.Button(label="Wiederherstellen")
+        self.restore_btn = Gtk.Button(label="Restore")
         self.restore_btn.add_css_class("destructive-action")
         self.restore_btn.set_sensitive(False)
         self.restore_btn.connect('clicked', self._on_restore)
@@ -120,7 +120,7 @@ class VersionHistoryDialog(Adw.Window):
             self.list_box.remove(row)
 
         if not self._versions:
-            empty_label = Gtk.Label(label="Noch keine Versionen gespeichert.")
+            empty_label = Gtk.Label(label="No versions saved yet.")
             empty_label.add_css_class("dim-label")
             empty_label.set_margin_top(20)
             row = Gtk.ListBoxRow()
@@ -150,7 +150,7 @@ class VersionHistoryDialog(Adw.Window):
         box.append(time_label)
 
         # Label or word count
-        subtitle = entry.label if entry.label else f"{entry.word_count} Wörter"
+        subtitle = entry.label if entry.label else f"{entry.word_count} words"
         sub_label = Gtk.Label(label=subtitle)
         sub_label.set_halign(Gtk.Align.START)
         sub_label.add_css_class("dim-label")
@@ -172,11 +172,11 @@ class VersionHistoryDialog(Adw.Window):
         if content is not None:
             self.preview_view.get_buffer().set_text(content)
             self.info_label.set_label(
-                f"{entry.display_time} — {entry.word_count} Wörter"
+                f"{entry.display_time} — {entry.word_count} words"
             )
             self.restore_btn.set_sensitive(True)
         else:
-            self.preview_view.get_buffer().set_text("Version nicht gefunden.")
+            self.preview_view.get_buffer().set_text("Version not found.")
             self.restore_btn.set_sensitive(False)
 
     def _on_save_snapshot(self, btn):
@@ -185,7 +185,7 @@ class VersionHistoryDialog(Adw.Window):
             self.document.file_path,
             self.document.title,
             self.document.content,
-            label="Manueller Snapshot"
+            label="Manual Snapshot"
         )
         self._load_versions()
 
@@ -206,7 +206,7 @@ class VersionHistoryDialog(Adw.Window):
                 self.document.file_path,
                 self.document.title,
                 self.document.content,
-                label="Vor Wiederherstellung"
+                label="Before Restore"
             )
             self.on_restore(content)
             self.close()

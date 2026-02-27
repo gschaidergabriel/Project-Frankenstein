@@ -121,15 +121,8 @@ def build_workspace(
 
     # --- Self-knowledge (Grounding anchors — prevents confabulation) ---
     lines.append(
-        "Self-knowledge: Gaming=sleep(Overlay+LLM off), "
-        "Voice=Push-to-Talk+Whisper+Piper, "
-        "VCB=local-LLaVA-500/day, "
-        "Personality=E-PQ-5vectors, "
-        "Ego=HW-to-body-mapping, "
-        "Memory=persistent(chat_memory.db+titan.db+world_experience.db), "
-        "Genesis=idea-ecosystem, "
-        "Email=IMAP/Thunderbird(read+send+reply+search), "
-        "Consciousness=perception+experience-space+attention+goals+idle-thinking+mood"
+        "Self-knowledge: I have tools (desktop vision, files, apps, Steam, web, email, "
+        "contacts, notes, todos, voice, system control). Persistent memory across sessions."
     )
 
     # --- Attention (AST: active focus with source and self-correction) ---
@@ -163,18 +156,18 @@ def build_workspace(
         return ""
 
     # Grounding anchor — placed last so it's closest to generation point.
-    # ONLY grounding rules here — brevity enforcement is in personality_traits (system prompt position 1).
-    # Putting style rules here would override the consciousness context above.
     lines.append(
-        "GROUNDING: Let your inner world above shape your tone and perspective. "
-        "Your reflections, mood, and memories ARE you — use them naturally. "
-        "NEVER introduce yourself with a pitch. NEVER claim to be an 'expert' in anything. "
-        "Just respond like a person — from your actual inner state, not a persona. "
-        "Stay in English unless told to switch. "
-        "Never simulate actions (*opens…*, *checks…*). Never invent data."
+        "GROUNDING: The above is YOUR private inner state — it shapes your TONE, "
+        "not your CONTENT. NEVER mention, quote, or narrate any of these values "
+        "(no Body temps, no E-PQ scores, no subsystem names, no hardware specs). "
+        "Just respond naturally to what the user said. If they ask how you feel, "
+        "say it in plain words ('good', 'tired', 'sharp') — NEVER reference systems. "
+        "Stay in English unless told to switch. Never simulate actions. Never invent data."
     )
 
-    return "[INNER_WORLD]\n" + "\n".join(lines) + "\n[/INNER_WORLD]"
+    return ("[INNER_WORLD — private context, shapes your tone but NEVER quote, "
+            "reference, or narrate these values to the user]\n"
+            + "\n".join(lines) + "\n[/INNER_WORLD]")
 
 
 # ── Channel builders ──────────────────────────────────────────────

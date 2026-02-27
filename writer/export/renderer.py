@@ -239,10 +239,10 @@ title: {document.title}
         if standalone:
             escaped_title = html.escape(document.title)
             # B6 FIX: Use document language or config-based locale
-            lang = "de"
+            lang = "en"
             if document.language:
-                lang_map = {"python": "en", "javascript": "en", "markdown": "de"}
-                lang = lang_map.get(document.language, "de")
+                lang_map = {"python": "en", "javascript": "en", "markdown": "en"}
+                lang = lang_map.get(document.language, "en")
             return f"""<!DOCTYPE html>
 <html lang="{lang}">
 <head>
@@ -278,7 +278,7 @@ title: {document.title}
         latex_lines.append(r"\documentclass[11pt,a4paper]{article}")
         latex_lines.append(r"\usepackage[utf8]{inputenc}")
         latex_lines.append(r"\usepackage[T1]{fontenc}")
-        latex_lines.append(r"\usepackage[ngerman]{babel}")
+        latex_lines.append(r"\usepackage[english]{babel}")
         latex_lines.append(r"\usepackage{hyperref}")
         latex_lines.append(r"\usepackage{listings}")
         latex_lines.append("")

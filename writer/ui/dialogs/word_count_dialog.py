@@ -14,7 +14,7 @@ class WordCountDialog(Adw.Window):
 
     def __init__(self, parent, document):
         super().__init__()
-        self.set_title("Dokumentstatistik")
+        self.set_title("Document Statistics")
         self.set_default_size(350, 300)
         self.set_transient_for(parent)
         self.set_modal(True)
@@ -56,21 +56,21 @@ class WordCountDialog(Adw.Window):
         header.set_show_end_title_buttons(True)
         main_box.append(header)
 
-        group = Adw.PreferencesGroup(title="Dokumentstatistik")
+        group = Adw.PreferencesGroup(title="Document Statistics")
         group.set_margin_start(24)
         group.set_margin_end(24)
         group.set_margin_top(12)
         group.set_margin_bottom(24)
 
         rows = [
-            ("Wörter", str(stats['words'])),
-            ("Zeichen (mit Leerzeichen)", str(stats['chars_with_spaces'])),
-            ("Zeichen (ohne Leerzeichen)", str(stats['chars_no_spaces'])),
-            ("Zeilen", str(stats['lines'])),
-            ("Absätze", str(stats['paragraphs'])),
-            ("Sätze", str(stats['sentences'])),
-            ("Geschätzte Seiten", str(stats['pages'])),
-            ("Lesezeit", f"~{stats['reading_min']} Min."),
+            ("Words", str(stats['words'])),
+            ("Characters (with spaces)", str(stats['chars_with_spaces'])),
+            ("Characters (no spaces)", str(stats['chars_no_spaces'])),
+            ("Lines", str(stats['lines'])),
+            ("Paragraphs", str(stats['paragraphs'])),
+            ("Sentences", str(stats['sentences'])),
+            ("Estimated Pages", str(stats['pages'])),
+            ("Reading Time", f"~{stats['reading_min']} min"),
         ]
 
         for title, value in rows:

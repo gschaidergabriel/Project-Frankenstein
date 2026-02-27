@@ -77,6 +77,8 @@ def _create_signal():
 signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
 
 # --- Create icon ---
+# Tray icons are rendered at ~22px by GNOME panel.
+# Use a bold, simple design: bright green robot face on transparent bg.
 try:
     from config.paths import TEMP_FILES as _TF2, AICORE_ROOT as _AICORE_ROOT
     icon_dir = _TF2["icons_dir"]
@@ -85,36 +87,24 @@ except ImportError:
     icon_dir = Path("/tmp/frank/icons")
 icon_dir.mkdir(exist_ok=True)
 icon_path = icon_dir / "frank-tray.png"
-# Use the designed icon from assets; fall back to generating one
-_src_icon = _AICORE_ROOT / "assets" / "icons" / "frank-overlay.png"
-if _src_icon.exists():
-    from PIL import Image
-    _img = Image.open(str(_src_icon)).convert("RGBA").resize((64, 64), Image.LANCZOS)
-    _img.save(str(icon_path))
-elif not icon_path.exists():
-    from PIL import Image, ImageDraw
-    size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([8, 12, 56, 58], radius=6, fill="#2d8c3c")
-    d.rectangle([8, 6, 56, 20], fill="#1a5c28")
-    d.rectangle([6, 6, 58, 10], fill="#0a2e14")
-    d.ellipse([2, 28, 12, 38], fill="#888888", outline="#555555")
-    d.ellipse([52, 28, 62, 38], fill="#888888", outline="#555555")
-    d.ellipse([18, 24, 28, 34], fill="#111111")
-    d.ellipse([36, 24, 46, 34], fill="#111111")
-    d.ellipse([21, 27, 26, 32], fill="#44ff44")
-    d.ellipse([39, 27, 44, 32], fill="#44ff44")
-    d.line([16, 22, 30, 22], fill="#1a5c28", width=3)
-    d.line([34, 22, 48, 22], fill="#1a5c28", width=3)
-    d.line([32, 34, 32, 42], fill="#1a5c28", width=2)
-    d.line([22, 48, 42, 48], fill="#111111", width=2)
-    for sx in range(24, 42, 4):
-        d.line([sx, 45, sx, 51], fill="#111111", width=1)
-    d.line([26, 14, 38, 14], fill="#444444", width=1)
-    for sx in range(28, 38, 3):
-        d.line([sx, 12, sx, 16], fill="#444444", width=1)
-    img.save(str(icon_path))
+
+from PIL import Image, ImageDraw
+size = 128  # render large, AppIndicator scales down — sharper result
+img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+d = ImageDraw.Draw(img)
+# Antenna
+d.line([64, 2, 64, 20], fill="#44ff44", width=6)
+d.ellipse([54, 0, 74, 14], fill="#44ff44")
+# Head — big rounded rectangle filling most of the icon
+d.rounded_rectangle([8, 20, 120, 105], radius=18, fill="#1a5c28", outline="#44ff44", width=4)
+# Eyes — large bright green circles
+d.ellipse([22, 40, 52, 70], fill="#000000")
+d.ellipse([76, 40, 106, 70], fill="#000000")
+d.ellipse([26, 44, 48, 66], fill="#44ff44")
+d.ellipse([80, 44, 102, 66], fill="#44ff44")
+# Mouth — simple line
+d.rounded_rectangle([36, 80, 92, 94], radius=6, fill="#000000", outline="#44ff44", width=2)
+img.save(str(icon_path))
 
 # --- Setup indicator ---
 indicator = AyatanaAppIndicator3.Indicator.new(

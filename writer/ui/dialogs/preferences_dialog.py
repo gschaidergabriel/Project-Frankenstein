@@ -19,7 +19,7 @@ class PreferencesDialog(Adw.PreferencesWindow):
 
         self.set_transient_for(parent)
         self.set_modal(True)
-        self.set_title("Einstellungen")
+        self.set_title("Preferences")
         self.set_default_size(600, 500)
 
         self._build_editor_page()
@@ -34,53 +34,53 @@ class PreferencesDialog(Adw.PreferencesWindow):
         page = Adw.PreferencesPage(title="Editor", icon_name="text-editor-symbolic")
 
         # Font group
-        font_group = Adw.PreferencesGroup(title="Schrift")
+        font_group = Adw.PreferencesGroup(title="Font")
         page.add(font_group)
 
         # Font family
-        self.font_row = Adw.EntryRow(title="Schriftart (Code)")
+        self.font_row = Adw.EntryRow(title="Font Family (Code)")
         self.font_row.set_text(self.config.editor.font_family)
         self.font_row.connect('changed', self._on_font_changed)
         font_group.add(self.font_row)
 
         # Font size
         self.font_size_row = Adw.SpinRow.new_with_range(8, 36, 1)
-        self.font_size_row.set_title("Schriftgröße")
+        self.font_size_row.set_title("Font Size")
         self.font_size_row.set_value(self.config.editor.font_size)
         self.font_size_row.connect('changed', self._on_font_size_changed)
         font_group.add(self.font_size_row)
 
         # Editor features
-        features_group = Adw.PreferencesGroup(title="Funktionen")
+        features_group = Adw.PreferencesGroup(title="Features")
         page.add(features_group)
 
         self.line_numbers_switch = self._add_switch_row(
-            features_group, "Zeilennummern", self.config.editor.show_line_numbers
+            features_group, "Line Numbers", self.config.editor.show_line_numbers
         )
         self.highlight_line_switch = self._add_switch_row(
-            features_group, "Aktuelle Zeile hervorheben", self.config.editor.highlight_current_line
+            features_group, "Highlight Current Line", self.config.editor.highlight_current_line
         )
         self.word_wrap_switch = self._add_switch_row(
-            features_group, "Zeilenumbruch", self.config.editor.word_wrap
+            features_group, "Word Wrap", self.config.editor.word_wrap
         )
         self.auto_indent_switch = self._add_switch_row(
-            features_group, "Automatische Einrückung", self.config.editor.auto_indent
+            features_group, "Auto Indent", self.config.editor.auto_indent
         )
         self.bracket_match_switch = self._add_switch_row(
-            features_group, "Klammern-Matching", self.config.editor.bracket_matching
+            features_group, "Bracket Matching", self.config.editor.bracket_matching
         )
 
         # Tabs
-        tab_group = Adw.PreferencesGroup(title="Einrückung")
+        tab_group = Adw.PreferencesGroup(title="Indentation")
         page.add(tab_group)
 
         self.tab_width_row = Adw.SpinRow.new_with_range(2, 8, 1)
-        self.tab_width_row.set_title("Tab-Breite")
+        self.tab_width_row.set_title("Tab Width")
         self.tab_width_row.set_value(self.config.editor.tab_width)
         tab_group.add(self.tab_width_row)
 
         self.use_spaces_switch = self._add_switch_row(
-            tab_group, "Leerzeichen statt Tabs", self.config.editor.use_spaces
+            tab_group, "Spaces Instead of Tabs", self.config.editor.use_spaces
         )
 
         self.add(page)
@@ -88,15 +88,15 @@ class PreferencesDialog(Adw.PreferencesWindow):
     # ── Theme Page ────────────────────────────────────────
 
     def _build_theme_page(self):
-        page = Adw.PreferencesPage(title="Aussehen", icon_name="applications-graphics-symbolic")
+        page = Adw.PreferencesPage(title="Appearance", icon_name="applications-graphics-symbolic")
 
-        theme_group = Adw.PreferencesGroup(title="Farbschema")
+        theme_group = Adw.PreferencesGroup(title="Color Scheme")
         page.add(theme_group)
 
         # Color scheme
-        scheme_row = Adw.ComboRow(title="Erscheinungsbild")
+        scheme_row = Adw.ComboRow(title="Appearance")
         schemes = Gtk.StringList()
-        for label in ["System-Standard", "Hell", "Dunkel"]:
+        for label in ["System Default", "Light", "Dark"]:
             schemes.append(label)
         scheme_row.set_model(schemes)
 
@@ -133,33 +133,33 @@ class PreferencesDialog(Adw.PreferencesWindow):
     # ── Auto-Save Page ────────────────────────────────────
 
     def _build_autosave_page(self):
-        page = Adw.PreferencesPage(title="Speichern", icon_name="document-save-symbolic")
+        page = Adw.PreferencesPage(title="Save", icon_name="document-save-symbolic")
 
-        save_group = Adw.PreferencesGroup(title="Automatisches Speichern")
+        save_group = Adw.PreferencesGroup(title="Auto Save")
         page.add(save_group)
 
         self.autosave_switch = self._add_switch_row(
-            save_group, "Auto-Save aktivieren",
+            save_group, "Enable Auto-Save",
             self.config.save_config.autosave_enabled
         )
 
         self.autosave_interval_row = Adw.SpinRow.new_with_range(10, 300, 10)
-        self.autosave_interval_row.set_title("Intervall (Sekunden)")
+        self.autosave_interval_row.set_title("Interval (Seconds)")
         self.autosave_interval_row.set_value(self.config.save_config.autosave_interval_sec)
         save_group.add(self.autosave_interval_row)
 
         # Spelling
-        spell_group = Adw.PreferencesGroup(title="Rechtschreibung")
+        spell_group = Adw.PreferencesGroup(title="Spelling")
         page.add(spell_group)
 
         self.spell_switch = self._add_switch_row(
-            spell_group, "Rechtschreibprüfung",
+            spell_group, "Spell Check",
             self.config.save_config.spell_check_enabled
         )
 
-        spell_lang_row = Adw.ComboRow(title="Sprache")
+        spell_lang_row = Adw.ComboRow(title="Language")
         langs = Gtk.StringList()
-        for lang in ["de_DE", "en_US", "en_GB", "fr_FR", "es_ES"]:
+        for lang in ["en_US", "en_GB", "de_DE", "fr_FR", "es_ES"]:
             langs.append(lang)
         spell_lang_row.set_model(langs)
         spell_lang_row.set_selected(0)
@@ -185,7 +185,7 @@ class PreferencesDialog(Adw.PreferencesWindow):
         )
 
         self.confirm_switch = self._add_switch_row(
-            ai_group, "Kritische Aktionen bestätigen", self.config.ai.confirm_critical_actions
+            ai_group, "Confirm Critical Actions", self.config.ai.confirm_critical_actions
         )
 
         self.add(page)
@@ -198,7 +198,7 @@ class PreferencesDialog(Adw.PreferencesWindow):
         pdf_group = Adw.PreferencesGroup(title="PDF-Export")
         page.add(pdf_group)
 
-        page_size_row = Adw.ComboRow(title="Seitengröße")
+        page_size_row = Adw.ComboRow(title="Page Size")
         sizes = Gtk.StringList()
         for s in ["A4", "Letter", "A5"]:
             sizes.append(s)
@@ -207,15 +207,15 @@ class PreferencesDialog(Adw.PreferencesWindow):
         self._page_size_row = page_size_row
         pdf_group.add(page_size_row)
 
-        self.pdf_font_row = Adw.EntryRow(title="PDF-Schriftart")
+        self.pdf_font_row = Adw.EntryRow(title="PDF Font")
         self.pdf_font_row.set_text(self.config.export.pdf_font_family)
         pdf_group.add(self.pdf_font_row)
 
         self.toc_switch = self._add_switch_row(
-            pdf_group, "Inhaltsverzeichnis", self.config.export.include_toc
+            pdf_group, "Table of Contents", self.config.export.include_toc
         )
         self.page_numbers_switch = self._add_switch_row(
-            pdf_group, "Seitennummern", self.config.export.include_page_numbers
+            pdf_group, "Page Numbers", self.config.export.include_page_numbers
         )
 
         self.add(page)

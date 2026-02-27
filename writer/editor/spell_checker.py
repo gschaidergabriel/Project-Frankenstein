@@ -21,7 +21,7 @@ class SpellChecker:
     Underlines misspelled words with a red wavy underline tag.
     """
 
-    def __init__(self, language: str = "de_DE"):
+    def __init__(self, language: str = "en_US"):
         self._language = language
         self._enabled = False
         self._buffer = None
@@ -29,6 +29,7 @@ class SpellChecker:
         self._tag = None
         self._check_timer_id = None
         self._known_words: Set[str] = set()
+        self._enchant_dict = None  # Cached enchant.Dict instance
         self._backend = self._detect_backend()
 
     def _detect_backend(self) -> str:
@@ -108,6 +109,7 @@ class SpellChecker:
     def set_language(self, language: str):
         """Change spell checking language."""
         self._language = language
+        self._enchant_dict = None  # Invalidate cached dict
         if self._enabled:
             self._schedule_check()
 
@@ -160,7 +162,9 @@ class SpellChecker:
         if self._backend == "enchant":
             try:
                 import enchant
-                d = enchant.Dict(self._language)
+                if self._enchant_dict is None:
+                    self._enchant_dict = enchant.Dict(self._language)
+                d = self._enchant_dict
                 for word in words:
                     if word.lower() not in self._known_words and not d.check(word):
                         misspelled.add(word)
@@ -237,8 +241,9 @@ class SpellChecker:
         if self._backend == "enchant":
             try:
                 import enchant
-                d = enchant.Dict(self._language)
-                return d.suggest(word)[:max_count]
+                if self._enchant_dict is None:
+                    self._enchant_dict = enchant.Dict(self._language)
+                return self._enchant_dict.suggest(word)[:max_count]
             except Exception:
                 pass
 

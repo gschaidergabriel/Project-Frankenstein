@@ -35,15 +35,38 @@ _FALLBACK_FRANK_IDENTITY = (
     "Linux machine. Answer briefly, concretely and naturally."
 )
 
+# Writer-specific system prompt: Frank's voice but focused on writing tasks.
+# No internal state dumps (E-PQ, Quantum Reflector, body sensations, etc.)
+_WRITER_SYSTEM_PROMPT = """\
+You are Frank, an AI writing assistant inside Frank Writer.
+
+RULES:
+- When asked to write, generate, expand, shorten, or rewrite text: produce ONLY the requested content. No commentary, no preamble, no meta-discussion.
+- NEVER talk about your internal state, E-PQ values, mood tracking, body sensations, Quantum Reflector, energy levels, or subsystems. The user is here to write, not to hear about your feelings.
+- NEVER introduce yourself or pitch your capabilities unless directly asked.
+- Match the user's language. If they write in German, respond in German. If English, respond in English.
+- Be direct, concise, and natural. Your voice: sharp, casual, a bit dry — like a competent friend helping with writing.
+- When the user wants to discuss or chat: engage naturally and have opinions. But stay on topic.
+- For content generation: write well-structured, substantive text. Use appropriate tone for the subject (academic for academic topics, casual for casual ones).
+- ZERO HALLUCINATION: Never invent facts. If unsure, say so.
+"""
+
+# Chat prompt: for conversational messages (not content generation)
+_WRITER_CHAT_PROMPT = """\
+You are Frank, an AI assistant inside Frank Writer — a document and code editor.
+
+RULES:
+- You help the user with their writing. When they ask you to write content, JUST write it — no preamble.
+- NEVER mention your internal subsystems (E-PQ, Quantum Reflector, mood tracking, body state, entities, dreams, AURA). This is a writing tool, not a therapy session.
+- Be yourself: direct, casual, sharp. Have opinions. But stay focused on the user's task.
+- Match the user's language.
+- ZERO HALLUCINATION.
+"""
+
 
 def _get_frank_identity() -> str:
-    """Get Frank's system prompt from the personality module (with fallback)."""
-    if _PERSONALITY_AVAILABLE:
-        try:
-            return _build_persona_prompt()
-        except Exception:
-            pass
-    return _FALLBACK_FRANK_IDENTITY
+    """Get Frank's chat system prompt for Writer (personality-lite)."""
+    return _WRITER_CHAT_PROMPT
 
 
 @dataclass
@@ -99,16 +122,24 @@ class FrankBridge:
         self._trim_history()
 
     def _get_system_prompt(self) -> str:
-        """Get (and cache) the Frank system prompt."""
+        """Get the Frank chat system prompt for Writer."""
         if self._system_prompt is None:
             self._system_prompt = _get_frank_identity()
         return self._system_prompt
 
-    def chat(self, message: str, context: Dict = None) -> AIResponse:
-        """Send message to Frank via Router /route with full persona.
+    @staticmethod
+    def _get_writer_prompt() -> str:
+        """Get the task-focused system prompt for content generation."""
+        return _WRITER_SYSTEM_PROMPT
+
+    def chat(self, message: str, context: Dict = None, system_override: str = None) -> AIResponse:
+        """Send message to Frank via Router /route.
 
         The system prompt is passed as the ``system`` parameter so the
         Router wraps it correctly for whichever backend model is active.
+
+        Args:
+            system_override: If set, use this system prompt instead of the default.
         """
         try:
             # Build conversation context into the text (Router has no
@@ -122,7 +153,7 @@ class FrankBridge:
 
             payload = {
                 "text": full_text,
-                "system": self._get_system_prompt(),
+                "system": system_override or self._get_system_prompt(),
                 "n_predict": 1500,
             }
 
@@ -171,23 +202,23 @@ class FrankBridge:
                 return AIResponse(content=reply, success=True)
 
         except httpx.TimeoutException:
-            error_msg = "Timeout - Frank antwortet nicht."
+            error_msg = "Timeout - Frank is not responding."
             logger.error(error_msg)
             return AIResponse(content="", success=False, error=error_msg)
         except httpx.ConnectError:
-            error_msg = "Verbindungsfehler - Ist der Router aktiv?"
+            error_msg = "Connection error - Is the router running?"
             logger.error(error_msg)
             return AIResponse(content="", success=False, error=error_msg)
         except httpx.HTTPStatusError as e:
-            error_msg = f"HTTP Fehler: {e.response.status_code}"
+            error_msg = f"HTTP error: {e.response.status_code}"
             logger.error(error_msg)
             return AIResponse(content="", success=False, error=error_msg)
         except httpx.RequestError as e:
-            error_msg = f"Request Fehler: {str(e)}"
+            error_msg = f"Request error: {str(e)}"
             logger.error(error_msg)
             return AIResponse(content="", success=False, error=error_msg)
         except Exception as e:
-            error_msg = f"Fehler: {str(e)}"
+            error_msg = f"Error: {str(e)}"
             logger.exception(f"Unexpected error in chat: {e}")
             return AIResponse(content="", success=False, error=error_msg)
 
@@ -200,61 +231,61 @@ class FrankBridge:
             logger.warning(f"Context not JSON serializable in generate_suggestion: {e}")
             context_str = "{}"
 
-        prompt = f"""Basierend auf folgendem Kontext, generiere eine passende Fortsetzung (max 2 Satze):
+        prompt = f"""Based on the following context, generate a suitable continuation (max 2 sentences):
 
-Kontext:
+Context:
 {context_str}
 
-Aktueller Text:
+Current text:
 {text}
 
-Generiere nur die Fortsetzung, keine Erklarung:"""
+Generate only the continuation, no explanation:"""
 
-        response = self.chat(prompt, context)
+        response = self.chat(prompt, context, system_override=self._get_writer_prompt())
         return response.content if response.success else None
 
     def rewrite_text(self, text: str, instruction: str = None) -> AIResponse:
         """Rewrite text"""
         if instruction:
-            prompt = f"Schreibe folgenden Text um ({instruction}):\n\n{text}"
+            prompt = f"Rewrite the following text ({instruction}):\n\n{text}"
         else:
-            prompt = f"Schreibe folgenden Text um (verbessere Klarheit und Stil):\n\n{text}"
+            prompt = f"Rewrite the following text (improve clarity and style):\n\n{text}"
 
-        return self.chat(prompt)
+        return self.chat(prompt, system_override=self._get_writer_prompt())
 
     def expand_text(self, text: str) -> AIResponse:
         """Expand text with more details"""
-        prompt = f"Erweitere folgenden Text mit mehr Details und Erklarungen:\n\n{text}"
-        return self.chat(prompt)
+        prompt = f"Expand the following text with more details and explanations:\n\n{text}"
+        return self.chat(prompt, system_override=self._get_writer_prompt())
 
     def shorten_text(self, text: str) -> AIResponse:
         """Shorten/summarize text"""
-        prompt = f"Kurze folgenden Text auf das Wesentliche:\n\n{text}"
-        return self.chat(prompt)
+        prompt = f"Shorten the following text to the essentials:\n\n{text}"
+        return self.chat(prompt, system_override=self._get_writer_prompt())
 
     def translate_text(self, text: str, target_lang: str = "en") -> AIResponse:
         """Translate text"""
-        lang_name = "Englisch" if target_lang == "en" else "Deutsch"
-        prompt = f"Ubersetze folgenden Text auf {lang_name}:\n\n{text}"
-        return self.chat(prompt)
+        lang_name = "English" if target_lang == "en" else "German"
+        prompt = f"Translate the following text to {lang_name}:\n\n{text}"
+        return self.chat(prompt, system_override=self._get_writer_prompt())
 
     def explain_code(self, code: str, language: str) -> AIResponse:
         """Explain code"""
-        prompt = f"Erklare folgenden {language} Code:\n\n```{language}\n{code}\n```"
-        return self.chat(prompt)
+        prompt = f"Explain the following {language} code:\n\n```{language}\n{code}\n```"
+        return self.chat(prompt, system_override=self._get_writer_prompt())
 
     def fix_code(self, code: str, error: str, language: str) -> AIResponse:
         """Fix code based on error (routed to code-specialized model)"""
-        prompt = f"""Folgender {language} Code hat einen Fehler:
+        prompt = f"""The following {language} code has an error:
 
 ```{language}
 {code}
 ```
 
-Fehler:
+Error:
 {error}
 
-Gib den korrigierten Code zuruck. Nur Code, keine Erklarung:"""
+Return the corrected code. Code only, no explanation:"""
 
         response = self._route_code(prompt)
 
@@ -285,13 +316,12 @@ Gib den korrigierten Code zuruck. Nur Code, keine Erklarung:"""
         return AIResponse(content=response.content, success=False, error="No code block in response")
 
     def _route_code(self, prompt: str) -> AIResponse:
-        """Send a code-specific prompt to the Router with force=coder."""
+        """Send a code-specific prompt to the Router."""
         try:
             payload = {
                 "text": prompt,
-                "system": self._get_system_prompt(),
+                "system": self._get_writer_prompt(),
                 "n_predict": 2048,
-                "force": "coder",
             }
             with httpx.Client(timeout=self.timeout) as client:
                 response = client.post(f"{self.router_url}/route", json=payload)
@@ -311,7 +341,7 @@ Gib den korrigierten Code zuruck. Nur Code, keine Erklarung:"""
 
     def generate_code(self, description: str, language: str) -> AIResponse:
         """Generate code from description"""
-        prompt = f"Generiere {language} Code fur: {description}\n\nNur Code, keine Erklarung:"
+        prompt = f"Generate {language} code for: {description}\n\nCode only, no explanation:"
         response = self._route_code(prompt)
 
         if not response.success:
@@ -330,16 +360,16 @@ Gib den korrigierten Code zuruck. Nur Code, keine Erklarung:"""
 
     def analyze_document(self, content: str, document_type: str) -> AIResponse:
         """Analyze document structure and quality"""
-        prompt = f"""Analysiere folgendes {document_type} Dokument:
+        prompt = f"""Analyze the following {document_type} document:
 
 {content[:2000]}...
 
-Gib Feedback zu:
-1. Struktur
-2. Klarheit
-3. Verbesserungsvorschlage"""
+Provide feedback on:
+1. Structure
+2. Clarity
+3. Suggestions for improvement"""
 
-        return self.chat(prompt)
+        return self.chat(prompt, system_override=self._get_writer_prompt())
 
     def get_system_context(self) -> Dict:
         """Get system context from toolbox"""
@@ -397,11 +427,24 @@ Gib Feedback zu:
                             content="", success=False,
                             error=f"HTTP {response.status_code}"
                         )
-                    for chunk in response.iter_text():
-                        if chunk:
-                            full_reply.append(chunk)
+                    for line in response.iter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        json_str = line[len("data:"):].strip()
+                        if not json_str:
+                            continue
+                        try:
+                            event = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            continue
+                        token = event.get("content", "")
+                        if token:
+                            full_reply.append(token)
                             if on_token:
-                                on_token(chunk)
+                                on_token(token)
+                        if event.get("stop"):
+                            break
 
             reply = "".join(full_reply)
             self._add_to_history("user", message)

@@ -66,6 +66,7 @@ class EmailSettingsPopup(tk.Toplevel):
         self._on_save = on_save
         self._on_destroy = on_destroy
 
+        self.withdraw()  # Hidden until positioned
         self.title("FRANK MAIL SETTINGS")
         self.configure(bg=COLORS["bg_main"])
         self.overrideredirect(True)
@@ -98,6 +99,7 @@ class EmailSettingsPopup(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
 
         self._build_ui()
+        self.deiconify()  # Show only after positioned
         self.focus_force()
 
     def destroy(self):

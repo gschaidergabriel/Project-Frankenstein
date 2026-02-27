@@ -8,12 +8,12 @@ class GenesisNotificationPopup(tk.Toplevel):
 
     def __init__(self, parent, proposals: list, on_action: callable):
         super().__init__(parent)
+        self.withdraw()  # Hidden until positioned
         self.proposals = proposals
         self.on_action = on_action
         self.current_idx = 0
 
         self.title("GENESIS // PROPOSAL")
-        self.geometry("450x380")
         self.configure(bg=COLORS["bg_main"])
         self.overrideredirect(True)
         self.attributes("-topmost", True)
@@ -22,16 +22,17 @@ class GenesisNotificationPopup(tk.Toplevel):
         except tk.TclError:
             pass
 
-        # Position next to parent
+        self._build_ui()
+        self._show_proposal(0)
+
+        # Position next to parent — after content is built
         self.update_idletasks()
         parent.update_idletasks()
         px = parent.winfo_x()
         py = parent.winfo_y()
         pw = parent.winfo_width()
-        self.geometry(f"+{px + pw + 10}+{py}")
-
-        self._build_ui()
-        self._show_proposal(0)
+        self.geometry(f"450x380+{px + pw + 10}+{py}")
+        self.deiconify()  # Show only after positioned
 
         # Drag support
         self._drag_x = 0

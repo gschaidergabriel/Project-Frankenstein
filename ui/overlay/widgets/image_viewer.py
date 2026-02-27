@@ -19,6 +19,7 @@ class ImageViewer(tk.Toplevel):
         self._overlay_geometry = overlay_geometry
 
         # Frameless, dark window
+        self.withdraw()  # Hidden until positioned
         self.overrideredirect(True)
         self.configure(bg=COLORS["bg_deep"])
         self.attributes("-topmost", True)
@@ -38,6 +39,7 @@ class ImageViewer(tk.Toplevel):
 
         # Build UI
         self._build_ui()
+        self.deiconify()  # Show only after positioned
 
         # Bindings for closing (with event stopping to prevent propagation to parent)
         self.bind("<Button-1>", self._close_viewer)

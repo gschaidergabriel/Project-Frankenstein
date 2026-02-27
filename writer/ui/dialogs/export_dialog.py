@@ -14,12 +14,12 @@ class ExportDialog(Adw.Window):
     """Export document dialog"""
 
     FORMATS = [
-        ('pdf', 'PDF-Dokument', '.pdf'),
-        ('docx', 'Word-Dokument', '.docx'),
+        ('pdf', 'PDF Document', '.pdf'),
+        ('docx', 'Word Document', '.docx'),
         ('tex', 'LaTeX', '.tex'),
         ('md', 'Markdown', '.md'),
         ('html', 'HTML', '.html'),
-        ('txt', 'Reintext', '.txt'),
+        ('txt', 'Plain Text', '.txt'),
     ]
 
     def __init__(self, parent, document, config):
@@ -33,7 +33,7 @@ class ExportDialog(Adw.Window):
         self._build_ui()
 
     def _setup_window(self):
-        self.set_title("Exportieren")
+        self.set_title("Export")
         self.set_default_size(450, 400)
         self.set_transient_for(self.parent_window)
         self.set_modal(True)
@@ -45,11 +45,11 @@ class ExportDialog(Adw.Window):
         header = Adw.HeaderBar()
         header.set_show_end_title_buttons(False)
 
-        cancel_btn = Gtk.Button(label="Abbrechen")
+        cancel_btn = Gtk.Button(label="Cancel")
         cancel_btn.connect('clicked', lambda b: self.close())
         header.pack_start(cancel_btn)
 
-        self.export_btn = Gtk.Button(label="Exportieren")
+        self.export_btn = Gtk.Button(label="Export")
         self.export_btn.add_css_class("suggested-action")
         self.export_btn.connect('clicked', self._on_export)
         header.pack_end(self.export_btn)
@@ -88,7 +88,7 @@ class ExportDialog(Adw.Window):
             format_group.add(row)
 
         # Filename
-        filename_group = Adw.PreferencesGroup(title="Dateiname")
+        filename_group = Adw.PreferencesGroup(title="Filename")
         content.append(filename_group)
 
         self.filename_entry = Adw.EntryRow(title="Name")
@@ -96,7 +96,7 @@ class ExportDialog(Adw.Window):
         filename_group.add(self.filename_entry)
 
         # Location
-        location_row = Adw.ActionRow(title="Speicherort")
+        location_row = Adw.ActionRow(title="Location")
 
         self.location_label = Gtk.Label(label=str(Path.home() / "Documents"))
         self.location_label.add_css_class("dim-label")
@@ -118,7 +118,7 @@ class ExportDialog(Adw.Window):
 
     def _on_browse(self, button):
         dialog = Gtk.FileDialog()
-        dialog.set_title("Speicherort wählen")
+        dialog.set_title("Choose Location")
         dialog.select_folder(self.parent_window, None, self._on_folder_selected)
 
     def _on_folder_selected(self, dialog, result):
@@ -166,11 +166,11 @@ class ExportDialog(Adw.Window):
     def _confirm_overwrite(self, output_path):
         dialog = Adw.MessageDialog(
             transient_for=self,
-            heading="Datei überschreiben?",
-            body=f"'{output_path.name}' existiert bereits. Überschreiben?"
+            heading="Overwrite File?",
+            body=f"'{output_path.name}' already exists. Overwrite?"
         )
-        dialog.add_response("cancel", "Abbrechen")
-        dialog.add_response("overwrite", "Überschreiben")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("overwrite", "Overwrite")
         dialog.set_response_appearance("overwrite", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.connect('response', self._on_overwrite_response, output_path)
         dialog.present()
@@ -186,7 +186,7 @@ class ExportDialog(Adw.Window):
         except Exception as e:
             dialog = Adw.MessageDialog(
                 transient_for=self,
-                heading="Export fehlgeschlagen",
+                heading="Export Failed",
                 body=str(e)
             )
             dialog.add_response("ok", "OK")

@@ -158,41 +158,41 @@ class FrankWriterWindow(Adw.ApplicationWindow):
 
         # Left side - file operations
         new_btn = Gtk.Button(icon_name="document-new-symbolic")
-        new_btn.set_tooltip_text("Neues Dokument (Ctrl+N)")
+        new_btn.set_tooltip_text("New Document (Ctrl+N)")
         new_btn.set_action_name("app.new")
         header.pack_start(new_btn)
 
         open_btn = Gtk.Button(icon_name="document-open-symbolic")
-        open_btn.set_tooltip_text("Öffnen (Ctrl+O)")
+        open_btn.set_tooltip_text("Open (Ctrl+O)")
         open_btn.set_action_name("app.open")
         header.pack_start(open_btn)
 
         save_btn = Gtk.Button(icon_name="document-save-symbolic")
-        save_btn.set_tooltip_text("Speichern (Ctrl+S)")
+        save_btn.set_tooltip_text("Save (Ctrl+S)")
         save_btn.set_action_name("app.save")
         header.pack_start(save_btn)
 
         print_btn = Gtk.Button(icon_name="printer-symbolic")
-        print_btn.set_tooltip_text("Drucken (Ctrl+P)")
+        print_btn.set_tooltip_text("Print (Ctrl+P)")
         print_btn.set_action_name("app.print")
         header.pack_start(print_btn)
 
         # Title widget
         self.title_widget = Adw.WindowTitle(
             title="Frank Writer",
-            subtitle="Neues Dokument"
+            subtitle="New Document"
         )
         header.set_title_widget(self.title_widget)
 
         # Right side - actions
         export_btn = Gtk.Button(icon_name="document-send-symbolic")
-        export_btn.set_tooltip_text("Exportieren (Ctrl+E)")
+        export_btn.set_tooltip_text("Export (Ctrl+E)")
         export_btn.set_action_name("app.export")
         header.pack_end(export_btn)
 
         # Menu button
         menu_btn = Gtk.MenuButton(icon_name="open-menu-symbolic")
-        menu_btn.set_tooltip_text("Menü")
+        menu_btn.set_tooltip_text("Menu")
         menu_btn.set_menu_model(self._create_app_menu())
         header.pack_end(menu_btn)
 
@@ -228,7 +228,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
 
         # Zoom controls
         zoom_out_btn = Gtk.Button(icon_name="zoom-out-symbolic")
-        zoom_out_btn.set_tooltip_text("Verkleinern (Ctrl+-)")
+        zoom_out_btn.set_tooltip_text("Zoom Out (Ctrl+-)")
         zoom_out_btn.connect('clicked', lambda b: self.zoom_out())
         bar.append(zoom_out_btn)
 
@@ -238,12 +238,12 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         bar.append(self.zoom_label)
 
         zoom_in_btn = Gtk.Button(icon_name="zoom-in-symbolic")
-        zoom_in_btn.set_tooltip_text("Vergrößern (Ctrl++)")
+        zoom_in_btn.set_tooltip_text("Zoom In (Ctrl++)")
         zoom_in_btn.connect('clicked', lambda b: self.zoom_in())
         bar.append(zoom_in_btn)
 
         zoom_reset_btn = Gtk.Button(icon_name="zoom-original-symbolic")
-        zoom_reset_btn.set_tooltip_text("Zoom zurücksetzen (Ctrl+0)")
+        zoom_reset_btn.set_tooltip_text("Reset Zoom (Ctrl+0)")
         zoom_reset_btn.connect('clicked', lambda b: self.zoom_reset())
         bar.append(zoom_reset_btn)
 
@@ -256,26 +256,26 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         run_box.append(Gtk.Label(label="Run"))
         self.run_btn.set_child(run_box)
         self.run_btn.add_css_class("suggested-action")
-        self.run_btn.set_tooltip_text("Code ausführen (F5)")
+        self.run_btn.set_tooltip_text("Run Code (F5)")
         self.run_btn.connect('clicked', lambda b: self.run_code())
         self.run_btn.set_visible(self.current_mode == 'coding')
         bar.append(self.run_btn)
 
         # AI Command button
         ai_btn = Gtk.Button(icon_name="system-search-symbolic")
-        ai_btn.set_tooltip_text("AI-Befehl (Ctrl+K)")
+        ai_btn.set_tooltip_text("AI Command (Ctrl+K)")
         ai_btn.connect('clicked', lambda b: self.show_ai_command_palette())
         bar.append(ai_btn)
 
         # Focus mode toggle
         self.focus_btn = Gtk.ToggleButton(icon_name="view-fullscreen-symbolic")
-        self.focus_btn.set_tooltip_text("Fokus-Modus")
+        self.focus_btn.set_tooltip_text("Focus Mode")
         self.focus_btn.connect('toggled', self._on_focus_toggled)
         bar.append(self.focus_btn)
 
         # Settings button
         settings_btn = Gtk.Button(icon_name="emblem-system-symbolic")
-        settings_btn.set_tooltip_text("Einstellungen")
+        settings_btn.set_tooltip_text("Preferences")
         settings_btn.connect('clicked', lambda b: self.show_preferences())
         bar.append(settings_btn)
 
@@ -293,7 +293,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         # Word/Line count (clickable for detail dialog)
         word_count_btn = Gtk.Button()
         word_count_btn.add_css_class("flat")
-        self.word_count_label = Gtk.Label(label="0 Wörter")
+        self.word_count_label = Gtk.Label(label="0 Words")
         self.word_count_label.add_css_class("dim-label")
         word_count_btn.set_child(self.word_count_label)
         word_count_btn.connect('clicked', lambda b: self.show_word_count_dialog())
@@ -345,7 +345,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         # File section
         file_section = Gio.Menu()
         file_section.append("Neu", "app.new")
-        file_section.append("Öffnen...", "app.open")
+        file_section.append("Open...", "app.open")
 
         # Recent files submenu
         recent_section = Gio.Menu()
@@ -354,49 +354,49 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             # Use detailed action with target to pass file path
             recent_section.append(name, f"app.open-recent::{path}")
         if self._recent_files:
-            file_section.append_submenu("Zuletzt geöffnet", recent_section)
+            file_section.append_submenu("Recent Files", recent_section)
 
-        file_section.append("Speichern", "app.save")
-        file_section.append("Speichern unter...", "app.save-as")
-        file_section.append("Exportieren...", "app.export")
-        file_section.append("Drucken...", "app.print")
-        menu.append_section("Datei", file_section)
+        file_section.append("Save", "app.save")
+        file_section.append("Save As...", "app.save-as")
+        file_section.append("Export...", "app.export")
+        file_section.append("Print...", "app.print")
+        menu.append_section("File", file_section)
 
         # Edit section
         edit_section = Gio.Menu()
-        edit_section.append("Suchen...", "app.find")
-        edit_section.append("Suchen & Ersetzen...", "app.find-replace")
-        edit_section.append("AI-Befehl...", "app.ai-command")
-        edit_section.append("Modus wechseln", "app.toggle-mode")
-        edit_section.append("Wörter zählen...", "app.word-count")
-        menu.append_section("Bearbeiten", edit_section)
+        edit_section.append("Find...", "app.find")
+        edit_section.append("Find & Replace...", "app.find-replace")
+        edit_section.append("AI Command...", "app.ai-command")
+        edit_section.append("Toggle Mode", "app.toggle-mode")
+        edit_section.append("Word Count...", "app.word-count")
+        menu.append_section("Edit", edit_section)
 
         # Insert section
         insert_section = Gio.Menu()
-        insert_section.append("Inhaltsverzeichnis", "app.insert-toc")
-        insert_section.append("Seitenumbruch", "app.insert-pagebreak")
-        insert_section.append("Fußnote", "app.insert-footnote")
-        menu.append_section("Einfügen", insert_section)
+        insert_section.append("Table of Contents", "app.insert-toc")
+        insert_section.append("Page Break", "app.insert-pagebreak")
+        insert_section.append("Footnote", "app.insert-footnote")
+        menu.append_section("Insert", insert_section)
 
         # Tools section
         tools_section = Gio.Menu()
-        tools_section.append("Versionsverlauf...", "app.version-history")
-        tools_section.append("Grammatik prüfen", "app.grammar-check")
-        menu.append_section("Werkzeuge", tools_section)
+        tools_section.append("Version History...", "app.version-history")
+        tools_section.append("Grammar Check", "app.grammar-check")
+        menu.append_section("Tools", tools_section)
 
         # View section
         view_section = Gio.Menu()
-        view_section.append("Vergrößern", "app.zoom-in")
-        view_section.append("Verkleinern", "app.zoom-out")
-        view_section.append("Zoom zurücksetzen", "app.zoom-reset")
-        view_section.append("Fokus-Modus", "app.focus-mode")
-        menu.append_section("Ansicht", view_section)
+        view_section.append("Zoom In", "app.zoom-in")
+        view_section.append("Zoom Out", "app.zoom-out")
+        view_section.append("Reset Zoom", "app.zoom-reset")
+        view_section.append("Focus Mode", "app.focus-mode")
+        menu.append_section("View", view_section)
 
         # App section
         app_section = Gio.Menu()
-        app_section.append("Einstellungen", "app.preferences")
-        app_section.append("Über", "app.about")
-        app_section.append("Beenden", "app.quit")
+        app_section.append("Preferences", "app.preferences")
+        app_section.append("About", "app.about")
+        app_section.append("Quit", "app.quit")
         menu.append_section(None, app_section)
 
         return menu
@@ -447,11 +447,11 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             self._add_document(doc)
             self._add_to_recent(str(path))
         except FileNotFoundError:
-            self._show_error(f"Datei nicht gefunden: {path}")
+            self._show_error(f"File not found: {path}")
         except PermissionError:
             self._show_error(f"Zugriff verweigert: {path}")
         except Exception as e:
-            self._show_error(f"Fehler beim Öffnen: {e}")
+            self._show_error(f"Error opening file: {e}")
 
     def _add_document(self, doc: Document):
         """Add document to editor"""
@@ -505,31 +505,31 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
 
         edit_section = Gio.Menu()
-        edit_section.append("Rückgängig", "app.undo")
-        edit_section.append("Wiederholen", "app.redo")
+        edit_section.append("Undo", "app.undo")
+        edit_section.append("Redo", "app.redo")
         menu.append_section(None, edit_section)
 
         clipboard_section = Gio.Menu()
-        clipboard_section.append("Ausschneiden", "app.cut")
-        clipboard_section.append("Kopieren", "app.copy")
-        clipboard_section.append("Einfügen", "app.paste")
-        clipboard_section.append("Alles auswählen", "app.select-all")
+        clipboard_section.append("Cut", "app.cut")
+        clipboard_section.append("Copy", "app.copy")
+        clipboard_section.append("Paste", "app.paste")
+        clipboard_section.append("Select All", "app.select-all")
         menu.append_section(None, clipboard_section)
 
         find_section = Gio.Menu()
-        find_section.append("Suchen...", "app.find")
-        find_section.append("Suchen & Ersetzen...", "app.find-replace")
+        find_section.append("Find...", "app.find")
+        find_section.append("Find & Replace...", "app.find-replace")
         menu.append_section(None, find_section)
 
         if self.current_mode == 'writer':
             format_section = Gio.Menu()
-            format_section.append("Fett", "app.format-bold")
-            format_section.append("Kursiv", "app.format-italic")
-            format_section.append("Unterstrichen", "app.format-underline")
+            format_section.append("Bold", "app.format-bold")
+            format_section.append("Italic", "app.format-italic")
+            format_section.append("Underline", "app.format-underline")
             menu.append_section("Format", format_section)
 
         ai_section = Gio.Menu()
-        ai_section.append("AI-Befehl...", "app.ai-command")
+        ai_section.append("AI Command...", "app.ai-command")
         menu.append_section(None, ai_section)
 
         popover = Gtk.PopoverMenu.new_from_model(menu)
@@ -568,7 +568,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             return
 
         # Auto-snapshot before save (P3-32)
-        self._save_version_snapshot(label="Vor Speichern")
+        self._save_version_snapshot(label="Before Save")
 
         if self.current_document.file_path:
             self.current_document.save()
@@ -583,7 +583,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             return
 
         dialog = Gtk.FileDialog()
-        dialog.set_title("Speichern unter")
+        dialog.set_title("Save As")
         dialog.save(self, None, self._on_save_dialog_response)
 
     def _on_save_dialog_response(self, dialog, result):
@@ -631,12 +631,12 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         """Ask user to save before closing"""
         dialog = Adw.MessageDialog(
             transient_for=self,
-            heading="Änderungen speichern?",
-            body=f"'{doc.title}' hat ungespeicherte Änderungen."
+            heading="Save Changes?",
+            body=f"'{doc.title}' has unsaved changes."
         )
-        dialog.add_response("discard", "Verwerfen")
-        dialog.add_response("cancel", "Abbrechen")
-        dialog.add_response("save", "Speichern")
+        dialog.add_response("discard", "Discard")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
         dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("save")
@@ -657,7 +657,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
     def _save_then_remove(self, doc: Document):
         """Save As dialog that removes the document only after save succeeds."""
         file_dialog = Gtk.FileDialog()
-        file_dialog.set_title("Speichern unter")
+        file_dialog.set_title("Save As")
         file_dialog.save(self, None, self._on_save_then_remove_response, doc)
 
     def _on_save_then_remove_response(self, file_dialog, result, doc):
@@ -998,7 +998,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
 
     def show_open_dialog(self):
         dialog = Gtk.FileDialog()
-        dialog.set_title("Datei öffnen")
+        dialog.set_title("Open File")
         dialog.open(self, None, self._on_open_dialog_response)
 
     def _on_open_dialog_response(self, dialog, result):
@@ -1099,11 +1099,11 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         # Show recovery dialog
         dialog = Adw.MessageDialog(
             transient_for=self,
-            heading="Wiederherstellung",
-            body=f"{len(autosave_files)} automatisch gespeicherte Datei(en) gefunden. Wiederherstellen?"
+            heading="Recovery",
+            body=f"{len(autosave_files)} auto-saved file(s) found. Recover?"
         )
-        dialog.add_response("discard", "Verwerfen")
-        dialog.add_response("recover", "Wiederherstellen")
+        dialog.add_response("discard", "Discard")
+        dialog.add_response("recover", "Recover")
         dialog.set_response_appearance("recover", Adw.ResponseAppearance.SUGGESTED)
         dialog.connect('response', self._on_recovery_response, autosave_files)
         GLib.idle_add(dialog.present)
@@ -1234,12 +1234,12 @@ class FrankWriterWindow(Adw.ApplicationWindow):
     def _ask_save_all_before_quit(self, unsaved_docs):
         dialog = Adw.MessageDialog(
             transient_for=self,
-            heading="Änderungen speichern?",
-            body=f"{len(unsaved_docs)} Dokument(e) mit ungespeicherten Änderungen."
+            heading="Save Changes?",
+            body=f"{len(unsaved_docs)} document(s) with unsaved changes."
         )
-        dialog.add_response("discard", "Verwerfen")
-        dialog.add_response("cancel", "Abbrechen")
-        dialog.add_response("save", "Alle speichern")
+        dialog.add_response("discard", "Discard")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save All")
         dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.connect('response', self._on_quit_dialog_response, unsaved_docs)
@@ -1255,11 +1255,11 @@ class FrankWriterWindow(Adw.ApplicationWindow):
                 names = ", ".join(d.title for d in still_unsaved)
                 warn = Adw.MessageDialog(
                     transient_for=self,
-                    heading="Unbenannte Dokumente",
-                    body=f"Nicht gespeichert: {names}. Verwerfen?",
+                    heading="Untitled Documents",
+                    body=f"Not saved: {names}. Discard?",
                 )
-                warn.add_response("cancel", "Abbrechen")
-                warn.add_response("discard", "Verwerfen & Beenden")
+                warn.add_response("cancel", "Cancel")
+                warn.add_response("discard", "Discard & Quit")
                 warn.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
                 warn.connect("response", self._on_untitled_discard_response)
                 warn.present()
@@ -1317,6 +1317,13 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             self._insert_toc()
         elif action == 'insert_pagebreak':
             self._insert_pagebreak()
+        elif action == 'insert_text':
+            text = data.get('text', '')
+            if text:
+                editor = self._get_current_editor()
+                if editor:
+                    buf = editor.get_buffer()
+                    buf.insert_at_cursor(text)
 
     # ── TOC Generation (P3-33) ───────────────────────────
 
@@ -1332,7 +1339,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
         if not outline:
             return
 
-        toc_lines = ["# Inhaltsverzeichnis\n"]
+        toc_lines = ["# Table of Contents\n"]
         for item in outline:
             level = item.get('level', 1)
             title = item.get('title', '')
@@ -1469,7 +1476,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             if isinstance(response, AIResponse):
                 error = response.error or "Keine Antwort"
             self.sidebar.chat_panel.add_system_message(
-                f"Grammatikprüfung fehlgeschlagen: {error}"
+                f"Grammar check failed: {error}"
             )
         return False
 
@@ -1494,6 +1501,9 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             text = self.current_document.content
             if not text.strip():
                 return
+
+        # Save version snapshot before AI modifies text
+        self._save_version_snapshot(label=f"Before AI {action}")
 
         def do_ai_call():
             if action == 'rewrite':
@@ -1533,14 +1543,14 @@ class FrankWriterWindow(Adw.ApplicationWindow):
             self.title_widget.set_subtitle(self.current_document.title)
 
             word_count = self.current_document.word_count
-            self.word_count_label.set_label(f"{word_count} Wörter")
+            self.word_count_label.set_label(f"{word_count} Words")
 
             self.language_label.set_label(
                 self.current_document.language or "Text"
             )
 
             if self.current_document.is_modified:
-                self.modified_indicator.set_label("● Geändert")
+                self.modified_indicator.set_label("● Modified")
             else:
                 self.modified_indicator.set_label("")
 
@@ -1553,7 +1563,7 @@ class FrankWriterWindow(Adw.ApplicationWindow):
     def _show_error(self, message: str):
         dialog = Adw.MessageDialog(
             transient_for=self,
-            heading="Fehler",
+            heading="Error",
             body=message
         )
         dialog.add_response("ok", "OK")

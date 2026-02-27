@@ -55,6 +55,7 @@ class EmailPopup(tk.Toplevel):
         else:
             self._read_attachments_data = []
 
+        self.withdraw()  # Hidden until positioned
         self.title("FRANK MAIL")
         self.configure(bg=COLORS["bg_main"])
         self.overrideredirect(True)
@@ -82,6 +83,7 @@ class EmailPopup(tk.Toplevel):
             x = max(0, screen_w - _POPUP_W)
         y = max(get_workarea_y(), py)
         self.geometry(f"{_POPUP_W}x{_POPUP_H}+{x}+{y}")
+        self.deiconify()  # Show only after positioned
 
         self.bind("<Escape>", lambda e: self.destroy())
 

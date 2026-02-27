@@ -132,6 +132,54 @@ MONITORED_SERVICES = {
         "reset_after": 600,
         "description": "Whisper STT Server (GPU)",
     },
+    "aicore-webd": {
+        "critical": True,
+        "restart_delay": 1,
+        "max_restarts": 30,
+        "cooldown": 10,
+        "reset_after": 300,
+        "description": "Web Search Daemon (DuckDuckGo + Tor)",
+    },
+    "aicore-entities": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 15,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "Entity Session Dispatcher",
+    },
+    "aicore-desktopd": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 15,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "Desktop Daemon (X11)",
+    },
+    "aicore-genesis": {
+        "critical": True,
+        "restart_delay": 3,
+        "max_restarts": 10,
+        "cooldown": 60,
+        "reset_after": 600,
+        "description": "Genesis Self-Improvement System",
+    },
+    "aicore-dream": {
+        "critical": False,          # Runs only when idle, OK to be inactive
+        "restart_delay": 5,
+        "max_restarts": 5,
+        "cooldown": 120,
+        "reset_after": 1800,
+        "description": "Dream Daemon (idle consolidation)",
+    },
+    "aicore-invariants": {
+        "critical": True,
+        "restart_delay": 2,
+        "max_restarts": 15,
+        "cooldown": 30,
+        "reset_after": 600,
+        "description": "Invariants Physics Engine",
+    },
 }
 
 CHECK_INTERVAL = 15  # Check every 15 seconds
@@ -250,17 +298,22 @@ class ServiceTracker:
 # Service management functions
 # ============================================================================
 
-def is_service_active(service_name: str) -> bool:
-    """Check if a systemd user service is active."""
+def get_service_state(service_name: str) -> str:
+    """Get systemd user service state: 'active', 'inactive', 'failed', 'activating', or 'unknown'."""
     try:
         result = subprocess.run(
             ["systemctl", "--user", "is-active", service_name],
             capture_output=True, text=True, timeout=10
         )
-        return result.stdout.strip() == "active"
+        return result.stdout.strip() or "unknown"
     except Exception as e:
         LOG.warning(f"Failed to check {service_name}: {e}")
-        return False
+        return "unknown"
+
+
+def is_service_active(service_name: str) -> bool:
+    """Check if a systemd user service is active."""
+    return get_service_state(service_name) == "active"
 
 
 def restart_service(service_name: str) -> bool:
@@ -434,46 +487,53 @@ def main():
             overall_healthy = True
 
             for name, tracker in trackers.items():
-                if is_service_active(name):
+                state = get_service_state(name)
+
+                if state == "active":
                     tracker.record_healthy()
-                else:
-                    overall_healthy = False
+                    continue
 
-                    # Skip auto-restart of frank-overlay if user closed it intentionally
-                    if name == "frank-overlay" and USER_CLOSED_SIGNAL.exists():
-                        LOG.debug(f"[{name}] User closed overlay intentionally, skipping restart")
-                        continue
+                # Non-critical services: only restart on "failed", not "inactive"
+                # (e.g. dream daemon is legitimately inactive until idle trigger)
+                if not tracker.config["critical"] and state == "inactive":
+                    continue
 
-                    # Skip auto-restart of frank-overlay during gaming mode
-                    if name == "frank-overlay" and GAMING_LOCK.exists():
-                        LOG.debug(f"[{name}] Gaming mode active (lock file), skipping restart")
-                        continue
+                overall_healthy = False
 
+                # Skip auto-restart of frank-overlay if user closed it intentionally
+                if name == "frank-overlay" and USER_CLOSED_SIGNAL.exists():
+                    LOG.debug(f"[{name}] User closed overlay intentionally, skipping restart")
+                    continue
 
-                    # Skip Llama restart when Router intentionally parked it for Qwen (MPC)
-                    if name == "aicore-llama3-gpu" and MPC_LLAMA_PARKED.exists():
-                        LOG.debug(f"[{name}] Parked by MPC (Qwen active), skipping restart")
-                        continue
+                # Skip auto-restart of frank-overlay during gaming mode
+                if name == "frank-overlay" and GAMING_LOCK.exists():
+                    LOG.debug(f"[{name}] Gaming mode active (lock file), skipping restart")
+                    continue
 
-                    LOG.warning(f"[{name}] NOT RUNNING ({tracker.config['description']})")
+                # Skip Llama restart when Router intentionally parked it for Qwen (MPC)
+                if name == "aicore-llama3-gpu" and MPC_LLAMA_PARKED.exists():
+                    LOG.debug(f"[{name}] Parked by MPC (Qwen active), skipping restart")
+                    continue
 
-                    if tracker.should_restart():
-                        time.sleep(tracker.config["restart_delay"])
-                        LOG.info(f"[{name}] Attempting restart (attempt {tracker.restart_count + 1}/{tracker.config['max_restarts']})...")
+                LOG.warning(f"[{name}] {state.upper()} ({tracker.config['description']})")
 
-                        if restart_service(name):
-                            tracker.record_restart()
-                            time.sleep(3)  # Wait for startup
+                if tracker.should_restart():
+                    time.sleep(tracker.config["restart_delay"])
+                    LOG.info(f"[{name}] Attempting restart (attempt {tracker.restart_count + 1}/{tracker.config['max_restarts']})...")
 
-                            if is_service_active(name):
-                                LOG.info(f"[{name}] Successfully restarted!")
-                                tracker.restart_count = 0  # Reset on success
-                            else:
-                                LOG.error(f"[{name}] Restart command succeeded but service not active")
-                                tracker.record_restart()
+                    if restart_service(name):
+                        tracker.record_restart()
+                        time.sleep(3)  # Wait for startup
+
+                        if is_service_active(name):
+                            LOG.info(f"[{name}] Successfully restarted!")
+                            tracker.restart_count = 0  # Reset on success
                         else:
-                            LOG.error(f"[{name}] Restart FAILED")
+                            LOG.error(f"[{name}] Restart command succeeded but service not active")
                             tracker.record_restart()
+                    else:
+                        LOG.error(f"[{name}] Restart FAILED")
+                        tracker.record_restart()
 
             # ── Overlay freeze detection (heartbeat-based) ──
             # The overlay writes a timestamp every 5s.  If the file is

@@ -25,132 +25,131 @@ class IntentParser:
         # Critical actions (require confirmation)
         'save': {
             'patterns': [
-                r'\bspeicher(e|n|t)?\b',
                 r'\bsave\b',
+                r'\bspeicher(e|n|t)?\b',
                 r'\bsicher(e|n|t)?\b',
             ],
             'critical': True,
-            'confirmation': "Soll ich das Dokument speichern?",
-            'success': "Dokument gespeichert"
+            'confirmation': "Should I save the document?",
+            'success': "Document saved"
         },
         'export': {
             'patterns': [
+                r'\bexport\b',
+                r'\bas (pdf|docx|tex|html|md)\b',
+                r'\bconvert\b',
                 r'\bexport(iere|ieren|iert)?\b',
-                r'\bals (pdf|docx|tex|html|md)\b',
                 r'\bkonvertier(e|en|t)?\b',
-                r'\berstell(e|en|t)? (ein )?(pdf|word|latex)\b',
             ],
             'critical': True,
-            'confirmation': "Soll ich das Dokument exportieren?",
-            'success': "Export abgeschlossen"
+            'confirmation': "Should I export the document?",
+            'success': "Export complete"
         },
         'close': {
             'patterns': [
-                r'\bschlie(ß|ss)(e|en|t)?\b',
-                r'\bbeend(e|en|et)?\b',
                 r'\bclose\b',
                 r'\bexit\b',
-                r'\bzurück zum (chat|overlay)\b',
+                r'\bquit\b',
+                r'\bschlie(ß|ss)(e|en|t)?\b',
+                r'\bbeend(e|en|et)?\b',
             ],
             'critical': True,
-            'confirmation': "Writer schließen?",
-            'success': "Writer wird geschlossen"
+            'confirmation': "Close Writer?",
+            'success': "Writer is closing"
         },
 
         # Non-critical actions
         'run': {
             'patterns': [
-                r'\bausfüh?r(e|en|t)?\b',
                 r'\brun\b',
-                r'\bstart(e|en|et)?\b',
-                r'\btest(e|en|et)?\b',
-                r'\bexecut(e|ieren)?\b',
+                r'\bexecute\b',
+                r'\bstart\b',
+                r'\btest\b',
+                r'\bausfüh?r(e|en|t)?\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Code wird ausgeführt"
+            'success': "Running code"
         },
         'new': {
             'patterns': [
-                r'\bneu(es)? (dokument|document|datei|file)\b',
+                r'\bnew (document|file)\b',
                 r'\bnew\b',
-                r'\berstell(e|en|t)? neu\b',
+                r'\bneu(es)? (dokument|datei)\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Neues Dokument erstellt"
+            'success': "New document created"
         },
         'rewrite': {
             'patterns': [
-                r'\bschreib(e|en|t)? (das )?(um|neu)\b',
-                r'\bformulier(e|en|t)? (das )?(um|neu)\b',
                 r'\brewrite\b',
+                r'\brephrase\b',
+                r'\breformulate\b',
                 r'\bumschreiben\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Text umgeschrieben"
+            'success': "Text rewritten"
         },
         'expand': {
             'patterns': [
-                r'\berweiter(e|n|t)?\b',
-                r'\bmehr details\b',
-                r'\bausführlicher\b',
                 r'\bexpand\b',
                 r'\belaborate\b',
+                r'\bmore details?\b',
+                r'\berweiter(e|n|t)?\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Text erweitert"
+            'success': "Text expanded"
         },
         'shorten': {
             'patterns': [
-                r'\bkürz(e|en|t)?\b',
-                r'\bkomprimier(e|en|t)?\b',
-                r'\bkürzer\b',
                 r'\bshorten\b',
                 r'\bsummariz(e|ieren)\b',
+                r'\bcompress\b',
+                r'\bkürz(e|en|t)?\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Text gekürzt"
+            'success': "Text shortened"
         },
         'explain': {
             'patterns': [
-                r'\berklär(e|en|t)?\b',
                 r'\bexplain\b',
-                r'\bwas (bedeutet|macht|ist)\b',
+                r'\bwhat (does|is|means)\b',
+                r'\berklär(e|en|t)?\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Erklärung generiert"
+            'success': "Explanation generated"
         },
         'translate': {
             'patterns': [
-                r'\büberseh?tz(e|en|t)?\b',
                 r'\btranslate\b',
-                r'\bauf (englisch|deutsch|english|german)\b',
+                r'\bto (english|german|french|spanish)\b',
+                r'\büberseh?tz(e|en|t)?\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Übersetzung fertig"
+            'success': "Translation complete"
         },
         'format': {
             'patterns': [
-                r'\bformat(ier|iere|ieren|iert)?\b',
-                r'\beinfügen\b.*\bcode\b',
+                r'\bformat\b',
                 r'\bcode block\b',
+                r'\binsert\b.*\bcode\b',
             ],
             'critical': False,
             'confirmation': None,
-            'success': "Formatierung angewendet"
+            'success': "Formatting applied"
         },
         'help': {
             'patterns': [
-                r'\bhilfe\b',
                 r'\bhelp\b',
-                r'\bwas kannst du\b',
-                r'\bwie (mache|kann) ich\b',
+                r'\bhilfe\b',
+                r'\bwhat can you\b',
+                r'\bhow (do|can) I\b',
             ],
             'critical': False,
             'confirmation': None,
@@ -196,14 +195,14 @@ class IntentParser:
                 # Build confirmation message - use empty string instead of None for non-critical
                 confirmation = intent_data.get('confirmation') or ''
                 if intent_name == 'export' and export_format:
-                    confirmation = f"Soll ich als {export_format.upper()} exportieren?"
+                    confirmation = f"Should I export as {export_format.upper()}?"
 
                 return Intent(
                     action=intent_name,
                     critical=intent_data['critical'],
                     data=data,
                     confirmation_message=confirmation,
-                    success_message=intent_data.get('success', f'{intent_name} ausgeführt'),
+                    success_message=intent_data.get('success', f'{intent_name} executed'),
                     original_text=text
                 )
 
@@ -212,23 +211,23 @@ class IntentParser:
     def get_help_text(self) -> str:
         """Get help text for available commands"""
         return """
-**Verfügbare Befehle:**
+**Available Commands:**
 
-**Datei:**
-- "Speichere" / "Save" - Dokument speichern
-- "Exportiere als PDF/DOCX/TEX" - Exportieren
-- "Schließen" / "Beenden" - Writer schließen
+**File:**
+- "Save" - Save document
+- "Export as PDF/DOCX/TEX" - Export document
+- "Close" / "Exit" - Close Writer
 
 **Code (Coding Mode):**
-- "Ausführen" / "Run" / "Teste" - Code ausführen
+- "Run" / "Execute" / "Test" - Run code
 
-**Text bearbeiten:**
-- "Schreib das um" - Text neu formulieren
-- "Erweitern" - Text ausführlicher machen
-- "Kürzen" - Text komprimieren
-- "Übersetzen" - Zwischen DE/EN übersetzen
-- "Erkläre" - Code/Text erklären
+**Edit Text:**
+- "Rewrite" - Rephrase text
+- "Expand" - Add more details
+- "Shorten" - Compress text
+- "Translate" - Translate between languages
+- "Explain" - Explain code/text
 
-**Sonstiges:**
-- "Hilfe" - Diese Hilfe anzeigen
+**Other:**
+- "Help" - Show this help
 """

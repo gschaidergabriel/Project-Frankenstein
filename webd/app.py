@@ -534,18 +534,37 @@ def get_news(category: str = "tech_de", limit: int = 10) -> dict:
     }
 
 
-# ----------------------------- Darknet search (Torch via Tor) ---------------
+# ----------------------------- Darknet search (Ahmia + Torch via Tor) --------
 
+AHMIA_ONION = "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion"
 TORCH_ONION = "xmh57jrknzkhv6y3ls3ubitzfqnkrwxhopf5aygthi7d6rplyvk3noyd.onion"
 TOR_SOCKS_HOST = "127.0.0.1"
 TOR_SOCKS_PORT = 9050
 
-# Regex: <td><b><a href="http://xxx.onion/...">Title</a></b><br>\n<small>Snippet
+# Torch result regex
 _RE_TORCH_RESULT = re.compile(
     r'<td><b><a\s+href="(https?://[a-z2-7]{16,56}\.onion[^"]*)">(.*?)</a></b>'
     r'<br>\s*<small>(.*?)</small>',
     re.DOTALL | re.IGNORECASE,
 )
+
+# Ahmia result regex: <li class="result">...<a href="/search/redirect?...redirect_url=http://xxx.onion/...">Title</a>...<p>Snippet</p>
+_RE_AHMIA_RESULT = re.compile(
+    r'<li\s+class="result">\s*<h4>\s*<a\s+href="[^"]*redirect_url=(https?://[a-z2-7]{16,56}\.onion[^"&]*)[^"]*">\s*(.*?)\s*</a>',
+    re.DOTALL | re.IGNORECASE,
+)
+_RE_AHMIA_SNIPPET = re.compile(
+    r'<p>(.*?)</p>',
+    re.DOTALL | re.IGNORECASE,
+)
+# Ahmia anti-bot hidden field
+_RE_AHMIA_HIDDEN = re.compile(
+    r'<input\s+type="hidden"\s+name="([a-f0-9]+)"\s+value="([a-f0-9]+)"',
+    re.IGNORECASE,
+)
+
+# Cached Ahmia session token
+_ahmia_token: dict = {"name": "", "value": "", "cookies": "", "ts": 0}
 
 
 def _tor_http_get(host: str, port: int, path: str, timeout: int = 25) -> str:
@@ -562,6 +581,7 @@ def _tor_http_get(host: str, port: int, path: str, timeout: int = 25) -> str:
             f"GET {path} HTTP/1.1\r\n"
             f"Host: {host}\r\n"
             f"User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36\r\n"
+            f"Accept: text/html,*/*\r\n"
             f"Connection: close\r\n"
             f"\r\n"
         ).encode()
@@ -573,17 +593,74 @@ def _tor_http_get(host: str, port: int, path: str, timeout: int = 25) -> str:
             if not chunk:
                 break
             data += chunk
+            if len(data) > 2 * 1024 * 1024:
+                break
     finally:
         s.close()
 
-    html = data.decode("utf-8", errors="replace")
-    # Skip HTTP headers
-    body_idx = html.find("\r\n\r\n")
-    if body_idx > 0:
-        html = html[body_idx + 4:]
-    # Remove chunked encoding markers
-    html = re.sub(r"^[0-9a-fA-F]+\r?\n", "", html, flags=re.MULTILINE)
-    return html
+    raw = data.decode("utf-8", errors="replace")
+    # Split headers and body
+    body_idx = raw.find("\r\n\r\n")
+    headers = raw[:body_idx] if body_idx > 0 else ""
+    html = raw[body_idx + 4:] if body_idx > 0 else raw
+    # Handle chunked transfer encoding
+    if "transfer-encoding: chunked" in headers.lower():
+        html = re.sub(r"^[0-9a-fA-F]+\r?\n", "", html, flags=re.MULTILINE)
+    return html, headers
+
+
+def _tor_http_get_follow(host: str, port: int, path: str, timeout: int = 25, cookies: str = "") -> str:
+    """HTTP GET through Tor with redirect following and cookie support."""
+    if not _SOCKS_AVAILABLE:
+        raise RuntimeError("PySocks not installed (pip install pysocks)")
+
+    s = _socks.socksocket()
+    s.set_proxy(_socks.SOCKS5, TOR_SOCKS_HOST, TOR_SOCKS_PORT, rdns=True)
+    s.settimeout(timeout)
+    try:
+        s.connect((host, port))
+        cookie_header = f"Cookie: {cookies}\r\n" if cookies else ""
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            f"User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36\r\n"
+            f"Accept: text/html,*/*\r\n"
+            f"{cookie_header}"
+            f"Connection: close\r\n"
+            f"\r\n"
+        ).encode()
+        s.sendall(request)
+
+        data = b""
+        while True:
+            chunk = s.recv(8192)
+            if not chunk:
+                break
+            data += chunk
+            if len(data) > 2 * 1024 * 1024:
+                break
+    finally:
+        s.close()
+
+    raw = data.decode("utf-8", errors="replace")
+    body_idx = raw.find("\r\n\r\n")
+    headers = raw[:body_idx] if body_idx > 0 else ""
+    html = raw[body_idx + 4:] if body_idx > 0 else raw
+
+    # Extract cookies
+    set_cookies = re.findall(r"Set-Cookie:\s*([^;\r\n]+)", headers, re.IGNORECASE)
+    new_cookies = "; ".join(set_cookies) if set_cookies else cookies
+
+    # Follow redirect
+    loc = re.search(r"Location:\s*(\S+)", headers, re.IGNORECASE)
+    if loc and ("301" in headers[:30] or "302" in headers[:30] or "303" in headers[:30]):
+        redir = loc.group(1)
+        if redir.startswith("/"):
+            return _tor_http_get_follow(host, port, redir, timeout, new_cookies)
+
+    if "transfer-encoding: chunked" in headers.lower():
+        html = re.sub(r"^[0-9a-fA-F]+\r?\n", "", html, flags=re.MULTILINE)
+    return html, new_cookies
 
 
 # German → English keyword map for darknet search translation
@@ -657,6 +734,68 @@ def _translate_query_de_en(query: str) -> str:
     return " ".join(en_parts)
 
 
+def _ahmia_get_token() -> tuple:
+    """Fetch Ahmia homepage to get anti-bot token. Returns (name, value, cookies)."""
+    now = time.time()
+    if _ahmia_token["name"] and now - _ahmia_token["ts"] < 300:
+        return _ahmia_token["name"], _ahmia_token["value"], _ahmia_token["cookies"]
+
+    html, cookies = _tor_http_get_follow(AHMIA_ONION, 80, "/", timeout=20)
+    m = _RE_AHMIA_HIDDEN.search(html)
+    if not m:
+        raise RuntimeError("Ahmia anti-bot token not found")
+
+    _ahmia_token["name"] = m.group(1)
+    _ahmia_token["value"] = m.group(2)
+    _ahmia_token["cookies"] = cookies
+    _ahmia_token["ts"] = now
+    return m.group(1), m.group(2), cookies
+
+
+def _ahmia_search(query: str, limit: int = 10) -> list:
+    """Search via Ahmia .onion (primary darknet search)."""
+    token_name, token_value, cookies = _ahmia_get_token()
+    q = quote_plus(query)
+    path = f"/search/?q={q}&{token_name}={token_value}"
+
+    html, _ = _tor_http_get_follow(AHMIA_ONION, 80, path, timeout=30, cookies=cookies)
+
+    # Parse results
+    results = []
+    # Split by result blocks
+    blocks = re.findall(r'<li\s+class="result">(.*?)</li>', html, re.DOTALL)
+
+    for block in blocks:
+        if len(results) >= limit:
+            break
+
+        # Extract URL from redirect link
+        url_m = re.search(r'redirect_url=(https?://[a-z2-7]{16,56}\.onion[^"&]*)', block)
+        if not url_m:
+            continue
+        url = unquote(url_m.group(1))
+
+        # Extract title
+        title_m = re.search(r'<a[^>]*>\s*(.*?)\s*</a>', block, re.DOTALL)
+        title = strip_tags(html_unescape_min(title_m.group(1))).strip() if title_m else ""
+
+        # Extract snippet (first <p> after the link)
+        snip_m = re.search(r'</h4>.*?<p>(.*?)</p>', block, re.DOTALL)
+        snippet = strip_tags(html_unescape_min(snip_m.group(1))).strip()[:200] if snip_m else ""
+
+        if not title:
+            title = url
+
+        results.append({
+            "title": title,
+            "snippet": snippet,
+            "url": url,
+            "source": "ahmia",
+        })
+
+    return results
+
+
 def _torch_fetch_pages(query: str, max_pages: int = 3) -> list:
     """Fetch raw matches from Torch for a single query string."""
     matches = []
@@ -666,7 +805,7 @@ def _torch_fetch_pages(query: str, max_pages: int = 3) -> list:
         if start > 0:
             path += f"&STARTDOC={start}"
         try:
-            html = _tor_http_get(TORCH_ONION, 80, path, timeout=20)
+            html, _ = _tor_http_get(TORCH_ONION, 80, path, timeout=20)
             page = _RE_TORCH_RESULT.findall(html)
             matches.extend(page)
             if len(page) < 5:
@@ -722,54 +861,59 @@ def _filter_torch_results(all_matches: list, limit: int) -> list:
     return results
 
 
-def darknet_search_torch(query: str, limit: int = 8) -> list:
-    """Search the Tor darknet via Torch search engine.
+def darknet_search(query: str, limit: int = 8) -> list:
+    """Search the Tor darknet. Ahmia primary, Torch fallback.
 
-    Strategy: search with original query, then with DE→EN translation
-    if not enough results. Filters: valid v3 .onion, max 2/domain, dedup.
+    Strategy: try Ahmia first (most reliable), fall back to Torch,
+    then try DE→EN translation if not enough results.
     """
-    # 1. Search with original query
-    all_matches = _torch_fetch_pages(query, max_pages=2)
-    results = _filter_torch_results(all_matches, limit)
+    results = []
+    engine = "ahmia"
 
-    if len(results) >= limit:
-        return results
+    # 1. Try Ahmia (primary)
+    try:
+        results = _ahmia_search(query, limit=limit)
+    except Exception:
+        pass
 
-    # 2. If not enough results, try English translation
-    en_query = _translate_query_de_en(query)
-    if en_query and en_query.lower() != query.lower():
-        extra_matches = _torch_fetch_pages(en_query, max_pages=2)
-        # Merge: add new matches that weren't in original set
-        seen = {r["url"].split("?")[0].rstrip("/") for r in results}
-        combined = list(all_matches) + [
-            m for m in extra_matches
-            if html_unescape_min(m[0]).split("?")[0].rstrip("/") not in seen
-        ]
-        results = _filter_torch_results(combined, limit)
-
-    if len(results) >= limit:
-        return results
-
-    # 3. Last resort: try individual keywords from the query
-    keywords = [w for w in query.lower().split() if len(w) > 3 and w not in _DE_EN_KEYWORDS]
-    for kw in keywords[:2]:
-        if len(results) >= limit:
-            break
+    # 2. If Ahmia failed or not enough results, try Torch
+    if len(results) < limit:
         try:
-            kw_matches = _torch_fetch_pages(kw, max_pages=1)
-            seen = {r["url"].split("?")[0].rstrip("/") for r in results}
-            combined = []
-            for r in results:
-                # Reconstruct raw match tuple (not perfect but works for dedup)
-                combined.append((r["url"], r["title"], r.get("snippet", "")))
-            combined.extend([
-                m for m in kw_matches
-                if html_unescape_min(m[0]).split("?")[0].rstrip("/") not in seen
-            ])
-            results = _filter_torch_results(combined, limit)
+            torch_matches = _torch_fetch_pages(query, max_pages=2)
+            torch_results = _filter_torch_results(torch_matches, limit)
+            if torch_results:
+                engine = "torch" if not results else "ahmia+torch"
+                seen = {r["url"].split("?")[0].rstrip("/") for r in results}
+                for r in torch_results:
+                    if r["url"].split("?")[0].rstrip("/") not in seen:
+                        results.append(r)
+                        if len(results) >= limit:
+                            break
         except Exception:
             pass
 
+    # 3. If still not enough, try English translation on whichever engine works
+    if len(results) < limit:
+        en_query = _translate_query_de_en(query)
+        if en_query and en_query.lower() != query.lower():
+            try:
+                en_results = _ahmia_search(en_query, limit=limit)
+                seen = {r["url"].split("?")[0].rstrip("/") for r in results}
+                for r in en_results:
+                    if r["url"].split("?")[0].rstrip("/") not in seen:
+                        results.append(r)
+                        if len(results) >= limit:
+                            break
+            except Exception:
+                pass
+
+    return results[:limit], engine
+
+
+# Keep old name for backward compat
+def darknet_search_torch(query: str, limit: int = 8) -> list:
+    """Legacy wrapper."""
+    results, _ = darknet_search(query, limit)
     return results
 
 
@@ -851,14 +995,14 @@ class Handler(BaseHTTPRequestHandler):
                 limit = int(payload.get("limit", 8))
                 limit = max(1, min(limit, 10))
 
-                res = darknet_search_torch(query, limit=limit)
+                res, engine = darknet_search(query, limit=limit)
                 json_write(self, 200, {
                     "ok": True,
                     "ts": now_iso(),
                     "query": query,
                     "limit": limit,
                     "results": res,
-                    "engine": "torch",
+                    "engine": engine,
                 })
             except (socket.timeout, TimeoutError) as e:
                 json_write(self, 504, {"ok": False, "error": "tor_timeout", "detail": repr(e)})

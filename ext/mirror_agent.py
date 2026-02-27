@@ -251,6 +251,8 @@ class SessionMemory:
 
     def _conn(self) -> sqlite3.Connection:
         c = sqlite3.connect(str(self.db_path), timeout=15)
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA synchronous=NORMAL")
         c.row_factory = sqlite3.Row
         return c
 
@@ -330,6 +332,8 @@ class SessionMemory:
                 "UPDATE topics SET last_discussed = ?, frequency = ?, avg_sentiment = ? WHERE id = ?",
                 (now, new_freq, new_avg, existing["id"]),
             )
+            if new_freq >= 5:
+                conn.execute("UPDATE topics SET resolved = 1 WHERE id = ?", (existing["id"],))
         else:
             conn.execute(
                 "INSERT INTO topics (topic, first_discussed, last_discussed, avg_sentiment) "
@@ -438,10 +442,13 @@ def _call_llm(url: str, payload: dict, timeout: int = RESPONSE_TIMEOUT,
     return None
 
 
-def _ask_frank(message: str, session_id: str) -> Optional[str]:
-    """Send message to Frank via Core API."""
+def _ask_frank(message: str, session_id: str, prior_context: str = "") -> Optional[str]:
+    """Send message to Frank via Core API, optionally with conversation context."""
+    text = message
+    if prior_context:
+        text = f"[Ongoing entity session — prior exchange:\n{prior_context}]\n\n{message}"
     payload = {
-        "text": message,
+        "text": text,
         "task": "chat.fast",
         "max_tokens": 512,
         "timeout_s": RESPONSE_TIMEOUT,
@@ -816,6 +823,16 @@ class MirrorAgent:
 
         try:
             return self._run_session_inner()
+        except Exception as e:
+            LOG.error("Session crashed: %s", e, exc_info=True)
+            try:
+                self.memory.store_session_end(
+                    self.session_id, 0, 0.0, "crashed",
+                    f"Session terminated by error: {e}",
+                )
+            except Exception:
+                pass
+            return "crashed"
         finally:
             _release_pid_lock()
 
@@ -958,12 +975,13 @@ class MirrorAgent:
             self.memory.store_message(self.session_id, turn, "mirror", mirror_msg)
             history.append({"speaker": "mirror", "text": mirror_msg})
 
-            # Get Frank's response
-            frank_response = _ask_frank(mirror_msg, self.session_id)
+            # Get Frank's response (with conversation context to avoid loops)
+            ctx = get_history_text(last_n=4)
+            frank_response = _ask_frank(mirror_msg, self.session_id, prior_context=ctx)
             if not frank_response:
                 LOG.warning("Frank not responding. Waiting 30s and retrying...")
                 time.sleep(30)
-                frank_response = _ask_frank(mirror_msg, self.session_id)
+                frank_response = _ask_frank(mirror_msg, self.session_id, prior_context=ctx)
                 if not frank_response:
                     LOG.error("Frank still unresponsive. Ending.")
                     break
@@ -1119,7 +1137,8 @@ class MirrorAgent:
         )
         if _short:
             summary_msg += f" {_short}"
-        _write_chat_message("system", MIRROR_NAME, summary_msg, self.session_id)
+        # Entity session summaries go to log terminal only, not chat
+        LOG.info("Entity session summary: %s", summary_msg)
         if _has_summary:
             _notif_body = f"Philosophical session with Frank — {elapsed_min} minutes.\n{_short}"
             _write_overlay_notification(MIRROR_NAME, _notif_body, self.session_id)

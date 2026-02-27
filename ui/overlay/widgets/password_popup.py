@@ -44,6 +44,7 @@ class PasswordPopup(tk.Toplevel):
         self._on_autotype = on_autotype
         self._auto_lock_id: Optional[str] = None
 
+        self.withdraw()  # Hidden until positioned
         self.title("PASSWORD MANAGER")
         self.configure(bg=COLORS["bg_main"])
         self.overrideredirect(True)
@@ -79,6 +80,8 @@ class PasswordPopup(tk.Toplevel):
             self._build_lock_screen()
 
         self._reset_auto_lock()
+
+        self.deiconify()  # Show only after positioned
 
         # Activity reset on any key/click
         self.bind("<Key>", lambda e: self._reset_auto_lock())

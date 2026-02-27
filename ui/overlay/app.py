@@ -98,7 +98,7 @@ class ChatOverlay(
     """Cyberpunk-styled AI Chat Overlay with neon aesthetics."""
 
     def __init__(self):
-        super().__init__()
+        super().__init__(className="frank-overlay")
 
         # FAST STARTUP: withdraw() unmaps the window so Tk skips all rendering.
         # Widget creation and message loading happen with zero rendering overhead.
@@ -113,6 +113,17 @@ class ChatOverlay(
             pass
 
         self.title("F.R.A.N.K.")
+
+        # Window icon — used by GNOME dock / taskbar / alt-tab
+        try:
+            import tkinter as tk
+            _icon_path = Path(__file__).resolve().parents[2] / "assets" / "icons" / "frank-overlay.png"
+            if _icon_path.exists():
+                _icon_img = tk.PhotoImage(file=str(_icon_path))
+                self.wm_iconphoto(True, _icon_img)
+                self._app_icon = _icon_img  # prevent GC
+        except Exception:
+            pass
 
         # DOCK panel mode: WM-managed window with _NET_WM_WINDOW_TYPE_DOCK.
         # The WM treats this as a panel (like the taskbar): no decorations,

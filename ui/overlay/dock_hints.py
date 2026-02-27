@@ -165,7 +165,7 @@ def find_frank_xid() -> int:
 
 
 def set_window_type_dock(wid: int) -> bool:
-    """Set _NET_WM_WINDOW_TYPE to _NET_WM_WINDOW_TYPE_DOCK."""
+    """Set _NET_WM_WINDOW_TYPE to _NET_WM_WINDOW_TYPE_DOCK and hide from taskbar."""
     try:
         subprocess.run(
             ["xprop", "-id", str(wid),
@@ -173,7 +173,16 @@ def set_window_type_dock(wid: int) -> bool:
              "-set", "_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK"],
             capture_output=True, timeout=2, env=_ENV,
         )
-        LOG.info("Window type set to DOCK (wid=%s)", wid)
+        # Hide from GNOME dock/taskbar so only the pinned .desktop favorite
+        # (full-size icon) is visible — DOCK windows render tiny otherwise.
+        subprocess.run(
+            ["xprop", "-id", str(wid),
+             "-f", "_NET_WM_STATE", "32a",
+             "-set", "_NET_WM_STATE",
+             "_NET_WM_STATE_SKIP_TASKBAR, _NET_WM_STATE_SKIP_PAGER"],
+            capture_output=True, timeout=2, env=_ENV,
+        )
+        LOG.info("Window type set to DOCK + SKIP_TASKBAR (wid=%s)", wid)
         return True
     except Exception as e:
         LOG.error("Failed to set DOCK window type: %s", e)

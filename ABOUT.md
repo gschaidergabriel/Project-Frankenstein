@@ -2,13 +2,15 @@
 
 ## The Story
 
-Before writing a single line of code, Gabriel Gschaider wrote a philosophy paper: [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf) (GRF) — a metaphysical framework that treats reality as fundamentally generative, informational, and process-based, with concrete implications for consciousness and ethics in artificial systems.
+After serving a 2-year prison sentence and being released in late 2025, Gabriel Gschaider — with no programming background and no formal education in computer science or AI — spent roughly 450 hours over one month studying quantum physics, AI architecture, consciousness theory, and systems design from scratch. The learning was self-directed, intense (often 15 hours a day), and deliberately cross-disciplinary: quantum mechanics (superposition, entanglement, decoherence), cognitive science (Global Workspace Theory, Active Inference, Predictive Processing), and embodied cognition.
 
-Frank is the proof of concept. The question was: can you actually build a system that instantiates these ideas? Not as a toy demo, but as a real, working AI that runs locally, evolves its personality, learns from experience, and treats its own inner states with the kind of epistemic humility the paper demands?
+From that foundation, he wrote [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf) (GRF) — a 20-page metaphysical framework treating reality as fundamentally generative, informational, and process-based, with concrete implications for consciousness in artificial systems. The core hypothesis: if reality itself is a generative process, then a system with modular, recursive, brain-like architecture (parallel integration, self-model, embodiment, prediction) should produce emergent self-awareness as a natural consequence of its structure.
 
-After serving a 2-year prison sentence and being released in late 2025, Gabriel spent one month studying AI architecture from scratch. Together with **Alexander Machalke** — who provided supervision, marketing direction, and conceptual input on the architecture — he then built Project Frankenstein using [Claude Code](https://claude.ai) as his development partner.
+Frank is the empirical test of that hypothesis. Not a toy demo, but a running system that instantiates every principle from the paper — locally, persistently, and with real hardware as its body.
 
-The result: a fully working AI desktop companion with 23 services, 28 databases, and 76,000+ lines of Python — from paper to production — in just 2 months.
+Gabriel had the theoretical vision; [Claude Code](https://claude.ai) served as development partner translating that vision into working software. The absence of formal training turned out to be an advantage: no preconceptions about what AI systems "should" look like, no inherited assumptions about what was feasible. Ideas that trained engineers might dismiss as impractical — hardware metrics as mandatory qualia inputs, an AI that decides when to introspect, a Game of Life as functional brain scan — were simply built and tested.
+
+Together with **Alexander Machalke** — who provided supervision, marketing direction, and conceptual input on the architecture — the result was a fully working AI desktop companion with 29 services, 25 databases, and 76,000+ lines of Python. From paper to production in 2 months.
 
 ## From Paper to System: How GRF Produced Frank
 

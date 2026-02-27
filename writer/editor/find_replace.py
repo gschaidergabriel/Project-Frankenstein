@@ -43,7 +43,7 @@ class FindReplaceBar(Gtk.Revealer):
         self._main_box.append(find_row)
 
         self.find_entry = Gtk.SearchEntry()
-        self.find_entry.set_placeholder_text("Suchen... (Ctrl+F)")
+        self.find_entry.set_placeholder_text("Search... (Ctrl+F)")
         self.find_entry.set_hexpand(True)
         self.find_entry.connect('search-changed', self._on_search_changed)
         self.find_entry.connect('activate', lambda e: self.find_next())
@@ -57,28 +57,28 @@ class FindReplaceBar(Gtk.Revealer):
 
         # Prev / Next
         prev_btn = Gtk.Button(icon_name="go-up-symbolic")
-        prev_btn.set_tooltip_text("Vorheriger (Shift+Enter)")
+        prev_btn.set_tooltip_text("Previous (Shift+Enter)")
         prev_btn.connect('clicked', lambda b: self.find_previous())
         find_row.append(prev_btn)
 
         next_btn = Gtk.Button(icon_name="go-down-symbolic")
-        next_btn.set_tooltip_text("Nächster (Enter)")
+        next_btn.set_tooltip_text("Next (Enter)")
         next_btn.connect('clicked', lambda b: self.find_next())
         find_row.append(next_btn)
 
         # Options
         self.case_btn = Gtk.ToggleButton(label="Aa")
-        self.case_btn.set_tooltip_text("Groß-/Kleinschreibung")
+        self.case_btn.set_tooltip_text("Match Case")
         self.case_btn.connect('toggled', self._on_option_changed)
         find_row.append(self.case_btn)
 
         self.regex_btn = Gtk.ToggleButton(label=".*")
-        self.regex_btn.set_tooltip_text("Regulärer Ausdruck")
+        self.regex_btn.set_tooltip_text("Regular Expression")
         self.regex_btn.connect('toggled', self._on_option_changed)
         find_row.append(self.regex_btn)
 
         self.word_btn = Gtk.ToggleButton(label="W")
-        self.word_btn.set_tooltip_text("Ganzes Wort")
+        self.word_btn.set_tooltip_text("Whole Word")
         self.word_btn.connect('toggled', self._on_option_changed)
         find_row.append(self.word_btn)
 
@@ -95,18 +95,18 @@ class FindReplaceBar(Gtk.Revealer):
         self._main_box.append(self.replace_row)
 
         self.replace_entry = Gtk.Entry()
-        self.replace_entry.set_placeholder_text("Ersetzen mit...")
+        self.replace_entry.set_placeholder_text("Replace with...")
         self.replace_entry.set_hexpand(True)
         self.replace_entry.connect('activate', lambda e: self.replace_current())
         self.replace_row.append(self.replace_entry)
 
         replace_btn = Gtk.Button(icon_name="edit-find-replace-symbolic")
-        replace_btn.set_tooltip_text("Ersetzen")
+        replace_btn.set_tooltip_text("Replace")
         replace_btn.connect('clicked', lambda b: self.replace_current())
         self.replace_row.append(replace_btn)
 
         replace_all_btn = Gtk.Button(label="Alle")
-        replace_all_btn.set_tooltip_text("Alle ersetzen")
+        replace_all_btn.set_tooltip_text("Replace All")
         replace_all_btn.connect('clicked', lambda b: self.replace_all())
         self.replace_row.append(replace_all_btn)
 
@@ -218,7 +218,7 @@ class FindReplaceBar(Gtk.Revealer):
 
         replacement = self.replace_entry.get_text()
         count = ctx.replace_all(replacement, len(replacement.encode('utf-8')))
-        self.match_label.set_label(f"{count} ersetzt")
+        self.match_label.set_label(f"{count} replaced")
         self._update_match_count()
 
     # ── Internal ──────────────────────────────────────────
@@ -268,7 +268,7 @@ class FindReplaceBar(Gtk.Revealer):
         if self._search_context:
             count = self._search_context.get_occurrences_count()
             if count >= 0:
-                self.match_label.set_label(f"{count} Treffer")
+                self.match_label.set_label(f"{count} matches")
             else:
                 self.match_label.set_label("")
         else:

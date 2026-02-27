@@ -14,27 +14,27 @@ class AICommandDialog(Adw.Window):
 
     COMMANDS = [
         # Writer mode commands
-        ('rewrite', 'Umschreiben', 'Text neu formulieren', 'writer'),
-        ('expand', 'Erweitern', 'Mit mehr Details anreichern', 'writer'),
-        ('shorten', 'Kürzen', 'Text komprimieren', 'writer'),
-        ('formalize', 'Formalisieren', 'Akademischer/formeller Ton', 'writer'),
-        ('simplify', 'Vereinfachen', 'Einfachere Sprache', 'writer'),
-        ('translate_en', 'Auf Englisch', 'Ins Englische übersetzen', 'writer'),
-        ('translate_de', 'Auf Deutsch', 'Ins Deutsche übersetzen', 'writer'),
-        ('structure', 'Struktur vorschlagen', 'Gliederung generieren', 'writer'),
+        ('rewrite', 'Rewrite', 'Rephrase text', 'writer'),
+        ('expand', 'Expand', 'Add more details', 'writer'),
+        ('shorten', 'Shorten', 'Compress text', 'writer'),
+        ('formalize', 'Formalize', 'Academic/formal tone', 'writer'),
+        ('simplify', 'Simplify', 'Simpler language', 'writer'),
+        ('translate_en', 'To English', 'Translate to English', 'writer'),
+        ('translate_de', 'To German', 'Translate to German', 'writer'),
+        ('structure', 'Suggest Structure', 'Generate outline', 'writer'),
 
         # Coding mode commands
-        ('explain', 'Erklären', 'Code erklären', 'coding'),
-        ('refactor', 'Refactoren', 'Code verbessern', 'coding'),
-        ('document', 'Dokumentieren', 'Docstrings generieren', 'coding'),
-        ('test', 'Tests generieren', 'Unit Tests erstellen', 'coding'),
-        ('debug', 'Bug finden', 'Fehler identifizieren', 'coding'),
-        ('optimize', 'Optimieren', 'Performance verbessern', 'coding'),
-        ('types', 'Typen hinzufügen', 'Type Hints ergänzen', 'coding'),
+        ('explain', 'Explain', 'Explain code', 'coding'),
+        ('refactor', 'Refactor', 'Improve code', 'coding'),
+        ('document', 'Document', 'Generate docstrings', 'coding'),
+        ('test', 'Generate Tests', 'Create unit tests', 'coding'),
+        ('debug', 'Find Bug', 'Identify errors', 'coding'),
+        ('optimize', 'Optimize', 'Improve performance', 'coding'),
+        ('types', 'Add Types', 'Add type hints', 'coding'),
 
         # Both modes
-        ('continue', 'Fortsetzen', 'Text/Code fortführen', 'both'),
-        ('custom', 'Eigene Anweisung...', 'Freie Eingabe', 'both'),
+        ('continue', 'Continue', 'Continue text/code', 'both'),
+        ('custom', 'Custom Instruction...', 'Free input', 'both'),
     ]
 
     def __init__(self, parent, document, frank_bridge, mode='writer', selected_text=""):
@@ -50,7 +50,7 @@ class AICommandDialog(Adw.Window):
         self._setup_shortcuts()
 
     def _setup_window(self):
-        self.set_title("AI-Befehl")
+        self.set_title("AI Command")
         self.set_default_size(500, 400)
         self.set_transient_for(self.parent_window)
         self.set_modal(True)
@@ -63,7 +63,7 @@ class AICommandDialog(Adw.Window):
         # Info label if text is selected
         if self.selected_text:
             preview = self.selected_text[:80] + ("..." if len(self.selected_text) > 80 else "")
-            info = Gtk.Label(label=f"Auswahl: \"{preview}\"")
+            info = Gtk.Label(label=f"Selection: \"{preview}\"")
             info.add_css_class("dim-label")
             info.set_ellipsize(True)
             info.set_margin_start(12)
@@ -72,7 +72,7 @@ class AICommandDialog(Adw.Window):
             main_box.append(info)
 
         self.search_entry = Gtk.SearchEntry()
-        self.search_entry.set_placeholder_text("Befehl suchen...")
+        self.search_entry.set_placeholder_text("Search command...")
         self.search_entry.set_margin_start(12)
         self.search_entry.set_margin_end(12)
         self.search_entry.set_margin_top(12)
@@ -160,8 +160,8 @@ class AICommandDialog(Adw.Window):
     def _show_custom_input(self):
         dialog = Adw.MessageDialog(
             transient_for=self.parent_window,
-            heading="Eigene Anweisung",
-            body="Beschreibe, was Frank tun soll:"
+            heading="Custom Instruction",
+            body="Describe what Frank should do:"
         )
 
         entry = Gtk.Entry()
@@ -169,8 +169,8 @@ class AICommandDialog(Adw.Window):
         entry.set_margin_end(12)
         dialog.set_extra_child(entry)
 
-        dialog.add_response("cancel", "Abbrechen")
-        dialog.add_response("execute", "Ausführen")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("execute", "Execute")
         dialog.set_response_appearance("execute", Adw.ResponseAppearance.SUGGESTED)
         dialog.connect('response', self._on_custom_response, entry)
         dialog.present()

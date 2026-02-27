@@ -219,7 +219,7 @@ class AutoFixEngine:
             success=False,
             final_code=current_code,
             attempts=attempts,
-            error=f"Konnte nach {self.max_attempts} Versuchen nicht fixen",
+            error=f"Could not fix after {self.max_attempts} attempts",
             requires_user_input=True
         )
 
@@ -288,7 +288,7 @@ class AutoFixEngine:
                     lines.insert(insert_idx, import_stmt)
                     return {
                         'code': '\n'.join(lines),
-                        'description': f"Import hinzugefügt: {import_stmt}"
+                        'description': f"Added import: {import_stmt}"
                     }
 
             elif fix_type == 'undefined':
@@ -322,7 +322,7 @@ class AutoFixEngine:
                     lines.insert(insert_idx, import_stmt)
                     return {
                         'code': '\n'.join(lines),
-                        'description': f"Import hinzugefügt: {import_stmt}"
+                        'description': f"Added import: {import_stmt}"
                     }
 
             elif fix_type == 'missing_module':
@@ -371,9 +371,9 @@ class AutoFixEngine:
         # Build context from previous attempts
         context = ""
         if previous_attempts:
-            context = "\n\nBereits versuchte Fixes:\n"
+            context = "\n\nPreviously attempted fixes:\n"
             for attempt in previous_attempts[-3:]:  # Last 3 attempts
-                context += f"- {attempt.fix_applied} (fehlgeschlagen)\n"
+                context += f"- {attempt.fix_applied} (failed)\n"
 
         # Run blocking I/O in thread pool to avoid blocking the event loop
         loop = asyncio.get_running_loop()
@@ -402,7 +402,7 @@ class AutoFixEngine:
 
             return {
                 'code': new_code,
-                'description': "AI-generierter Fix"
+                'description': "AI-generated fix"
             }
 
         return None
@@ -412,9 +412,9 @@ class AutoFixEngine:
 
         if result.success:
             if not result.attempts:
-                return "Code lief beim ersten Versuch erfolgreich."
+                return "Code ran successfully on first try."
             else:
                 fixes = [a.fix_applied for a in result.attempts]
-                return f"Erfolgreich nach {len(result.attempts)} Fix(es): {', '.join(fixes)}"
+                return f"Successful after {len(result.attempts)} fix(es): {', '.join(fixes)}"
         else:
-            return f"Fehlgeschlagen nach {len(result.attempts)} Versuchen. Letzter Fehler: {result.error}"
+            return f"Failed after {len(result.attempts)} attempts. Last error: {result.error}"

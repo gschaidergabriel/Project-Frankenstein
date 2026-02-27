@@ -48,7 +48,7 @@ class FilesPanel(Gtk.Box):
         # Header with folder button
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
 
-        self.path_label = Gtk.Label(label="Kein Projekt")
+        self.path_label = Gtk.Label(label="No Project")
         self.path_label.add_css_class("dim-label")
         self.path_label.set_ellipsize(True)
         self.path_label.set_hexpand(True)
@@ -56,12 +56,12 @@ class FilesPanel(Gtk.Box):
         header.append(self.path_label)
 
         open_btn = Gtk.Button(icon_name="folder-open-symbolic")
-        open_btn.set_tooltip_text("Ordner öffnen")
+        open_btn.set_tooltip_text("Open Folder")
         open_btn.connect('clicked', self._on_open_folder)
         header.append(open_btn)
 
         refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
-        refresh_btn.set_tooltip_text("Aktualisieren")
+        refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect('clicked', lambda b: self._refresh())
         header.append(refresh_btn)
 
@@ -86,7 +86,7 @@ class FilesPanel(Gtk.Box):
         if self.root_path:
             self.path_label.set_label(self.root_path.name)
         else:
-            self.path_label.set_label("Kein Projekt")
+            self.path_label.set_label("No Project")
         self._refresh()
 
     def _refresh(self):
@@ -162,7 +162,7 @@ class FilesPanel(Gtk.Box):
     def _on_open_folder(self, button):
         """Open folder dialog"""
         dialog = Gtk.FileDialog()
-        dialog.set_title("Projektordner öffnen")
+        dialog.set_title("Open Project Folder")
 
         # We need a window to show the dialog - check that get_root() is not None
         window = self.get_root()

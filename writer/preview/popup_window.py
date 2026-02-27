@@ -200,7 +200,7 @@ class LivePreviewPopup(Adw.Window):
         self.status_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
         self.status_box.append(self.status_icon)
 
-        self.status_label = Gtk.Label(label="Bereit")
+        self.status_label = Gtk.Label(label="Ready")
         self.status_label.set_halign(Gtk.Align.START)
         self.status_label.set_hexpand(True)
         self.status_box.append(self.status_label)
@@ -251,7 +251,7 @@ class LivePreviewPopup(Adw.Window):
         input_box.set_margin_bottom(8)
 
         self.chat_entry = Gtk.Entry()
-        self.chat_entry.set_placeholder_text("Änderung beschreiben...")
+        self.chat_entry.set_placeholder_text("Describe change...")
         self.chat_entry.set_hexpand(True)
         self.chat_entry.connect('activate', self._on_chat_send)
         input_box.append(self.chat_entry)
@@ -266,7 +266,7 @@ class LivePreviewPopup(Adw.Window):
         # Initial chat message
         self._add_chat_message(
             "frank",
-            "Ich beobachte den Code. Sag mir, was ich ändern soll, und ich setze es direkt um."
+            "I'm watching the code. Tell me what to change and I'll apply it directly."
         )
 
     def run_code(self):
@@ -369,7 +369,7 @@ class LivePreviewPopup(Adw.Window):
                         GLib.idle_add(
                             self._add_chat_message,
                             "frank",
-                            f"Code wurde automatisch korrigiert. {fix_summary}"
+                            f"Code was automatically corrected. {fix_summary}"
                         )
                 else:
                     result = loop.run_until_complete(
@@ -726,7 +726,7 @@ class LivePreviewPopup(Adw.Window):
         from writer.ai.bridge import AIResponse
         if isinstance(response, AIResponse):
             if not response.success:
-                self._add_chat_message("frank", response.error or "Fehler bei der Verarbeitung.")
+                self._add_chat_message("frank", response.error or "Error processing request.")
                 return False
             response_text = response.content
         else:

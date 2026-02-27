@@ -15,11 +15,11 @@ class TemplatesPanel(Gtk.Box):
     """Panel showing available document templates"""
 
     CATEGORIES = [
-        ('academic', 'Akademisch', 'school-symbolic'),
+        ('academic', 'Academic', 'school-symbolic'),
         ('business', 'Business', 'briefcase-symbolic'),
-        ('creative', 'Kreativ', 'edit-symbolic'),
-        ('technical', 'Technisch', 'utilities-terminal-symbolic'),
-        ('personal', 'Persönlich', 'user-symbolic'),
+        ('creative', 'Creative', 'edit-symbolic'),
+        ('technical', 'Technical', 'utilities-terminal-symbolic'),
+        ('personal', 'Personal', 'user-symbolic'),
         ('code', 'Code', 'code-symbolic'),
     ]
 
@@ -41,7 +41,7 @@ class TemplatesPanel(Gtk.Box):
         """Build panel UI"""
         # Search entry
         self.search_entry = Gtk.SearchEntry()
-        self.search_entry.set_placeholder_text("Suchen...")
+        self.search_entry.set_placeholder_text("Search...")
         self.search_entry.connect('search-changed', self._on_search_changed)
         self.append(self.search_entry)
 
@@ -106,7 +106,7 @@ class TemplatesPanel(Gtk.Box):
                             required = "●" if sec.get('required') else "○"
                             preview_lines.append(f"  {required} {sec_name}")
                         if len(sections) > 8:
-                            preview_lines.append(f"  ... +{len(sections) - 8} weitere")
+                            preview_lines.append(f"  ... +{len(sections) - 8} more")
                         preview_text = "\n".join(preview_lines)
 
                         row = self._create_template_row(
@@ -156,7 +156,7 @@ class TemplatesPanel(Gtk.Box):
         # Create button
         btn = Gtk.Button(icon_name="list-add-symbolic")
         btn.add_css_class("flat")
-        btn.set_tooltip_text(f"Neues {name}")
+        btn.set_tooltip_text(f"New {name}")
         btn.connect('clicked', lambda b: self.on_select(f"{category}/{schema_id}"))
         box.append(btn)
 

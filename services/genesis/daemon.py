@@ -238,6 +238,7 @@ class GenesisDaemon:
         with self.lock:
             # 1. Sense the world (all states)
             self._sense()
+            sd_notify("WATCHDOG=1")
 
             # 2. Evolve the field
             self.field.evolve(dt=1.0)
@@ -245,9 +246,11 @@ class GenesisDaemon:
             # 3. Apply wave contributions to field
             contributions = self.wave_bus.tick()
             self.field.apply_wave_contributions(contributions)
+            sd_notify("WATCHDOG=1")
 
             # 4. Update state based on conditions
             self._update_state()
+            sd_notify("WATCHDOG=1")
 
             # 5. State-specific processing
             if self.state == ContemplationState.DORMANT:
@@ -262,9 +265,11 @@ class GenesisDaemon:
                 self._process_presenting()
             elif self.state == ContemplationState.REFLECTING:
                 self._process_reflecting()
+            sd_notify("WATCHDOG=1")
 
             # 6. Periodic maintenance (every 50 ticks for fresher state snapshots)
             if self.tick_count % 50 == 0:
+                sd_notify("WATCHDOG=1")
                 self._maintenance()
 
     def _sense(self):

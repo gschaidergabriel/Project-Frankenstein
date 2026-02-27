@@ -236,26 +236,29 @@ class InvariantsDaemon:
 
     def _main_loop(self):
         """The main daemon loop."""
-        watchdog_counter = 0
+        last_watchdog = time.monotonic()
 
         while self.running:
             try:
-                # Run one tick
+                now = time.monotonic()
+                if now - last_watchdog >= 25:
+                    sd_notify("WATCHDOG=1")
+                    sd_notify(f"STATUS=Tick {self.tick_count}, Entropy: {self.entropy.current_mode.value}")
+                    last_watchdog = now
+
                 self._tick()
 
-                # Watchdog
-                watchdog_counter += self.config.check_interval
-                if watchdog_counter >= 30:
+                now = time.monotonic()
+                if now - last_watchdog >= 25:
                     sd_notify("WATCHDOG=1")
-                    sd_notify(f"STATUS=Tick {self.tick_count}, Entropy mode: {self.entropy.current_mode.value}")
-                    watchdog_counter = 0
+                    last_watchdog = now
 
-                # Sleep
                 time.sleep(self.config.check_interval)
 
             except Exception as e:
                 LOG.error(f"Error in main loop: {e}", exc_info=True)
                 sd_notify("WATCHDOG=1")
+                last_watchdog = time.monotonic()
                 time.sleep(5)
 
     def _tick(self):

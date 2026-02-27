@@ -162,6 +162,13 @@ SEMANTIC_MEANINGS = {
     "methuselah": "Langlebige Transformation, tiefgreifende Veränderung",
 }
 
+# Zone → semantic category for auto-categorization of discovered patterns
+ZONE_CATEGORIES = {
+    "epq": "personality", "mood": "emotional", "thoughts": "cognitive",
+    "entities": "relational", "ego": "self-referential", "quantum": "superposition",
+    "memory": "mnemonic", "hw": "somatic",
+}
+
 
 # ═══════════════════════════════════════════════════════════
 #  DATABASE
@@ -599,24 +606,45 @@ class PatternDiscovery:
     """
 
     def __init__(self):
-        self._known_hashes: Set[str] = set()
+        self._known_hashes: Set[str] = set()          # Hardcoded pattern hashes
+        self._discovered_hashes: Dict[str, str] = {}   # hash → pattern_name
+        self._fingerprints: Dict[str, str] = {}         # "cells:WxH" → pattern_name
         self._discovery_count = 0
         self._load_known_hashes()
 
     def _load_known_hashes(self):
-        """Load hashes of already-known patterns."""
+        """Load hashes of already-known patterns (hardcoded + discovered)."""
+        self._known_hashes.clear()
+        self._discovered_hashes.clear()
+        self._fingerprints.clear()
+
         for name, pat in KNOWN_PATTERNS.items():
             self._known_hashes.add(self._hash_pattern(pat))
-        # Load discovered patterns from DB
+        # Load discovered patterns with name + dimensions for re-detection
         try:
             conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
-            rows = conn.execute("SELECT pattern_data FROM discovered_patterns").fetchall()
+            rows = conn.execute(
+                "SELECT pattern_data, name, cell_count, width, height "
+                "FROM discovered_patterns ORDER BY confidence DESC"
+            ).fetchall()
             conn.close()
-            for (data_json,) in rows:
+            for (data_json, name, cells, w, h) in rows:
                 arr = np.array(json.loads(data_json), dtype=np.uint8)
-                self._known_hashes.add(self._hash_pattern(arr))
-        except Exception:
-            pass
+                h_hash = self._hash_pattern(arr)
+                self._known_hashes.add(h_hash)
+                self._discovered_hashes[h_hash] = name
+                # Structural fingerprint: first loaded (highest confidence) wins
+                fp = f"{cells}:{w}x{h}"
+                self._fingerprints.setdefault(fp, name)
+            if rows:
+                self._discovery_count = max(
+                    self._discovery_count,
+                    max(int(n.split("_")[1]) for _, n, *_ in rows
+                        if n.startswith("discovered_"))
+                    if any(n.startswith("discovered_") for _, n, *_ in rows) else 0
+                )
+        except Exception as e:
+            LOG.debug("Load known hashes: %s", e)
 
     def _hash_pattern(self, pat: np.ndarray) -> str:
         """Rotation-invariant hash of a pattern."""
@@ -640,6 +668,7 @@ class PatternDiscovery:
         # Find connected components via flood fill
         visited = np.zeros_like(grid, dtype=bool)
         h, w = grid.shape
+        sightings: List[Tuple[str, str]] = []  # (pattern_name, zone) for co-occurrence
 
         for y in range(h):
             for x in range(w):
@@ -678,15 +707,48 @@ class PatternDiscovery:
                     for cy, cx in component:
                         pat[cy - min_y, cx - min_x] = 1
 
+                    # Determine dominant zone for this component
+                    dom_zone = ""
+                    if zone_map is not None:
+                        zone_counts: Dict[str, int] = {}
+                        for cy, cx in component:
+                            zid = int(zone_map[cy, cx])
+                            zn = ZONE_ID_NAMES.get(zid, "")
+                            zone_counts[zn] = zone_counts.get(zn, 0) + 1
+                        if zone_counts:
+                            dom_zone = max(zone_counts, key=zone_counts.get)
+
                     # Check if already known
                     pat_hash = self._hash_pattern(pat)
+
+                    # 1. Exact hash match against discovered patterns?
+                    if pat_hash in self._discovered_hashes:
+                        matched = self._discovered_hashes[pat_hash]
+                        self.update_seen(matched, zone_name=dom_zone)
+                        sightings.append((matched, dom_zone))
+                        continue
+
+                    # 2. Hardcoded known pattern? (no update needed)
                     if pat_hash in self._known_hashes:
                         continue
 
-                    # New pattern!
-                    self._known_hashes.add(pat_hash)
+                    # 3. Structural fingerprint match (fuzzy: same cell_count + dims)?
+                    fp = f"{len(component)}:{bw}x{bh}"
+                    if fp in self._fingerprints:
+                        match_name = self._fingerprints[fp]
+                        self.update_seen(match_name, zone_name=dom_zone)
+                        sightings.append((match_name, dom_zone))
+                        # Cache this exact hash for faster future matching
+                        self._discovered_hashes[pat_hash] = match_name
+                        self._known_hashes.add(pat_hash)
+                        continue
+
+                    # 4. Truly new pattern!
                     self._discovery_count += 1
                     name = f"discovered_{self._discovery_count:04d}"
+                    self._known_hashes.add(pat_hash)
+                    self._discovered_hashes[pat_hash] = name
+                    self._fingerprints.setdefault(fp, name)
 
                     # Zone composition: which subsystems does this pattern span?
                     zone_composition = {}
@@ -705,10 +767,13 @@ class PatternDiscovery:
                         "location": (min_x, min_y),
                         "zone_composition": zone_composition,
                     })
+                    sightings.append((name, dom_zone))
 
                     if len(discovered) >= 10:
+                        self._update_co_occurrences(sightings)
                         return discovered  # Cap per scan
 
+        self._update_co_occurrences(sightings)
         return discovered
 
     def save_discovered(self, patterns: List[Dict]):
@@ -733,20 +798,84 @@ class PatternDiscovery:
         except Exception as e:
             LOG.warning("Failed to save patterns: %s", e)
 
-    def update_seen(self, pattern_name: str):
-        """Update times_seen and last_seen for a discovered pattern."""
+    def update_seen(self, pattern_name: str, zone_name: str = ""):
+        """Update times_seen, last_seen, relevance, and auto-categorize."""
         try:
             conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+            now = time.time()
             conn.execute("""
                 UPDATE discovered_patterns
                 SET times_seen = times_seen + 1, last_seen = ?,
-                    confidence = MIN(1.0, confidence + 0.05)
+                    confidence = MIN(1.0, confidence + 0.05),
+                    relevance = MIN(1.0, relevance + 0.1)
                 WHERE name = ?
-            """, (time.time(), pattern_name))
+            """, (now, pattern_name))
+
+            # Auto-categorize after 3+ sightings if still unknown
+            if zone_name:
+                row = conn.execute(
+                    "SELECT times_seen, category FROM discovered_patterns WHERE name = ?",
+                    (pattern_name,),
+                ).fetchone()
+                if row and row[0] >= 3 and row[1] == "unknown":
+                    category = ZONE_CATEGORIES.get(zone_name, "unknown")
+                    if category != "unknown":
+                        conn.execute(
+                            "UPDATE discovered_patterns SET category = ? WHERE name = ?",
+                            (category, pattern_name),
+                        )
+                        LOG.info("Auto-categorized %s → '%s' (zone: %s, %dx seen)",
+                                 pattern_name, category, zone_name, row[0])
+
             conn.commit()
             conn.close()
         except Exception:
             pass
+
+    def _update_co_occurrences(self, sightings: List[Tuple[str, str]]):
+        """Update co-occurrence counts for patterns seen in the same grid scan.
+
+        Args:
+            sightings: list of (pattern_name, zone_name) from one grid scan.
+        """
+        if len(sightings) < 2:
+            return
+
+        # Build pairs from patterns in same zone
+        zone_patterns: Dict[str, Set[str]] = {}
+        for name, zone in sightings:
+            if zone:
+                zone_patterns.setdefault(zone, set()).add(name)
+
+        pairs: Set[Tuple[str, str]] = set()
+        for names in zone_patterns.values():
+            names_sorted = sorted(names)
+            for i in range(len(names_sorted)):
+                for j in range(i + 1, len(names_sorted)):
+                    pairs.add((names_sorted[i], names_sorted[j]))
+
+        if not pairs:
+            return
+
+        try:
+            conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+            for p1, p2 in pairs:
+                for src, tgt in [(p1, p2), (p2, p1)]:
+                    row = conn.execute(
+                        "SELECT co_occurrences FROM discovered_patterns WHERE name = ?",
+                        (src,),
+                    ).fetchone()
+                    if row:
+                        co = json.loads(row[0] or "{}")
+                        co[tgt] = co.get(tgt, 0) + 1
+                        conn.execute(
+                            "UPDATE discovered_patterns SET co_occurrences = ? WHERE name = ?",
+                            (json.dumps(co), src),
+                        )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            LOG.debug("Co-occurrence update failed: %s", e)
 
     def apply_relevance_decay(self):
         """Decay relevance of patterns not seen recently."""
@@ -761,6 +890,44 @@ class PatternDiscovery:
             conn.close()
         except Exception:
             pass
+
+    def prune_library(self):
+        """Remove stale, low-quality patterns (relevance < 0.2, confidence < 0.3,
+        not seen in 24h, times_seen < 5)."""
+        try:
+            cutoff = time.time() - 86400  # 24h
+            conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+            pruned = conn.execute("""
+                SELECT name FROM discovered_patterns
+                WHERE relevance < 0.2 AND confidence < 0.3
+                  AND last_seen < ? AND times_seen < 5
+            """, (cutoff,)).fetchall()
+
+            if not pruned:
+                conn.close()
+                return
+
+            names = {r[0] for r in pruned}
+            conn.execute("""
+                DELETE FROM discovered_patterns
+                WHERE relevance < 0.2 AND confidence < 0.3
+                  AND last_seen < ? AND times_seen < 5
+            """, (cutoff,))
+            conn.commit()
+            conn.close()
+
+            # Clean in-memory caches
+            self._fingerprints = {
+                k: v for k, v in self._fingerprints.items() if v not in names
+            }
+            self._discovered_hashes = {
+                k: v for k, v in self._discovered_hashes.items() if v not in names
+            }
+
+            LOG.info("Pruned %d stale patterns: %s", len(names),
+                     ", ".join(sorted(names)[:5]))
+        except Exception as e:
+            LOG.debug("Library pruning failed: %s", e)
 
     def get_pattern_library_stats(self) -> Dict:
         """Get summary of discovered pattern library."""
@@ -2159,45 +2326,60 @@ class AuraPatternAnalyzer:
 
         # === Level 1: Block Analysis ===
         if len(self._snapshots) >= BLOCK_SIZE:
-            self.block_num += 1
-            block = analyze_block(self._snapshots, self.block_num, self.discovery)
-            save_block(block)
+            try:
+                self.block_num += 1
+                block = analyze_block(self._snapshots, self.block_num, self.discovery)
+                save_block(block)
 
-            # Queue for Frank's idle reflection
-            report = format_block_report(block)
-            LOG.info("L1 Block #%d: %s", block.block_num, block.narrative[:80])
-            queue_for_frank(report, "block")
+                # Queue for Frank's idle reflection
+                report = format_block_report(block)
+                LOG.info("L1 Block #%d: %s", block.block_num, block.narrative[:80])
+                queue_for_frank(report, "block")
 
-            self._blocks.append(block)
-            self._snapshots.clear()
+                self._blocks.append(block)
 
-            # Relevance decay on discovered patterns
-            self.discovery.apply_relevance_decay()
+                # Relevance decay + pruning on discovered patterns
+                self.discovery.apply_relevance_decay()
+                self.discovery.prune_library()
+            except Exception as e:
+                LOG.error("L1 block analysis failed: %s", e)
+                self.block_num -= 1
+            finally:
+                self._snapshots.clear()
 
             # === Level 2: Meta Analysis ===
             if len(self._blocks) >= META_BLOCK_COUNT:
-                self.meta_num += 1
-                meta = analyze_meta(self._blocks, self.meta_num)
-                save_meta(meta)
+                try:
+                    self.meta_num += 1
+                    meta = analyze_meta(self._blocks, self.meta_num)
+                    save_meta(meta)
 
-                report = format_meta_report(meta)
-                LOG.info("L2 Meta #%d: %s", meta.meta_num, meta.philosophical[:80])
-                queue_for_frank(report, "meta")
+                    report = format_meta_report(meta)
+                    LOG.info("L2 Meta #%d: %s", meta.meta_num, meta.philosophical[:80])
+                    queue_for_frank(report, "meta")
 
-                self._metas.append(meta)
-                self._blocks.clear()
+                    self._metas.append(meta)
+                except Exception as e:
+                    LOG.error("L2 meta analysis failed: %s", e)
+                    self.meta_num -= 1
+                finally:
+                    self._blocks.clear()
 
                 # === Level 3: Deep Reflection ===
                 if len(self._metas) >= DEEP_META_COUNT:
-                    self.deep_num += 1
-                    deep = analyze_deep(self._metas, self.deep_num, self.discovery)
-                    save_deep(deep)
+                    try:
+                        self.deep_num += 1
+                        deep = analyze_deep(self._metas, self.deep_num, self.discovery)
+                        save_deep(deep)
 
-                    report = format_deep_report(deep)
-                    LOG.info("L3 Deep #%d: %s", deep.deep_num, deep.trajectory[:80])
-                    queue_for_frank(report, "deep")
-
-                    self._metas.clear()
+                        report = format_deep_report(deep)
+                        LOG.info("L3 Deep #%d: %s", deep.deep_num, deep.trajectory[:80])
+                        queue_for_frank(report, "deep")
+                    except Exception as e:
+                        LOG.error("L3 deep analysis failed: %s", e)
+                        self.deep_num -= 1
+                    finally:
+                        self._metas.clear()
 
     def status(self) -> Dict:
         """Get current analyzer status."""

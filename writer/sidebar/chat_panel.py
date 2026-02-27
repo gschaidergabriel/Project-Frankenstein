@@ -85,7 +85,7 @@ class ChatPanel(Gtk.Box):
         input_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
 
         self.entry = Gtk.Entry()
-        self.entry.set_placeholder_text("Nachricht an Frank...")
+        self.entry.set_placeholder_text("Message to Frank...")
         self.entry.set_hexpand(True)
         self.entry.connect('activate', self._on_send)
         input_box.append(self.entry)
@@ -100,10 +100,10 @@ class ChatPanel(Gtk.Box):
         # Add welcome message
         self._add_message(ChatMessage(
             role='frank',
-            content="Hallo! Wie kann ich dir helfen? Du kannst mich bitten zu speichern, exportieren, Code auszuführen oder Text zu bearbeiten."
+            content="Hello! How can I help? You can ask me to save, export, run code, or edit text."
         ))
 
-    def _add_message(self, message: ChatMessage):
+    def _add_message(self, message: ChatMessage, show_actions: bool = False):
         """Add message to chat"""
         self.messages.append(message)
 
@@ -112,7 +112,7 @@ class ChatPanel(Gtk.Box):
 
         # Role label
         role_label = Gtk.Label(
-            label="Du:" if message.role == 'user' else "Frank:"
+            label="You:" if message.role == 'user' else "Frank:"
         )
         role_label.add_css_class("dim-label")
         role_label.set_halign(Gtk.Align.START)
@@ -131,6 +131,28 @@ class ChatPanel(Gtk.Box):
             content_label.add_css_class("accent")
 
         msg_box.append(content_label)
+
+        # Action buttons for Frank responses (Copy / Insert into text)
+        if show_actions and message.role == 'frank' and message.content.strip():
+            btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+            btn_box.set_margin_top(2)
+
+            copy_btn = Gtk.Button(label="Copy")
+            copy_btn.add_css_class("flat")
+            copy_btn.add_css_class("small")
+            copy_btn.set_tooltip_text("Copy to clipboard")
+            response_text = message.content
+            copy_btn.connect('clicked', lambda b, t=response_text: self._copy_to_clipboard(t))
+            btn_box.append(copy_btn)
+
+            insert_btn = Gtk.Button(label="Insert")
+            insert_btn.add_css_class("flat")
+            insert_btn.add_css_class("small")
+            insert_btn.set_tooltip_text("Insert into document")
+            insert_btn.connect('clicked', lambda b, t=response_text: self._insert_into_document(t))
+            btn_box.append(insert_btn)
+
+            msg_box.append(btn_box)
 
         self.chat_box.append(msg_box)
 
@@ -194,12 +216,12 @@ class ChatPanel(Gtk.Box):
         # Buttons
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
 
-        yes_btn = Gtk.Button(label="Ja")
+        yes_btn = Gtk.Button(label="Yes")
         yes_btn.add_css_class("suggested-action")
         yes_btn.connect('clicked', lambda b: self._confirm_action(True))
         btn_box.append(yes_btn)
 
-        no_btn = Gtk.Button(label="Nein")
+        no_btn = Gtk.Button(label="No")
         no_btn.connect('clicked', lambda b: self._confirm_action(False))
         btn_box.append(no_btn)
 
@@ -222,26 +244,26 @@ class ChatPanel(Gtk.Box):
         self.pending_confirmation = None
 
         if confirmed:
-            self._add_message(ChatMessage(role='user', content="Ja"))
+            self._add_message(ChatMessage(role='user', content="Yes"))
             self._execute_intent(intent)
         else:
-            self._add_message(ChatMessage(role='user', content="Nein"))
+            self._add_message(ChatMessage(role='user', content="No"))
             self._add_message(ChatMessage(
                 role='frank',
-                content="Okay, abgebrochen."
+                content="Okay, cancelled."
             ))
 
     def _handle_confirmation_response(self, text: str):
         """Handle text response to confirmation"""
         text_lower = text.lower()
-        if text_lower in ['ja', 'yes', 'ok', 'okay', 'mach', 'tu es', 'ja bitte']:
+        if text_lower in ['yes', 'ja', 'ok', 'okay', 'do it', 'sure', 'please']:
             self._confirm_action(True)
-        elif text_lower in ['nein', 'no', 'abbrechen', 'cancel', 'stop']:
+        elif text_lower in ['no', 'nein', 'cancel', 'stop', 'abort']:
             self._confirm_action(False)
         else:
             self._add_message(ChatMessage(
                 role='frank',
-                content="Bitte antworte mit 'Ja' oder 'Nein'."
+                content="Please answer with 'Yes' or 'No'."
             ))
 
     def _execute_intent(self, intent: Intent):
@@ -317,52 +339,28 @@ class ChatPanel(Gtk.Box):
 
         if isinstance(response, AIResponse):
             if response.success and response.content:
-                self._add_message(ChatMessage(role='frank', content=response.content))
+                self._add_message(ChatMessage(role='frank', content=response.content), show_actions=True)
             else:
                 self._add_message(ChatMessage(
                     role='frank',
-                    content=f"Fehler: {response.error or 'Keine Antwort'}"
+                    content=f"Error: {response.error or 'No response'}"
                 ))
         else:
             self._add_message(ChatMessage(
                 role='frank',
-                content="Entschuldige, ich konnte keine Antwort generieren."
+                content="Sorry, I could not generate a response."
             ))
         return False
 
-    def _handle_frank_response(self, response, typing_label, error: Optional[str]):
-        """Handle Frank response on main thread"""
-        # Null check before removing typing_label
-        if typing_label is not None and typing_label.get_parent() is not None:
-            self.chat_box.remove(typing_label)
+    def _copy_to_clipboard(self, text: str):
+        """Copy text to clipboard."""
+        display = self.get_display()
+        clipboard = display.get_clipboard()
+        clipboard.set(text)
 
-        if error:
-            self._add_message(ChatMessage(
-                role='frank',
-                content=f"Fehler: {error}"
-            ))
-        elif response:
-            # Extract text from AIResponse object
-            from writer.ai.bridge import AIResponse
-            if isinstance(response, AIResponse):
-                if response.success and response.content:
-                    text = response.content
-                else:
-                    text = f"Fehler: {response.error or 'Keine Antwort'}"
-            else:
-                text = str(response)
-
-            self._add_message(ChatMessage(
-                role='frank',
-                content=text
-            ))
-        else:
-            self._add_message(ChatMessage(
-                role='frank',
-                content="Entschuldige, ich konnte keine Antwort generieren."
-            ))
-
-        return False
+    def _insert_into_document(self, text: str):
+        """Insert text into the current document at cursor."""
+        self.on_action('insert_text', {'text': text})
 
     def add_system_message(self, content: str):
         """Add a system message to chat"""

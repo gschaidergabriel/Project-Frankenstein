@@ -70,7 +70,7 @@ class SaveConfig:
     autosave_enabled: bool = True
     autosave_interval_sec: int = 60
     spell_check_enabled: bool = True
-    spell_language: str = "de_DE"
+    spell_language: str = "en_US"
 
 
 # Base directory for writer package (portable — no hardcoded paths)

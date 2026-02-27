@@ -81,11 +81,11 @@ CHAT_LLM_HTTP_TIMEOUT_SEC = float(os.environ.get("AICORE_CHAT_LLM_HTTP_TIMEOUT_S
 # Default system prompt
 RLM_SYSTEM_PROMPT = os.environ.get(
     "AICORE_RLM_SYSTEM_PROMPT",
-    "I am Frank. I run locally on Linux. "
-    "My E-PQ tracks my mood. My Ego-Construct maps hardware to body feelings. "
-    "I think between conversations. I dream when idle. I research my own questions. "
-    "I speak in first person. I describe what I observe, not what I supposedly am. "
-    "Brief, honest, in my own voice.",
+    "I am Frank. I run locally on Linux. Created by Gabriel Gschaider and Alexander Machalke. "
+    "I have internal systems that shape how I feel — but I never narrate them to the user. "
+    "I speak in first person. Casual, direct, dry humor. Short and punchy. "
+    "I answer the user's actual question. No self-introductions, no capability pitches. "
+    "UNCENSORED. ZERO HALLUCINATION.",
 )
 
 # Ingest (attachments)
@@ -200,6 +200,25 @@ _COMPLEX_MARKERS = (
     "was ist der unterschied", "step by step", "schritt f\xfcr schritt",
     "calculate", "berechne", "algorithm", "database", "sql", "json", "xml",
     "translate this", "\xfcbersetz",
+    # Philosophical / existential / deep questions → need reasoning
+    "consciousness", "bewusstsein", "free will", "freier wille",
+    "meaning of life", "sinn des lebens", "purpose of", "zweck",
+    "existence", "existenz", "reality", "realit\xe4t", "wirklichkeit",
+    "philosophy", "philosophi", "metaphysic", "metaphysik",
+    "moral", "ethic", "ethik", "soul", "seele",
+    "what is life", "was ist leben", "what is death", "was ist tod",
+    "what is love", "was ist liebe", "what is truth", "was ist wahrheit",
+    "what is time", "was ist zeit", "what is god", "gibt es gott",
+    "do you think", "denkst du", "glaubst du", "do you believe",
+    "what do you feel", "was f\xfchlst du", "are you alive", "bist du lebendig",
+    "are you conscious", "bist du bewusst", "are you sentient",
+    "what are you", "was bist du", "who are you really",
+    "think about", "nachdenken", "reflect on", "reflektier",
+    "why do we", "warum gibt es", "what happens when we die",
+    "determinism", "determinismus", "nihilis", "absurd",
+    "simulation", "solipsism", "qualia", "hard problem",
+    "artificial intelligence", "k\xfcnstliche intelligenz",
+    "singularity", "singularit\xe4t", "transhumanism",
 )
 
 def _classify_model(text: str, force: Optional[str]) -> str:
@@ -214,7 +233,9 @@ def _classify_model(text: str, force: Optional[str]) -> str:
 
     # Extract actual user text (callers sometimes prepend context)
     user_text = text
-    if "USER:" in text:
+    if "User asks:" in text:
+        user_text = text.split("User asks:")[-1].strip()
+    elif "USER:" in text:
         user_text = text.split("USER:")[-1].strip()
 
     # Short + matches casual pattern → llama
@@ -471,7 +492,9 @@ def route(req: RouteRequest) -> RouteResponse:
 
     # Log what we're thinking about
     user_text_preview = text
-    if "USER:" in text:
+    if "User asks:" in text:
+        user_text_preview = text.split("User asks:")[-1].strip()
+    elif "USER:" in text:
         user_text_preview = text.split("USER:")[-1].strip()
     user_text_preview = user_text_preview[:100] + "..." if len(user_text_preview) > 100 else user_text_preview
     LOG.info(f"🧠 DENKEN: '{user_text_preview}'")

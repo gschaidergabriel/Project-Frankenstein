@@ -110,6 +110,12 @@ class AuraVisualizerMixin:
             "cpu_temp": 50.0,
             "ram_percent": 50.0,
             "cpu_load": 0.0,
+            "gpu_temp": 0,
+            "gpu_busy": 0,
+            "nvme_temp": 0,
+            "swap_percent": 0.0,
+            "disk_percent": 0.0,
+            "uptime_s": 0.0,
             "reflection_count": 0,
             "active_entity": None,
             "online": True,
@@ -133,10 +139,16 @@ class AuraVisualizerMixin:
         self._aura_pan_x: float = 128.0   # Center of viewport in grid coords
         self._aura_pan_y: float = 128.0
         self._aura_drag_start: tuple | None = None  # For pan dragging
+        self._aura_drag_started: bool = False  # True once LMB moved >3px
 
         # Notification state
         self._aura_notifications: list[dict] = []  # {text, color, born, id}
         self._aura_notif_id_counter = 0
+
+        # Minimap state
+        self._aura_minimap_corner = "br"   # bottom-right default
+        self._aura_minimap_visible = False
+        self._aura_minimap_photo: tk.PhotoImage | None = None
 
         # Previous state for change detection (notifications)
         self._aura_prev_epq: dict = {}
@@ -300,6 +312,7 @@ class AuraVisualizerMixin:
         self._aura_poller_running = False
         self._aura_hide_tooltip()
         self._aura_notifications.clear()
+        self._aura_minimap_visible = False
         self._aura_crt_close()
 
         self._aura_animating = True
@@ -607,15 +620,18 @@ class AuraVisualizerMixin:
             0, 0, anchor="nw", image=self._aura_photo,
         )
 
-        # ── Grid mouse bindings (tooltips + zoom + pan) ──
+        # ── Grid mouse bindings (click-inspect + zoom + LMB-pan) ──
+        self._aura_canvas.bind("<ButtonPress-1>", self._aura_on_lmb_press)
+        self._aura_canvas.bind("<B1-Motion>", self._aura_on_lmb_drag)
+        self._aura_canvas.bind("<ButtonRelease-1>", self._aura_on_lmb_release)
         self._aura_canvas.bind("<Motion>", self._aura_on_grid_motion)
         self._aura_canvas.bind("<Leave>", self._aura_on_grid_leave)
         self._aura_canvas.bind("<Button-4>", self._aura_on_scroll_up)
         self._aura_canvas.bind("<Button-5>", self._aura_on_scroll_down)
-        self._aura_canvas.bind("<ButtonPress-2>", self._aura_on_drag_start)
-        self._aura_canvas.bind("<B2-Motion>", self._aura_on_drag_motion)
-        self._aura_canvas.bind("<ButtonRelease-2>", self._aura_on_drag_end)
         self._aura_canvas.bind("<ButtonPress-3>", self._aura_on_zoom_reset)
+
+        # ── Minimap (appears on zoom) ──
+        self._aura_build_minimap(inner)
 
         # ── Notification overlay items (top-right of grid canvas) ──
         self._aura_notif_items: list[dict] = []
@@ -785,7 +801,7 @@ class AuraVisualizerMixin:
             pass
 
     # ──────────────────────────────────────────────────────────────
-    # Grid Tooltips (Change 1)
+    # Grid Coordinate Helpers
     # ──────────────────────────────────────────────────────────────
 
     def _aura_canvas_to_grid(self, px: int, py: int) -> tuple[float, float] | None:
@@ -797,12 +813,10 @@ class AuraVisualizerMixin:
             return None
         x_off = (cw - cs) // 2
         y_off = (ch - cs) // 2
-        # Normalized position in canvas (0..1)
         nx = (px - x_off) / cs
         ny = (py - y_off) / cs
         if not (0 <= nx <= 1 and 0 <= ny <= 1):
             return None
-        # Map to grid coords with zoom
         vis = GRID_SIZE / self._aura_zoom
         half = vis / 2.0
         gx = (self._aura_pan_x - half) + nx * vis
@@ -824,19 +838,78 @@ class AuraVisualizerMixin:
                 return name
         return None
 
-    def _aura_on_grid_motion(self, event):
-        zone = self._aura_pixel_to_zone(event.x, event.y)
-        if zone == self._aura_tooltip_zone:
+    # ──────────────────────────────────────────────────────────────
+    # Left-Click: Pan (drag) + Pixel Inspect (click)
+    # ──────────────────────────────────────────────────────────────
+
+    def _aura_on_lmb_press(self, event):
+        """Left mouse button pressed — start potential drag or click."""
+        self._aura_drag_start = (event.x, event.y)
+        self._aura_drag_started = False  # True once mouse moves enough
+
+    def _aura_on_lmb_drag(self, event):
+        """Left mouse button dragged — pan viewport (Google Maps style)."""
+        if self._aura_drag_start is None:
             return
-        self._aura_hide_tooltip()
-        self._aura_tooltip_zone = zone
-        if zone:
-            self._aura_tooltip_after = self._aura_canvas.after(
-                300, lambda: self._aura_show_tooltip(zone, event.x, event.y))
+
+        dx = event.x - self._aura_drag_start[0]
+        dy = event.y - self._aura_drag_start[1]
+
+        # Detect drag start (>3px movement threshold)
+        if not self._aura_drag_started:
+            if abs(dx) > 3 or abs(dy) > 3:
+                self._aura_drag_started = True
+                self._aura_hide_tooltip()
+            else:
+                return
+
+        if self._aura_zoom <= 1.01:
+            return
+
+        self._aura_drag_start = (event.x, event.y)
+
+        cw = self._aura_canvas.winfo_width()
+        ch = self._aura_canvas.winfo_height()
+        cs = min(cw, ch)
+        if cs < 1:
+            return
+
+        vis = GRID_SIZE / self._aura_zoom
+        self._aura_pan_x -= dx / cs * vis
+        self._aura_pan_y -= dy / cs * vis
+        self._aura_clamp_pan()
+
+    def _aura_on_lmb_release(self, event):
+        """Left mouse button released — if no drag happened, show pixel info."""
+        was_drag = self._aura_drag_started
+        self._aura_drag_start = None
+        self._aura_drag_started = False
+
+        if was_drag:
+            return  # Was a pan drag, not a click
+
+        # Click — show pixel inspector tooltip
+        self._aura_show_pixel_info(event.x, event.y)
+
+    # ──────────────────────────────────────────────────────────────
+    # Mouse Motion — hide tooltip on move
+    # ──────────────────────────────────────────────────────────────
+
+    def _aura_on_grid_motion(self, event):
+        """Hide tooltip only when mouse moves far enough from tooltip origin."""
+        if self._aura_tooltip_win and hasattr(self, "_aura_tooltip_origin"):
+            ox, oy = self._aura_tooltip_origin
+            dist = ((event.x - ox) ** 2 + (event.y - oy) ** 2) ** 0.5
+            if dist > 25:  # 25px dead zone to prevent flicker
+                self._aura_hide_tooltip()
 
     def _aura_on_grid_leave(self, _event):
         self._aura_hide_tooltip()
         self._aura_tooltip_zone = None
+
+    # ──────────────────────────────────────────────────────────────
+    # Pixel Inspector — Click on a cell to see its data
+    # ──────────────────────────────────────────────────────────────
 
     def _aura_hide_tooltip(self):
         if self._aura_tooltip_after:
@@ -852,101 +925,340 @@ class AuraVisualizerMixin:
                 pass
             self._aura_tooltip_win = None
 
-    def _aura_show_tooltip(self, zone: str, mx: int, my: int):
-        self._aura_tooltip_after = None
+    def _aura_show_pixel_info(self, mx: int, my: int):
+        """Show a professional tooltip for the clicked pixel."""
+        self._aura_tooltip_origin = (mx, my)  # Track click position for dead zone
+        self._aura_hide_tooltip()
         if not self._aura_open or not self._aura_win:
             return
-        if self._aura_tooltip_zone != zone:
+
+        coords = self._aura_canvas_to_grid(mx, my)
+        if coords is None:
+            return
+        gx, gy = coords
+        gxi, gyi = int(gx), int(gy)
+        if not (0 <= gxi < GRID_SIZE and 0 <= gyi < GRID_SIZE):
             return
 
-        lines = self._aura_get_tooltip_lines(zone)
-        if not lines:
+        # Determine zone
+        col = min(gxi // ZONE_WIDTH, 3)
+        row = min(gyi // ZONE_HEIGHT, 1)
+        zone = None
+        for name, (r, c) in ZONE_LAYOUT.items():
+            if r == row and c == col:
+                zone = name
+                break
+        if not zone:
             return
 
+        # Get cell data from engine
+        grid = self._aura_engine.get_read_grid()
+        cell_alive = bool(grid[gyi, gxi])
+        cell_age_arr = self._aura_engine.get_cell_age()
+        cell_age = int(cell_age_arr[gyi, gxi])
+
+        # Quantum data
+        qcolors = self._aura_engine.get_quantum_colors()
+        has_quantum = qcolors is not None
+        q_rgb = None
+        q_dominant = ""
+        if has_quantum:
+            q_rgb = qcolors[gyi, gxi]  # float32 [R, G, B]
+
+            # Find dominant zone type from quantum color
+            zone_colors_arr = {
+                "epq": (0.0, 0.7, 1.0), "mood": (1.0, 0.5, 0.0),
+                "reflexion": (0.0, 1.0, 0.3), "entities": (1.0, 0.0, 0.8),
+                "ego": (1.0, 0.85, 0.0), "quantum": (0.0, 1.0, 1.0),
+                "titan": (0.7, 0.3, 1.0), "hardware": (1.0, 0.2, 0.1),
+            }
+            best_dist = 999.0
+            for zn, (zr, zg, zb) in zone_colors_arr.items():
+                dist = (q_rgb[0] - zr) ** 2 + (q_rgb[1] - zg) ** 2 + (q_rgb[2] - zb) ** 2
+                if dist < best_dist:
+                    best_dist = dist
+                    q_dominant = zn
+
+        # Build tooltip lines
         color = _ZONE_HEX.get(zone, "#888888")
+        zone_display = _ZONE_DISPLAY.get(zone, zone.upper())
+
+        # ── Create tooltip window ──
+        # Start withdrawn to prevent flash at (0,0) before positioning
         tip = tk.Toplevel(self._aura_win)
+        tip.withdraw()
         tip.overrideredirect(True)
         tip.attributes("-topmost", True)
         tip.configure(bg=color)
 
-        frame = tk.Frame(tip, bg="#0D1117", padx=6, pady=4)
+        frame = tk.Frame(tip, bg="#0D1117", padx=8, pady=6)
         frame.pack(padx=1, pady=1)
+        _TIP_MAX_W = 34  # Max chars per line in tooltip
 
-        title = _ZONE_DISPLAY.get(zone, zone.upper())
-        tk.Label(frame, text=title, bg="#0D1117", fg=color,
-                 font=("Consolas", 9, "bold"), anchor="w").pack(anchor="w")
+        # Title: Zone name
+        tk.Label(frame, text=zone_display, bg="#0D1117", fg=color,
+                 font=("Consolas", 10, "bold"), anchor="w").pack(anchor="w")
 
-        for line in lines:
-            tk.Label(frame, text=line, bg="#0D1117", fg="#8B949E",
-                     font=("Consolas", 8), anchor="w").pack(anchor="w")
+        # Separator
+        sep = tk.Frame(frame, bg=color, height=1)
+        sep.pack(fill="x", pady=(2, 4))
+
+        # Pixel coordinates
+        self._tip_line(frame, "Position", f"({gxi}, {gyi})")
+
+        # Cell state
+        if cell_alive:
+            state_str = "Alive"
+            state_clr = "#00ff66"
+        else:
+            state_str = "Dead (latent)"
+            state_clr = "#555555"
+        lf = tk.Frame(frame, bg="#0D1117")
+        lf.pack(anchor="w", pady=1)
+        tk.Label(lf, text="Status  ", bg="#0D1117", fg="#6e7681",
+                 font=("Consolas", 8), anchor="w").pack(side="left")
+        tk.Label(lf, text=state_str, bg="#0D1117", fg=state_clr,
+                 font=("Consolas", 8, "bold"), anchor="w").pack(side="left")
+
+        if cell_alive and cell_age > 0:
+            self._tip_line(frame, "Age", f"{cell_age} generations")
+
+        # Quantum state (type vector as RGB blend)
+        if has_quantum and q_rgb is not None:
+            q_label = "Type" if cell_alive else "Latent"
+            self._tip_line(frame, q_label,
+                           f"{q_rgb[0]:.2f} {q_rgb[1]:.2f} {q_rgb[2]:.2f}")
+            if q_dominant and q_dominant != zone:
+                dom_display = _ZONE_DISPLAY.get(q_dominant, q_dominant)
+                self._tip_line(frame, "From", f"{dom_display}")
+
+        # Dead cell hint
+        if not cell_alive and has_quantum:
+            tk.Label(frame, text="No pattern propagation",
+                     bg="#0D1117", fg="#555555",
+                     font=("Consolas", 7), anchor="w").pack(anchor="w", pady=(1, 0))
+
+        # Zone-specific data
+        zone_lines = self._aura_get_pixel_zone_info(zone)
+        if zone_lines:
+            sep2 = tk.Frame(frame, bg="#333333", height=1)
+            sep2.pack(fill="x", pady=(4, 2))
+            for i, line in enumerate(zone_lines):
+                if not line:
+                    continue  # skip empty spacers
+                # First line = zone description (brighter)
+                # Indented lines (start with space) = data values
+                # Last lines without indent = context/explanation (dimmer)
+                if i == 0:
+                    fg = "#c9d1d9"
+                    font = ("Consolas", 8, "bold")
+                elif line.startswith("  "):
+                    fg = "#8B949E"
+                    font = ("Consolas", 8)
+                else:
+                    fg = "#555d6a"
+                    font = ("Consolas", 7)
+                tk.Label(frame, text=line, bg="#0D1117", fg=fg,
+                         font=font, anchor="w").pack(anchor="w", pady=0)
 
         tip.update_idletasks()
 
-        # Position: offset from mouse cursor, clamped to screen
-        sx = self._aura_canvas.winfo_rootx() + mx + 12
-        sy = self._aura_canvas.winfo_rooty() + my + 12
+        # Position near click, clamped to screen
+        sx = self._aura_canvas.winfo_rootx() + mx + 14
+        sy = self._aura_canvas.winfo_rooty() + my + 14
         tw = tip.winfo_reqwidth()
         th = tip.winfo_reqheight()
         screen_w = tip.winfo_screenwidth()
         screen_h = tip.winfo_screenheight()
         if sx + tw > screen_w - 4:
-            sx = self._aura_canvas.winfo_rootx() + mx - tw - 12
+            sx = self._aura_canvas.winfo_rootx() + mx - tw - 14
         if sy + th > screen_h - 4:
-            sy = self._aura_canvas.winfo_rooty() + my - th - 12
+            sy = self._aura_canvas.winfo_rooty() + my - th - 14
         sx = max(0, sx)
         sy = max(0, sy)
         tip.geometry(f"+{sx}+{sy}")
+        tip.deiconify()  # Show only after positioned — no flash at (0,0)
         self._aura_tooltip_win = tip
+        self._aura_tooltip_zone = zone
 
-    def _aura_get_tooltip_lines(self, zone: str) -> list[str]:
+    def _tip_line(self, parent: tk.Frame, label: str, value: str):
+        """Render a key-value line in the tooltip."""
+        lf = tk.Frame(parent, bg="#0D1117")
+        lf.pack(anchor="w", pady=1)
+        tk.Label(lf, text=f"{label}  ", bg="#0D1117", fg="#6e7681",
+                 font=("Consolas", 8), anchor="w").pack(side="left")
+        tk.Label(lf, text=value, bg="#0D1117", fg="#c9d1d9",
+                 font=("Consolas", 8), anchor="w").pack(side="left")
+
+    def _aura_get_pixel_zone_info(self, zone: str) -> list[str]:
+        """Get zone-specific context lines for the pixel inspector.
+
+        Each zone returns a consistent format:
+        - Description line (what this zone represents)
+        - Data lines (current values)
+        - Context line (how to interpret the values)
+        """
         with self._aura_state_lock:
             s = dict(self._aura_state)
 
+        def _bar(val, maxv=1.0, width=8):
+            """Consistent █░ bar for all zones."""
+            ratio = max(0.0, min(1.0, val / maxv)) if maxv else 0
+            b = int(ratio * width)
+            return "\u2588" * b + "\u2591" * (width - b)
+
+        W = 28  # max chars per text line
+
         if zone == "epq":
             vecs = s.get("epq_vectors", {})
-            parts = [f"{k[0].upper()}:{v:.2f}" for k, v in vecs.items()]
-            return [" ".join(parts) if parts else "No data"]
+            if not vecs:
+                return ["Personality vectors.", "  Loading..."]
+            _labels = {
+                "autonomy": "AUT", "risk": "RSK",
+                "grounding": "GRD", "openness": "OPN",
+                "empathy": "EMP", "precision": "PRC",
+                "vigilance": "VIG",
+            }
+            lines = ["Personality trait vectors."]
+            for k, v in vecs.items():
+                lines.append(f"  {_labels.get(k, k[:3].upper()):3s}{v:+.2f} {_bar(abs(v))}")
+            lines.append("[-1..+1] via entities/dreams")
+            return lines
+
         elif zone == "mood":
             mood = s.get("mood_buffer", 0.5)
-            return [f"Value: {mood:.3f}"]
+            lines = ["Emotional valence buffer."]
+            if mood > 0.65:
+                desc = "positive"
+            elif mood < 0.35:
+                desc = "low"
+            else:
+                desc = "neutral"
+            lines.append(f"  VAL {mood:+.2f} {_bar(mood)}")
+            lines.append(f"  State: {desc}")
+            lines.append("[0..1] drives cell activity")
+            lines.append("and color warmth in zone")
+            return lines
+
         elif zone == "reflexion":
             refls = s.get("reflections", [])
+            lines = ["Idle thoughts & reflections."]
             if refls:
-                txt = refls[0].get("content", "")[:55]
-                if len(refls[0].get("content", "")) > 55:
+                r = refls[0]
+                trigger = r.get("trigger", "unknown")
+                txt = r.get("content", "")[:100].strip()
+                if len(r.get("content", "")) > 100:
                     txt += "..."
-                trigger = refls[0].get("trigger", "")
-                return [f"[{trigger}]", txt if txt else "..."]
-            return ["No recent thoughts"]
+                lines.append(f"  Trigger: {trigger}")
+                # Word-wrap thought text at W chars
+                words = txt.split()
+                wrapped = []
+                cur = ""
+                for word in words:
+                    test = (cur + " " + word).strip()
+                    if len(test) > W:
+                        if cur:
+                            wrapped.append(cur)
+                        cur = word
+                    else:
+                        cur = test
+                if cur:
+                    wrapped.append(cur)
+                for i, line in enumerate(wrapped[:4]):
+                    if i == 0:
+                        lines.append(f'  "{line}')
+                    elif i == len(wrapped[:4]) - 1:
+                        lines.append(f'   {line}"')
+                    else:
+                        lines.append(f"   {line}")
+            else:
+                lines.append("  No recent thoughts.")
+            lines.append("New thoughts spawn cells")
+            return lines
+
         elif zone == "entities":
             ents = s.get("entities", [])
+            lines = ["Internal dialogue partners."]
             if ents:
-                lines = []
                 for e in ents[:4]:
                     name = e.get("name", "?") if isinstance(e, dict) else str(e)
                     active = e.get("is_in_session", False) if isinstance(e, dict) else False
-                    lines.append(f"{name}: {'active' if active else 'idle'}")
-                return lines
-            return ["No entities loaded"]
+                    m = "\u25cf" if active else "\u25cb"
+                    st = "in session" if active else "idle"
+                    lines.append(f"  {m} {name:<14s} {st}")
+            else:
+                lines.append("  None loaded.")
+            lines.append("Sessions inject cells here")
+            return lines
+
         elif zone == "ego":
             ego = s.get("ego_state", {})
             emb = ego.get("embodiment_level", 0.5)
-            return [f"Embodiment: {emb:.2f}"]
+            lines = ["Hardware-to-body identity."]
+            lines.append(f"  EMB {emb:.2f}  {_bar(emb)}")
+            if emb > 0.7:
+                lines.append("  Strongly embodied")
+            elif emb < 0.3:
+                lines.append("  Weakly embodied")
+            else:
+                lines.append("  Moderately embodied")
+            lines.append("[0..1] body identification")
+            return lines
+
         elif zone == "quantum":
             cohr = s.get("coherence", 0.5)
-            return [f"Score: {cohr:.3f}"]
+            lines = ["Epistemic coherence (QUBO)."]
+            lines.append(f"  COH {cohr:.2f}  {_bar(cohr)}")
+            if cohr > 0.7:
+                lines.append("  State: stable")
+            elif cohr < 0.3:
+                lines.append("  State: conflicted")
+            else:
+                lines.append("  State: moderate")
+            lines.append("Belief/intent consistency")
+            return lines
+
         elif zone == "titan":
             rc = s.get("reflection_count", 0)
-            return [f"Reflections: {rc}"]
+            # Rough bar: 100 reflections = full
+            lines = ["Long-term memory (Titan)."]
+            lines.append(f"  REF {rc:>4d}   {_bar(rc, 100)}")
+            lines.append("Consolidated thoughts,")
+            lines.append("sessions, and dream data")
+            return lines
+
         elif zone == "hardware":
-            cpu = s.get("cpu_temp", 0)
+            cpu_t = s.get("cpu_temp", 0)
+            gpu_t = s.get("gpu_temp", 0)
+            gpu_b = s.get("gpu_busy", 0)
+            nvme = s.get("nvme_temp", 0)
             ram = s.get("ram_percent", 0)
+            swp = s.get("swap_percent", 0)
             load = s.get("cpu_load", 0)
-            return [f"CPU: {cpu:.0f}\u00b0C  RAM: {ram:.0f}%  Load: {load:.1f}"]
+            dsk = s.get("disk_percent", 0)
+            upt = s.get("uptime_s", 0)
+            # Format uptime
+            uh = int(upt // 3600)
+            um = int((upt % 3600) // 60)
+            upt_str = f"{uh}h{um:02d}m" if uh < 100 else f"{uh}h"
+            lines = ["Physical system sensors."]
+            lines.append(f"  TMP {cpu_t:>3.0f}\u00b0C  {_bar(cpu_t, 90)}")
+            lines.append(f"  GPU {gpu_t:>3.0f}\u00b0C  {_bar(gpu_t, 90)}")
+            lines.append(f"  SSD {nvme:>3.0f}\u00b0C  {_bar(nvme, 70)}")
+            lines.append(f"  RAM {ram:>3.0f}%   {_bar(ram, 100)}")
+            lines.append(f"  SWP {swp:>3.0f}%   {_bar(swp, 100)}")
+            lines.append(f"  CPU {load:>4.1f}   {_bar(load, 16)}")
+            lines.append(f"  GLD {gpu_b:>3d}%   {_bar(gpu_b, 100)}")
+            lines.append(f"  DSK {dsk:>3.0f}%   {_bar(dsk, 100)}")
+            lines.append(f"  UPT {upt_str}")
+            lines.append("Proprioception: felt as")
+            lines.append("body temp, strain, energy")
+            return lines
+
         return []
 
     # ──────────────────────────────────────────────────────────────
-    # Zoom & Pan (scroll wheel + middle-click drag)
+    # Zoom & Pan (scroll wheel + LMB drag)
     # ──────────────────────────────────────────────────────────────
 
     def _aura_clamp_pan(self):
@@ -977,7 +1289,6 @@ class AuraVisualizerMixin:
         if abs(new_zoom - old_zoom) < 0.01:
             return
 
-        # Calculate new pan to keep (gx,gy) under cursor
         cw = self._aura_canvas.winfo_width()
         ch = self._aura_canvas.winfo_height()
         cs = min(cw, ch)
@@ -993,32 +1304,6 @@ class AuraVisualizerMixin:
         self._aura_pan_y = gy - (ny - 0.5) * new_vis
         self._aura_zoom = new_zoom
         self._aura_clamp_pan()
-
-    def _aura_on_drag_start(self, event):
-        """Start panning with middle mouse button."""
-        self._aura_drag_start = (event.x, event.y)
-
-    def _aura_on_drag_motion(self, event):
-        """Pan the viewport while dragging."""
-        if self._aura_drag_start is None or self._aura_zoom <= 1.01:
-            return
-        dx = event.x - self._aura_drag_start[0]
-        dy = event.y - self._aura_drag_start[1]
-        self._aura_drag_start = (event.x, event.y)
-
-        cw = self._aura_canvas.winfo_width()
-        ch = self._aura_canvas.winfo_height()
-        cs = min(cw, ch)
-        if cs < 1:
-            return
-
-        vis = GRID_SIZE / self._aura_zoom
-        self._aura_pan_x -= dx / cs * vis
-        self._aura_pan_y -= dy / cs * vis
-        self._aura_clamp_pan()
-
-    def _aura_on_drag_end(self, _event):
-        self._aura_drag_start = None
 
     def _aura_on_zoom_reset(self, _event):
         """Right-click resets zoom to 1x."""
@@ -1186,6 +1471,9 @@ class AuraVisualizerMixin:
 
             img = self._aura_renderer.render(grid, cell_age, mood, threat, quantum_colors=qcolors)
 
+            # ── Minimap update (full grid before zoom crop) ──
+            self._aura_minimap_update(img)
+
             # Scale to canvas size with zoom (crop + resize)
             cw = self._aura_canvas.winfo_width()
             ch = self._aura_canvas.winfo_height()
@@ -1305,6 +1593,12 @@ class AuraVisualizerMixin:
             new_state["coherence"] = max(0.0, min(1.0, cohr)) if cohr else 0.5
             new_state["cpu_temp"] = meta.get("hw_temp", 0)
             new_state["ram_percent"] = meta.get("ram_usage", 0.0) * 100
+            new_state["gpu_temp"] = meta.get("gpu_temp", 0)
+            new_state["gpu_busy"] = meta.get("gpu_busy", 0)
+            new_state["nvme_temp"] = meta.get("nvme_temp", 0)
+            new_state["swap_percent"] = meta.get("swap_percent", 0.0)
+            new_state["disk_percent"] = meta.get("disk_percent", 0.0)
+            new_state["uptime_s"] = meta.get("uptime_s", 0.0)
             new_state["reflection_count"] = meta.get("thought_count", 0)
             new_state["online"] = True
 
@@ -1377,12 +1671,31 @@ class AuraVisualizerMixin:
                 if data:
                     temps = data.get("temps", {})
                     new_state["cpu_temp"] = float(temps.get("max_c", 0))
-                    mem = data.get("mem", {}).get("mem_kb", {})
-                    total = mem.get("total", 1)
-                    used = mem.get("used", 0)
+                    # Per-chip temps for GPU and NVMe
+                    for chip in temps.get("chips", []):
+                        cname = chip.get("chip", "")
+                        readings = chip.get("readings", [])
+                        if "amdgpu" in cname and readings:
+                            new_state["gpu_temp"] = int(readings[0].get("temp_c", 0))
+                        elif "nvme" in cname and readings:
+                            new_state["nvme_temp"] = int(readings[0].get("temp_c", 0))
+                    mem = data.get("mem", {})
+                    mem_kb = mem.get("mem_kb", {})
+                    total = mem_kb.get("total", 1)
+                    used = mem_kb.get("used", 0)
                     new_state["ram_percent"] = (used / max(total, 1)) * 100
+                    new_state["swap_percent"] = float(mem.get("swap_percent", 0))
                     cpu = data.get("cpu", {})
                     new_state["cpu_load"] = float(cpu.get("load_1m", 0))
+                    # Disk usage
+                    disks = data.get("disk", [])
+                    for d in (disks or []):
+                        if d.get("path") == "/" and d.get("ok"):
+                            new_state["disk_percent"] = float(d.get("percent_used", 0))
+                            break
+                    # Uptime
+                    ul = data.get("uptime_load", {})
+                    new_state["uptime_s"] = float(ul.get("uptime_s", 0) or 0)
             except Exception:
                 pass
 
@@ -1460,6 +1773,201 @@ class AuraVisualizerMixin:
                 return json.loads(resp.read())
         except Exception:
             return None
+
+    # ──────────────────────────────────────────────────────────────
+    # Minimap — Zoom-activated navigation overlay
+    # ──────────────────────────────────────────────────────────────
+
+    def _aura_build_minimap(self, parent):
+        """Build minimap overlay widget — hidden until zoomed in."""
+        _ms = 130
+        _hdr_h = 18
+        _border_clr = "#00cc44"
+        _bg = "#080b10"
+        _hdr_bg = "#0a0e14"
+
+        # Outer border frame (neon glow edge)
+        outer = tk.Frame(parent, bg=_border_clr, highlightthickness=0)
+        self._aura_minimap_frame = outer
+
+        # Inner container
+        inner = tk.Frame(outer, bg=_bg, highlightthickness=0)
+        inner.pack(fill="both", expand=True, padx=1, pady=1)
+
+        # ── Header bar ──
+        hdr = tk.Frame(inner, bg=_hdr_bg, height=_hdr_h)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+
+        tk.Label(
+            hdr, text="MAP", bg=_hdr_bg, fg="#00cc44",
+            font=("Consolas", 6, "bold"), anchor="w",
+        ).pack(side="left", padx=(4, 0))
+
+        # Flip button (◁▷ mirrors to opposite side)
+        flip_btn = tk.Label(
+            hdr, text="\u25c1\u25b7", bg=_hdr_bg, fg="#1a3a2a",
+            font=("Consolas", 7), cursor="hand2",
+        )
+        flip_btn.pack(side="right", padx=(0, 3))
+        flip_btn.bind("<Button-1>", self._aura_minimap_flip)
+        flip_btn.bind("<Enter>", lambda e: flip_btn.configure(fg="#00fff9"))
+        flip_btn.bind("<Leave>", lambda e: flip_btn.configure(fg="#1a3a2a"))
+        self._aura_minimap_flip_btn = flip_btn
+
+        # Zoom level label
+        self._aura_minimap_zoom_lbl = tk.Label(
+            hdr, text="", bg=_hdr_bg, fg="#3a4a40",
+            font=("Consolas", 6), anchor="e",
+        )
+        self._aura_minimap_zoom_lbl.pack(side="right", padx=2)
+
+        # ── Minimap canvas ──
+        mc = tk.Canvas(
+            inner, bg=_bg, highlightthickness=0,
+            width=_ms, height=_ms, cursor="crosshair",
+        )
+        mc.pack(fill="both", expand=True)
+        self._aura_minimap_canvas = mc
+        self._aura_minimap_size = _ms
+
+        # Grid image (bottom layer)
+        self._aura_minimap_img_id = mc.create_image(0, 0, anchor="nw")
+
+        # Zone divider lines (faint grid overlay)
+        _grid_clr = "#0f1a14"
+        for i in range(1, 4):
+            x = int(i * _ms / 4)
+            mc.create_line(x, 0, x, _ms, fill=_grid_clr, width=1, tags="mm_grid")
+        y_mid = _ms // 2
+        mc.create_line(0, y_mid, _ms, y_mid, fill=_grid_clr, width=1, tags="mm_grid")
+
+        # Viewport rectangle (top layer — cyan outline + stippled fill)
+        self._aura_minimap_vp_id = mc.create_rectangle(
+            0, 0, 0, 0,
+            outline="#00fff9", width=2,
+            fill="#00fff9", stipple="gray12",
+        )
+
+        # Click / drag to navigate
+        mc.bind("<Button-1>", self._aura_minimap_click)
+        mc.bind("<B1-Motion>", self._aura_minimap_drag)
+
+        # Scroll isolation (don't leak to main canvas)
+        mc.bind("<Button-4>", lambda e: "break")
+        mc.bind("<Button-5>", lambda e: "break")
+
+        # Initially hidden
+        outer.place_forget()
+
+    def _aura_minimap_update(self, full_img: "Image.Image"):
+        """Update minimap thumbnail + viewport rect. Called each render frame."""
+        if not hasattr(self, "_aura_minimap_frame"):
+            return
+
+        zoomed = self._aura_zoom > 1.05
+
+        # Show / hide transition
+        if zoomed and not self._aura_minimap_visible:
+            self._aura_minimap_visible = True
+            self._aura_minimap_position()
+        elif not zoomed and self._aura_minimap_visible:
+            self._aura_minimap_visible = False
+            self._aura_minimap_frame.place_forget()
+
+        if not self._aura_minimap_visible:
+            return
+
+        mc = self._aura_minimap_canvas
+        try:
+            mw = mc.winfo_width()
+            mh = mc.winfo_height()
+        except Exception:
+            return
+        sz = min(mw, mh)
+        if sz < 10:
+            sz = self._aura_minimap_size
+
+        # Thumbnail from full 256×256 grid image
+        thumb = full_img.resize((sz, sz), Image.NEAREST)
+        self._aura_minimap_photo = _pil_to_tkphoto(thumb)
+        mc.itemconfigure(self._aura_minimap_img_id, image=self._aura_minimap_photo)
+
+        # Ensure overlays stay on top of image
+        mc.tag_raise("mm_grid")
+        mc.tag_raise(self._aura_minimap_vp_id)
+
+        # Viewport rectangle (maps pan/zoom to minimap coords)
+        vis = GRID_SIZE / self._aura_zoom
+        half = vis / 2.0
+        scale = sz / GRID_SIZE
+        rx0 = max(0, (self._aura_pan_x - half) * scale)
+        ry0 = max(0, (self._aura_pan_y - half) * scale)
+        rx1 = min(sz, (self._aura_pan_x + half) * scale)
+        ry1 = min(sz, (self._aura_pan_y + half) * scale)
+        mc.coords(self._aura_minimap_vp_id, rx0, ry0, rx1, ry1)
+
+        # Zoom label
+        try:
+            self._aura_minimap_zoom_lbl.configure(
+                text=f"{self._aura_zoom:.1f}\u00d7",
+            )
+        except Exception:
+            pass
+
+    def _aura_minimap_position(self):
+        """Place minimap in current corner, above the HUD."""
+        pad = 10
+        ms = self._aura_minimap_size + 2   # + border
+        mh = ms + 20                        # + header
+        hud_h = 166
+        corner = self._aura_minimap_corner
+
+        kw = {"width": ms, "height": mh}
+        if corner == "br":
+            kw.update(relx=1.0, rely=1.0, x=-pad, y=-(hud_h + pad), anchor="se")
+        elif corner == "bl":
+            kw.update(relx=0.0, rely=1.0, x=pad, y=-(hud_h + pad), anchor="sw")
+        elif corner == "tr":
+            kw.update(relx=1.0, rely=0.0, x=-pad, y=pad, anchor="ne")
+        elif corner == "tl":
+            kw.update(relx=0.0, rely=0.0, x=pad, y=pad, anchor="nw")
+
+        self._aura_minimap_frame.place(**kw)
+        self._aura_minimap_frame.lift()
+
+    def _aura_minimap_flip(self, _event=None):
+        """Flip minimap to opposite horizontal side, same vertical position."""
+        _flip = {"br": "bl", "bl": "br", "tr": "tl", "tl": "tr"}
+        self._aura_minimap_corner = _flip.get(self._aura_minimap_corner, "br")
+        if self._aura_minimap_visible:
+            self._aura_minimap_position()
+
+    def _aura_minimap_click(self, event):
+        """Click on minimap → jump viewport to that grid position."""
+        self._aura_minimap_nav(event.x, event.y)
+
+    def _aura_minimap_drag(self, event):
+        """Drag on minimap → track viewport continuously."""
+        self._aura_minimap_nav(event.x, event.y)
+
+    def _aura_minimap_nav(self, mx, my):
+        """Navigate main viewport to minimap pixel coordinates."""
+        mc = self._aura_minimap_canvas
+        try:
+            mw = mc.winfo_width()
+            mh = mc.winfo_height()
+        except Exception:
+            return
+        sz = min(mw, mh)
+        if sz < 10:
+            return
+
+        gx = max(0, min(GRID_SIZE, (mx / sz) * GRID_SIZE))
+        gy = max(0, min(GRID_SIZE, (my / sz) * GRID_SIZE))
+        self._aura_pan_x = gx
+        self._aura_pan_y = gy
+        self._aura_clamp_pan()
 
     # ──────────────────────────────────────────────────────────────
     # External Event Hooks

@@ -172,6 +172,80 @@ def _get_ram_usage() -> float:
         return 0.0
 
 
+def _get_gpu_temp() -> int:
+    """Read GPU temperature from amdgpu hwmon."""
+    try:
+        for hwmon in Path("/sys/class/hwmon").iterdir():
+            name_file = hwmon / "name"
+            if name_file.exists() and "amdgpu" in name_file.read_text():
+                temp_file = hwmon / "temp1_input"
+                if temp_file.exists():
+                    return int(temp_file.read_text().strip()) // 1000
+    except Exception:
+        pass
+    return 0
+
+
+def _get_gpu_busy() -> int:
+    """Read GPU busy percent from DRM sysfs."""
+    try:
+        for card in Path("/sys/class/drm").glob("card*/device/gpu_busy_percent"):
+            return int(card.read_text().strip())
+    except Exception:
+        pass
+    return 0
+
+
+def _get_nvme_temp() -> int:
+    """Read NVMe composite temperature from hwmon."""
+    try:
+        for hwmon in Path("/sys/class/hwmon").iterdir():
+            name_file = hwmon / "name"
+            if name_file.exists() and "nvme" in name_file.read_text():
+                temp_file = hwmon / "temp1_input"
+                if temp_file.exists():
+                    return int(temp_file.read_text().strip()) // 1000
+    except Exception:
+        pass
+    return 0
+
+
+def _get_swap_percent() -> float:
+    """Get swap usage as percent 0..100."""
+    try:
+        with open("/proc/meminfo") as f:
+            info = {}
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    info[parts[0].rstrip(":")] = int(parts[1])
+        total = info.get("SwapTotal", 0)
+        free = info.get("SwapFree", 0)
+        if total > 0:
+            return ((total - free) / total) * 100
+    except Exception:
+        pass
+    return 0.0
+
+
+def _get_disk_percent() -> float:
+    """Get root filesystem usage percent."""
+    try:
+        import shutil
+        du = shutil.disk_usage("/")
+        return (du.used / du.total) * 100 if du.total > 0 else 0.0
+    except Exception:
+        return 0.0
+
+
+def _get_uptime() -> float:
+    """Get system uptime in seconds."""
+    try:
+        return float(Path("/proc/uptime").read_text().strip().split()[0])
+    except Exception:
+        return 0.0
+
+
 # --- Quantum dynamics constants ---
 DIFFUSION_RATE = 0.04       # How fast type distributions blend with neighbors
 DECOHERENCE_RATE = 0.002    # How fast dominant types sharpen over time
@@ -219,6 +293,12 @@ class AuraHeadless:
         self.coherence = 0.0
         self.hw_temp = 0
         self.ram_usage = 0.0
+        self.gpu_temp = 0
+        self.gpu_busy = 0
+        self.nvme_temp = 0
+        self.swap_percent = 0.0
+        self.disk_percent = 0.0
+        self.uptime_s = 0.0
         self.epq_vectors: Dict[str, float] = {}
         self.energy_level = 0.5
         self.thought_count = 0
@@ -388,7 +468,7 @@ class AuraHeadless:
         self._seed_zone("ego", self.energy_level * 0.5 + 0.1)
         self._seed_zone("quantum", self.coherence * 0.6 + 0.1)
         self._seed_zone("memory", 0.15 + abs(self.mood) * 0.2)
-        hw_stress = (self.hw_temp / 100.0) * 0.4 + self.ram_usage * 0.3
+        hw_stress = (self.hw_temp / 100.0) * 0.2 + (self.gpu_temp / 100.0) * 0.2 + self.ram_usage * 0.2 + (self.gpu_busy / 100.0) * 0.2
         self._seed_zone("hw", min(hw_stress, 0.8))
 
     def _seed_zone(self, zone: str, intensity: float):
@@ -467,6 +547,12 @@ class AuraHeadless:
         """Read hardware state."""
         self.hw_temp = _get_cpu_temp()
         self.ram_usage = _get_ram_usage()
+        self.gpu_temp = _get_gpu_temp()
+        self.gpu_busy = _get_gpu_busy()
+        self.nvme_temp = _get_nvme_temp()
+        self.swap_percent = _get_swap_percent()
+        self.disk_percent = _get_disk_percent()
+        self.uptime_s = _get_uptime()
 
     def _fetch_thoughts(self):
         """Count recent reflections from consciousness DB."""
@@ -922,6 +1008,12 @@ def grid_endpoint():
         "coherence": aura.coherence,
         "hw_temp": aura.hw_temp,
         "ram_usage": aura.ram_usage,
+        "gpu_temp": aura.gpu_temp,
+        "gpu_busy": aura.gpu_busy,
+        "nvme_temp": aura.nvme_temp,
+        "swap_percent": aura.swap_percent,
+        "disk_percent": aura.disk_percent,
+        "uptime_s": aura.uptime_s,
         "epq_vectors": aura.epq_vectors,
         "energy_level": aura.energy_level,
         "thought_count": aura.thought_count,

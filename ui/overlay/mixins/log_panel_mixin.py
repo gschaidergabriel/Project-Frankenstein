@@ -73,6 +73,17 @@ _CRT_FONT_TINY = ("Courier", 4)
 # Typewriter speed (ms per character)
 _TYPEWRITER_MS = 18
 
+# Entity accent colours (CRT-compatible neon tones)
+_ENTITY_COLORS: Dict[str, str] = {
+    "entity":    "#FFD700",   # Gold
+    "therapist": "#00CCA3",   # Teal (Dr. Hibbert)
+    "mirror":    "#FF9933",   # Amber (Kairos)
+    "atlas":     "#33CCFF",   # Cyan
+    "muse":      "#CC66FF",   # Violet (Echo)
+    "dream":     "#6699FF",   # Soft blue
+}
+_ACCENT_CATS = frozenset(_ENTITY_COLORS)
+
 
 class LogPanelMixin:
     """Mixin adding a slide-out CRT log panel for daemon activity."""
@@ -301,9 +312,15 @@ class LogPanelMixin:
         # CRT text tags
         txt.tag_configure("timestamp", foreground=_CRT_FG_DIM, font=_CRT_FONT_SM)
         txt.tag_configure("message", foreground=_CRT_FG, font=_CRT_FONT)
-        txt.tag_configure("separator", foreground="#0a1a0a", font=_CRT_FONT_TINY)
+        txt.tag_configure("separator", foreground="#0a1a0a", font=_CRT_FONT_TINY, spacing3=6)
         txt.tag_configure("scanline", background=_CRT_SCANLINE)
         txt.tag_configure("cursor_blink", foreground=_CRT_FG, font=_CRT_FONT)
+
+        # Entity / dream accent tags
+        for cat, color in _ENTITY_COLORS.items():
+            txt.tag_configure(f"hdr_{cat}", foreground=color, font=_CRT_FONT_SM)
+            txt.tag_configure(f"msg_{cat}", foreground=color, font=_CRT_FONT)
+            txt.tag_configure(f"accent_{cat}", foreground=color, font=("Courier", 9, "bold"))
 
         self._log_text = txt
 
@@ -334,10 +351,19 @@ class LogPanelMixin:
         cat = _CAT_SHORT.get(entry.get("category", ""), "LOG")
         icon = entry.get("icon", "")
         msg = entry.get("text", "")
+        category = entry.get("category", "")
 
-        txt.insert("end", f"{ts} [{cat}] {icon}\n", "timestamp")
-        txt.insert("end", f"{msg}\n", "message")
-        txt.insert("end", "\u2500" * 40 + "\n", "separator")
+        if category in _ACCENT_CATS:
+            hdr_tag = f"hdr_{category}"
+            msg_tag = f"msg_{category}"
+            txt.insert("end", "\u258c ", f"accent_{category}")
+            txt.insert("end", f"{ts} [{cat}] {icon}\n", hdr_tag)
+            txt.insert("end", f"{msg}\n", msg_tag)
+        else:
+            txt.insert("end", f"  {ts} [{cat}] {icon}\n", "timestamp")
+            txt.insert("end", f"{msg}\n", "message")
+
+        txt.insert("end", "\u2500" * 24 + "\n", "separator")
 
         if was_disabled:
             txt.configure(state="disabled")
@@ -355,17 +381,25 @@ class LogPanelMixin:
         cat = _CAT_SHORT.get(entry.get("category", ""), "LOG")
         icon = entry.get("icon", "")
         msg = entry.get("text", "")
+        category = entry.get("category", "")
 
-        # Timestamp + category appear instantly
-        txt.insert("end", f"{ts} [{cat}] {icon}\n", "timestamp")
+        is_entity = category in _ACCENT_CATS
+        msg_tag = f"msg_{category}" if is_entity else "message"
+
+        # Header appears instantly
+        if is_entity:
+            txt.insert("end", "\u258c ", f"accent_{category}")
+            txt.insert("end", f"{ts} [{cat}] {icon}\n", f"hdr_{category}")
+        else:
+            txt.insert("end", f"  {ts} [{cat}] {icon}\n", "timestamp")
         txt.configure(state="disabled")
         txt.see("end")
 
         # Message types character by character
         self._log_typing_active = True
-        self._log_typewriter_step(msg, 0)
+        self._log_typewriter_step(msg, 0, msg_tag)
 
-    def _log_typewriter_step(self, msg: str, idx: int):
+    def _log_typewriter_step(self, msg: str, idx: int, msg_tag: str = "message"):
         """Type one character at a time."""
         if not self._log_text or not self._log_text.winfo_exists():
             self._log_typing_active = False
@@ -374,8 +408,8 @@ class LogPanelMixin:
             # Cancelled (panel closed) — dump remaining text
             try:
                 self._log_text.configure(state="normal")
-                self._log_text.insert("end", msg[idx:] + "\n", "message")
-                self._log_text.insert("end", "\u2500" * 40 + "\n", "separator")
+                self._log_text.insert("end", msg[idx:] + "\n", msg_tag)
+                self._log_text.insert("end", "\u2500" * 24 + "\n", "separator")
                 self._log_apply_scanlines()
                 self._log_text.configure(state="disabled")
                 self._log_text.see("end")
@@ -387,15 +421,15 @@ class LogPanelMixin:
         try:
             self._log_text.configure(state="normal")
             if idx < len(msg):
-                self._log_text.insert("end", msg[idx], "message")
+                self._log_text.insert("end", msg[idx], msg_tag)
                 self._log_text.configure(state="disabled")
                 self._log_text.see("end")
                 delay = random.randint(12, 28)
-                self.after(delay, lambda: self._log_typewriter_step(msg, idx + 1))
+                self.after(delay, lambda: self._log_typewriter_step(msg, idx + 1, msg_tag))
             else:
                 # Done typing message
-                self._log_text.insert("end", "\n", "message")
-                self._log_text.insert("end", "\u2500" * 40 + "\n", "separator")
+                self._log_text.insert("end", "\n", msg_tag)
+                self._log_text.insert("end", "\u2500" * 24 + "\n", "separator")
                 self._log_apply_scanlines()
                 self._log_text.configure(state="disabled")
                 self._log_text.see("end")

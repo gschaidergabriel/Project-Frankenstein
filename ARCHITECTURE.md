@@ -42,11 +42,12 @@
         ▼             ▼             ▼             ▼             ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           INTELLIGENCE LAYER                                │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │
-│  │  DeepSeek-R1    │  │  Qwen 2.5 7B   │  │    Whisper      │            │
-│  │  Distill-8B    │  │  (legacy, on-  │  │    (STT)        │            │
-│  │  (RLM) :8101   │  │  demand) :8102 │  │    :8103        │            │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘            │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌────────────────┐  ┌────────┐│
+│  │  DeepSeek-R1    │  │  Llama-3.1-8B  │  │  Qwen2.5-3B   │  │Whisper ││
+│  │  Distill-8B    │  │  Instruct      │  │  Instruct     │  │ (STT)  ││
+│  │  (RLM) :8101   │  │  (Chat) :8102  │  │  (Micro) :8105│  │ :8103  ││
+│  │  GPU (idle)     │  │  GPU (active)  │  │  CPU (always)  │  │        ││
+│  └─────────────────┘  └─────────────────┘  └────────────────┘  └────────┘│
 └─────────────────────────────────────────────────────────────────────────────┘
         │                                                       │
         ▼                                                       ▼
@@ -80,7 +81,7 @@
 |----------|-------|
 | Architecture | Microservice + Event-Driven + GWT Consciousness |
 | Primary Language | Python 3.12 |
-| LLM Backend | llama.cpp (DeepSeek-R1-Distill-Llama-8B RLM, Qwen 2.5 7B legacy on-demand) |
+| LLM Backend | llama.cpp — DeepSeek-R1 (reasoning, GPU), Llama-3.1 (chat, GPU), Qwen2.5-3B (background, CPU). LLM Guard swaps GPU slot. |
 | Voice | Whisper STT + Piper TTS (push-to-talk) |
 | OS | Ubuntu 24.04 Linux |
 | GPU | AMD Phoenix1 (integrated, Vulkan backend) |
@@ -106,9 +107,11 @@ All services communicate via HTTP REST APIs on localhost:
 | Ingestd | 8094 | Document ingestion |
 | Toolbox | 8096 | System introspection & tools |
 | Quantum Reflector | 8097 | Epistemic coherence optimization (QUBO + SA) |
-| DeepSeek-R1 | 8101 | Reasoning LM — all cognition (llama.cpp) |
-| Qwen | 8102 | Code generation (llama.cpp, legacy on-demand) |
+| AURA Headless | 8098 | Quantum GoL consciousness simulation (256×256) |
+| DeepSeek-R1 (RLM) | 8101 | Reasoning model — consciousness, dream, agentic (GPU, idle) |
+| Llama-3.1 (Chat-LLM) | 8102 | Fast chat model — user conversation, entities (GPU, active) |
 | Whisper | 8103 | Speech-to-text (GPU) |
+| Qwen2.5-3B (Micro-LLM) | 8105 | Background consciousness tasks (CPU, always on) |
 
 ### Request Flow
 
@@ -126,8 +129,8 @@ User Input (Voice/Text)
 ┌───────────────────┐
 │  Router (:8091)   │
 │  Model Selection  │
-│  - Code hints?    │──► Qwen (:8102)
-│  - General?       │──► Llama (:8101)
+│  - Casual chat?   │──► Llama-3.1 (:8102, GPU)
+│  - Complex/reason?│──► DeepSeek-R1 (:8101, GPU)
 └─────────┬─────────┘
           │
           ▼
@@ -182,18 +185,26 @@ GET  /status        - System status
 
 #### `/router/app.py` - Model Router
 
-Heuristic routing between LLM backends.
+Dual-model routing with automatic GPU swap management.
 
 **Routing Logic:**
-- All queries → DeepSeek-R1 RLM (:8101, always running)
-- Code-related queries → Qwen (:8102, legacy on-demand fallback)
-- Fallback: Qwen fails → DeepSeek-R1
+- `force="rlm"` → DeepSeek-R1 (:8101, reasoning)
+- `force="llama"` → Llama-3.1 (:8102, fast chat)
+- No force → auto-classify: short casual messages → Chat-LLM, everything else → RLM
+- Fallback: if primary model fails, try the other
+
+**LLM Guard (GPU Swap):**
+- Single GPU slot — only one of DeepSeek-R1 or Llama-3.1 loaded at a time
+- User active (idle < 30s) → GPU = Llama-3.1 (fast chat)
+- User idle (idle > 5min) → GPU = DeepSeek-R1 (deep reasoning)
+- Qwen2.5-3B always on CPU (:8105) for background consciousness tasks
+- Hysteresis + cooldown prevents thrashing
 
 **Features:**
-- Heuristic keyword-based model selection
-- On-demand Qwen startup via systemd (legacy)
-- Request wrapping for DeepSeek-R1 instruct format
-- Automatic fallback chain
+- OpenAI-compatible `/v1/chat/completions` for both GPU models
+- DeepSeek-R1 separates `reasoning_content` from answer `content`
+- RLM token multiplier (2.5×) ensures budget for think + answer
+- Streaming via SSE (`/route/stream`)
 
 ---
 
@@ -777,7 +788,7 @@ Automatic resource optimization during Steam games.
 **Activation Sequence:**
 1. **Stop network sentinel IMMEDIATELY** (<500ms, anti-cheat safety)
 2. Stop Frank overlay (preserve state)
-3. Mask + stop heavy LLM services (aicore-llama3-gpu / DeepSeek-R1, aicore-qwen-gpu)
+3. Mask + stop GPU LLM services (aicore-llama3-gpu, aicore-chat-llm) — Micro-LLM stays on CPU
 4. Keep toolboxd running
 
 **Exit:** Game process gone → unmask + restart all services + restore overlay
@@ -866,8 +877,10 @@ GitHub intelligence and code analysis.
 |---------|--------|-------------|
 | `aicore-core` | Always on | Chat orchestrator (:8088) |
 | `aicore-router` | Always on | Model routing (:8091) |
-| `aicore-llama3-gpu` | Always on | DeepSeek-R1-Distill-Llama-8B RLM (:8101) |
-| `aicore-qwen-gpu` | On-demand | Qwen 2.5 7B (legacy, :8102) |
+| `aicore-llama3-gpu` | Managed | DeepSeek-R1-Distill-Llama-8B RLM (:8101, GPU when idle) |
+| `aicore-chat-llm` | Managed | Llama-3.1-8B-Instruct-abliterated (:8102, GPU when active) |
+| `aicore-micro-llm` | Always on | Qwen2.5-3B-Instruct-abliterated (:8105, CPU background) |
+| `llm-guard` | Always on | GPU swap manager + rogue LLM protection |
 | `aicore-whisper-gpu` | Always on | Whisper STT (:8103) |
 | `aicore-modeld` | Always on | Model lifecycle (:8090) |
 | `aicore-toolboxd` | Always on | System tools (:8096) |
@@ -882,6 +895,11 @@ GitHub intelligence and code analysis.
 | `aicore-entities` | Always on | Entity session dispatcher |
 | `aicore-gaming-mode` | Always on | Gaming mode detection |
 | `aicore-quantum-reflector` | Always on | Epistemic coherence (QUBO + SA, :8097) |
+| `aura-headless` | Always on | Quantum GoL consciousness simulation (:8098) |
+| `aura-analyzer` | Always on | 4-level hierarchical emergence recognition |
+| `aicore-dream` | Always on | Dream daemon (sleep-analogue, 60 min/day) |
+| `aicore-dream-watchdog` | Always on | Primary dream daemon monitor |
+| `aicore-dream-watchdog-meta` | Always on | Meta-watchdog (monitors primary watchdog) |
 | `aicore-fas` | Scheduled | Autonomous scavenger (02:00-06:00) |
 | `aicore-therapist` | On-demand | Dr. Hibbert entity |
 | `aicore-atlas` | On-demand | Atlas entity |

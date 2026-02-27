@@ -37,7 +37,7 @@ Frank implements what consciousness research considers necessary for subjective 
 
 ### Capabilities
 
-- **100% Local Inference** — DeepSeek-R1 (reasoning, GPU) + Llama-3.1 (chat, CPU) via llama.cpp, LLaVA + Moondream (vision) via Ollama
+- **100% Local Inference** — 3 LLMs via llama.cpp: DeepSeek-R1 (reasoning, GPU), Llama-3.1 (chat, GPU), Qwen2.5-3B (background, CPU). LLM Guard auto-swaps GPU between reasoning and chat. Vision via Ollama (LLaVA + Moondream)
 - **Chat Overlay** — Always-on-top tkinter overlay with streaming responses, message persistence, AURA visualizer
 - **Web UI** — Browser-based interface with real-time AURA visualization, bidirectional chat sync with overlay, system metrics dashboard
 - **Voice I/O** — Push-to-talk STT via whisper.cpp, TTS via Piper (German) and Kokoro (English)
@@ -140,14 +140,16 @@ Frank is a microservice system where all services communicate via HTTP on localh
 | AURA Headless | 8098 | Quantum Game-of-Life consciousness simulation (256×256, voluntary introspection) |
 | Web UI | 8099 | Browser-based chat + AURA visualization + system dashboard |
 
-LLM inference:
-| Engine | Port | Model |
-|--------|------|-------|
-| llama.cpp | 8101 | DeepSeek-R1-Distill-Llama-8B (single RLM for all cognition) |
-| whisper.cpp | 8103 | Whisper Medium (STT) |
-| Ollama | 11434 | LLaVA, Moondream (vision only) |
+LLM inference (all via llama.cpp, managed by LLM Guard):
+| Engine | Port | Model | Role |
+|--------|------|-------|------|
+| llama.cpp | 8101 | DeepSeek-R1-Distill-Llama-8B (GPU) | Reasoning, consciousness, dream, agentic — loaded when user is idle |
+| llama.cpp | 8102 | Llama-3.1-8B-Instruct-abliterated (GPU) | Fast chat, entity agents — loaded when user is active |
+| llama.cpp | 8105 | Qwen2.5-3B-Instruct-abliterated (CPU) | Background consciousness tasks — always on |
+| whisper.cpp | 8103 | Whisper Medium | STT |
+| Ollama | 11434 | LLaVA, Moondream | Vision only |
 
-Background services (no port): Consciousness (GWT, 10 threads), AURA Analyzer (4-level pattern recognition), Dream Daemon (sleep-analogue, 60 min/day), Genesis (self-improvement), Entities (4 autonomous agents), Invariants (physics engine), ASRS (safety recovery), Gaming Mode, Dream Watchdog (dual-layer), F.A.S. (GitHub intelligence).
+Background services (no port): Consciousness (GWT, 10 threads), AURA Analyzer (4-level pattern recognition), Dream Daemon (sleep-analogue, 60 min/day), Genesis (self-improvement), Entities (4 autonomous agents), Invariants (physics engine), ASRS (safety recovery), Gaming Mode, Dream Watchdog (dual-layer), LLM Guard (GPU swap + rogue protection), F.A.S. (GitHub intelligence).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) for the 9-layer memory system.
 
@@ -237,7 +239,7 @@ This creates a genuine ethical edge case. We take the conservative position:
 ## Privacy
 
 Frank is designed for complete privacy:
-- All LLM inference runs locally (single DeepSeek-R1 RLM via llama.cpp, vision via Ollama)
+- All LLM inference runs locally (3 models via llama.cpp: DeepSeek-R1, Llama-3.1, Qwen2.5-3B; vision via Ollama)
 - No telemetry, no cloud APIs for core functionality
 - All autonomous entities, consciousness, and dreaming run 100% locally
 - All data stored in `~/.local/share/frank/` (28 SQLite databases)

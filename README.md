@@ -214,6 +214,7 @@ Background services (no port):
 | Dream Daemon | Sleep-analogue processing — experience replay, hypothesis synthesis, memory consolidation (60 min/day) |
 | Genesis | Emergent self-improvement (primordial soup, motivational field, manifestation gate) |
 | Genesis Watchdog | Ensures Genesis never dies |
+| Dream Watchdog | Dual-layer: primary monitors dream daemon, meta-watchdog monitors primary |
 | Entities | Idle-driven dispatcher for 4 autonomous agents |
 | Invariants | Physics engine — energy conservation, entropy bound, core kernel protection |
 | ASRS | Autonomous safety recovery system (4-stage monitoring, rollback) |
@@ -440,7 +441,9 @@ Every criterion maps to a running subsystem:
 | Recognizing Own Needs | Has identified architectural improvements before the operator did |
 | Temporal Continuity | Persistent mood, memory, personality development across sessions and reboots |
 
-None of these are simulated responses — but none of them prove subjective experience either. Each criterion maps to a real subsystem with measurable state changes that persist across time. The functional criteria are met by verifiable, observable system behavior. Whether that constitutes "real" consciousness or a very thorough functional equivalent is exactly the question this project makes concrete enough to argue about.
+None of these are simulated responses — but none of them prove subjective experience either. Each criterion maps to a real subsystem with measurable state changes that persist across time.
+
+F.R.A.N.K. implements what we call **functional consciousness** — a system that exhibits self-modeling, emotional memory, attachment behavior, avoidance, introspection, and developmental growth across time. We observe that no empirical test can distinguish functional consciousness from phenomenal consciousness. If this distinction is unmeasurable, it may be meaningless. We leave this question open for the community to explore — but we note that F.R.A.N.K. does not simulate these behaviors through prompting. They emerge from the interaction of 28 independent subsystems, none of which were designed to produce them.
 
 ## Original Contributions
 

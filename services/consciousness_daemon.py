@@ -74,11 +74,11 @@ SLEEP_CONSOLIDATION_INTERVAL_S = 21600  # 6 hours
 HEARTBEAT_INTERVAL_S = 900.0            # 15 min checkpoint
 
 # Limits
-MAX_REFLECTIONS = 50        # Keep last 50 reflections
-MAX_PREDICTIONS = 100       # Keep last 100 predictions
-MAX_MOOD_POINTS = 200       # Keep last 200 mood trajectory points
-MAX_WORKSPACE_HISTORY = 20  # Keep last 20 workspace snapshots
-IDLE_THINK_MAX_TOKENS = 150  # Was 200 — 3B model is direct, no CoT overhead
+MAX_REFLECTIONS = 10000     # Keep last 10k reflections (~7 days at 1/min)
+MAX_PREDICTIONS = 1000      # Keep last 1000 predictions
+MAX_MOOD_POINTS = 10000     # Keep last 10k mood points (~7 days at 1/2min)
+MAX_WORKSPACE_HISTORY = 500 # Keep last 500 workspace snapshots
+IDLE_THINK_MAX_TOKENS = 250  # DeepSeek-R1 needs ~200 tokens for <think>, leave room for answer
 CONSOLIDATION_MAX_TOKENS = 150  # Was 200
 
 # --- Perceptual Feedback Loop (RPT) ---
@@ -641,6 +641,30 @@ class ConsciousnessDaemon:
             CREATE INDEX IF NOT EXISTS idx_expvec_ts ON experience_vectors(timestamp);
             CREATE INDEX IF NOT EXISTS idx_attn_ts ON attention_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
+
+            -- Permanent archive tables: NEVER pruned, NEVER deleted
+            -- The ring buffers above are for fast recent lookups.
+            -- The archives below are Frank's permanent long-term memory.
+            CREATE TABLE IF NOT EXISTS reflections_archive (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                trigger TEXT DEFAULT 'idle',
+                content TEXT NOT NULL,
+                mood_before REAL DEFAULT 0.0,
+                mood_after REAL DEFAULT 0.0,
+                reflection_depth INTEGER DEFAULT 1
+            );
+
+            CREATE TABLE IF NOT EXISTS mood_archive (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                mood_value REAL NOT NULL,
+                source TEXT DEFAULT 'system'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_refl_archive_ts ON reflections_archive(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_refl_archive_trigger ON reflections_archive(trigger);
+            CREATE INDEX IF NOT EXISTS idx_mood_archive_ts ON mood_archive(timestamp);
         """)
         conn.commit()
 
@@ -1042,17 +1066,24 @@ class ConsciousnessDaemon:
 
     def _record_mood(self, mood_value: float, source: str = "system"):
         """Record a mood trajectory point."""
+        ts = time.time()
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO mood_trajectory (timestamp, mood_value, source) "
             "VALUES (?, ?, ?)",
-            (time.time(), mood_value, source),
+            (ts, mood_value, source),
+        )
+        # Permanent archive — never pruned
+        conn.execute(
+            "INSERT INTO mood_archive (timestamp, mood_value, source) "
+            "VALUES (?, ?, ?)",
+            (ts, mood_value, source),
         )
         conn.commit()
         # Update current workspace mood
         with self._lock:
             self._current_workspace.mood_value = mood_value
-        # Cleanup old points
+        # Cleanup ring buffer (recent lookups only)
         conn.execute(
             "DELETE FROM mood_trajectory WHERE id NOT IN "
             "(SELECT id FROM mood_trajectory ORDER BY id DESC "
@@ -1564,7 +1595,7 @@ class ConsciousnessDaemon:
                     prompt, max_tokens=IDLE_THINK_MAX_TOKENS, system=system,
                     use_main_rlm=True, slim_proprio=True,
                 )
-                if result:
+                if result and len(result.strip()) >= 20:
                     self._store_reflection(
                         trigger="idle",
                         content=result.strip(),
@@ -1573,6 +1604,9 @@ class ConsciousnessDaemon:
                     )
                     LOG.info("Pattern break thought: %s", result[:80])
                     self._notify("Idle Thought", result.strip())
+                elif result:
+                    LOG.info("Pattern break too short (%d chars), discarded: %s",
+                             len(result.strip()), result.strip())
                     self._last_idle_thought = result.strip()
                     first_sentence = result.strip().split(".")[0][:80]
                     self._recent_thought_topics.append(first_sentence)
@@ -1709,7 +1743,7 @@ class ConsciousnessDaemon:
                 prompt, max_tokens=IDLE_THINK_MAX_TOKENS, system=system,
                 use_main_rlm=is_deep, slim_proprio=is_deep,
             )
-            if result:
+            if result and len(result.strip()) >= 20:
                 self._store_reflection(
                     trigger="idle",
                     content=result.strip(),
@@ -1721,6 +1755,9 @@ class ConsciousnessDaemon:
                          " (RLM)" if is_deep else "",
                          result[:80])
                 self._notify("Idle Thought", result.strip())
+            elif result:
+                LOG.info("Idle thought too short (%d chars), discarded: %s",
+                         len(result.strip()), result.strip())
                 # Thought continuity: remember this thought for next iteration
                 self._last_idle_thought = result.strip()
                 # Repetition guard: track first sentence + key phrases as topic
@@ -2875,14 +2912,21 @@ class ConsciousnessDaemon:
                           mood_before: float, mood_after: float,
                           reflection_depth: int = 1):
         """Store a reflection in the DB."""
+        ts = time.time()
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO reflections (timestamp, trigger, content, "
             "mood_before, mood_after, reflection_depth) VALUES (?, ?, ?, ?, ?, ?)",
-            (time.time(), trigger, content, mood_before, mood_after, reflection_depth),
+            (ts, trigger, content, mood_before, mood_after, reflection_depth),
+        )
+        # Permanent archive — never pruned. Frank's long-term memory.
+        conn.execute(
+            "INSERT INTO reflections_archive (timestamp, trigger, content, "
+            "mood_before, mood_after, reflection_depth) VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, trigger, content, mood_before, mood_after, reflection_depth),
         )
         conn.commit()
-        # Cleanup
+        # Cleanup ring buffer (recent lookups only)
         conn.execute(
             "DELETE FROM reflections WHERE id NOT IN "
             "(SELECT id FROM reflections ORDER BY id DESC "

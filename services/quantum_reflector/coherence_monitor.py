@@ -35,6 +35,7 @@ ENERGY_HISTORY_SIZE = 200    # Rolling Window für Trend-Erkennung
 TREND_WINDOW = 20            # Letzte N Werte für Trend-Berechnung
 IMPROVEMENT_THRESHOLD = 0.95 # Energy < 95% des Moving Average = Verbesserung
 DEGRADATION_THRESHOLD = 1.10 # Energy > 110% des Moving Average = Verschlechterung
+PERIODIC_SOLVE_INTERVAL = 300.0  # Force re-solve every 5min even without state change
 
 
 @dataclass
@@ -76,6 +77,7 @@ class CoherenceMonitor:
         self._last_result: Optional[AnnealResult] = None
         self._last_snapshot: Optional[CoherenceSnapshot] = None
         self._solve_count = 0
+        self._last_solve_time: float = 0.0
 
         # DB setup
         self._ensure_schema()
@@ -337,6 +339,7 @@ class CoherenceMonitor:
         # Erster Solve sofort
         try:
             self.solve_once()
+            self._last_solve_time = time.time()
             LOG.info("Initial solve complete: energy=%.2f", self._last_snapshot.energy)
         except Exception as exc:
             LOG.error("Initial solve failed: %s", exc, exc_info=True)
@@ -354,12 +357,21 @@ class CoherenceMonitor:
                 # State lesen
                 new_state = self.builder.read_frank_state()
 
-                # Nur solven wenn sich etwas geändert hat
-                if not self.builder.state_changed(new_state):
+                # Solve wenn State sich geändert hat ODER periodisches Intervall erreicht
+                time_since_solve = time.time() - self._last_solve_time
+                state_changed = self.builder.state_changed(new_state)
+                periodic_due = time_since_solve >= PERIODIC_SOLVE_INTERVAL
+
+                if not state_changed and not periodic_due:
                     continue
 
-                LOG.debug("State changed, solving...")
+                if periodic_due and not state_changed:
+                    LOG.debug("Periodic re-solve (%.0fs since last)", time_since_solve)
+                else:
+                    LOG.debug("State changed, solving...")
+
                 snapshot = self.solve_once()
+                self._last_solve_time = time.time()
 
                 # Trend prüfen und ggf. Callback feuern
                 ma = self.moving_average

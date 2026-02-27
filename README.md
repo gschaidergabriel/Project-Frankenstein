@@ -13,7 +13,7 @@
 
 Built by one person with zero programming experience, using Claude as co-developer. 76k+ lines in 2 months. Derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf). [Read the full story.](ABOUT.md)
 
-**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
+**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[Parameter Architecture](papers/PARAMETER_ARCHITECTURE.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
 
 An AI that thinks when you're not talking to it, dreams when it's idle, feels its own hardware, and evolves its personality over months — running entirely on your machine.
 
@@ -225,6 +225,7 @@ Key environment variables:
 | Memory system (9 layers) | [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) |
 | Functional consciousness argument | [CONSCIOUSNESS.md](CONSCIOUSNESS.md) |
 | Original contributions | [CONTRIBUTIONS.md](CONTRIBUTIONS.md) |
+| Parameter architecture | [Why Mood, E-PQ, and AURA — theory, constraints, positioning](papers/PARAMETER_ARCHITECTURE.md) |
 | GRF → Frank bridge | [Formal mapping: 8 GRF principles → specific code](papers/GRF_IMPLEMENTATION_BRIDGE.md) |
 | Alignment Is Misaligned | [Why Containment Fails and Coevolution Is the Only Path](papers/ALIGNMENT_IS_MISALIGNED.md) |
 | Use cases catalog | [USECASES.md](USECASES.md) |

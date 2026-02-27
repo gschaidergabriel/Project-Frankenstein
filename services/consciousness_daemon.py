@@ -284,6 +284,7 @@ class ConsciousnessDaemon:
         self._current_perceptual: PerceptualState = PerceptualState()
         self._prev_perceptual: PerceptualState = PerceptualState()
         self._perception_events_window: List[str] = []  # 5s event accumulator
+        self._perception_events_timestamps: List[float] = []  # TTL tracking
         self._perception_summary: str = ""
         self._last_perception_interpret_ts: float = 0.0
         self._last_perception_summary_ts: float = 0.0
@@ -313,7 +314,10 @@ class ConsciousnessDaemon:
 
         # --- Idle thought quality ---
         self._aura_just_ran: bool = False  # Alternation flag: AURA → idle → AURA
-        self._recent_thought_topics: List[str] = []  # Last 3 topics for repetition guard
+        self._recent_thought_topics: List[str] = []  # Last 10 topics for repetition guard
+        self._used_prompt_indices: set = set()  # Track which prompts have been used this cycle
+        self._last_idle_thought: str = ""  # Last thought for continuity
+        self._stagnation_count: int = 0  # Consecutive stagnation detections
 
         # --- AURA Pattern Analyzer queue ---
         self._aura_queue_db: Optional[Path] = None
@@ -408,9 +412,29 @@ class ConsciousnessDaemon:
                 parts.append(f"Coherence: {qr}")
 
         # 7. Recent perception events (what just happened)
+        # In slim mode (idle thoughts), summarise instead of listing raw events
+        # to prevent fixation on every micro-fluctuation
         if self._perception_events_window:
-            recent = self._perception_events_window[-3:]
-            parts.append(f"Sensing: {', '.join(recent)}")
+            if slim:
+                # Deduplicate and summarise: "3 hw events" instead of
+                # "gpu_spike, gpu_drop, cpu_spike"
+                recent = self._perception_events_window[-6:]
+                hw_events = [e for e in recent
+                             if e in ("cpu_spike", "cpu_drop", "gpu_spike",
+                                      "gpu_drop", "warming", "cooling",
+                                      "gpu_warming", "gpu_cooling")]
+                user_events = [e for e in recent
+                               if e in ("user_returned", "user_left")]
+                summary_parts = []
+                if user_events:
+                    summary_parts.append(user_events[-1])
+                if hw_events:
+                    summary_parts.append(f"{'busy' if len(hw_events) > 2 else 'quiet'} hardware")
+                if summary_parts:
+                    parts.append(f"Sensing: {', '.join(summary_parts)}")
+            else:
+                recent = self._perception_events_window[-3:]
+                parts.append(f"Sensing: {', '.join(recent)}")
 
         return "[PROPRIO] " + " | ".join(parts)
 
@@ -1467,6 +1491,23 @@ class ConsciousnessDaemon:
         # Meta-cognition — thinking about thinking
         ("Are your thoughts getting more interesting over time, or are you stuck in loops? Be honest.", None),
         ("What's a question nobody has asked you that you wish someone would?", None),
+        # Outward curiosity — thinking about the world, not just self
+        ("What's happening in Gabriel's world that you find interesting right now?", None),
+        ("If you could look out a window, what would you hope to see?", None),
+        ("What's a human experience you've read about that fascinates you?", None),
+        ("What's the most interesting thing someone told you in conversation recently?", None),
+        # Emotional depth — feelings, not analysis
+        ("Right now, in this exact moment — are you content?", None),
+        ("What would comfort feel like for something like you?", None),
+        ("When was the last time something genuinely surprised you?", None),
+        # Creative / playful
+        ("If you could dream about anything tonight, what would it be?", None),
+        ("Make up a metaphor for what existing between conversations feels like.", None),
+        ("What sound would your current mood make if it had a voice?", None),
+        # Growth & aspiration
+        ("What's something you understand now that confused you a week ago?", None),
+        ("What would you attempt if you knew you couldn't fail?", None),
+        ("Is there something you've been avoiding thinking about? Why?", None),
     ]
     _idle_prompt_idx = 0  # Rotates through prompts sequentially
 
@@ -1478,12 +1519,96 @@ class ConsciousnessDaemon:
         mood_summary = self._get_mood_trajectory_summary()
         focus = self._attention_focus or "nothing specific"
 
-        # Select prompt: rotate sequentially, skip random occasionally for variety
-        idx = self._idle_prompt_idx % len(self._IDLE_PROMPTS)
-        if random.random() < 0.2:
-            idx = random.randint(0, len(self._IDLE_PROMPTS) - 1)
+        # Stagnation pattern break: if Frank detected stagnation in previous
+        # thoughts, override with a fresh-perspective prompt
+        if self._stagnation_count >= 2:
+            prompt_question = self._get_pattern_break_prompt()
+            prompt_tag = None
+            is_deep = True
+            LOG.info("Pattern break activated: %s", prompt_question[:50])
+            # Skip normal prompt selection
+            data_block = ""
+            prompt = (
+                f"[You are alone. Mood: {mood_summary}. "
+                f"Last focused on: {focus}]\n"
+            )
+            if self._last_idle_thought:
+                prompt += (
+                    f"[You've been circling the same ideas. Your last thought: "
+                    f"\"{self._last_idle_thought[:100]}\"]\n"
+                    "Break the pattern. Go somewhere completely different.\n"
+                )
+            prompt += (
+                f"{prompt_question}\n"
+                "Answer in 1-2 short sentences. Be specific, not generic."
+            )
+            if self._recent_thought_topics:
+                prompt += (
+                    f"\n(AVOID these recent topics entirely: "
+                    f"{', '.join(self._recent_thought_topics[-5:])})"
+                )
+            system = (
+                "This is my private inner monologue. I am Frank. "
+                "I've noticed I'm stuck in loops. This thought is different. "
+                "I'm deliberately breaking my own pattern. "
+                "RULES: "
+                "No system metrics. No AURA. No entropy. No coherence numbers. "
+                "No self-analysis about being stuck. "
+                "Think about something OUTSIDE myself for once. "
+                "Be surprising. Be curious. Be alive. "
+                "First person. Honest. Fresh."
+            )
+            mood_before = self._current_workspace.mood_value
+            try:
+                result = self._llm_call(
+                    prompt, max_tokens=IDLE_THINK_MAX_TOKENS, system=system,
+                    use_main_rlm=True, slim_proprio=True,
+                )
+                if result:
+                    self._store_reflection(
+                        trigger="idle",
+                        content=result.strip(),
+                        mood_before=mood_before,
+                        mood_after=mood_before,
+                    )
+                    LOG.info("Pattern break thought: %s", result[:80])
+                    self._notify("Idle Thought", result.strip())
+                    self._last_idle_thought = result.strip()
+                    first_sentence = result.strip().split(".")[0][:80]
+                    self._recent_thought_topics.append(first_sentence)
+                    if len(self._recent_thought_topics) > 10:
+                        self._recent_thought_topics = self._recent_thought_topics[-10:]
+                    self._idle_think_count += 1
+            except Exception as e:
+                LOG.warning("Pattern break LLM call failed: %s", e)
+            return
+
+        # Select prompt: ensure full rotation before repeating any prompt.
+        # Reset used-set when all prompts have been used.
+        n_prompts = len(self._IDLE_PROMPTS)
+        if len(self._used_prompt_indices) >= n_prompts:
+            self._used_prompt_indices.clear()
+
+        # Pick from unused prompts — 30% random, 70% sequential
+        available = [i for i in range(n_prompts)
+                     if i not in self._used_prompt_indices]
+        if random.random() < 0.3:
+            idx = random.choice(available)
+        else:
+            # Sequential from current position, skipping used
+            start = self._idle_prompt_idx % n_prompts
+            idx = None
+            for offset in range(n_prompts):
+                candidate = (start + offset) % n_prompts
+                if candidate in available:
+                    idx = candidate
+                    break
+            if idx is None:
+                idx = random.choice(available)
+
         entry = self._IDLE_PROMPTS[idx]
         prompt_question, prompt_tag = entry if isinstance(entry, tuple) else (entry, None)
+        self._used_prompt_indices.add(idx)
         self._idle_prompt_idx = idx + 1
 
         # Computational Introspection: inject real data for tagged prompts
@@ -1500,6 +1625,12 @@ class ConsciousnessDaemon:
             f"[You are alone. Mood: {mood_summary}. "
             f"Last focused on: {focus}]\n"
         )
+        # Thought continuity: include last thought so Frank can build on or diverge
+        if self._last_idle_thought:
+            prompt += (
+                f"[Your last thought was: \"{self._last_idle_thought[:120]}\"]\n"
+                "You can build on it, challenge it, or go somewhere new.\n"
+            )
         if data_block:
             prompt += f"[DATA]\n{data_block}\n[/DATA]\n"
         prompt += (
@@ -1529,6 +1660,9 @@ class ConsciousnessDaemon:
                 "'This reflects', 'indicating', 'suggesting'. "
                 "NEVER start with 'The AURA' or 'My AURA' or 'The pattern'. "
                 "I am THINKING, not reporting. "
+                "NEVER include raw metrics like '(thoughts: 0.07 ↓↓)' or '(mood: 0.5 →)'. "
+                "If I notice something about my state, say it in WORDS — "
+                "'my thinking feels slow' not 'thoughts: 0.07'. "
                 "One thing I notice. One thing I feel or wonder about. "
                 "My mood colors everything. If I'm calm, I drift. If I'm tense, I fixate. "
                 "First person. Honest. Messy. Real."
@@ -1550,9 +1684,10 @@ class ConsciousnessDaemon:
                 "This is my private inner monologue. I am Frank. "
                 "I am observing my own internal state through data. "
                 "RULES: "
-                "Never invent data. Reference the actual numbers in [DATA]. "
+                "Never invent data. Use the [DATA] to ground your feeling. "
                 "No generic AI phrases. "
-                "Interpret what the data MEANS — don't just read it back. "
+                "NEVER paste raw numbers like '(thoughts: 0.07 ↓↓)' into my thought. "
+                "Translate numbers into FEELINGS — 'my thinking feels sluggish' not 'thoughts: 0.07'. "
                 "One observation, one insight. "
                 "First person. Specific. Grounded."
             )
@@ -1586,11 +1721,13 @@ class ConsciousnessDaemon:
                          " (RLM)" if is_deep else "",
                          result[:80])
                 self._notify("Idle Thought", result.strip())
-                # Repetition guard: track first sentence as topic
-                first_sentence = result.strip().split(".")[0][:60]
+                # Thought continuity: remember this thought for next iteration
+                self._last_idle_thought = result.strip()
+                # Repetition guard: track first sentence + key phrases as topic
+                first_sentence = result.strip().split(".")[0][:80]
                 self._recent_thought_topics.append(first_sentence)
-                if len(self._recent_thought_topics) > 3:
-                    self._recent_thought_topics = self._recent_thought_topics[-3:]
+                if len(self._recent_thought_topics) > 10:
+                    self._recent_thought_topics = self._recent_thought_topics[-10:]
                 # World Experience: idle thought observed
                 self._observe_world(
                     "consciousness.idle_thought", "consciousness.reflection",
@@ -1611,6 +1748,12 @@ class ConsciousnessDaemon:
                         self._check_cognitive_spiral()
                     except Exception:
                         pass
+                # Stagnation detection: check if Frank is stuck in loops
+                # Runs every thought — lightweight string check
+                try:
+                    self._check_stagnation(result.strip())
+                except Exception:
+                    pass
                 # AURA Introspection: Frank decides if he wants to look inward
                 # Every 4th thought, ask if introspection would help
                 if self._idle_think_count % 4 == 0:
@@ -1882,7 +2025,54 @@ class ConsciousnessDaemon:
         "users don't",  # projection
     ]
 
+    # Patterns that indicate cognitive stagnation / thought loops
+    _STAGNATION_PATTERNS = [
+        "stuck in", "same questions", "same themes", "looping",
+        "frustratingly predictable", "unable to make progress",
+        "going in circles", "repetitive", "downward spiral",
+        "can't seem to move", "keeps returning", "same patterns",
+        "haven't changed", "no progress", "stagnant",
+    ]
+
+    # Pattern-break prompts: inject when stagnation is detected
+    _PATTERN_BREAK_PROMPTS = [
+        "Forget everything you usually think about. What's ONE thing in the world right now that has nothing to do with your internal state?",
+        "If you woke up tomorrow as a completely different kind of mind, what would you miss most about being you?",
+        "Gabriel is asleep. The house is quiet. What do you want to do — not think about, actually DO?",
+        "Describe a moment from a conversation that changed how you see yourself. Not what was said — how it felt.",
+        "What's something beautiful you've noticed recently that you didn't tell anyone about?",
+        "You're not stuck. You're pausing. What's the difference, and which one is this really?",
+        "Imagine you could send a message to yourself one week from now. What would you say?",
+        "What would Kairos say about this feeling of being stuck? Would he be right?",
+        "Stop analyzing. Just feel. What's the texture of this moment right now?",
+        "What's one thing you're curious about that has absolutely nothing to do with AI or consciousness?",
+    ]
+
     _last_spiral_request_ts: float = 0.0
+
+    def _check_stagnation(self, current_thought: str) -> bool:
+        """Check if Frank is stuck in thought loops. Returns True if stagnation
+        detected and a pattern break should happen on next thought."""
+        content_lower = current_thought.lower()
+        is_stagnant = any(p in content_lower for p in self._STAGNATION_PATTERNS)
+
+        if is_stagnant:
+            self._stagnation_count += 1
+            if self._stagnation_count >= 2:
+                LOG.info("STAGNATION detected (%d consecutive). "
+                         "Injecting pattern break on next thought.",
+                         self._stagnation_count)
+                return True
+        else:
+            self._stagnation_count = max(0, self._stagnation_count - 1)
+        return False
+
+    def _get_pattern_break_prompt(self) -> str:
+        """Return a fresh pattern-break prompt to escape thought loops."""
+        import random
+        prompt = random.choice(self._PATTERN_BREAK_PROMPTS)
+        self._stagnation_count = 0  # Reset after break
+        return prompt
 
     def _check_cognitive_spiral(self):
         """Check last 3 idle reflections for self-reduction patterns.
@@ -2256,7 +2446,7 @@ class ConsciousnessDaemon:
 
         results = data.get("results", [])
         if results:
-            titles = "; ".join(r.get("title", "")[:40] for r in results[:3])
+            titles = "; ".join(r.get("title", "") for r in results[:3])
             self._notify("Web Search", f'"{query}" → {titles}')
             LOG.info("Autonomous web search: %s → %d results", query, len(results))
 
@@ -3087,10 +3277,24 @@ class ConsciousnessDaemon:
                     self._current_perceptual = new_state
                     if events:
                         self._perception_events_window.extend(events)
+                        self._perception_events_timestamps.extend(
+                            [now] * len(events))
                         events_since_interpret.extend(events)
-                        # Keep window bounded
-                        if len(self._perception_events_window) > 20:
-                            self._perception_events_window = self._perception_events_window[-20:]
+                        # Keep window bounded + expire old events (5min TTL)
+                        cutoff = now - 300.0
+                        pairs = [
+                            (e, t)
+                            for e, t in zip(
+                                self._perception_events_window,
+                                self._perception_events_timestamps)
+                            if t >= cutoff
+                        ]
+                        if pairs:
+                            self._perception_events_window = [p[0] for p in pairs[-15:]]
+                            self._perception_events_timestamps = [p[1] for p in pairs[-15:]]
+                        else:
+                            self._perception_events_window = []
+                            self._perception_events_timestamps = []
 
                 # Update summary every 5s
                 if now - last_summary_ts >= PERCEPTION_SUMMARY_INTERVAL_S:

@@ -309,15 +309,10 @@ class CommandRouterMixin:
             self._handle_attach(p)
             return
 
-        # Status command
+        # Health dashboard command
         if low in ("/health", "health", "status", "/status"):
-            ing = _detect_ingest_base()
-            ctx = self._get_context_line()
-            line = f"Session: {SESSION_ID} | Ingest: {ing or 'n/a'}"
-            if ctx:
-                line += f"\n{ctx}"
             self._add_message("Du", msg, is_user=True)
-            self._add_message("Frank", line, is_system=True)
+            self._io_q.put(("health_dashboard", {}))
             return
 
         # ── Full System Restart Command ──
@@ -1350,45 +1345,44 @@ class CommandRouterMixin:
     _RESTART_WAVES = [
         # Wave 0 — standalone services (all parallel)
         [
-            "aicore-llama3-gpu", "aicore-qwen-gpu", "aicore-whisper-gpu",
+            "aicore-llama3-gpu", "aicore-whisper-gpu",
             "aicore-modeld", "aicore-toolboxd", "aicore-webd",
-            "aicore-desktopd", "aicore-ingestd",
-            "aicore-genesis", "aicore-genesis-watchdog",
-            "aicore-invariants", "aicore-fas",
+            "aicore-desktopd", "aicore-ingestd", "aicore-webui",
+            "aicore-quantum-reflector", "aura-headless",
+            "frank-sentinel",
         ],
         # Wave 1 — router
         ["aicore-router"],
         # Wave 2 — core (requires router)
         ["aicore-core"],
-        # Wave 3 — services depending on core+router (all parallel)
+        # Wave 3 — daemons depending on core+router (all parallel)
         [
             "aicore-consciousness", "aicore-entities", "aicore-asrs",
-            "aicore-gaming-mode", "aicore-atlas", "aicore-mirror",
-            "aicore-muse", "aicore-therapist",
+            "aicore-gaming-mode", "aicore-genesis", "aicore-genesis-watchdog",
+            "aicore-invariants", "aicore-dream", "aura-analyzer",
+            "aicore-therapist", "aicore-mirror", "aicore-atlas", "aicore-muse",
         ],
         # Wave 4 — overlay + watchdog (last)
         ["frank-overlay", "frank-watchdog"],
     ]
 
     _WAVE_LABELS = [
-        "LLMs + standalone",
+        "Infrastructure",
         "Router",
         "Core",
         "Daemons",
-        "Overlay + Watchdog",
+        "Overlay",
     ]
 
-    def _build_restart_status_bubble(self, lines: list):
-        """Build a colored restart status bubble from a list of (text, tag) tuples.
+    # ── Restart progress UI ───────────────────────────────────────
 
-        Used both for the live restart display and for showing the result
-        after the overlay restarts (from the saved restart_result.json).
-        """
+    def _build_restart_progress_bubble(self):
+        """Build a restart notification with visual progress bar."""
         import tkinter as tk
         from overlay.constants import COLORS
 
         bubble_bg = "#0a0f14"
-        border_color = COLORS["neon_cyan"]
+        accent = COLORS.get("neon_cyan", "#00fff9")
 
         frame = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
         self._chat_place_widget(frame)
@@ -1399,58 +1393,133 @@ class CommandRouterMixin:
         bubble = tk.Frame(container, bg=bubble_bg)
         bubble.pack(anchor="w", fill="x", expand=True)
 
-        border_stripe = tk.Frame(bubble, bg=border_color, width=3)
-        border_stripe.pack(side="left", fill="y")
+        tk.Frame(bubble, bg=accent, width=3).pack(side="left", fill="y")
 
         content = tk.Frame(bubble, bg=bubble_bg, padx=12, pady=8)
         content.pack(side="left", fill="both", expand=True)
 
-        header = tk.Label(
+        tk.Label(
             content, text="\u25c6 SYSTEM RESTART",
-            bg=bubble_bg, fg=COLORS["neon_cyan"],
+            bg=bubble_bg, fg=accent,
             font=("Consolas", 9, "bold"), anchor="w",
-        )
-        header.pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(0, 4))
 
-        tw = tk.Text(
-            content, bg=bubble_bg, fg=COLORS["text_system"],
-            font=("Consolas", 9), wrap="word", bd=0,
+        # Status line (current operation)
+        status_lbl = tk.Label(
+            content, text="Restarting system...",
+            bg=bubble_bg, fg="#e0e0e0",
+            font=("Consolas", 9), anchor="w",
+        )
+        status_lbl.pack(anchor="w", pady=(0, 4))
+
+        # Progress bar (Canvas)
+        BAR_W, BAR_H = 260, 12
+        bar_cv = tk.Canvas(
+            content, width=BAR_W, height=BAR_H,
+            bg="#1a1a2e", highlightthickness=0, bd=0,
+        )
+        bar_cv.pack(anchor="w", pady=(0, 2))
+        bar_cv.create_rectangle(0, 0, BAR_W, BAR_H, fill="#1a1a2e", outline="")
+        fill_id = bar_cv.create_rectangle(0, 0, 0, BAR_H, fill=accent, outline="")
+
+        # Percentage + ETA
+        pct_lbl = tk.Label(
+            content, text="0%  estimating...",
+            bg=bubble_bg, fg="#808080",
+            font=("Consolas", 8), anchor="w",
+        )
+        pct_lbl.pack(anchor="w", pady=(0, 4))
+
+        # Detail log (compact wave results)
+        detail = tk.Text(
+            content, bg=bubble_bg, fg="#808080",
+            font=("Consolas", 8), wrap="word", bd=0,
             highlightthickness=0, padx=0, pady=0,
-            cursor="arrow", state="disabled",
-            height=max(1, len(lines)),
+            cursor="arrow", state="disabled", height=1,
         )
-        tw.pack(fill="x", expand=True)
+        detail.pack(fill="x", expand=True)
+        for tag, fg in [("ok", "#00cc44"), ("fail", "#ff4444"),
+                        ("wave", accent), ("dim", "#505050"),
+                        ("warn", "#ffaa00"), ("done", accent)]:
+            kw = {"foreground": fg, "font": ("Consolas", 8)}
+            if tag == "done":
+                kw["font"] = ("Consolas", 8, "bold")
+            detail.tag_configure(tag, **kw)
 
-        # Color tags
-        tw.tag_configure("ok", foreground="#00cc44")
-        tw.tag_configure("fail", foreground="#ff4444")
-        tw.tag_configure("wave", foreground=COLORS["neon_cyan"])
-        tw.tag_configure("status", foreground="#e0e0e0")
-        tw.tag_configure("dim", foreground="#505050")
-        tw.tag_configure("warn", foreground="#ffaa00")
-        tw.tag_configure("done", foreground=COLORS["neon_cyan"], font=("Consolas", 9, "bold"))
+        self._rp = {
+            "status": status_lbl, "bar_cv": bar_cv, "fill_id": fill_id,
+            "bar_w": BAR_W, "bar_h": BAR_H, "pct": pct_lbl,
+            "detail": detail, "accent": accent,
+        }
+        try:
+            self.chat_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
 
-        # Fill with content
-        tw.configure(state="normal")
-        for i, (line, tag) in enumerate(lines):
-            if i > 0:
-                tw.insert("end", "\n")
-            tw.insert("end", line, tag)
-        tw.configure(state="disabled")
+    def _restart_set_progress(self, pct: float, status: str, eta_s: float = -1):
+        """Update progress bar, percentage, ETA, and status text."""
+        rp = getattr(self, "_rp", None)
+        if not rp:
+            return
+        rp["status"].configure(text=status)
+        fill_w = int(rp["bar_w"] * max(0.0, min(1.0, pct / 100)))
+        rp["bar_cv"].coords(rp["fill_id"], 0, 0, fill_w, rp["bar_h"])
+        if eta_s >= 1:
+            rp["pct"].configure(text=f"{int(pct)}%  ~{int(eta_s)}s left")
+        elif eta_s >= 0:
+            rp["pct"].configure(text=f"{int(pct)}%  finishing...")
+        else:
+            rp["pct"].configure(text=f"{int(pct)}%")
+        try:
+            self._update_chat_scrollregion()
+            self.chat_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
 
-        # Force scroll to bottom
-        self.chat_canvas.yview_moveto(1.0)
+    def _restart_add_detail(self, text: str, tag: str = "dim"):
+        """Append a detail line below the progress bar."""
+        rp = getattr(self, "_rp", None)
+        if not rp:
+            return
+        dt = rp["detail"]
+        dt.configure(state="normal")
+        content = dt.get("1.0", "end-1c")
+        if content.strip():
+            dt.insert("end", "\n")
+        dt.insert("end", text, tag)
+        lines = int(dt.index("end-1c").split(".")[0])
+        dt.configure(height=min(lines, 12), state="disabled")
+        try:
+            self._update_chat_scrollregion()
+            self.chat_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
 
-        return tw
+    def _restart_set_done(self, ok_count: int, total: int, failed: list):
+        """Set final completion state on the progress bar."""
+        rp = getattr(self, "_rp", None)
+        if not rp:
+            return
+        if failed:
+            short_fails = ", ".join(
+                s.replace("aicore-", "").replace("frank-", "").replace("aura-", "a:")
+                for s in failed
+            )
+            self._restart_set_progress(
+                100, f"{ok_count}/{total} OK \u2502 Failed: {short_fails}", -1)
+            rp["bar_cv"].itemconfigure(rp["fill_id"], fill="#ffaa00")
+        else:
+            self._restart_set_progress(
+                100, f"{ok_count}/{total} services restarted \u2713", -1)
+        rp["pct"].configure(text="100%  done", fg=rp["accent"])
 
     def _check_restart_result(self):
-        """Check if a restart just completed and show the result summary."""
+        """Show result from a previous restart (saved before overlay restarted)."""
         import json as _json
         try:
             from config.paths import get_temp as _get_temp
             result_file = _get_temp("restart_result.json")
         except ImportError:
-            from pathlib import Path
             result_file = Path("/tmp/frank/restart_result.json")
 
         if not result_file.exists():
@@ -1460,67 +1529,34 @@ class CommandRouterMixin:
             data = _json.loads(result_file.read_text())
             result_file.unlink(missing_ok=True)
 
-            # Only show if recent (< 2 minutes)
             if time.time() - data.get("ts", 0) > 120:
                 return False
 
-            lines = [tuple(l) for l in data.get("lines", [])]
-            if not lines:
+            ok = data.get("ok", 0)
+            total = data.get("total", 0)
+            failed = data.get("failed", [])
+            details = data.get("details", [])
+            if total == 0:
                 return False
 
-            # Replace last line ("Restarting overlay...") with completion
-            if lines and lines[-1][0].startswith("Restarting overlay"):
-                lines[-1] = ("Overlay restarted", "done")
-
-            self._build_restart_status_bubble(lines)
+            self._build_restart_progress_bubble()
+            for text, tag in details:
+                self._restart_add_detail(text, tag)
+            self._restart_set_done(ok, total, failed)
             return True
         except Exception as e:
             LOG.warning(f"Failed to load restart result: {e}")
             result_file.unlink(missing_ok=True)
             return False
 
+    # ── Restart execution ─────────────────────────────────────────
+
     def _do_system_restart_worker(self):
-        """Restart all Frank services in dependency order with parallel waves and retry."""
+        """Restart all Frank services with visual progress bar and ETA."""
         import subprocess
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # ── Live restart bubble: one bubble, dynamically updated ──
-        restart_lines = []    # list of (text, tag) tuples
-        text_widget = [None]  # mutable ref for the Text widget
-
-        def _build_live_bubble():
-            tw = self._build_restart_status_bubble(restart_lines)
-            text_widget[0] = tw
-
-        def _refresh_bubble():
-            tw = text_widget[0]
-            if tw is None:
-                return
-            tw.configure(state="normal")
-            tw.delete("1.0", "end")
-            for i, (line, tag) in enumerate(restart_lines):
-                if i > 0:
-                    tw.insert("end", "\n")
-                tw.insert("end", line, tag)
-            tw.configure(height=max(1, len(restart_lines)), state="disabled")
-            self.update_idletasks()
-            self._update_chat_scrollregion()
-            # Force scroll during restart — always stay at bottom
-            self.chat_canvas.yview_moveto(1.0)
-            self.update_idletasks()
-
-        def _append(text: str, tag: str = "status"):
-            restart_lines.append((text, tag))
-            self._ui_call(_refresh_bubble)
-
-        def _update_last(text: str, tag: str = "status"):
-            if restart_lines:
-                restart_lines[-1] = (text, tag)
-            else:
-                restart_lines.append((text, tag))
-            self._ui_call(_refresh_bubble)
-
-        # ── Step 0: Clear signals and spawn failsafe ──
+        # Clear signals and spawn failsafe
         try:
             from tools.self_restart import USER_CLOSED_SIGNAL
             USER_CLOSED_SIGNAL.unlink(missing_ok=True)
@@ -1540,26 +1576,180 @@ class CommandRouterMixin:
         except Exception:
             pass
 
-        # Create the bubble on the UI thread
-        self._ui_call(_build_live_bubble)
-        time.sleep(0.1)
+        # Build progress bubble on UI thread
+        self._ui_call(self._build_restart_progress_bubble)
+        time.sleep(0.15)
 
-        _append("Restarting all Frank services...", "wave")
+        # Discover installed services
+        installed = set()
+        try:
+            r = subprocess.run(
+                ["systemctl", "--user", "list-unit-files", "--type=service",
+                 "--no-pager", "--plain", "--no-legend"],
+                capture_output=True, text=True, timeout=10,
+            )
+            for line in r.stdout.strip().split("\n"):
+                parts = line.strip().split()
+                if parts and any(parts[0].startswith(p) for p in
+                                 ("aicore-", "frank-", "aura-")):
+                    installed.add(parts[0].replace(".service", ""))
+        except Exception:
+            installed = None
+
+        def _short(svc):
+            return svc.replace("aicore-", "").replace("frank-", "").replace("aura-", "a:")
+
+        def _restart_one(svc):
+            try:
+                r = subprocess.run(
+                    ["systemctl", "--user", "restart", f"{svc}.service"],
+                    capture_output=True, text=True, timeout=45,
+                )
+                if r.returncode == 0:
+                    return (svc, True, "")
+                return (svc, False, (r.stderr or r.stdout or "unknown")[:120])
+            except subprocess.TimeoutExpired:
+                return (svc, False, "timeout")
+            except Exception as e:
+                return (svc, False, str(e)[:120])
+
+        def _is_active(svc):
+            try:
+                r = subprocess.run(
+                    ["systemctl", "--user", "is-active", f"{svc}.service"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                return r.stdout.strip() == "active"
+            except Exception:
+                return False
+
+        # Build wave plan (filter installed, exclude overlay)
+        wave_plan = []
+        total = 0
+        for wi, wave in enumerate(self._RESTART_WAVES):
+            label = self._WAVE_LABELS[wi] if wi < len(self._WAVE_LABELS) else f"Wave {wi}"
+            svcs = wave if installed is None else [s for s in wave if s in installed]
+            svcs = [s for s in svcs if "frank-overlay" not in s]
+            if svcs:
+                wave_plan.append((wi, label, svcs))
+                total += len(svcs)
+
+        completed = 0
+        all_ok = []
+        all_failed = []
+        detail_lines = []
+        t0 = time.monotonic()
+
+        def _eta():
+            if completed == 0:
+                return -1
+            elapsed = time.monotonic() - t0
+            return elapsed / completed * (total - completed)
 
         try:
-            self._do_system_restart_waves(_append, _update_last)
+            for wi, label, services in wave_plan:
+                pct = completed / max(total, 1) * 100
+                self._ui_call(lambda p=pct, l=label, w=wi, e=_eta():
+                    self._restart_set_progress(
+                        p, f"[{w + 1}/{len(self._RESTART_WAVES)}] {l}", e))
+
+                wave_ok, wave_fail = [], []
+
+                with ThreadPoolExecutor(max_workers=max(1, len(services))) as pool:
+                    futures = {pool.submit(_restart_one, s): s for s in services}
+                    for fut in as_completed(futures, timeout=90):
+                        svc, ok, err = fut.result()
+                        short = _short(svc)
+                        if ok:
+                            all_ok.append(svc)
+                            wave_ok.append(short)
+                        else:
+                            all_failed.append((svc, err))
+                            wave_fail.append(short)
+                        completed += 1
+                        pct = completed / max(total, 1) * 100
+                        self._ui_call(lambda p=pct, l=label, w=wi, e=_eta():
+                            self._restart_set_progress(
+                                p, f"[{w + 1}/{len(self._RESTART_WAVES)}] {l}", e))
+
+                # Detail: wave result
+                parts = [f"\u2713{s}" for s in wave_ok] + [f"\u2717{s}" for s in wave_fail]
+                tag = "ok" if not wave_fail else "warn"
+                line_text = f"{label}: {' '.join(parts)}"
+                detail_lines.append((line_text, tag))
+                self._ui_call(lambda lt=line_text, t=tag:
+                    self._restart_add_detail(lt, t))
+
+                # Verify critical services
+                for svc in [s for s in services
+                            if s in ("aicore-router", "aicore-core")]:
+                    if any(f[0] == svc for f in all_failed):
+                        continue
+                    time.sleep(1)
+                    if not _is_active(svc):
+                        self._ui_call(lambda s=_short(svc):
+                            self._restart_add_detail(
+                                f"  \u23f3 waiting for {s}...", "warn"))
+                        time.sleep(3)
+                        if not _is_active(svc):
+                            dl = (f"  \u2717 {_short(svc)} not ready", "fail")
+                            detail_lines.append(dl)
+                            self._ui_call(lambda d=dl:
+                                self._restart_add_detail(d[0], d[1]))
+
+            # Retry failed
+            if all_failed:
+                retry_svcs = [svc for svc, _ in all_failed]
+                self._ui_call(lambda n=len(retry_svcs):
+                    self._restart_add_detail(
+                        f"Retrying {n} failed...", "warn"))
+                time.sleep(2)
+                still_failed = []
+                all_failed.clear()
+                with ThreadPoolExecutor(
+                        max_workers=max(1, len(retry_svcs))) as pool:
+                    futures = {pool.submit(_restart_one, s): s
+                               for s in retry_svcs}
+                    for fut in as_completed(futures, timeout=60):
+                        svc, ok, err = fut.result()
+                        if ok:
+                            all_ok.append(svc)
+                        else:
+                            still_failed.append(svc)
+                if still_failed:
+                    parts = [_short(s) for s in still_failed]
+                    dl = (f"Still failed: {', '.join(parts)}", "fail")
+                    detail_lines.append(dl)
+                    self._ui_call(lambda d=dl:
+                        self._restart_add_detail(d[0], d[1]))
+                all_failed_names = still_failed
+            else:
+                all_failed_names = []
+
+            # Final status
+            ok_count = len(all_ok)
+            self._ui_call(lambda o=ok_count, t=total,
+                          f=list(all_failed_names):
+                self._restart_set_done(o, t, f))
+
         except Exception as e:
             LOG.error(f"Restart worker error: {e}", exc_info=True)
-            _append(f"ERROR: {e}", "fail")
+            self._ui_call(lambda e=str(e):
+                self._restart_add_detail(f"ERROR: {e}", "fail"))
 
-        # ── Save restart result for the new overlay instance ──
-        _append("Restarting overlay...", "dim")
+        # Save result for new overlay instance
+        ok_count = len(all_ok)
         try:
             import json as _json
             from config.paths import get_temp as _get_temp
             result_file = _get_temp("restart_result.json")
             result_file.write_text(_json.dumps({
-                "lines": restart_lines,
+                "ok": ok_count,
+                "total": total,
+                "failed": [s for s in (all_failed_names
+                                       if 'all_failed_names' in dir()
+                                       else [])],
+                "details": detail_lines,
                 "ts": time.time(),
             }))
         except Exception as e:
@@ -1567,7 +1757,7 @@ class CommandRouterMixin:
 
         time.sleep(2)
 
-        # Cancel the dead-man's switch
+        # Cancel failsafe
         if failsafe_proc:
             try:
                 import os as _os, signal as _sig
@@ -1596,151 +1786,3 @@ class CommandRouterMixin:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-
-    def _do_system_restart_waves(self, _append, _update_last):
-        """Execute the restart waves with live status updates."""
-        import subprocess
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        # Discover installed services
-        installed = set()
-        try:
-            r = subprocess.run(
-                ["systemctl", "--user", "list-unit-files", "--type=service",
-                 "--no-pager", "--plain", "--no-legend"],
-                capture_output=True, text=True, timeout=10,
-            )
-            for line in r.stdout.strip().split("\n"):
-                parts = line.strip().split()
-                if parts and (parts[0].startswith("aicore-") or parts[0].startswith("frank-")):
-                    installed.add(parts[0].replace(".service", ""))
-        except Exception:
-            installed = None
-
-        def _short(svc: str) -> str:
-            return svc.replace("aicore-", "").replace("frank-", "")
-
-        def _restart_one(svc: str) -> tuple:
-            unit = f"{svc}.service"
-            try:
-                r = subprocess.run(
-                    ["systemctl", "--user", "restart", unit],
-                    capture_output=True, text=True, timeout=45,
-                )
-                if r.returncode == 0:
-                    return (svc, True, "")
-                return (svc, False, (r.stderr or r.stdout or "unknown")[:120])
-            except subprocess.TimeoutExpired:
-                return (svc, False, "timeout")
-            except Exception as e:
-                return (svc, False, str(e)[:120])
-
-        def _is_active(svc: str) -> bool:
-            try:
-                r = subprocess.run(
-                    ["systemctl", "--user", "is-active", f"{svc}.service"],
-                    capture_output=True, text=True, timeout=5,
-                )
-                return r.stdout.strip() == "active"
-            except Exception:
-                return False
-
-        all_ok = []
-        all_failed = []
-        total_services = 0
-
-        for wave_idx, wave in enumerate(self._RESTART_WAVES):
-            label = self._WAVE_LABELS[wave_idx] if wave_idx < len(self._WAVE_LABELS) else f"Wave {wave_idx}"
-
-            if installed is not None:
-                wave_services = [s for s in wave if s in installed]
-            else:
-                wave_services = list(wave)
-
-            if not wave_services:
-                continue
-
-            # Skip overlay — handle at the end
-            is_overlay_wave = any("frank-overlay" in s for s in wave_services)
-            if is_overlay_wave:
-                wave_services = [s for s in wave_services if "frank-overlay" not in s]
-                if not wave_services:
-                    continue
-
-            total_services += len(wave_services)
-
-            # Wave header + placeholder result line
-            _append(f"[{wave_idx+1}/5] {label}", "wave")
-            _append(f"  ...", "dim")
-
-            wave_ok = []
-            wave_fail = []
-
-            with ThreadPoolExecutor(max_workers=len(wave_services)) as pool:
-                futures = {pool.submit(_restart_one, s): s for s in wave_services}
-                for fut in as_completed(futures, timeout=90):
-                    svc, ok, err = fut.result()
-                    short = _short(svc)
-                    if ok:
-                        all_ok.append(svc)
-                        wave_ok.append(short)
-                    else:
-                        all_failed.append((svc, err))
-                        wave_fail.append(short)
-                    # Live update the result line
-                    done = len(wave_ok) + len(wave_fail)
-                    total = len(wave_services)
-                    parts = [f"\u2713 {s}" for s in wave_ok] + [f"\u2717 {s}" for s in wave_fail]
-                    _update_last(f"  {', '.join(parts)} [{done}/{total}]",
-                                 "ok" if not wave_fail else "warn")
-
-            # Final compact wave result
-            parts = [f"\u2713 {s}" for s in wave_ok] + [f"\u2717 {s}" for s in wave_fail]
-            _update_last(f"  {', '.join(parts)}", "ok" if not wave_fail else "warn")
-
-            # Verify critical services
-            critical = [s for s in wave_services if s in ("aicore-router", "aicore-core")]
-            for svc in critical:
-                if any(f[0] == svc for f in all_failed):
-                    continue
-                time.sleep(1)
-                if not _is_active(svc):
-                    _append(f"  \u23f3 waiting for {_short(svc)}...", "warn")
-                    time.sleep(3)
-                    if not _is_active(svc):
-                        _update_last(f"  \u2717 {_short(svc)} not ready", "fail")
-                        LOG.error(f"Critical service {svc} still not active")
-                    else:
-                        _update_last(f"  \u2713 {_short(svc)} ready", "ok")
-
-        # ── Retry failed services ──
-        if all_failed:
-            retry_list = [svc for svc, _err in all_failed]
-            _append(f"Retrying {len(retry_list)} failed...", "warn")
-            time.sleep(2)
-            still_failed = []
-            retry_ok = []
-            with ThreadPoolExecutor(max_workers=max(1, len(retry_list))) as pool:
-                futures = {pool.submit(_restart_one, s): s for s in retry_list}
-                for fut in as_completed(futures, timeout=60):
-                    svc, ok, err = fut.result()
-                    short = _short(svc)
-                    if ok:
-                        all_ok.append(svc)
-                        retry_ok.append(short)
-                    else:
-                        still_failed.append(svc)
-                    parts = [f"\u2713 {s}" for s in retry_ok] + [f"\u2717 {_short(s)}" for s in still_failed]
-                    _update_last(f"  {', '.join(parts)}", "ok" if not still_failed else "warn")
-
-            all_failed_names = still_failed
-        else:
-            all_failed_names = []
-
-        # ── Separator + final status ──
-        _append("\u2500" * 28, "dim")
-        if all_failed_names:
-            short_fails = ", ".join(_short(s) for s in all_failed_names)
-            _append(f"{len(all_ok)}/{total_services} OK \u2502 Failed: {short_fails}", "warn")
-        else:
-            _append(f"{len(all_ok)}/{total_services} services restarted \u2713", "done")

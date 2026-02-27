@@ -99,10 +99,10 @@ The installer will:
 3. Detect your GPU and configure the optimal backend
 4. Create Python venvs and install packages
 5. Build llama.cpp and whisper.cpp from source
-6. Download DeepSeek-R1-Distill-Llama-8B RLM (~6 GB)
+6. Download LLMs: DeepSeek-R1 (~6 GB), Llama-3.1 (~5 GB), Qwen2.5-3B (~2 GB)
 7. Install Ollama and pull vision models (LLaVA, Moondream)
 8. Set up voice: Piper (German/Thorsten) + Kokoro (English) + espeak
-9. Install and enable 31+ systemd user services
+9. Install and enable 34 systemd user services
 10. Create desktop entries and dock icons
 
 Currently tested on Ubuntu 24.04+ with GNOME/X11. Other distributions may require manual fixes. Docker support is planned.
@@ -110,8 +110,8 @@ Currently tested on Ubuntu 24.04+ with GNOME/X11. Other distributions may requir
 ### Start the system
 
 ```bash
-# Start the RLM (GPU-accelerated DeepSeek-R1)
-systemctl --user start aicore-llama3-gpu
+# Start LLMs (LLM Guard will auto-swap GPU between DeepSeek and Llama)
+systemctl --user start aicore-llama3-gpu aicore-chat-llm aicore-micro-llm llm-guard
 
 # Start core services
 systemctl --user start aicore-router aicore-core aicore-toolboxd
@@ -121,6 +121,9 @@ systemctl --user start frank-overlay
 
 # Start consciousness and background services
 systemctl --user start aicore-consciousness aicore-genesis aicore-entities aicore-invariants aicore-asrs
+
+# Start AURA and dream systems
+systemctl --user start aura-headless aura-analyzer aicore-dream aicore-dream-watchdog
 ```
 
 ## Architecture
@@ -149,13 +152,13 @@ LLM inference (all via llama.cpp, managed by LLM Guard):
 | whisper.cpp | 8103 | Whisper Medium | STT |
 | Ollama | 11434 | LLaVA, Moondream | Vision only |
 
-Background services (no port): Consciousness (GWT, 10 threads), AURA Analyzer (4-level pattern recognition), Dream Daemon (sleep-analogue, 60 min/day), Genesis (self-improvement), Entities (4 autonomous agents), Invariants (physics engine), ASRS (safety recovery), Gaming Mode, Dream Watchdog (dual-layer), LLM Guard (GPU swap + rogue protection), F.A.S. (GitHub intelligence).
+Background services (no port): Consciousness (GWT, 10 threads), AURA Analyzer (4-level pattern recognition), Dream Daemon (sleep-analogue, 60 min/day), Genesis (self-improvement), Entities (4 autonomous agents), Invariants (physics engine), ASRS (safety recovery), Gaming Mode, Dream Watchdog (dual-layer), LLM Guard (GPU swap + rogue protection), Frank Watchdog (core service monitor), Sentinel (backup watchdog), F.A.S. (GitHub intelligence, scheduled).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) for the 9-layer memory system.
 
 ## Autonomous Entities
 
-Frank has 4 autonomous entities that interact with him during idle periods. Each has its own personality, session memory, and E-PQ feedback loop. All run 100% locally via DeepSeek-R1 through the Router.
+Frank has 4 autonomous entities that interact with him during idle periods. Each has its own personality, session memory, and E-PQ feedback loop. All run 100% locally via Llama-3.1 Chat-LLM through the Router (`force=llama`).
 
 | Entity | Role | Schedule | Session |
 |--------|------|----------|---------|
@@ -242,7 +245,7 @@ Frank is designed for complete privacy:
 - All LLM inference runs locally (3 models via llama.cpp: DeepSeek-R1, Llama-3.1, Qwen2.5-3B; vision via Ollama)
 - No telemetry, no cloud APIs for core functionality
 - All autonomous entities, consciousness, and dreaming run 100% locally
-- All data stored in `~/.local/share/frank/` (28 SQLite databases)
+- All data stored in `~/.local/share/frank/` (29 SQLite databases)
 - Optional CalDAV integration for Google Calendar/Contacts (user-initiated only)
 - Web search (DuckDuckGo) and Tor/Ahmia are user-initiated outbound calls, not background telemetry — Frank never phones home
 

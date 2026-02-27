@@ -85,7 +85,7 @@
 | Voice | Whisper STT + Piper TTS (push-to-talk) |
 | OS | Ubuntu 24.04 Linux |
 | GPU | AMD Phoenix1 (integrated, Vulkan backend) |
-| Services | 28+ systemd user services |
+| Services | 34 systemd user services |
 | Databases | 29 SQLite databases |
 | Codebase | 76k+ lines Python |
 

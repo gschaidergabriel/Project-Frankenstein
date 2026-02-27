@@ -18,10 +18,11 @@ Frank uses a **local Reasoning LM (RLM)** running via llama.cpp on your GPU:
 
 | Model | Purpose | When |
 |-------|---------|------|
-| **DeepSeek-R1-Distill-Llama-8B RLM** | All cognition: chat, reasoning, code | Always on |
-| **Qwen 2.5 Coder 7B** | Code generation (legacy) | On demand |
+| **DeepSeek-R1-Distill-Llama-8B** | Reasoning, consciousness, dream, agentic (GPU) | Loaded when user idle |
+| **Llama-3.1-8B-Instruct-abliterated** | Fast chat, entity agents (GPU) | Loaded when user active |
+| **Qwen2.5-3B-Instruct-abliterated** | Background consciousness tasks (CPU) | Always on |
 
-The **Router** (port 8091) routes all requests to the DeepSeek-R1 RLM. The single-model architecture eliminates VRAM swapping and simplifies inference. Qwen remains available as a legacy on-demand fallback for specialized code tasks.
+The **Router** (port 8091) routes requests between DeepSeek-R1 (deep reasoning) and Llama-3.1 (fast chat). The **LLM Guard** auto-swaps the GPU slot based on user presence — DeepSeek loads when idle for deep thinking, Llama loads instantly when the user returns. Qwen2.5-3B runs permanently on CPU for background consciousness tasks, freeing the GPU for interactive use.
 
 **Vision** uses Ollama with LLaVA — Frank can take screenshots and describe what's on your screen, entirely locally.
 
@@ -113,14 +114,20 @@ Port 8093  ─ Webd         (web search)
 Port 8094  ─ Ingestd      (document ingestion)
 Port 8096  ─ Toolboxd     (system tools, skills, todos)
 Port 8097  ─ Quantum Reflector (epistemic coherence, QUBO optimization)
-Port 8101  ─ DeepSeek-R1  (RLM, llama.cpp — all cognition)
-Port 8102  ─ Qwen 2.5     (code LLM, llama.cpp, legacy on-demand)
-Port 8103  ─ Whisper      (speech-to-text, GPU)
-Port 11434 ─ Ollama       (vision models)
+Port 8098  ─ AURA Headless    (Quantum GoL consciousness simulation)
+Port 8099  ─ Web UI           (browser chat + AURA viz + dashboard)
+Port 8101  ─ DeepSeek-R1      (RLM, llama.cpp — reasoning, GPU when idle)
+Port 8102  ─ Llama-3.1        (Chat-LLM, llama.cpp — fast chat, GPU when active)
+Port 8103  ─ Whisper           (speech-to-text, GPU)
+Port 8105  ─ Qwen2.5-3B       (Micro-LLM, llama.cpp — background, CPU always)
+Port 11434 ─ Ollama            (vision models)
 
 No port  ─ Consciousness  (10-thread daemon: GWT, perception, attention, goals)
+No port  ─ AURA Analyzer  (4-level hierarchical emergence recognition)
+No port  ─ Dream Daemon   (sleep-analogue: replay, synthesis, consolidation)
 No port  ─ Genesis         (emergent self-improvement ecosystem)
 No port  ─ Invariants      (physics engine: energy, entropy, core kernel)
+No port  ─ LLM Guard      (GPU swap manager + rogue LLM protection)
 No port  ─ Entities        (idle-driven 4-agent dispatcher)
 No port  ─ ASRS            (safety recovery, 4-stage monitoring)
 No port  ─ Gaming Mode     (Steam detection, resource management)

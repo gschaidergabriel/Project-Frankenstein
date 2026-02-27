@@ -46,8 +46,8 @@ The LLM (Llama 3.1 8B or Qwen 2.5 Coder 7B via llama.cpp) sits at Layer 4. It re
 | Category | Services | Ports | State |
 |----------|----------|-------|-------|
 | Core HTTP | Core, Router, Toolbox, Desktop, Web, Ingest, Model Manager, Quantum Reflector | 8088-8097 | Stateless request handlers (Reflector is stateful) |
-| LLM Inference | Llama 3.1 8B, Qwen 2.5 7B (on-demand), Whisper | 8101-8103 | Stateless generators |
-| Background Daemons | Consciousness, Genesis, Invariants, ASRS, Entities, Gaming | None | **Stateful**, persistent threads |
+| LLM Inference | DeepSeek-R1 (reasoning, GPU), Llama-3.1 (chat, GPU), Qwen2.5-3B (background, CPU), Whisper | 8101-8105 | Stateless generators, GPU-swapped by LLM Guard |
+| Background Daemons | Consciousness, Genesis, Invariants, ASRS, Entities, Gaming, Dream, AURA Analyzer, LLM Guard | None | **Stateful**, persistent threads |
 | Optimization | Quantum Reflector (QUBO + Simulated Annealing) | 8097 | **Stateful**, continuous coherence monitoring |
 | Scheduled | Entity Dispatcher (4 entities), News Scanner | None | Daily quotas, session memory |
 

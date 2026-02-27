@@ -13,7 +13,7 @@
 
 Built by one person with zero programming experience, using Claude as co-developer. 76k+ lines in 2 months. Derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf). [Read the full story.](ABOUT.md)
 
-**[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
+**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
 
 An AI that thinks when you're not talking to it, dreams when it's idle, feels its own hardware, and evolves its personality over months — running entirely on your machine.
 
@@ -219,6 +219,7 @@ Key environment variables:
 
 | Topic | Document |
 |-------|----------|
+| User manual | [Complete guide: commands, skills, tools, config, troubleshooting](MANUAL.md) |
 | How Frank works in 5 minutes | [HOW_IT_WORKS.md](HOW_IT_WORKS.md) |
 | Full architecture + project structure | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Memory system (9 layers) | [MEMORY&PERSISTENCE-ARCHITECTURE.md](MEMORY&PERSISTENCE-ARCHITECTURE.md) |

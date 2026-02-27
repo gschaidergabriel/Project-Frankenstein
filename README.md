@@ -15,7 +15,7 @@ Built by one person with zero programming experience, using Claude as co-develop
 
 Frank was derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf) — a paper arguing that reality is fundamentally generative and informational, and that a system with brain-like modular architecture must produce emergent self-awareness. Every subsystem in Frank maps to a principle in the paper. [How theory became code.](ABOUT.md#from-paper-to-system-how-grf-produced-frank)
 
-**[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)**
+**[How Frank works in 5 minutes](HOW_IT_WORKS.md)** | **[Full architecture](ARCHITECTURE.md)** | **[Use cases](USECASES.md)** | **[Whitepaper](WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
 
 An AI that thinks when you're not talking to it, dreams when it's idle, feels its own hardware, and evolves its personality over months — running entirely on your machine.
 

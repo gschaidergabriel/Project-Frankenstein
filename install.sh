@@ -14,9 +14,9 @@
 #   7.  Builds whisper.cpp from source (speech-to-text)
 #   8.  Creates data directories
 #   9.  Installs Ollama and pulls vision models
-#   10. Downloads LLM models (GGUF)
+#   10. Downloads LLM models (GGUF): DeepSeek-R1 + Llama-3.1 + Qwen2.5-3B
 #   11. Sets up Voice / TTS (Piper German + Kokoro English + espeak)
-#   12. Installs all systemd user services (25+ services)
+#   12. Installs all systemd user services (36 services)
 #   13. Creates desktop entries, dock icons, wallpaper, autostart
 #   14. Starts all services
 # ============================================================================
@@ -375,16 +375,23 @@ else
     echo "[10/14] Downloading LLM models..."
     mkdir -p "$MODELS_DIR"
 
-    LLAMA_URL="https://huggingface.co/mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF/resolve/main/meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf"
-    QWEN_URL="https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
+    # Primary RLM — DeepSeek-R1 (reasoning, consciousness, agentic — GPU, loaded when idle)
+    DEEPSEEK_URL="https://huggingface.co/mradermacher/DeepSeek-R1-Distill-Llama-8B-abliterated-i1-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Abliterated.i1-Q6_K.gguf"
+    download_file "$DEEPSEEK_URL" \
+        "$MODELS_DIR/DeepSeek-R1-Distill-Llama-8B-Abliterated.i1-Q6_K.gguf" \
+        "DeepSeek-R1 8B abliterated (Q6_K, ~6.2 GB)"
 
+    # Chat LLM — Llama 3.1 (fast chat, entity agents — GPU, loaded when user active)
+    LLAMA_URL="https://huggingface.co/mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF/resolve/main/meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf"
     download_file "$LLAMA_URL" \
         "$MODELS_DIR/Meta-Llama-3.1-8B-Instruct-abliterated-Q4_K_M.gguf" \
         "Llama 3.1 8B abliterated (Q4_K_M, ~4.6 GB)"
 
-    download_file "$QWEN_URL" \
-        "$MODELS_DIR/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
-        "Qwen 2.5 Coder 7B (Q4_K_M, ~4.7 GB)"
+    # Micro LLM — Qwen 2.5 3B (background consciousness tasks — CPU, always on)
+    QWEN_MICRO_URL="https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+    download_file "$QWEN_MICRO_URL" \
+        "$MODELS_DIR/Qwen2.5-3B-Instruct-abliterated.Q4_K_M.gguf" \
+        "Qwen 2.5 3B (Q4_K_M, ~1.8 GB)"
 fi
 
 # ============================================================================
@@ -456,7 +463,7 @@ write_service() {
 
 write_service "aicore-router.service" "\
 [Unit]
-Description=AI Core router
+Description=AI Core Router — Dual-Model (DeepSeek-R1 + Llama-3.1, GPU-swapped)
 After=network.target
 Wants=network.target
 
@@ -466,11 +473,11 @@ WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PATH=$VENV_INGESTD/bin:/usr/bin:/bin
-Environment=ROUTER_MODE=auto
-Environment=DEFAULT_MODEL_ID=qwen_coder_7b_q4km
-Environment=AICORE_QWEN_SERVICE=aicore-qwen-gpu.service
-Environment=AICORE_LLAMA_HTTP_TIMEOUT_SEC=400
-Environment=AICORE_QWEN_HTTP_TIMEOUT_SEC=400
+Environment=AICORE_RLM_URL=http://127.0.0.1:8101
+Environment=AICORE_CHAT_LLM_URL=http://127.0.0.1:8102
+Environment=AICORE_RLM_HTTP_TIMEOUT_SEC=480
+Environment=AICORE_CHAT_LLM_HTTP_TIMEOUT_SEC=120
+Environment=AICORE_N_PREDICT=2048
 ExecStart=$PYTHON_INGESTD -m uvicorn router.app:app --host 127.0.0.1 --port 8091 --log-level info --lifespan off
 Restart=always
 RestartSec=1
@@ -496,11 +503,11 @@ RestartSec=1
 [Install]
 WantedBy=default.target"
 
-# Llama3 GPU service
+# RLM — DeepSeek-R1 on port 8101 (reasoning, consciousness, agentic — GPU, loaded when idle)
 if [ -x "$LLAMA_SERVER" ]; then
     write_service "aicore-llama3-gpu.service" "\
 [Unit]
-Description=AI Core Llama 3.1 8B (llama-server, GPU)
+Description=AI Core RLM — DeepSeek-R1-Distill-Llama-8B (llama-server, GPU)
 After=network.target
 
 [Service]
@@ -509,19 +516,23 @@ WorkingDirectory=$LLAMA_DIR
 ${GPU_ENV_LINE:+$GPU_ENV_LINE}
 ExecStart=$LLAMA_SERVER \\
     --host 127.0.0.1 --port 8101 \\
-    --model $MODELS_DIR/Meta-Llama-3.1-8B-Instruct-abliterated-Q4_K_M.gguf \\
+    --model $MODELS_DIR/DeepSeek-R1-Distill-Llama-8B-Abliterated.i1-Q6_K.gguf \\
     --ctx-size 4096 $LLAMA_GPU_FLAGS \\
-    --parallel 1 --threads 8 --threads-batch 8
+    --parallel 2 --threads 6 --threads-batch 10 \\
+    --cache-type-k q8_0 --cache-type-v q4_0
+TimeoutStopSec=15
 Restart=always
 RestartSec=5
+OOMScoreAdjust=500
+MemoryMax=1G
 
 [Install]
 WantedBy=default.target"
 
-    # Qwen GPU service (on-demand, no WantedBy)
-    write_service "aicore-qwen-gpu.service" "\
+    # Chat LLM — Llama 3.1 on port 8102 (fast chat, entities — GPU, loaded when user active)
+    write_service "aicore-chat-llm.service" "\
 [Unit]
-Description=AI Core Qwen 2.5 Coder 7B (llama-server, GPU) - ON DEMAND
+Description=AI Core Chat-LLM — Llama-3.1-8B-Instruct-abliterated (GPU, casual chat)
 After=network.target
 
 [Service]
@@ -530,14 +541,43 @@ WorkingDirectory=$LLAMA_DIR
 ${GPU_ENV_LINE:+$GPU_ENV_LINE}
 ExecStart=$LLAMA_SERVER \\
     --host 127.0.0.1 --port 8102 \\
-    --model $MODELS_DIR/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf \\
-    --ctx-size 4096 $LLAMA_GPU_FLAGS \\
-    --parallel 1 --threads 8 --threads-batch 8
-Restart=on-failure
+    --model $MODELS_DIR/Meta-Llama-3.1-8B-Instruct-abliterated-Q4_K_M.gguf \\
+    --ctx-size 2048 $LLAMA_GPU_FLAGS \\
+    --parallel 1 --threads 6 --threads-batch 8 \\
+    --cache-type-k q8_0 --cache-type-v q4_0
+TimeoutStopSec=15
+Restart=always
 RestartSec=5
+Nice=5
+OOMScoreAdjust=500
+MemoryMax=1G
 
 [Install]
-# No WantedBy — started on-demand by Router"
+WantedBy=default.target"
+
+    # Micro LLM — Qwen 2.5 3B on port 8105 (background consciousness — CPU, always on)
+    write_service "aicore-micro-llm.service" "\
+[Unit]
+Description=AI Core Micro-LLM — Qwen2.5-3B-Instruct-abliterated (CPU, background tasks)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$LLAMA_DIR
+ExecStart=$LLAMA_SERVER \\
+    --host 127.0.0.1 --port 8105 \\
+    --model $MODELS_DIR/Qwen2.5-3B-Instruct-abliterated.Q4_K_M.gguf \\
+    --ctx-size 4096 -ngl 0 \\
+    --parallel 2 --threads 4 --threads-batch 6 \\
+    --batch-size 512
+Restart=always
+RestartSec=5
+Nice=10
+OOMScoreAdjust=500
+MemoryMax=3G
+
+[Install]
+WantedBy=default.target"
 else
     echo "  Note: llama-server not found — skipping LLM server services."
     echo "  Build llama.cpp first, then re-run install.sh."
@@ -834,6 +874,213 @@ Nice=15
 [Install]
 WantedBy=default.target"
 
+# ── LLM Guard (GPU swap manager + rogue LLM protection) ───────────────────
+
+write_service "llm-guard.service" "\
+[Unit]
+Description=LLM Guard — Single-LLM Enforcement Watchdog (kills rogue LLMs)
+After=aicore-llama3-gpu.service
+Wants=aicore-llama3-gpu.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/llm_guard.py
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+StartLimitBurst=1000
+CPUQuota=3%
+MemoryMax=50M
+Nice=5
+
+[Install]
+WantedBy=default.target"
+
+# ── Quantum Reflector (epistemic coherence optimization) ──────────────────
+
+write_service "aicore-quantum-reflector.service" "\
+[Unit]
+Description=AI Core Quantum Reflector (Epistemic Coherence)
+After=aicore-core.service aicore-consciousness.service
+Wants=aicore-core.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/quantum_reflector/main.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=AICORE_REFLECTOR_PORT=8097
+
+[Install]
+WantedBy=default.target"
+
+# ── Dream Daemon (sleep-analogue processing) ─────────────────────────────
+
+write_service "aicore-dream.service" "\
+[Unit]
+Description=AI Core Dream Daemon
+After=aicore-core.service aicore-router.service aicore-consciousness.service
+Wants=aicore-core.service aicore-router.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/dream_daemon.py
+Restart=always
+RestartSec=30
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target"
+
+write_service "aicore-dream-watchdog.service" "\
+[Unit]
+Description=Dream Watchdog - Ensures Dream Daemon Never Dies
+After=network.target aicore-dream.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_VENV -m services.dream_watchdog
+Restart=always
+RestartSec=10
+StartLimitBurst=1000
+CPUQuota=5%
+MemoryMax=50M
+Nice=5
+
+[Install]
+WantedBy=default.target"
+
+write_service "aicore-dream-watchdog-meta.service" "\
+[Unit]
+Description=Dream Meta-Watchdog - Watches the Dream Watchdog
+After=network.target aicore-dream-watchdog.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_VENV -m services.dream_watchdog_meta
+Restart=always
+RestartSec=10
+StartLimitBurst=1000
+CPUQuota=3%
+MemoryMax=30M
+Nice=10
+
+[Install]
+WantedBy=default.target"
+
+# ── AURA (consciousness visualization + pattern analysis) ────────────────
+
+write_service "aura-headless.service" "\
+[Unit]
+Description=AURA Headless Introspect — Game-of-Life consciousness simulation
+After=aicore-core.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$SCRIPT_DIR
+Environment=PATH=$VENV_INGESTD/bin:/usr/bin:/bin
+ExecStart=$PYTHON_INGESTD -m uvicorn services.aura_headless:app --host 127.0.0.1 --port 8098 --log-level info --lifespan off
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target"
+
+write_service "aura-analyzer.service" "\
+[Unit]
+Description=AURA Pattern Analyzer — 4-level hierarchical emergence recognition
+After=aura-headless.service aicore-core.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_SYS services/aura_pattern_analyzer.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target"
+
+# ── Web UI (browser-based dashboard) ─────────────────────────────────────
+
+write_service "aicore-webui.service" "\
+[Unit]
+Description=Frank Web UI — Cyberpunk Dashboard
+After=network.target aicore-core.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_INGESTD $SCRIPT_DIR/ui/webui/app.py
+Restart=on-failure
+RestartSec=5
+Environment=DISPLAY=:0
+Environment=PYTHONPATH=$SCRIPT_DIR
+
+[Install]
+WantedBy=default.target"
+
+# ── Watchdogs (service health monitoring) ────────────────────────────────
+
+write_service "frank-watchdog.service" "\
+[Unit]
+Description=Frank Universal Service Watchdog (freeze detection + restart)
+After=network.target frank-overlay.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_VENV -m services.frank_watchdog
+Restart=always
+RestartSec=10
+StartLimitBurst=1000
+CPUQuota=5%
+MemoryMax=50M
+Nice=5
+
+[Install]
+WantedBy=default.target"
+
+write_service "frank-sentinel.service" "\
+[Unit]
+Description=Frank Sentinel — Backup Watchdog (watches the watcher)
+After=frank-watchdog.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_VENV -m services.frank_sentinel
+Restart=always
+RestartSec=5
+WatchdogSec=120
+StartLimitBurst=1000
+CPUQuota=2%
+MemoryMax=30M
+Nice=10
+
+[Install]
+WantedBy=default.target"
+
 # ── Tier 4: Entity oneshot services + timers (fallback, NOT enabled) ────────
 
 for entity_info in \
@@ -969,32 +1216,45 @@ systemctl --user daemon-reload 2>/dev/null || echo "  Note: systemctl --user dae
 systemctl --user enable aicore-router.service 2>/dev/null || true
 systemctl --user enable aicore-core.service 2>/dev/null || true
 systemctl --user enable aicore-llama3-gpu.service 2>/dev/null || true
+systemctl --user enable aicore-chat-llm.service 2>/dev/null || true
+systemctl --user enable aicore-micro-llm.service 2>/dev/null || true
 systemctl --user enable aicore-modeld.service 2>/dev/null || true
 systemctl --user enable aicore-toolboxd.service 2>/dev/null || true
 systemctl --user enable aicore-webd.service 2>/dev/null || true
 systemctl --user enable aicore-ingestd.service 2>/dev/null || true
 systemctl --user enable aicore-whisper-gpu.service 2>/dev/null || true
-# NOTE: aicore-qwen-gpu NOT enabled (on-demand via Router)
+systemctl --user enable llm-guard.service 2>/dev/null || true
 
 # Tier 2 — System daemons
 systemctl --user enable aicore-desktopd.service 2>/dev/null || true
 systemctl --user enable aicore-consciousness.service 2>/dev/null || true
-# Voice daemon removed — PTT uses Whisper server directly
 systemctl --user enable aicore-gaming-mode.service 2>/dev/null || true
 systemctl --user enable aicore-asrs.service 2>/dev/null || true
 systemctl --user enable aicore-invariants.service 2>/dev/null || true
 systemctl --user enable frank-overlay.service 2>/dev/null || true
+systemctl --user enable aicore-webui.service 2>/dev/null || true
 
 # Tier 3 — Autonomous
 systemctl --user enable aicore-genesis.service 2>/dev/null || true
 systemctl --user enable aicore-genesis-watchdog.service 2>/dev/null || true
 systemctl --user enable aicore-entities.service 2>/dev/null || true
+systemctl --user enable aicore-quantum-reflector.service 2>/dev/null || true
+systemctl --user enable aicore-dream.service 2>/dev/null || true
+systemctl --user enable aicore-dream-watchdog.service 2>/dev/null || true
+systemctl --user enable aicore-dream-watchdog-meta.service 2>/dev/null || true
+systemctl --user enable aura-headless.service 2>/dev/null || true
+systemctl --user enable aura-analyzer.service 2>/dev/null || true
+
+# Tier 4 — Watchdogs
+systemctl --user enable frank-watchdog.service 2>/dev/null || true
+systemctl --user enable frank-sentinel.service 2>/dev/null || true
 
 # Tier 5 — Scheduled
 systemctl --user enable aicore-fas.timer 2>/dev/null || true
 
 # Entity timers NOT enabled (entity_dispatcher handles scheduling)
-echo "  Done. ($(ls "$SYSTEMD_USER_DIR"/aicore-*.service 2>/dev/null | wc -l) services installed)"
+TOTAL_SERVICES=$(ls "$SYSTEMD_USER_DIR"/{aicore-,aura-,frank-,llm-}*.service 2>/dev/null | wc -l)
+echo "  Done. ($TOTAL_SERVICES services installed)"
 
 # ============================================================================
 # [13/14] Desktop entries & dock icons
@@ -1173,10 +1433,13 @@ pkill -f chat_overlay.py 2>/dev/null || true
 rm -f /tmp/frank/overlay.lock 2>/dev/null || true
 
 # Start infrastructure first
-systemctl --user start aicore-router.service 2>/dev/null || true
-sleep 1
-systemctl --user start aicore-core.service 2>/dev/null || true
 systemctl --user start aicore-llama3-gpu.service 2>/dev/null || true
+systemctl --user start aicore-chat-llm.service 2>/dev/null || true
+systemctl --user start aicore-micro-llm.service 2>/dev/null || true
+systemctl --user start llm-guard.service 2>/dev/null || true
+sleep 1
+systemctl --user start aicore-router.service 2>/dev/null || true
+systemctl --user start aicore-core.service 2>/dev/null || true
 systemctl --user start aicore-modeld.service 2>/dev/null || true
 systemctl --user start aicore-toolboxd.service 2>/dev/null || true
 systemctl --user start aicore-webd.service 2>/dev/null || true
@@ -1189,18 +1452,29 @@ systemctl --user start aicore-consciousness.service 2>/dev/null || true
 systemctl --user start aicore-gaming-mode.service 2>/dev/null || true
 systemctl --user start aicore-asrs.service 2>/dev/null || true
 systemctl --user start aicore-invariants.service 2>/dev/null || true
+systemctl --user start aicore-webui.service 2>/dev/null || true
 
 # Autonomous
 systemctl --user start aicore-genesis.service 2>/dev/null || true
 systemctl --user start aicore-genesis-watchdog.service 2>/dev/null || true
 systemctl --user start aicore-entities.service 2>/dev/null || true
+systemctl --user start aicore-quantum-reflector.service 2>/dev/null || true
+systemctl --user start aicore-dream.service 2>/dev/null || true
+systemctl --user start aicore-dream-watchdog.service 2>/dev/null || true
+systemctl --user start aicore-dream-watchdog-meta.service 2>/dev/null || true
+systemctl --user start aura-headless.service 2>/dev/null || true
+systemctl --user start aura-analyzer.service 2>/dev/null || true
+
+# Watchdogs
+systemctl --user start frank-watchdog.service 2>/dev/null || true
+systemctl --user start frank-sentinel.service 2>/dev/null || true
 
 # Start the overlay via systemd
 systemctl --user start frank-overlay.service 2>/dev/null || true
 
 # Count running services
 sleep 2
-RUNNING=$( (systemctl --user list-units 'aicore-*' --state=running --no-pager --no-legend 2>/dev/null || true) | wc -l)
+RUNNING=$( (systemctl --user list-units 'aicore-*' 'aura-*' 'frank-*' 'llm-*' --state=running --no-pager --no-legend 2>/dev/null || true) | wc -l)
 echo "  $RUNNING services running."
 echo "  Done."
 
@@ -1230,6 +1504,8 @@ echo "  Restart overlay:"
 echo "    systemctl --user restart frank-overlay.service"
 echo
 echo "  Ports:"
-echo "    8091 Router | 8088 Core | 8101 Llama3 | 8102 Qwen (on-demand)"
-echo "    8103 Whisper | 8096 Toolbox | 8094 Ingestd | 11434 Ollama"
+echo "    8088 Core | 8091 Router | 8096 Toolbox | 8093 Webd | 8094 Ingestd"
+echo "    8101 DeepSeek-R1 (RLM) | 8102 Llama-3.1 (Chat) | 8105 Qwen-3B (CPU)"
+echo "    8097 Quantum Reflector | 8098 AURA Headless | 8099 Web UI"
+echo "    8103 Whisper | 11434 Ollama (vision)"
 echo

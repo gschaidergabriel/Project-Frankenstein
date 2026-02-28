@@ -83,9 +83,9 @@ STEPS = [
     {"id": "whisper",  "name": "Build whisper.cpp",     "desc": "Compiling speech-to-text engine from source"},
     {"id": "dirs",     "name": "Data Directories",      "desc": "Creating directory tree, copying config templates"},
     {"id": "ollama",   "name": "Ollama + Vision Models","desc": "Installing Ollama, pulling LLaVA and Moondream"},
-    {"id": "models",   "name": "LLM Models (GGUF)",     "desc": "Downloading Llama 3.1 8B + Qwen 2.5 Coder 7B (~10 GB)"},
+    {"id": "models",   "name": "LLM Models (GGUF)",     "desc": "Downloading DeepSeek-R1 + Llama 3.1 + Qwen 2.5 3B (~13 GB)"},
     {"id": "voice",    "name": "Voice / TTS Setup",     "desc": "Piper (Thorsten DE) + Kokoro (am_fenrir EN) + espeak"},
-    {"id": "systemd",  "name": "Systemd Services",      "desc": "Installing and enabling 25+ user services"},
+    {"id": "systemd",  "name": "Systemd Services",      "desc": "Installing and enabling 36 user services"},
     {"id": "desktop",  "name": "Desktop Integration",   "desc": "Desktop entries, dock icons, autostart"},
     {"id": "start",    "name": "Start Services",        "desc": "Starting all services and the Frank overlay"},
 ]
@@ -429,7 +429,7 @@ def ask_options() -> list:
 
     # Models
     console.print(f"  [{MATRIX_GREEN}][1][/] Download LLM + Voice models (~15 GB)?")
-    console.print(f"      [{MATRIX_DIM}]Llama 3.1 8B, Qwen 2.5 Coder, Piper Thorsten, Kokoro[/]")
+    console.print(f"      [{MATRIX_DIM}]DeepSeek-R1 8B, Llama 3.1 8B, Qwen 2.5 3B, Piper Thorsten, Kokoro[/]")
     r = console.input(f"      [{MATRIX_BRIGHT}]> [Y/n]: [/]").strip().lower()
     options["models"] = r != "n"
     console.print()

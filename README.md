@@ -102,7 +102,7 @@ The installer will:
 6. Download LLMs: DeepSeek-R1 (~6 GB), Llama-3.1 (~5 GB), Qwen2.5-3B (~2 GB)
 7. Install Ollama and pull vision models (LLaVA, Moondream)
 8. Set up voice: Piper (German/Thorsten) + Kokoro (English) + espeak
-9. Install and enable 34 systemd user services
+9. Install and enable 36 systemd user services
 10. Create desktop entries and dock icons
 
 Currently tested on Ubuntu 24.04+ with GNOME/X11. Other distributions may require manual fixes. Docker support is planned.

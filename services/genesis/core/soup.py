@@ -138,7 +138,39 @@ class PrimordialSoup:
                     self.total_deaths += 1
                     self.stats.deaths += 1
                 if cull_count > 0:
-                    LOG.info(f"Periodic cull: removed {cull_count} weakest organisms")
+                    LOG.debug(f"Periodic cull: removed {cull_count} weakest organisms")
+
+            # Phase 0b: Crystal purge — old crystals that were never
+            # manifested are dead weight.  Keep only the best recent ones.
+            if self._tick_count % 200 == 0:
+                self._purge_crystals()
+
+            # Phase 0c: Trim connections sets to cap memory
+            if self._tick_count % 100 == 0:
+                for org in self.organisms:
+                    if len(org.connections) > 20:
+                        org.connections = set(list(org.connections)[-20:])
+
+            # Phase 0d: Enforce target cap on organisms (max 2 per target)
+            # Prevents reproduction/mutation from creating target-floods
+            if self._tick_count % 50 == 0 and len(self.organisms) > 10:
+                from collections import Counter
+                target_counts = Counter(o.genome.target for o in self.organisms)
+                over_cap = {t for t, n in target_counts.items() if n > 2}
+                if over_cap:
+                    to_remove = []
+                    for target in over_cap:
+                        same_target = sorted(
+                            [o for o in self.organisms if o.genome.target == target],
+                            key=lambda o: o.average_fitness,
+                            reverse=True,
+                        )
+                        to_remove.extend(same_target[2:])  # Keep top 2
+                    if to_remove:
+                        id_set = {o.id for o in to_remove}
+                        self.organisms = [o for o in self.organisms if o.id not in id_set]
+                        LOG.info("Target cap: removed %d excess organisms from %d targets",
+                                 len(to_remove), len(over_cap))
 
             # Phase 1: Each organism lives its life
             actions = []
@@ -156,14 +188,26 @@ class PrimordialSoup:
                 elif action == "grow":
                     org.grow()
                 elif action == "crystallize":
-                    org.crystallize()
-                    new_crystals.append(org)
-                    self.crystals.append(org)
-                    deaths.append(org)  # Remove from active soup
+                    # Fix #33: Cap total crystals to prevent unbounded growth
+                    if len(self.crystals) < self.config.max_organisms * 2:
+                        org.crystallize()
+                        new_crystals.append(org)
+                        self.crystals.append(org)
+                    deaths.append(org)  # Remove from active soup either way
                 elif action == "reproduce":
                     if len(self.organisms) + len(births) < self.config.max_organisms:
-                        child = org.reproduce()
-                        births.append(child)
+                        # Inline target cap: block reproduction if target already
+                        # has 2+ organisms (prevents monoculture between purges)
+                        same_target = sum(
+                            1 for o in self.organisms
+                            if o.genome.target == org.genome.target
+                        ) + sum(
+                            1 for b in births
+                            if b.genome.target == org.genome.target
+                        )
+                        if same_target < 2:
+                            child = org.reproduce()
+                            births.append(child)
                 elif action == "mutate":
                     org.mutate()
                     self.stats.mutations += 1
@@ -223,11 +267,12 @@ class PrimordialSoup:
             affinity = org1.can_fuse_with(org2)
 
             if affinity > self.config.fusion_affinity_threshold:
-                # FUSION! Create new organism from both
-                child = org1.fuse_with(org2)
-                self.organisms.append(child)
-                self.stats.fusions += 1
-                LOG.debug(f"Fusion occurred: {org1.id} + {org2.id} = {child.id}")
+                # FUSION! Create new organism from both (respect cap)
+                if len(self.organisms) < self.config.max_organisms:
+                    child = org1.fuse_with(org2)
+                    self.organisms.append(child)
+                    self.stats.fusions += 1
+                    LOG.debug(f"Fusion occurred: {org1.id} + {org2.id} = {child.id}")
 
             elif affinity < self.config.competition_affinity_threshold:
                 # COMPETITION! They fight for resources
@@ -238,6 +283,44 @@ class PrimordialSoup:
                 if random.random() < 0.1:
                     org1.connections.add(org2.id)
                     org2.connections.add(org1.id)
+
+    def _purge_crystals(self, cap: int = None):
+        """Purge old/weak crystals to prevent unbounded growth.
+
+        Default cap is 5× max_organisms (500).  Caller can pass a lower
+        cap for emergency size-based purges.
+
+        Also deduplicates: max 1 crystal per target. Keeps highest fitness.
+        """
+        # Phase 1: Target dedup — keep only best crystal per target
+        best_per_target: Dict[str, "IdeaOrganism"] = {}
+        for c in self.crystals:
+            target = c.genome.target
+            if target not in best_per_target or c.average_fitness > best_per_target[target].average_fitness:
+                best_per_target[target] = c
+        dedup_removed = len(self.crystals) - len(best_per_target)
+        if dedup_removed > 0:
+            self.crystals = list(best_per_target.values())
+            LOG.info("Crystal dedup: removed %d duplicate-target crystals", dedup_removed)
+
+        # Phase 2: Cap enforcement
+        if cap is None:
+            cap = self.config.max_organisms * 5  # 500
+        if len(self.crystals) <= cap:
+            return
+
+        # Score: higher = more worth keeping
+        def crystal_score(c):
+            age_penalty = min(c.age * 0.0002, 0.3)
+            return c.average_fitness - age_penalty
+
+        ranked = sorted(self.crystals, key=crystal_score, reverse=True)
+        kept = ranked[:cap]
+        purged = len(self.crystals) - len(kept)
+        self.crystals = kept
+        if purged > 0:
+            LOG.info("Crystal purge: removed %d stale crystals, kept %d",
+                     purged, cap)
 
     def _cull_weakest(self):
         """Remove the weakest organism to make room."""
@@ -390,7 +473,7 @@ class PrimordialSoup:
             if signature in self._seen_signatures:
                 return
 
-            # Also check live organisms + crystals
+            # Also check live organisms + crystals (exact match)
             existing = sum(
                 1 for o in self.organisms
                 if o.genome.idea_type == obs_type
@@ -404,6 +487,16 @@ class PrimordialSoup:
                 and c.genome.approach == obs_approach
             )
             if existing + crystal_existing >= 1:
+                self._seen_signatures.add(signature)
+                return
+
+            # Target-level cap: max 2 organisms per target (any approach)
+            # Prevents the same file/function dominating the soup
+            target_count = sum(
+                1 for o in self.organisms
+                if o.genome.target == obs_target
+            )
+            if target_count >= 2:
                 self._seen_signatures.add(signature)
                 return
 

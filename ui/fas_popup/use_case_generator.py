@@ -91,6 +91,8 @@ class UseCaseGenerator:
         - example: Example usage prompt
         - personal_relevance: Personal relevance note (if applicable)
         """
+        # Store feature reference so _generate_why() can access genesis-specific fields
+        self._current_feature = feature
         feature_type = feature.get("feature_type", "tool")
         name = feature.get("name", "Unknown")
         description = feature.get("description", "")
@@ -129,12 +131,30 @@ class UseCaseGenerator:
         return "tool"  # Default
 
     def _generate_why(self, feature_type: str, category: str, name: str, description: str) -> str:
-        """Generate the 'why' explanation."""
+        """Generate the 'why' explanation.
+
+        For Genesis proposals (source="genesis"), uses proposal-specific data
+        instead of generic templates.
+        """
+        # Check if this is a Genesis proposal with specific data
+        if hasattr(self, '_current_feature') and self._current_feature:
+            why_specific = self._current_feature.get("why_specific", "")
+            if why_specific:
+                return why_specific
+
         type_explanations = {
             "tool": "This tool extends Frank's capabilities directly and enables new tasks.",
             "api_wrapper": "This API integration connects Frank with external services for real-time data.",
             "utility": "This utility optimizes common operations and saves time.",
             "pattern": "This proven pattern improves code structure and maintainability.",
+            # Genesis idea types
+            "optimization": "Performance-Optimierung basierend auf Laufzeit-Analyse.",
+            "fix": "Bugfix basierend auf Error-Log-Analyse.",
+            "feature": "Neues Feature zur Erweiterung von Franks Fähigkeiten.",
+            "exploration": "Explorative Idee zur Erweiterung des Horizonts.",
+            "skill": "Skill-Entwicklung zur Verbesserung von Franks Fähigkeiten.",
+            "personality_adjustment": "Emergente Persönlichkeits-Evolution.",
+            "prompt_evolution": "Prompt-Template-Optimierung.",
         }
 
         category_benefits = {
@@ -149,7 +169,7 @@ class UseCaseGenerator:
             "file": "Flexible file management and processing.",
         }
 
-        base = type_explanations.get(feature_type, type_explanations["tool"])
+        base = type_explanations.get(feature_type, type_explanations.get("tool", ""))
         benefit = category_benefits.get(category, "")
 
         return f"{base}\n\n{benefit}" if benefit else base

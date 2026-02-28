@@ -66,7 +66,7 @@ class MemoryConsistencyDaemon:
             if not titan_db.exists():
                 return result
 
-            conn = sqlite3.connect(str(titan_db))
+            conn = sqlite3.connect(str(titan_db), timeout=30)
             # Count orphaned edges
             count = conn.execute("""
                 SELECT COUNT(*) FROM edges
@@ -163,7 +163,7 @@ class MemoryConsistencyDaemon:
             from config.paths import get_db
             titan_db = get_db("titan")
             if titan_db.exists():
-                conn = sqlite3.connect(str(titan_db))
+                conn = sqlite3.connect(str(titan_db), timeout=30)
                 stats["titan"] = {
                     "nodes": conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0],
                     "edges": conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0],

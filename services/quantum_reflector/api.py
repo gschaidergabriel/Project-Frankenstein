@@ -42,11 +42,15 @@ def set_components(monitor, bridge):
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, data: Any):
     """Sende JSON Response."""
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.end_headers()
-    body = json.dumps(data, ensure_ascii=False, default=str)
-    handler.wfile.write(body.encode("utf-8"))
+    try:
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.end_headers()
+        body = json.dumps(data, ensure_ascii=False, default=str)
+        handler.wfile.write(body.encode("utf-8"))
+    except (BrokenPipeError, ConnectionResetError):
+        # Fix #35: Client disconnected — silently ignore instead of flooding logs
+        pass
 
 
 def _read_body(handler: BaseHTTPRequestHandler) -> Dict:

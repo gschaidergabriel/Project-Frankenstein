@@ -34,6 +34,7 @@ from .sensors import (
     GitHubEcho,
     NewsEcho,
     CodeAnalyzer,
+    ConsciousnessInsight,
 )
 from .reflection import SelfReflector
 from .integration import FASConnector, ASRSConnector
@@ -114,6 +115,7 @@ class GenesisDaemon:
             GitHubEcho(),
             NewsEcho(),
             CodeAnalyzer(),
+            ConsciousnessInsight(),
         ]
 
         # Reflection
@@ -144,6 +146,7 @@ class GenesisDaemon:
 
         # Threading
         self.lock = threading.Lock()
+        self._watchdog_thread: Optional[threading.Thread] = None
 
         LOG.info("Genesis Daemon initialized")
 
@@ -161,6 +164,12 @@ class GenesisDaemon:
 
         LOG.info("Genesis Daemon starting...")
         LOG.info(f"Initial state: {self.state.value}")
+
+        # Start independent watchdog thread (D-1 fix: prevents crash-loop)
+        self._watchdog_thread = threading.Thread(
+            target=self._watchdog_worker, daemon=True, name="genesis-watchdog"
+        )
+        self._watchdog_thread.start()
 
         # Notify systemd we're ready
         sd_notify("READY=1")
@@ -182,38 +191,30 @@ class GenesisDaemon:
         self.stop()
 
     def _main_loop(self):
-        """The main daemon loop."""
-        last_watchdog = time.monotonic()
+        """The main daemon loop.
 
+        D-1 fix: Watchdog petting is handled by the independent watchdog
+        thread. Main loop only does tick + sleep.
+        """
         while self.running:
             try:
-                # Pet watchdog before tick (sensors can block 30+s)
-                now = time.monotonic()
-                if now - last_watchdog >= 25:
-                    sd_notify("WATCHDOG=1")
-                    sd_notify(f"STATUS=State: {self.state.value}, Tick: {self.tick_count}")
-                    last_watchdog = now
-
-                # Get tick interval based on state
                 interval = self._get_tick_interval()
-
-                # Run one tick
                 self._tick()
-
-                # Pet watchdog after tick too
-                now = time.monotonic()
-                if now - last_watchdog >= 25:
-                    sd_notify("WATCHDOG=1")
-                    sd_notify(f"STATUS=State: {self.state.value}, Tick: {self.tick_count}")
-                    last_watchdog = now
-
-                # Sleep
                 time.sleep(interval)
 
             except Exception as e:
                 LOG.error(f"Error in main loop: {e}", exc_info=True)
-                sd_notify("WATCHDOG=1")  # Still alive despite error
-                time.sleep(5)  # Back off on error
+                time.sleep(5)
+
+    def _watchdog_worker(self):
+        """Independent watchdog — pets systemd every 30s regardless of main loop state.
+
+        D-1 fix: prevents crash-loop when sensors block > WatchdogSec.
+        """
+        while self.running:
+            sd_notify("WATCHDOG=1")
+            sd_notify(f"STATUS=State: {self.state.value}, Tick: {self.tick_count}")
+            time.sleep(30)
 
     def _get_tick_interval(self) -> float:
         """Get tick interval based on current state."""
@@ -231,55 +232,81 @@ class GenesisDaemon:
         """
         One tick of the daemon.
         This is where the magic happens.
+
+        D-1 fix: No global lock — Genesis is single-threaded, and the
+        independent watchdog thread handles systemd petting.
         """
         self.tick_count += 1
         self.stats["total_ticks"] = self.tick_count
 
-        with self.lock:
-            # 1. Sense the world (all states)
-            self._sense()
-            sd_notify("WATCHDOG=1")
+        # 1. Sense the world (all states) — with per-sensor timeout
+        self._sense()
 
-            # 2. Evolve the field
-            self.field.evolve(dt=1.0)
+        # 2. Evolve the field
+        self.field.evolve(dt=1.0)
 
-            # 3. Apply wave contributions to field
-            contributions = self.wave_bus.tick()
-            self.field.apply_wave_contributions(contributions)
-            sd_notify("WATCHDOG=1")
+        # 3. Apply wave contributions to field
+        contributions = self.wave_bus.tick()
+        self.field.apply_wave_contributions(contributions)
 
-            # 4. Update state based on conditions
-            self._update_state()
-            sd_notify("WATCHDOG=1")
+        # 4. Update state based on conditions
+        self._update_state()
 
-            # 5. State-specific processing
-            if self.state == ContemplationState.DORMANT:
-                self._process_dormant()
-            elif self.state == ContemplationState.STIRRING:
-                self._process_stirring()
-            elif self.state == ContemplationState.AWAKENING:
-                self._process_awakening()
-            elif self.state == ContemplationState.ACTIVE:
-                self._process_active()
-            elif self.state == ContemplationState.PRESENTING:
-                self._process_presenting()
-            elif self.state == ContemplationState.REFLECTING:
-                self._process_reflecting()
-            sd_notify("WATCHDOG=1")
+        # 5. State-specific processing
+        if self.state == ContemplationState.DORMANT:
+            self._process_dormant()
+        elif self.state == ContemplationState.STIRRING:
+            self._process_stirring()
+        elif self.state == ContemplationState.AWAKENING:
+            self._process_awakening()
+        elif self.state == ContemplationState.ACTIVE:
+            self._process_active()
+        elif self.state == ContemplationState.PRESENTING:
+            self._process_presenting()
+        elif self.state == ContemplationState.REFLECTING:
+            self._process_reflecting()
 
-            # 6. Periodic maintenance (every 50 ticks for fresher state snapshots)
-            if self.tick_count % 50 == 0:
-                sd_notify("WATCHDOG=1")
-                self._maintenance()
+        # 6. Periodic maintenance (every 50 ticks for fresher state snapshots)
+        if self.tick_count % 50 == 0:
+            self._maintenance()
+
+    _SENSOR_TIMEOUT = 120  # seconds — D-1 fix: skip sensor if it blocks too long
 
     def _sense(self):
-        """Run all sensors and collect waves."""
+        """Run all sensors and collect waves.
+
+        D-1 fix: Each sensor runs in a thread with a 120s timeout.
+        If a sensor blocks longer, its results are skipped and the
+        main loop continues. The watchdog thread handles systemd petting.
+        """
         for sensor in self.sensors:
             try:
-                waves = sensor.tick()
-                self.wave_bus.emit_many(waves)
+                result = {"waves": [], "error": None}
 
-                # Inject observations as potential seeds
+                def _run_sensor(s=sensor, r=result):
+                    try:
+                        r["waves"] = s.tick() or []
+                    except Exception as e:
+                        r["error"] = e
+
+                t = threading.Thread(
+                    target=_run_sensor, daemon=True,
+                    name=f"sensor-{sensor.name}",
+                )
+                t.start()
+                t.join(self._SENSOR_TIMEOUT)
+
+                if t.is_alive():
+                    LOG.warning("Sensor %s timed out after %ds, skipping",
+                                sensor.name, self._SENSOR_TIMEOUT)
+                    continue
+
+                if result["error"]:
+                    raise result["error"]
+
+                self.wave_bus.emit_many(result["waves"])
+
+                # Inject observations (quick — reads cached data)
                 if self.state in [ContemplationState.STIRRING,
                                   ContemplationState.AWAKENING,
                                   ContemplationState.ACTIVE]:
@@ -289,9 +316,6 @@ class GenesisDaemon:
 
             except Exception as e:
                 LOG.warning(f"Sensor {sensor.name} error: {e}")
-
-            # Pet watchdog between sensors (some block 30+s)
-            sd_notify("WATCHDOG=1")
 
     _MIN_STATE_DURATION_S = 10.0  # Minimum time in any state before downgrade
 
@@ -392,7 +416,6 @@ class GenesisDaemon:
 
     def _process_awakening(self):
         """Process during awakening state - full analysis."""
-        # Tick soup every tick
         self.soup.tick(self.field)
 
         # Check for crystals
@@ -402,7 +425,6 @@ class GenesisDaemon:
 
     def _process_active(self):
         """Process during active state - manifestation possible."""
-        # Tick soup
         new_crystals = self.soup.tick(self.field)
 
         if new_crystals:
@@ -681,8 +703,12 @@ class GenesisDaemon:
                  f"Soup: {len(self.soup.organisms)} organisms, "
                  f"Field: {self.field.get_dominant_state().value}")
 
+    # Hard ceiling for state file — accumulate freely below this,
+    # but purge aggressively when exceeded.
+    _STATE_MAX_BYTES = 20 * 1024 * 1024  # 20 MB
+
     def _save_state(self):
-        """Save daemon state to disk."""
+        """Save daemon state to disk.  Enforces 20 MB size ceiling."""
         try:
             state_path = self.config.state_path
             state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -698,8 +724,31 @@ class GenesisDaemon:
                 "stats": self.stats,
             }
 
-            state_path.write_text(json.dumps(state, indent=2, default=str))
-            LOG.debug("State saved")
+            blob = json.dumps(state, indent=2, default=str)
+            size = len(blob.encode("utf-8"))
+
+            # Size guard: if over 20 MB, cut crystals in half and retry
+            if size > self._STATE_MAX_BYTES:
+                LOG.warning("State file %.1f MB exceeds 20 MB ceiling, "
+                            "purging crystals (had %d)",
+                            size / 1024 / 1024, len(self.soup.crystals))
+                # Halve crystals, keeping the best
+                half = max(50, len(self.soup.crystals) // 2)
+                self.soup._purge_crystals(cap=half)
+                # Trim seen_signatures too
+                sigs = self.soup._seen_signatures
+                if len(sigs) > 2000:
+                    self.soup._seen_signatures = set(list(sigs)[-2000:])
+                # Re-serialize
+                state["soup"] = self.soup.to_dict()
+                blob = json.dumps(state, indent=2, default=str)
+                LOG.info("After purge: %.1f MB, %d crystals, %d organisms",
+                         len(blob.encode("utf-8")) / 1024 / 1024,
+                         len(self.soup.crystals),
+                         len(self.soup.organisms))
+
+            state_path.write_text(blob)
+            LOG.debug("State saved (%.1f MB)", size / 1024 / 1024)
 
         except Exception as e:
             LOG.warning(f"Failed to save state: {e}")
@@ -741,26 +790,27 @@ class GenesisDaemon:
             LOG.warning(f"Failed to load state: {e}")
 
     def get_status(self) -> Dict:
-        """Get current daemon status."""
-        return {
-            "running": self.running,
-            "state": self.state.value,
-            "tick_count": self.tick_count,
-            "field": self.field.to_dict(),
-            "soup": {
-                "organisms": len(self.soup.organisms),
-                "crystals": len(self.soup.crystals),
-                "stats": {
-                    "seeds": self.soup.stats.seeds,
-                    "seedlings": self.soup.stats.seedlings,
-                    "mature": self.soup.stats.mature,
-                    "avg_energy": self.soup.stats.average_energy,
-                    "avg_fitness": self.soup.stats.average_fitness,
-                }
-            },
-            "stats": self.stats,
-            "sensors": {s.name: s.get_stats() for s in self.sensors},
-        }
+        """Get current daemon status. Thread-safe for API access."""
+        with self.lock:
+            return {
+                "running": self.running,
+                "state": self.state.value,
+                "tick_count": self.tick_count,
+                "field": self.field.to_dict(),
+                "soup": {
+                    "organisms": len(self.soup.organisms),
+                    "crystals": len(self.soup.crystals),
+                    "stats": {
+                        "seeds": self.soup.stats.seeds,
+                        "seedlings": self.soup.stats.seedlings,
+                        "mature": self.soup.stats.mature,
+                        "avg_energy": self.soup.stats.average_energy,
+                        "avg_fitness": self.soup.stats.average_fitness,
+                    }
+                },
+                "stats": self.stats,
+                "sensors": {s.name: s.get_stats() for s in self.sensors},
+            }
 
 
 # Global daemon instance

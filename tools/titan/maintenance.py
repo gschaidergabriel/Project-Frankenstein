@@ -153,52 +153,75 @@ class MaintenanceEngine:
             LOG.debug(f"Unprotected {unprotected} expired nodes")
 
     def _decay_confidence(self) -> int:
-        """Apply time-based confidence decay to all nodes."""
+        """Apply time-based confidence decay to all nodes.
+
+        Fix #30: Use BEGIN IMMEDIATE for upfront write lock.
+        Early abort on first lock failure instead of 514 individual errors.
+        Proper rollback on failure.
+        """
+        import json as _json
         conn = self.sqlite._get_conn()
         updated = 0
         now = datetime.now()
 
-        # Get all nodes with metadata
-        rows = conn.execute("""
-            SELECT id, created_at, metadata FROM nodes
-            WHERE protected = 0
-        """).fetchall()
+        try:
+            # Get write lock upfront — fail fast if DB is busy
+            conn.execute("BEGIN IMMEDIATE")
+        except Exception as e:
+            LOG.warning(f"Decay skipped: could not acquire write lock: {e}")
+            return 0
 
-        for row in rows:
+        try:
+            rows = conn.execute("""
+                SELECT id, created_at, metadata FROM nodes
+                WHERE protected = 0
+            """).fetchall()
+
+            for row in rows:
+                try:
+                    node_id = row["id"]
+                    created_at = row["created_at"]
+                    metadata = row["metadata"]
+
+                    if not metadata:
+                        continue
+
+                    meta = _json.loads(metadata)
+                    base_confidence = meta.get("confidence", 0.5)
+
+                    created = datetime.fromisoformat(created_at)
+                    age_days = (now - created).total_seconds() / 86400
+
+                    decay_factor = math.pow(2, -age_days / DECAY_HALF_LIFE_DAYS)
+                    new_confidence = base_confidence * decay_factor
+
+                    if abs(new_confidence - base_confidence) > 0.05:
+                        meta["effective_confidence"] = new_confidence
+                        conn.execute("""
+                            UPDATE nodes SET metadata = ?
+                            WHERE id = ?
+                        """, (_json.dumps(meta), node_id))
+                        updated += 1
+
+                except Exception as e:
+                    # Fix #30: Early abort — if one update fails with lock,
+                    # all subsequent will too. Don't spam 514 warnings.
+                    if "locked" in str(e) or "database" in str(e).lower():
+                        LOG.warning(f"Decay aborted after {updated} updates: {e}")
+                        conn.rollback()
+                        return updated
+                    LOG.debug(f"Skipping node {row['id']}: {e}")
+
+            conn.commit()
+            return updated
+
+        except Exception as e:
+            LOG.warning(f"Decay failed, rolling back: {e}")
             try:
-                node_id = row["id"]
-                created_at = row["created_at"]
-                metadata = row["metadata"]
-
-                if not metadata:
-                    continue
-
-                import json
-                meta = json.loads(metadata)
-                base_confidence = meta.get("confidence", 0.5)
-
-                # Calculate age
-                created = datetime.fromisoformat(created_at)
-                age_days = (now - created).total_seconds() / 86400
-
-                # Calculate decayed confidence
-                decay_factor = math.pow(2, -age_days / DECAY_HALF_LIFE_DAYS)
-                new_confidence = base_confidence * decay_factor
-
-                # Update if significantly changed
-                if abs(new_confidence - base_confidence) > 0.05:
-                    meta["effective_confidence"] = new_confidence
-                    conn.execute("""
-                        UPDATE nodes SET metadata = ?
-                        WHERE id = ?
-                    """, (json.dumps(meta), node_id))
-                    updated += 1
-
-            except Exception as e:
-                LOG.warning(f"Failed to decay node {row['id']}: {e}")
-
-        conn.commit()
-        return updated
+                conn.rollback()
+            except Exception:
+                pass
+            return updated
 
     def _find_prune_candidates(self) -> List[Tuple[str, str]]:
         """

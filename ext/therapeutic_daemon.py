@@ -245,6 +245,7 @@ def _get_current_mood_buffer() -> float:
     try:
         from personality.e_pq import get_epq
         epq = get_epq()
+        epq._refresh_state()  # D-5 fix: read current DB values
         return epq._state.mood_buffer
     except Exception as e:
         LOG.warning(f"Could not read mood_buffer: {e}")

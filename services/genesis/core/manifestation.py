@@ -53,7 +53,45 @@ class Crystal:
     source_info: Dict = field(default_factory=dict)
 
     def to_proposal_dict(self) -> Dict:
-        """Convert to proposal format for F.A.S. popup."""
+        """Convert to proposal format for F.A.S. popup.
+
+        Includes FAS-compatible fields (feature_type, file_path, etc.)
+        so the detail dialog shows real data instead of 'Unknown'.
+        """
+        genome = self.organism.genome
+        meta = getattr(genome, "metadata", {})
+
+        # Build code_snippet from available evidence/detail
+        code_parts = []
+        if meta.get("evidence"):
+            code_parts.append(f"# Evidence\n{meta['evidence']}")
+        if meta.get("detail"):
+            code_parts.append(f"# Detail\n{meta['detail']}")
+        if meta.get("metric"):
+            code_parts.append(f"# Metric: {meta['metric']}")
+        if meta.get("check"):
+            code_parts.append(f"# Check: {meta['check']}")
+        code_snippet = "\n\n".join(code_parts) if code_parts else ""
+
+        # Build specific "why" from concrete data
+        origin_names = {
+            "code_analysis": "Code-Analyse (AST)",
+            "error_analysis": "Error-Log-Analyse",
+            "observation": "System-Beobachtung",
+            "github": "GitHub Feature-Scan",
+            "fusion": "Ideen-Fusion (Evolution)",
+            "consciousness_insight": "Franks Selbstreflexion",
+            "spontaneous": "Emergente Idee",
+            "news_scanner": "News-Analyse",
+        }
+        why_origin = origin_names.get(genome.origin, genome.origin)
+        why_parts = [f"Entdeckt durch: {why_origin}"]
+        if meta.get("check"):
+            why_parts.append(f"Befund: {meta['check']}")
+        if meta.get("evidence"):
+            why_parts.append(meta["evidence"][:200])
+        why_specific = ". ".join(why_parts)
+
         return {
             "id": self.id,
             "title": self.title,
@@ -62,11 +100,20 @@ class Crystal:
             "risk_assessment": self.risk_assessment,
             "expected_benefit": self.expected_benefit,
             "resonance": self.resonance,
+            # FAS-compatible fields for detail dialog
+            "feature_type": genome.idea_type,
+            "file_path": genome.target,
+            "repo_name": genome.origin,
+            "confidence_score": self.organism.average_fitness,
+            "code_snippet": code_snippet,
+            "why_specific": why_specific,
+            "metadata": dict(meta),
+            # Legacy genome field
             "genome": {
-                "type": self.organism.genome.idea_type,
-                "target": self.organism.genome.target,
-                "origin": self.organism.genome.origin,
-                "feature_id": self.organism.genome.feature_id,
+                "type": genome.idea_type,
+                "target": genome.target,
+                "origin": genome.origin,
+                "feature_id": genome.feature_id,
             },
             "energy": self.organism.energy,
             "fitness": self.organism.average_fitness,
@@ -238,9 +285,9 @@ class ManifestationGate:
             else:
                 factors.append(0.4)
 
-        # Bored state resonates with exploration
+        # Bored state resonates with exploration and skills
         if state == EmotionState.BORED_PASSIVE:
-            if genome.idea_type == "exploration":
+            if genome.idea_type in ("exploration", "skill"):
                 factors.append(0.8)
             else:
                 factors.append(genome.traits.get("novelty", 0.5))
@@ -328,6 +375,8 @@ class ManifestationGate:
                 hypothesis = {"current_phase": "reflecting"}
             elif genome.idea_type == "feature":
                 hypothesis = {"current_mode": "project", "current_phase": "engaged"}
+            elif genome.idea_type == "skill":
+                hypothesis = {"current_phase": "reflecting", "current_mode": "focus"}
             elif genome.idea_type == "personality_adjustment":
                 target_vec = genome.traits.get("target_vector", "")
                 amount = genome.traits.get("adjustment_amount", 0.1)
@@ -387,6 +436,7 @@ class ManifestationGate:
             "feature": "New Feature",
             "fix": "Bugfix",
             "exploration": "Exploration",
+            "skill": "Skill Development",
             "personality_adjustment": "Personality Evolution",
             "prompt_evolution": "Prompt Template Evolution",
         }
@@ -407,8 +457,37 @@ class ManifestationGate:
         }
         crystal.approach = approach_descriptions.get(genome.approach, genome.approach)
 
-        # Special descriptions for personality/prompt crystals
-        if genome.idea_type == "personality_adjustment":
+        # Special descriptions for skill/personality/prompt crystals
+        if genome.idea_type == "skill":
+            meta = getattr(genome, "metadata", {})
+            evidence = meta.get("evidence", "emergente Erkenntnis")
+            # Strip "skill:" prefix from target for display
+            skill_name = genome.target
+            if skill_name.startswith("skill:"):
+                skill_name = skill_name[6:]
+
+            # Bombproof structured template — 8B model can parse this
+            crystal.title = f"Skill: {skill_name.replace('_', ' ').title()}"
+            crystal.description = (
+                f"=== SKILL-PROPOSAL ===\n"
+                f"SKILL: {skill_name}\n"
+                f"ZIEL: Frank entwickelt/verbessert die Fähigkeit '{skill_name}'.\n"
+                f"APPROACH: {crystal.approach}\n"
+                f"EVIDENZ: {evidence}\n"
+                f"---\n"
+                f"IMPLEMENTIERUNG:\n"
+                f"  1. Erstelle/erweitere Tool oder Config für '{skill_name}'\n"
+                f"  2. Integriere mit bestehendem System (Router, Tools, Consciousness)\n"
+                f"  3. Teste mit realen Szenarien\n"
+                f"---\n"
+                f"RISIKO: Niedrig (Erweiterung, kein Breaking Change)\n"
+                f"NUTZEN: Franks Kompetenzbereich wächst organisch."
+            )
+            crystal.risk_assessment = "Low risk - additive skill extension, no breaking changes"
+            crystal.expected_benefit = (
+                f"Frank gains/improves capability: {skill_name}"
+            )
+        elif genome.idea_type == "personality_adjustment":
             target_vec = genome.traits.get("target_vector", genome.target)
             amount = genome.traits.get("adjustment_amount", 0.1)
             direction = "boost" if genome.approach == "vector_boost" else "dampen"

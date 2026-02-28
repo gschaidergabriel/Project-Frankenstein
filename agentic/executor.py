@@ -29,6 +29,50 @@ LOG = logging.getLogger("agentic.executor")
 # Toolbox base URL
 TOOLBOX_URL = "http://127.0.0.1:8096"
 
+
+def _eb_record_agentic_tool(tool_name: str, success: bool,
+                             execution_time_ms: float, error: str = None):
+    """Experiential Bridge: record agentic tool execution to consciousness.
+
+    Direct SQLite write — does NOT import ConsciousnessDaemon (cross-process safe).
+    """
+    try:
+        import sqlite3 as _sql
+        import sys as _sys
+        _root = str(Path(__file__).resolve().parents[1])
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from config.paths import get_db
+        ts = time.time()
+        ctx = error[:200] if error and not success else ""
+        conn = _sql.connect(str(get_db("consciousness")), timeout=5)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute(
+                "INSERT INTO activity_log "
+                "(timestamp, activity_type, source, name, success, context, "
+                " duration_ms, mood_before, mood_after, epq_snapshot, metadata) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (ts, "tool_use", "agentic", tool_name, 1 if success else 0,
+                 ctx, execution_time_ms, 0.0, 0.0, "", "{}"),
+            )
+            conn.execute(
+                "DELETE FROM activity_log WHERE id NOT IN "
+                "(SELECT id FROM activity_log ORDER BY id DESC LIMIT 500)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        # E-PQ event (lightweight — no daemon instantiation)
+        try:
+            from personality.e_pq import process_event
+            evt = "tool_success" if success else "tool_failure"
+            process_event(evt, {"tool": tool_name})
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 # Firejail availability (checked once at import time)
 FIREJAIL_PATH = shutil.which("firejail")
 if FIREJAIL_PATH:
@@ -120,6 +164,8 @@ class ToolExecutor:
             try:
                 result = self._execute_tool(tool, tool_input)
                 result.execution_time_ms = (time.time() - start_time) * 1000
+                _eb_record_agentic_tool(tool_name, result.success,
+                                        result.execution_time_ms, result.error)
                 return result
             except Exception as e:
                 last_error = str(e)
@@ -127,12 +173,14 @@ class ToolExecutor:
                 if attempt < self.config.max_retries:
                     time.sleep(self.config.retry_delay_s)
 
+        exec_ms = (time.time() - start_time) * 1000
+        _eb_record_agentic_tool(tool_name, False, exec_ms, last_error)
         return ToolResult(
             tool_name=tool_name,
             success=False,
             data={},
             error=f"Failed after {self.config.max_retries + 1} attempts: {last_error}",
-            execution_time_ms=(time.time() - start_time) * 1000,
+            execution_time_ms=exec_ms,
         )
 
     def _needs_approval(self, tool: Tool) -> bool:

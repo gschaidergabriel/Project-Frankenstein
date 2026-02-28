@@ -3,7 +3,7 @@
 Entity LLM — GPU-primary inference for entity agents.
 
 Entities use the RLM (DeepSeek-R1, GPU, port 8101) via Router for all calls.
-Falls back to Chat-LLM (Llama-3.1-8B, CPU, port 8102) only if RLM is unavailable.
+Falls back to Micro-LLM (Qwen2.5-3B, CPU, port 8105) only if RLM is unavailable.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ LOG = logging.getLogger("entity_llm")
 # Configuration
 # ---------------------------------------------------------------------------
 
-CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8102")
+CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8105")
 CHAT_LLM_TIMEOUT = int(os.environ.get("ENTITY_CHAT_LLM_TIMEOUT", "120"))
 
 ROUTER_URL = os.environ.get("AICORE_ROUTER_URL", "http://127.0.0.1:8091") + "/route"
@@ -54,7 +54,7 @@ ENTITY_OPTIONS: dict[str, dict] = {
 
 
 # ---------------------------------------------------------------------------
-# Chat-LLM API (CPU fallback — only used when Router/RLM is down)
+# Micro-LLM API (Qwen2.5-3B, CPU fallback — only used when Router/RLM is down)
 # ---------------------------------------------------------------------------
 
 def _chat_llm_generate(

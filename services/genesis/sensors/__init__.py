@@ -11,6 +11,7 @@ from .time_rhythm import TimeRhythm
 from .github_echo import GitHubEcho
 from .news_echo import NewsEcho
 from .code_analyzer import CodeAnalyzer
+from .consciousness_insight import ConsciousnessInsight
 
 __all__ = [
     "BaseSensor",
@@ -21,4 +22,5 @@ __all__ = [
     "GitHubEcho",
     "NewsEcho",
     "CodeAnalyzer",
+    "ConsciousnessInsight",
 ]

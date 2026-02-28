@@ -84,6 +84,14 @@ EVENT_WEIGHTS = {
     "meta_reflection": 0.3,
     # Introspection — user asks about Frank's feelings/state
     "introspection": 0.15,
+    # Voluntary introspection — consciousness daemon idle reflection
+    "voluntary_introspection": 0.2,
+    # Experiential Bridge: tool execution events
+    "tool_success": 0.1,
+    "tool_failure": 0.2,
+    # Experiential Bridge: entity session experience events
+    "entity_session_positive": 0.2,
+    "entity_session_negative": 0.15,
 }
 
 # Base learning rate (decreases with age for stability)
@@ -385,7 +393,12 @@ class EPQ:
         """
         Get current learning rate (decreases with age for stability).
         Young Frank learns fast, old Frank is more stable.
+        Cycle 5 D-9: Recompute age_days live instead of using startup value.
         """
+        # Recompute age from birth date (was only computed at _load_state startup)
+        if self._birth_date:
+            self._state.age_days = (datetime.now() - self._birth_date).days
+
         if self._state.age_days <= 0:
             return BASE_LEARNING_RATE
 
@@ -419,6 +432,7 @@ class EPQ:
         - mood: Current transient mood
         - style_hints: Suggestions for response style
         """
+        self._refresh_state()
         self._update_mood()
 
         # Build temperament description
@@ -534,6 +548,42 @@ class EPQ:
         for key in list(changes):
             if key != "mood":
                 changes[key] = max(-MAX_DELTA, min(MAX_DELTA, changes[key]))
+
+        # Soft saturation: dampen changes near bounds + pull toward homeostasis
+        # Prevents monotonic drift to ceiling/floor (Cycle 5 D-2: empathy→1.0)
+        _HOMEO_TARGETS = {
+            "precision": 0.5, "risk": 0.0, "empathy": 0.7,
+            "autonomy": 0.3, "vigilance": 0.1,
+        }
+        for dim, target in _HOMEO_TARGETS.items():
+            current = getattr(self._state, f"{dim}_val", None)
+            if current is None:
+                continue
+            change = changes.get(dim, 0)
+            # How extreme? 0.0 at |val|<=0.85, 1.0 at |val|=1.0
+            extremity = max(0.0, (abs(current) - 0.85) / 0.15)
+            if extremity > 0:
+                # Dampen changes pushing further from target
+                if (current > target and change > 0) or (current < target and change < 0):
+                    changes[dim] = change * (1.0 - extremity * 0.85)
+                # Pull-back toward target (must exceed dampened change at ceiling)
+                pull = (target - current) * 0.008 * (1.0 + extremity)
+                changes[dim] = changes.get(dim, 0) + pull
+
+        # D-3 Fix: mood_buffer asymmetric saturation
+        # Entity boosts push mood +0.28 per session but decay is only -1.5%/interaction.
+        # Without this, mood_buffer hits 1.0 and stays there indefinitely.
+        mood_change = changes.get("mood", 0)
+        mb = self._state.mood_buffer
+        if abs(mb) > 0.6:
+            # How close to ceiling? 0.0 at |mb|=0.6, 1.0 at |mb|=1.0
+            mood_extremity = min(1.0, (abs(mb) - 0.6) / 0.4)
+            # Dampen pushes toward the ceiling
+            if (mb > 0 and mood_change > 0) or (mb < 0 and mood_change < 0):
+                changes["mood"] = mood_change * (1.0 - mood_extremity * 0.75)
+            # Pull-back toward neutral (stronger than vector pull: 3% not 0.8%)
+            mood_pull = -mb * 0.03 * (1.0 + mood_extremity)
+            changes["mood"] = changes.get("mood", 0) + mood_pull
 
         # Apply changes
         old_state = self._state.to_dict()
@@ -717,6 +767,21 @@ class EPQ:
             changes["empathy"] = delta * 0.15     # Emotional awareness grows
             changes["mood"] = delta * 0.3         # Mild positive from engagement
 
+        # Voluntary introspection — consciousness daemon idle reflection
+        elif event_type == "voluntary_introspection":
+            changes["precision"] = delta * 0.2    # Self-observation sharpens precision
+            changes["autonomy"] = delta * 0.15    # Independent thought builds confidence
+            changes["empathy"] = delta * 0.1      # Self-awareness aids empathy
+            changes["mood"] = delta * 0.3         # Reflection is mildly positive
+
+        # Fix #43: Entity session summary — fired once at session end
+        elif event_type == "entity_session":
+            # Aggregate mood impact from session (data may contain turns, sentiment)
+            turns = data.get("turns", 1)
+            mood_mult = min(turns * 0.1, 0.8)  # More turns = more impact, capped
+            changes["empathy"] = delta * 0.3
+            changes["mood"] = delta * mood_mult
+
         # Genesis-driven personality adjustments (vector-targeted via data dict)
         elif event_type == "genesis_personality_boost":
             target = data.get("target_vector", "")
@@ -733,6 +798,24 @@ class EPQ:
                 direction = -1.0 if current > 0 else 1.0
                 changes[target] = delta * abs(amount) * 3.0 * direction
                 changes["mood"] = delta * 0.1
+
+        # Experiential Bridge: tool execution
+        elif event_type == "tool_success":
+            changes["precision"] = delta * 0.2  # Competence
+            changes["autonomy"] = delta * 0.1   # Can-do
+            changes["mood"] = delta * 0.1       # Satisfaction
+        elif event_type == "tool_failure":
+            changes["precision"] = -delta * 0.1
+            changes["vigilance"] = delta * 0.2  # More alert after failure
+            changes["mood"] = -delta * 0.2      # Frustration
+
+        # Experiential Bridge: entity session experience
+        elif event_type == "entity_session_positive":
+            changes["empathy"] = delta * 0.2    # Connection
+            changes["mood"] = delta * 0.3       # Felt good
+        elif event_type == "entity_session_negative":
+            changes["vigilance"] = delta * 0.1
+            changes["mood"] = -delta * 0.2
 
         # Sentiment modifiers
         if sentiment == "positive":
@@ -964,9 +1047,9 @@ class EPQ:
 
             # Restore state
             self._state.precision_val = state_dict.get("precision_val", 0.0)
-            self._state.risk_val = state_dict.get("risk_val", -0.5)
+            self._state.risk_val = state_dict.get("risk_val", -0.1)
             self._state.empathy_val = state_dict.get("empathy_val", 0.2)
-            self._state.autonomy_val = state_dict.get("autonomy_val", -0.8)
+            self._state.autonomy_val = state_dict.get("autonomy_val", -0.1)
             self._state.vigilance_val = state_dict.get("vigilance_val", 0.0)
             self._state.mood_buffer = 0.0  # Reset mood
             self._state.confidence_anchor = state_dict.get("confidence_anchor", 0.5)

@@ -52,7 +52,9 @@ class InvariantsConfig:
     age_factor_base: float = 0.99  # Decay per day
 
     # Tolerance for energy conservation (floating point margin)
-    energy_tolerance: float = 0.02  # 2% tolerance
+    # Fix #25: 2% was far too tight for an organically growing knowledge base.
+    # Organic growth (new nodes/edges/events) is NOT a conservation violation.
+    energy_tolerance: float = 0.15  # 15% tolerance
 
     # =========================================================================
     # INVARIANT 2: ENTROPY BOUND

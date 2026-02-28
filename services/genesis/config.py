@@ -38,7 +38,7 @@ class GenesisConfig:
     tick_interval_dormant: float = 30.0      # Seconds between ticks when dormant
     tick_interval_stirring: float = 5.0       # Seconds between ticks when stirring
     tick_interval_awakening: float = 1.0      # Seconds between ticks when awakening
-    tick_interval_active: float = 0.5         # Seconds between ticks when active
+    tick_interval_active: float = 2.0         # Fix #32: Was 0.5 — too fast, causes CPU spikes and watchdog kills
 
     # === Thresholds ===
     # Motivational Field

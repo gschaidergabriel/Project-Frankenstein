@@ -551,6 +551,12 @@ class QUBOBuilder:
         # Zone contrast high [42] — threshold: 0.3 (significant density spread)
         h[42] = -0.5 if state.aura_zone_contrast > 0.3 else 3.0
 
+        # D-11 fix + Cycle 5 D-6: Additive noise to break monotone solutions.
+        # Previous multiplicative noise (h * noise) was too weak when h ≈ 0.
+        # Additive ±0.1 ensures variation even for near-zero biases.
+        noise = np.random.uniform(-0.10, 0.10, size=h.shape)
+        h += noise
+
         self._last_linear = h.copy()
         return h
 

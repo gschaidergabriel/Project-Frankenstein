@@ -10,7 +10,7 @@ Architektur:
 - 60-Minuten Tagesbudget (rollierendes 24h-Reset)
 - 3 Phasen: Replay (~20min), Synthese (~20min), Konsolidierung (~20min)
 - Unterbrechbar: pausiert sofort bei User-Aktivität, setzt exakt fort
-- Trigger: 45min idle + 20h seit letztem Traum + CPU < 30% + Budget > 0
+- Trigger: 45min idle + 20h seit letztem Traum + CPU < 30% + Budget > 0 (NOT 50% — higher = more permissive!)
 
 Läuft als systemd user service: aicore-dream.service
 """
@@ -84,7 +84,7 @@ DREAM_BUDGET_SEC = 3600             # 60 min total daily budget
 IDLE_THRESHOLD_SEC = 45 * 60        # 45 min idle before dreaming
 COOLDOWN_BETWEEN_DREAMS_SEC = 20 * 3600  # 20h between complete dreams
 BUDGET_RESET_INTERVAL_SEC = 24 * 3600    # 24h rolling budget reset
-CPU_LOAD_THRESHOLD = 30.0           # Max CPU load % to start dreaming
+CPU_LOAD_THRESHOLD = 30.0           # Max CPU load % to start dreaming (Fix #49 was wrong: 50→30)
 INTERRUPT_CHECK_INTERVAL_SEC = 30   # Check for user activity every 30s
 MAIN_LOOP_TICK_SEC = 60             # Main daemon loop tick
 
@@ -411,6 +411,15 @@ class DreamDaemon:
         if not text:
             return None
         text = text.strip()
+
+        # D-9 fix: Strip DeepSeek <think> blocks that leak into content
+        # Cycle 5 D-8: Also handle unclosed <think> blocks (truncated responses)
+        import re
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        # If <think> is still present without closing tag, strip from <think> to end
+        think_pos = text.find("<think>")
+        if think_pos >= 0:
+            text = text[:think_pos].strip()
 
         # Remove markdown fences
         if "```" in text:

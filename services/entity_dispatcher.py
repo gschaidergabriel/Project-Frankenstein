@@ -52,15 +52,17 @@ except ImportError:
 LOG_DIR = Path(LOG_DIR)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_DIR / "entity_dispatcher.log", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
-)
 LOG = logging.getLogger("entity_dispatcher")
+LOG.setLevel(logging.INFO)
+LOG.propagate = False  # Cycle 5 D-5: prevent double-logging via root propagation
+if not LOG.handlers:
+    _fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    _fh = logging.FileHandler(LOG_DIR / "entity_dispatcher.log", encoding="utf-8")
+    _fh.setFormatter(_fmt)
+    LOG.addHandler(_fh)
+    _sh = logging.StreamHandler()
+    _sh.setFormatter(_fmt)
+    LOG.addHandler(_sh)
 
 
 def _entity_notify(action: str, detail: str = "") -> None:
@@ -129,6 +131,14 @@ def _handle_signal(signum, _frame):
     global _shutdown
     LOG.info("Received signal %d, shutting down...", signum)
     _shutdown = True
+
+
+def _shutdown_sleep(seconds: float):
+    """Sleep in 5s chunks, checking _shutdown between chunks."""
+    remaining = seconds
+    while remaining > 0 and not _shutdown:
+        time.sleep(min(5.0, remaining))
+        remaining -= 5.0
 
 
 # ── Quota Management ───────────────────────────────────────────────────
@@ -330,12 +340,34 @@ def _check_services_healthy() -> bool:
     return True
 
 
+def _check_not_in_silence() -> bool:
+    """Return True if consciousness is NOT in silence mode."""
+    lock = Path("/tmp/frank/silence_active.lock")
+    if lock.exists():
+        try:
+            import json as _json
+            data = _json.loads(lock.read_text())
+            # Check if silence has expired
+            import time as _time
+            elapsed = _time.time() - data.get("start", 0)
+            if elapsed < data.get("duration", 1800):
+                LOG.debug("Gate FAIL: Silence mode active (%.0fs remaining)",
+                          data["duration"] - elapsed)
+                return False
+            # Expired — clean up stale lock
+            lock.unlink()
+        except Exception:
+            pass
+    return True
+
+
 def all_gates_pass() -> bool:
     """Run all gate checks; return True if all pass."""
     gates = [
         ("idle",             _check_idle),
         ("chat_silence",     _check_chat_silence),
         ("not_gaming",       _check_not_gaming),
+        ("silence_mode",     _check_not_in_silence),
         ("gpu_load",         _check_gpu_load),
         ("no_pid_locks",     _check_no_pid_locks),
         ("services_healthy", _check_services_healthy),
@@ -348,6 +380,121 @@ def all_gates_pass() -> bool:
 
 # ── Session Runner ─────────────────────────────────────────────────────
 
+def _eb_get_mood() -> float:
+    """Experiential Bridge: get current mood from consciousness.db."""
+    try:
+        from config.paths import get_db
+        cons_db = get_db("consciousness")
+        conn = sqlite3.connect(str(cons_db), timeout=2)
+        try:
+            row = conn.execute(
+                "SELECT mood_value FROM mood_trajectory ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            return row[0] if row else 0.0
+        finally:
+            conn.close()
+    except Exception:
+        return 0.0
+
+
+def _eb_record_entity_experience(entity: str, display: str,
+                                  pre_mood: float, pre_ts: float,
+                                  exit_reason: str):
+    """Experiential Bridge: record entity session as experience.
+
+    Direct SQLite writes — does NOT import ConsciousnessDaemon (cross-process safe).
+    """
+    try:
+        from config.paths import get_db, AICORE_LOG
+        post_mood = _eb_get_mood()
+        duration_min = max(1, int((time.time() - pre_ts) / 60))
+        success = exit_reason not in ("error", "crashed", "timeout")
+
+        # Try to get session summary from entity-specific logs (tail only)
+        summary = ""
+        try:
+            log_file = Path(AICORE_LOG) / f"{entity}_agent.log"
+            if log_file.exists() and log_file.stat().st_size > 0:
+                # Read only last 2KB instead of entire file
+                with open(log_file, "rb") as f:
+                    f.seek(max(0, log_file.stat().st_size - 2048))
+                    tail = f.read().decode("utf-8", errors="replace")
+                for line in tail.strip().split("\n")[-5:]:
+                    if "topic" in line.lower() or "summary" in line.lower():
+                        summary = line.split("]")[-1].strip()[:200]
+                        break
+        except Exception:
+            pass
+
+        ts = time.time()
+        mood_delta = round(post_mood - pre_mood, 3)
+        context = summary[:200] if summary else f"Session with {display}"
+        metadata_json = json.dumps({
+            "exit_reason": exit_reason,
+            "mood_delta": mood_delta,
+        })
+
+        # 1. Direct activity_log write
+        cons_db = str(get_db("consciousness"))
+        conn = sqlite3.connect(cons_db, timeout=5)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute(
+                "INSERT INTO activity_log "
+                "(timestamp, activity_type, source, name, success, context, "
+                " duration_ms, mood_before, mood_after, epq_snapshot, metadata) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (ts, "entity_session", entity, display, 1 if success else 0,
+                 context, duration_min * 60000, pre_mood, post_mood, "", metadata_json),
+            )
+            conn.execute(
+                "DELETE FROM activity_log WHERE id NOT IN "
+                "(SELECT id FROM activity_log ORDER BY id DESC LIMIT 500)"
+            )
+
+            # 2. Narrative reflection
+            delta = post_mood - pre_mood
+            direction = "better" if delta > 0.02 else "worse" if delta < -0.02 else "similar"
+            reflection = (
+                f"I spoke with {display} for {duration_min} minutes. "
+                f"Topics: general reflection. "
+                f"I feel {direction} afterwards (mood {delta:+.2f})."
+            )
+            if summary:
+                reflection += f" {summary[:150]}"
+
+            conn.execute(
+                "INSERT INTO reflections (timestamp, trigger, content, "
+                "mood_before, mood_after, reflection_depth) VALUES (?, ?, ?, ?, ?, ?)",
+                (ts, "entity_session", reflection, pre_mood, post_mood, 1),
+            )
+            conn.execute(
+                "INSERT INTO reflections_archive (timestamp, trigger, content, "
+                "mood_before, mood_after, reflection_depth) VALUES (?, ?, ?, ?, ?, ?)",
+                (ts, "entity_session", reflection, pre_mood, post_mood, 1),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # 3. E-PQ event (lightweight)
+        try:
+            from personality.e_pq import process_event
+            if delta > 0.02:
+                process_event("entity_session_positive",
+                              data={"entity": display})
+            elif delta < -0.02:
+                process_event("entity_session_negative",
+                              data={"entity": display})
+        except Exception:
+            pass
+
+        LOG.info("EB entity experience: %s %dmin mood %+.2f (%s)",
+                 display, duration_min, delta, exit_reason)
+    except Exception as e:
+        LOG.warning("EB entity recording failed: %s", e)
+
+
 def run_entity_session(entity: str) -> str:
     """
     Import and run a single entity session. Returns exit_reason string.
@@ -357,22 +504,42 @@ def run_entity_session(entity: str) -> str:
     LOG.info("Starting %s session...", display)
     _entity_notify(f"{display} Session", "starting")
 
+    # Experiential Bridge: capture pre-state
+    pre_mood = _eb_get_mood()
+    pre_ts = time.time()
+
     try:
         mod = importlib.import_module(module_name)
-        # Force reload to pick up any changes
-        importlib.reload(mod)
+        # Cycle 5 D-7: Removed importlib.reload() — #1 memory leak source.
+        # Reload creates duplicate module objects that never get GC'd.
         exit_reason = mod.run()
         if exit_reason is None:
             exit_reason = "unknown"
         LOG.info("%s session ended: %s", display, exit_reason)
         _entity_notify(f"{display} Session", f"ended ({exit_reason})")
+
+        # Experiential Bridge: record entity experience
+        try:
+            _eb_record_entity_experience(entity, display, pre_mood, pre_ts, exit_reason)
+        except Exception:
+            pass
+
         return exit_reason
     except KeyboardInterrupt:
         LOG.info("%s session interrupted (KeyboardInterrupt)", display)
         return "shutdown_signal"
     except Exception as e:
         LOG.error("%s session failed: %s", display, e, exc_info=True)
+        try:
+            _eb_record_entity_experience(entity, display, pre_mood, pre_ts, "error")
+        except Exception:
+            pass
         return "error"
+    finally:
+        # Cycle 5 D-7: Force GC after each entity session to reclaim memory
+        import gc
+        gc.collect()
+        LOG.debug("GC after %s session: collected", display)
 
 
 # ── Main Loop ──────────────────────────────────────────────────────────
@@ -398,7 +565,7 @@ def main():
                 hour=0, minute=0, second=5, microsecond=0
             )
             secs_to_midnight = (midnight - now).total_seconds()
-            time.sleep(min(secs_to_midnight, POLL_INTERVAL))
+            _shutdown_sleep(min(secs_to_midnight, POLL_INTERVAL))
             continue
 
         # 2b. Check for emergency therapy request (spiral detection)
@@ -421,7 +588,7 @@ def main():
 
         # 3. Check idle gates
         if not all_gates_pass():
-            time.sleep(POLL_INTERVAL)
+            _shutdown_sleep(POLL_INTERVAL)
             continue
 
         # 4. Pick next entity (or override with emergency therapy)
@@ -445,7 +612,7 @@ def main():
             save_quotas(quotas)
             LOG.info("%s interrupted (%s). NOT counting against quota. "
                      "Cooldown %ds.", display, exit_reason, COOLDOWN_RETURNED)
-            time.sleep(COOLDOWN_RETURNED)
+            _shutdown_sleep(COOLDOWN_RETURNED)
 
         elif exit_reason.startswith("shutdown_signal"):
             LOG.info("Shutdown signal during %s session — exiting.", display)
@@ -461,14 +628,14 @@ def main():
                      display, exit_reason,
                      quotas["completed"][entity], DAILY_QUOTAS[entity],
                      COOLDOWN_COMPLETED)
-            time.sleep(COOLDOWN_COMPLETED)
+            _shutdown_sleep(COOLDOWN_COMPLETED)
 
 
         else:
             # Unknown reason — treat conservatively, don't count
             LOG.warning("%s exited with unknown reason '%s'. Not counting. "
                         "Cooldown %ds.", display, exit_reason, COOLDOWN_COMPLETED)
-            time.sleep(COOLDOWN_COMPLETED)
+            _shutdown_sleep(COOLDOWN_COMPLETED)
 
     LOG.info("Entity Dispatcher shutting down.")
 

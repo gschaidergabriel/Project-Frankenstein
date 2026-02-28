@@ -2,25 +2,25 @@
 # -*- coding: utf-8 -*-
 
 """
-AI Core Router — Dual-Model Architecture (DeepSeek-R1 + Llama-3.1)
+AI Core Router — Dual-Model Architecture (DeepSeek-R1 + Micro-LLM fallback)
 
-Two models, always loaded:
+Two models:
   - DeepSeek-R1 (port 8101, GPU): Reasoning model for complex tasks,
     consciousness, dream, research, agentic planning.
-  - Llama-3.1-8B-Instruct (port 8102, CPU): Fast chat model for casual
-    conversation, greetings, simple questions, entity agents.
+  - Qwen2.5-3B Micro-LLM (port 8105, CPU): Lightweight fallback for when
+    RLM is down, casual chat, simple questions, entity agents.
 
 Routing logic:
-  1. force="llama" → Chat-LLM (Llama-3.1)
+  1. force="llama" → Micro-LLM (Qwen2.5-3B)
   2. force="rlm"  → RLM (DeepSeek-R1)
   3. No force     → auto-classify by text content:
-     - Short casual messages (greetings, small talk) → Chat-LLM
+     - Short casual messages (greetings, small talk) → Micro-LLM
      - Everything else → RLM
 
 The router:
 - Uses /v1/chat/completions (OpenAI-compatible) for both models.
 - DeepSeek-R1 separates reasoning_content from answer content.
-- Llama-3.1 returns content directly (no reasoning phase).
+- Qwen2.5-3B returns content directly (no reasoning phase).
 - Provides /route (blocking) and /route/stream (SSE) endpoints.
 - Handles /ingest for file uploads.
 - Guardrails for deterministic responses (ping test).
@@ -61,8 +61,8 @@ PORT = int(os.environ.get("AICORE_ROUTER_PORT", "8091"))
 # RLM endpoint (DeepSeek-R1-Distill-Llama-8B on llama-server, GPU)
 RLM_URL = os.environ.get("AICORE_RLM_URL", "http://127.0.0.1:8101")
 
-# Chat-LLM endpoint (Llama-3.1-8B-Instruct-abliterated on llama-server, CPU)
-CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8102")
+# Micro-LLM endpoint (Qwen2.5-3B-Instruct-abliterated on llama-server, CPU)
+CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8105")
 
 # Default token limit (caller's requested answer length)
 DEFAULT_N_PREDICT = int(os.environ.get("AICORE_N_PREDICT", "2048"))
@@ -75,7 +75,7 @@ RLM_TOKEN_MIN = 512  # Was 1024 — small consciousness calls don't need 1024 mi
 # HTTP timeout — DeepSeek R1 thinks before answering, needs time
 RLM_HTTP_TIMEOUT_SEC = float(os.environ.get("AICORE_RLM_HTTP_TIMEOUT_SEC", "480.0"))
 
-# Chat-LLM timeout — Llama is faster, doesn't reason
+# Micro-LLM timeout — Qwen2.5-3B is fast, no reasoning phase
 CHAT_LLM_HTTP_TIMEOUT_SEC = float(os.environ.get("AICORE_CHAT_LLM_HTTP_TIMEOUT_SEC", "120.0"))
 
 # Default system prompt
@@ -129,19 +129,30 @@ def _http_json_post(url: str, payload: Dict[str, Any], timeout_sec: float) -> Di
         headers={"Content-Type": "application/json", "Accept": "application/json"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        body = ""
+    # Fix #34: Retry once on 503 (model swap in progress) with short backoff
+    last_err = None
+    for attempt in range(2):
         try:
-            body = e.read().decode("utf-8", errors="replace")
-        except Exception:
-            pass
-        raise RuntimeError(f"HTTP {e.code} from {url}: {body[:400]}") from e
-    except Exception as e:
-        raise RuntimeError(f"POST {url} failed: {e}") from e
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as e:
+            if e.code == 503 and attempt == 0:
+                LOG.info(f"503 from {url} — model swap likely, retrying in 3s")
+                import time as _time
+                _time.sleep(3)
+                last_err = e
+                continue
+            body = ""
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            raise RuntimeError(f"HTTP {e.code} from {url}: {body[:400]}") from e
+        except Exception as e:
+            raise RuntimeError(f"POST {url} failed: {e}") from e
+    # Should not reach here, but safety
+    raise RuntimeError(f"POST {url} failed after retry: {last_err}") from last_err
 
 def _http_get_json(url: str, timeout_sec: float = 2.0) -> Dict[str, Any]:
     req = urllib.request.Request(url, method="GET")
@@ -295,7 +306,7 @@ def _rlm_chat_completion(
             reasoning = (msg.get("reasoning_content") or "").strip()
     return answer, reasoning
 
-# ---- Chat-LLM completions adapter (Llama-3.1) ------------------------------
+# ---- Micro-LLM completions adapter (Qwen2.5-3B fallback) -------------------
 
 def _chat_llm_completion(
     user_text: str,
@@ -304,7 +315,7 @@ def _chat_llm_completion(
     timeout_sec: float,
     temperature: float = 0.7,
 ) -> str:
-    """Call Llama-3.1 chat-llm /v1/chat/completions. Returns answer text."""
+    """Call Micro-LLM (Qwen2.5-3B) /v1/chat/completions. Returns answer text."""
     url = f"{CHAT_LLM_URL}/v1/chat/completions"
     payload: Dict[str, Any] = {
         "messages": [
@@ -332,7 +343,7 @@ def _chat_llm_completion_stream(
     timeout_sec: float,
     temperature: float = 0.7,
 ):
-    """Generator yielding tokens from Llama-3.1 chat-llm streaming."""
+    """Generator yielding tokens from Micro-LLM (Qwen2.5-3B) streaming."""
     url = f"{CHAT_LLM_URL}/v1/chat/completions"
     payload: Dict[str, Any] = {
         "messages": [
@@ -449,7 +460,7 @@ def health() -> Dict[str, Any]:
     _last_ts = time.time()
     return {
         "ok": True,
-        "models": {"rlm": "deepseek-r1", "chat": "llama-3.1"},
+        "models": {"rlm": "deepseek-r1", "chat": "qwen2.5-3b"},
         "rlm_up": _is_rlm_up(),
         "chat_llm_up": _is_chat_llm_up(),
         "last_model": _last_model,
@@ -515,28 +526,28 @@ def route(req: RouteRequest) -> RouteResponse:
     model_choice = _classify_model(text, req.force)
 
     if model_choice == "llama":
-        # ---- Chat-LLM path (Llama-3.1, fast, no reasoning) ----
+        # ---- Micro-LLM path (Qwen2.5-3B, fast, no reasoning) ----
         max_tokens = caller_n  # No multiplier needed — no reasoning overhead
         temperature = req.temperature if req.temperature is not None else 0.7
-        LOG.info(f"🔄 INFERENZ: llama-3.1 (max_tokens={max_tokens}, temp={temperature})")
+        LOG.info(f"🔄 INFERENZ: qwen2.5-3b (max_tokens={max_tokens}, temp={temperature})")
 
         try:
             answer = _chat_llm_completion(
                 text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature
             )
             if not answer:
-                # Fallback to RLM if chat-llm returns empty
-                LOG.warning("Chat-LLM returned empty, falling back to RLM")
-                raise RuntimeError("Chat-LLM empty answer — fallback to RLM")
+                # Fallback to RLM if micro-llm returns empty
+                LOG.warning("Micro-LLM returned empty, falling back to RLM")
+                raise RuntimeError("Micro-LLM empty answer — fallback to RLM")
 
-            _last_model = "llama-3.1"
+            _last_model = "qwen2.5-3b"
             _last_ts = time.time()
             out_preview = answer[:150].replace('\n', ' ')
-            LOG.info(f"✅ ANTWORT [llama-3.1]: '{out_preview}...'")
-            return RouteResponse(ok=True, model="llama-3.1", text=answer, ts=_last_ts)
+            LOG.info(f"✅ ANTWORT [qwen2.5-3b]: '{out_preview}...'")
+            return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
 
         except Exception as e:
-            LOG.warning(f"Chat-LLM failed ({e}), falling back to RLM")
+            LOG.warning(f"Micro-LLM failed ({e}), falling back to RLM")
             # Fall through to RLM
 
     # ---- RLM path (DeepSeek-R1, reasoning) ----
@@ -551,12 +562,13 @@ def route(req: RouteRequest) -> RouteResponse:
         )
 
         if not answer:
+            # D-6 fix: NEVER use raw reasoning as answer — it leaks
+            # Chain-of-Thought artifacts into Frank's thoughts.
+            # Fall through to Chat-LLM fallback instead.
             if reasoning:
-                # RLM burned all tokens thinking — use reasoning as answer
-                LOG.warning(f"RLM answer empty but reasoning present ({len(reasoning)} chars) — using reasoning")
-                answer = reasoning
-            else:
-                raise RuntimeError("RLM returned empty answer")
+                LOG.warning("RLM burned all tokens on reasoning (%d chars), "
+                            "no answer — falling back", len(reasoning))
+            raise RuntimeError("RLM returned empty answer")
 
         if reasoning:
             LOG.info(f"💭 REASONING: {len(reasoning)} chars internal thinking")
@@ -568,9 +580,8 @@ def route(req: RouteRequest) -> RouteResponse:
         return RouteResponse(ok=True, model="deepseek-r1", text=answer, ts=_last_ts)
 
     except Exception as e:
-        LOG.warning(f"RLM failed ({e}), falling back to Chat-LLM")
-        # Fallback: try Chat-LLM when RLM is down
-        # Note: Chat-LLM may be unavailable if llm-guard swapped GPU — that's expected
+        LOG.warning(f"RLM failed ({e}), falling back to Micro-LLM")
+        # Fallback: try Micro-LLM (Qwen2.5-3B, CPU) when RLM is down
         try:
             fallback_tokens = caller_n
             fallback_temp = req.temperature if req.temperature is not None else 0.7
@@ -578,13 +589,13 @@ def route(req: RouteRequest) -> RouteResponse:
                 text, system, fallback_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
             )
             if answer:
-                _last_model = "llama-3.1"
+                _last_model = "qwen2.5-3b"
                 _last_ts = time.time()
                 out_preview = answer[:150].replace('\n', ' ')
-                LOG.info(f"✅ ANTWORT [llama-3.1 fallback]: '{out_preview}...'")
-                return RouteResponse(ok=True, model="llama-3.1", text=answer, ts=_last_ts)
+                LOG.info(f"✅ ANTWORT [qwen2.5-3b fallback]: '{out_preview}...'")
+                return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
         except Exception as e2:
-            LOG.debug(f"Chat-LLM fallback unavailable (llm-guard may have GPU elsewhere): {e2}")
+            LOG.debug(f"Micro-LLM fallback unavailable: {e2}")
 
         _last_ts = time.time()
         LOG.error(f"❌ FEHLER: all models failed (rlm: {e})")
@@ -609,9 +620,9 @@ def route_stream(req: RouteRequest):
     if model_choice == "llama":
         max_tokens = caller_n
         temperature = req.temperature if req.temperature is not None else 0.7
-        model_name = "llama-3.1"
+        model_name = "qwen2.5-3b"
         timeout = CHAT_LLM_HTTP_TIMEOUT_SEC
-        LOG.info(f"🔄 STREAM [llama-3.1]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
+        LOG.info(f"🔄 STREAM [qwen2.5-3b]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
 
         def generate_llama():
             try:
@@ -619,12 +630,12 @@ def route_stream(req: RouteRequest):
                     text, system, max_tokens, timeout, temperature
                 ):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
-                yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'llama-3.1'})}\n\n"
+                yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
             except Exception as e:
-                LOG.error(f"Stream error [llama-3.1]: {e}")
-                yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': 'llama-3.1'})}\n\n"
+                LOG.error(f"Stream error [qwen2.5-3b]: {e}")
+                yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
             finally:
-                LOG.info(f"✅ STREAM DONE [llama-3.1]")
+                LOG.info(f"✅ STREAM DONE [qwen2.5-3b]")
 
         return StreamingResponse(generate_llama(), media_type="text/event-stream")
 
@@ -642,9 +653,8 @@ def route_stream(req: RouteRequest):
                 yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
             yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'deepseek-r1'})}\n\n"
         except Exception as e:
-            LOG.warning(f"RLM stream failed ({e}), falling back to Chat-LLM stream")
-            # Fallback: stream from Chat-LLM when RLM is down
-            # Note: Chat-LLM may be unavailable if llm-guard swapped GPU
+            LOG.warning(f"RLM stream failed ({e}), falling back to Micro-LLM stream")
+            # Fallback: stream from Micro-LLM (Qwen2.5-3B, CPU) when RLM is down
             try:
                 fallback_tokens = caller_n
                 fallback_temp = req.temperature if req.temperature is not None else 0.7
@@ -652,10 +662,10 @@ def route_stream(req: RouteRequest):
                     text, system, fallback_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
                 ):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
-                yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'llama-3.1'})}\n\n"
+                yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
             except Exception as e2:
-                LOG.debug(f"Chat-LLM stream fallback unavailable: {e2}")
-                yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'llama-3.1'})}\n\n"
+                LOG.debug(f"Micro-LLM stream fallback unavailable: {e2}")
+                yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
         finally:
             LOG.info(f"✅ STREAM DONE")
 
@@ -668,7 +678,7 @@ def route_stream(req: RouteRequest):
 def on_startup():
     rlm_up = _is_rlm_up()
     chat_up = _is_chat_llm_up()
-    LOG.info(f"[ROUTER] Dual-model architecture")
-    LOG.info(f"[RLM]  DeepSeek-R1 @ {RLM_URL} — {'UP' if rlm_up else 'DOWN'}")
-    LOG.info(f"[CHAT] Llama-3.1   @ {CHAT_LLM_URL} — {'UP' if chat_up else 'DOWN'}")
+    LOG.info(f"[ROUTER] Dual-model architecture (RLM + Micro-LLM fallback)")
+    LOG.info(f"[RLM]  DeepSeek-R1  @ {RLM_URL} — {'UP' if rlm_up else 'DOWN'}")
+    LOG.info(f"[MICRO] Qwen2.5-3B @ {CHAT_LLM_URL} — {'UP' if chat_up else 'DOWN'}")
     LOG.info(f"[ROUTER] Default tokens: {DEFAULT_N_PREDICT}, RLM timeout: {RLM_HTTP_TIMEOUT_SEC}s, Chat timeout: {CHAT_LLM_HTTP_TIMEOUT_SEC}s")

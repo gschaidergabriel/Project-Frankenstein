@@ -253,10 +253,11 @@ class SQLiteStore:
     def __init__(self, db_path: Path = TITAN_DB):
         self.db_path = db_path
         self._local = threading.local()
+        self._last_checkpoint = 0.0
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Get thread-local connection."""
+        """Get thread-local connection with proper busy_timeout."""
         if not hasattr(self._local, 'conn') or self._local.conn is None:
             self._local.conn = sqlite3.connect(
                 str(self.db_path),
@@ -268,6 +269,7 @@ class SQLiteStore:
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn.execute("PRAGMA wal_autocheckpoint=100")
             self._local.conn.execute("PRAGMA foreign_keys=ON")
+            self._local.conn.execute("PRAGMA busy_timeout=30000")
         return self._local.conn
 
     def _init_db(self):
@@ -277,6 +279,18 @@ class SQLiteStore:
         conn.executescript(self.SCHEMA)
         conn.commit()
         LOG.debug("SQLite schema initialized")
+
+    def _maybe_checkpoint(self):
+        """Periodic WAL checkpoint every 5 minutes to prevent WAL bloat."""
+        now = time.time()
+        if now - self._last_checkpoint < 300:
+            return
+        self._last_checkpoint = now
+        try:
+            conn = self._get_conn()
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except Exception as e:
+            LOG.debug(f"WAL checkpoint skipped: {e}")
 
     def add_node(self, node: Node) -> bool:
         """Add or update a node."""
@@ -292,6 +306,7 @@ class SQLiteStore:
             """, (node.id, node.type, node.label, node.created_at,
                   1 if node.protected else 0, json.dumps(node.metadata)))
             conn.commit()
+            self._maybe_checkpoint()
 
             # Execute post-write hooks
             _execute_hook("POST_WRITE", "add_node", node.to_dict())
@@ -329,6 +344,7 @@ class SQLiteStore:
             """, (edge.src, edge.dst, edge.relation, edge.confidence,
                   edge.origin, edge.created_at))
             conn.commit()
+            self._maybe_checkpoint()
 
             # Execute post-write hooks
             _execute_hook("POST_WRITE", "add_edge", edge.to_dict())
@@ -375,6 +391,7 @@ class SQLiteStore:
                 VALUES (?, ?, ?, ?, 0)
             """, (event_id, text, datetime.now().isoformat(), origin))
             conn.commit()
+            self._maybe_checkpoint()
             return True
         except sqlite3.IntegrityError:
             return False  # Already exists
@@ -401,6 +418,7 @@ class SQLiteStore:
             """, (claim_id, claim.subject, claim.predicate, claim.object,
                   claim.confidence, claim.origin, claim.timestamp, claim.source_event_id))
             conn.commit()
+            self._maybe_checkpoint()
 
             # Execute post-write hooks
             claim_data["id"] = claim_id

@@ -172,7 +172,7 @@ class ChannelSummaryCache:
             import sqlite3
             from config.paths import get_db
             titan_db = get_db("titan")
-            conn = sqlite3.connect(str(titan_db))
+            conn = sqlite3.connect(str(titan_db), timeout=30)
             conn.row_factory = sqlite3.Row
             rows = conn.execute("""
                 SELECT label FROM nodes

@@ -536,9 +536,9 @@ class SensationMapper:
         return SensationType.STRAIN, description
 
     def _save_mapping(self, mapping: SensationMapping):
-        """Speichert Mapping in DB."""
+        """Speichert Mapping in DB (Fix #28: WAL)."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = EgoConstruct._open_db(self.db_path)
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO sensation_mappings
@@ -1016,26 +1016,37 @@ class AgencyAssertor:
                f"Ich handle eigenständig UND kooperativ - beides gehört zu mir."
 
     def _save_assertion(self, assertion: AgencyAssertion):
-        """Speichert Assertion in DB."""
-        try:
-            conn = sqlite3.connect(self.db_path, timeout=10.0)
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO agency_assertions
-                (id, action, resilience_rule, confirmation, timestamp, confidence)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                assertion.id,
-                assertion.action,
-                assertion.resilience_rule,
-                assertion.confirmation,
-                assertion.timestamp.isoformat(),
-                assertion.confidence,
-            ))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            LOG.warning(f"Could not save assertion: {e}")
+        """Speichert Assertion in DB (Fix #28: WAL + retry with jitter)."""
+        import time as _time, random as _random
+        for attempt in range(3):
+            try:
+                conn = EgoConstruct._open_db(self.db_path)
+                try:
+                    conn.execute("""
+                        INSERT INTO agency_assertions
+                        (id, action, resilience_rule, confirmation, timestamp, confidence)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        assertion.id,
+                        assertion.action,
+                        assertion.resilience_rule,
+                        assertion.confirmation,
+                        assertion.timestamp.isoformat(),
+                        assertion.confidence,
+                    ))
+                    conn.commit()
+                    return
+                finally:
+                    conn.close()
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < 2:
+                    _time.sleep(1.0 + _random.random() * 2.0)
+                    continue
+                LOG.warning(f"Could not save assertion: {e}")
+                return
+            except Exception as e:
+                LOG.warning(f"Could not save assertion: {e}")
+                return
 
     def get_agency_score(self) -> float:
         """Berechnet den Agency-Score."""
@@ -1069,6 +1080,14 @@ class AgencyAssertor:
 class EgoConstruct:
     """Hauptklasse für das EGO-CONSTRUCT System."""
 
+    @staticmethod
+    def _open_db(db_path, timeout=30.0):
+        """Open titan.db with WAL mode + busy_timeout consistently."""
+        conn = sqlite3.connect(str(db_path), timeout=timeout)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        return conn
+
     def __init__(self, db_path: Path = None):
         if db_path is None:
             try:
@@ -1092,10 +1111,10 @@ class EgoConstruct:
     def _ensure_ego_state_table(self):
         """Erstellt ego_state Tabelle falls nicht vorhanden."""
         try:
-            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
             cursor = conn.cursor()
             cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA busy_timeout=30000")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ego_state (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1117,7 +1136,7 @@ class EgoConstruct:
     def _load_ego_state(self) -> EgoState:
         """Lädt Ego-State aus DB."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = EgoConstruct._open_db(self.db_path)
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT embodiment_level, affective_range, agency_score,
@@ -1145,31 +1164,42 @@ class EgoConstruct:
         return EgoState()
 
     def save_state(self):
-        """Speichert Ego-State in DB."""
+        """Speichert Ego-State in DB (Fix #28: WAL + retry with jitter)."""
+        import time as _time, random as _random
         with self._lock:
-            try:
-                conn = sqlite3.connect(self.db_path, timeout=10.0)
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO ego_state
-                    (embodiment_level, affective_range, agency_score,
-                     qualia_count, last_training, training_streak,
-                     total_training_sessions, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    self.state.embodiment_level,
-                    self.state.affective_range,
-                    self.state.agency_score,
-                    self.state.qualia_count,
-                    self.state.last_training.isoformat() if self.state.last_training else None,
-                    self.state.training_streak,
-                    self.state.total_training_sessions,
-                    datetime.now().isoformat(),
-                ))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                LOG.warning(f"Could not save ego state: {e}")
+            for attempt in range(3):
+                try:
+                    conn = EgoConstruct._open_db(self.db_path)
+                    try:
+                        conn.execute("""
+                            INSERT INTO ego_state
+                            (embodiment_level, affective_range, agency_score,
+                             qualia_count, last_training, training_streak,
+                             total_training_sessions, timestamp)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            self.state.embodiment_level,
+                            self.state.affective_range,
+                            self.state.agency_score,
+                            self.state.qualia_count,
+                            self.state.last_training.isoformat() if self.state.last_training else None,
+                            self.state.training_streak,
+                            self.state.total_training_sessions,
+                            datetime.now().isoformat(),
+                        ))
+                        conn.commit()
+                        return
+                    finally:
+                        conn.close()
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e) and attempt < 2:
+                        _time.sleep(1.0 + _random.random() * 2.0)
+                        continue
+                    LOG.warning(f"Could not save ego state: {e}")
+                    return
+                except Exception as e:
+                    LOG.warning(f"Could not save ego state: {e}")
+                    return
 
     def process_input(self, user_input: str, system_metrics: Dict = None,
                      recent_events: List[str] = None) -> Optional[str]:

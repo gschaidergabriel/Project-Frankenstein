@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 """
-LLM Manager — Single-GPU Model Swap + Guard
-=============================================
-Manages which LLM is loaded on the GPU based on user presence,
-and ensures no rogue LLM processes run.
+LLM Guard — Single-RLM Watchdog
+=================================
+Ensures the single GPU LLM (DeepSeek-R1) and CPU background LLM (Qwen-3B)
+stay running. Kills rogue llama-server processes.
 
-Architecture:
-  - GPU slot: ONE of DeepSeek-R1 (idle/reasoning) or Llama-3.1 (chat)
-  - CPU slot: Qwen-3B always on (background consciousness tasks)
-  - Rogue protection: any unexpected llama-server process is killed
-
-Model swap logic:
-  - User ACTIVE  (idle < 30s):  GPU = Llama-3.1   (fast chat)
-  - User IDLE    (idle > 5min): GPU = DeepSeek-R1  (deep thinking)
-  - Hysteresis prevents thrashing (must stay in state for SWAP_DELAY)
+Architecture (post RLM-migration Feb 2026):
+  - GPU slot: DeepSeek-R1-Distill-Llama-8B on port 8101 (ALWAYS ON)
+  - CPU slot: Qwen-3B on port 8105 (ALWAYS ON)
+  - No model swapping — single RLM handles all tasks via router
 
 Runs as: systemd user service (llm-guard.service)
 """
@@ -55,35 +50,22 @@ LOG.addHandler(_sh)
 # Configuration
 # ---------------------------------------------------------------------------
 
-# GPU models — only ONE active at a time
-GPU_CHAT = "aicore-chat-llm"       # Llama-3.1 on port 8102 (user chat)
-GPU_CHAT_PORT = 8102
-GPU_REASON = "aicore-llama3-gpu"   # DeepSeek-R1 on port 8101 (reasoning/idle)
-GPU_REASON_PORT = 8101
+# GPU model — always on
+GPU_RLM = "aicore-llama3-gpu"        # DeepSeek-R1 on port 8101
+GPU_RLM_PORT = 8101
 
 # CPU model — always on
-CPU_BG = "aicore-micro-llm"        # Qwen-3B on port 8105 (background)
+CPU_BG = "aicore-micro-llm"          # Qwen-3B on port 8105
 CPU_BG_PORT = 8105
 
 # All known LLM ports (anything else = rogue)
-KNOWN_PORTS = {GPU_CHAT_PORT, GPU_REASON_PORT, CPU_BG_PORT}
+KNOWN_PORTS = {GPU_RLM_PORT, CPU_BG_PORT}
 
 # Rogue services that should never run
-ROGUE_SERVICES = ["aicore-qwen-gpu"]
+ROGUE_SERVICES = ["aicore-qwen-gpu", "aicore-chat-llm"]
 
-# User presence thresholds
-USER_ACTIVE_THRESHOLD_S = 30.0    # idle < this = user is active
-USER_IDLE_THRESHOLD_S = 300.0     # idle > this = user is idle (5 min)
-
-# Swap hysteresis — must stay in new state this long before swapping
-SWAP_DELAY_TO_REASON_S = 60.0    # Wait 60s of idle before swapping to DeepSeek
-SWAP_DELAY_TO_CHAT_S = 0.0       # Swap to Llama INSTANTLY when user returns
-
-# Cooldown after swap (prevent thrashing)
-SWAP_COOLDOWN_S = 30.0
-
-# Check intervals
-CHECK_INTERVAL_S = 5              # Fast checks for responsive swapping
+# Check interval
+CHECK_INTERVAL_S = 10
 
 # Shutdown signal (written by overlay on user-initiated close)
 try:
@@ -110,40 +92,22 @@ except NameError:
 _stats = {
     "started": datetime.now().isoformat(),
     "checks": 0,
-    "swaps_to_chat": 0,
-    "swaps_to_reason": 0,
-    "rogue_kills": 0,
+    "rlm_restarts": 0,
     "cpu_bg_restarts": 0,
+    "rogue_kills": 0,
 }
-
-# ---------------------------------------------------------------------------
-# State
-# ---------------------------------------------------------------------------
-
-# Which GPU model is currently intended to be active
-# "chat" = Llama-3.1, "reason" = DeepSeek-R1
-_gpu_mode = "reason"  # Start with reasoning model (idle state)
-_last_swap_ts = 0.0
-_idle_since_ts = 0.0   # When did user become idle?
-_active_since_ts = 0.0  # When did user become active?
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_idle_s() -> float:
-    """Get user idle time via xprintidle. Returns seconds."""
-    try:
-        r = subprocess.run(
-            ["xprintidle"],
-            capture_output=True, text=True, timeout=2,
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-        )
-        if r.returncode == 0:
-            return int(r.stdout.strip()) / 1000.0
-    except Exception:
-        pass
-    return 0.0
+# Grace period: skip HTTP checks for N seconds after service start
+HTTP_GRACE_PERIOD_S = 90
+_service_start_ts: dict[str, float] = {}
+
+# Consecutive HTTP failures before force-restart
+HTTP_FAIL_THRESHOLD = 3
+_http_fail_counts: dict[int, int] = {}
 
 
 def _is_service_active(name: str) -> bool:
@@ -177,7 +141,6 @@ def _stop_service(name: str) -> bool:
 def _start_service(name: str) -> bool:
     LOG.info(f"Starting {name}...")
     try:
-        # Reset failed state first (in case of prior crash)
         subprocess.run(
             ["systemctl", "--user", "reset-failed", name],
             capture_output=True, timeout=5,
@@ -189,7 +152,7 @@ def _start_service(name: str) -> bool:
         if r.returncode == 0:
             LOG.info(f"  {name} started")
             _service_start_ts[name] = time.time()
-            _http_fail_counts.clear()  # reset counters on fresh start
+            _http_fail_counts.clear()
             return True
         LOG.warning(f"  {name} start failed: {r.stderr.strip()}")
         return False
@@ -209,7 +172,6 @@ def _find_llama_servers() -> list[dict]:
         for line in out.stdout.strip().splitlines():
             if "llama-server" not in line or "grep" in line:
                 continue
-            # Skip lines that are clearly shell wrappers, not actual servers
             if "/bin/bash" in line or "/bin/sh" in line:
                 continue
             parts = line.split(None, 2)
@@ -266,16 +228,12 @@ def _get_mem_available_mb() -> int:
     return 0
 
 
-def _write_health(gpu_mode: str, idle_s: float, swapping: bool):
+def _write_health():
     try:
         data = {
             "ts": datetime.now().isoformat(),
-            "gpu_mode": gpu_mode,
-            "gpu_chat_up": _is_service_active(GPU_CHAT),
-            "gpu_reason_up": _is_service_active(GPU_REASON),
+            "gpu_rlm_up": _is_service_active(GPU_RLM),
             "cpu_bg_up": _is_service_active(CPU_BG),
-            "user_idle_s": round(idle_s, 1),
-            "swapping": swapping,
             "mem_available_mb": _get_mem_available_mb(),
             "stats": _stats,
         }
@@ -286,26 +244,10 @@ def _write_health(gpu_mode: str, idle_s: float, swapping: bool):
         pass
 
 
-# ---------------------------------------------------------------------------
-# HTTP health checks — detect hung llama-server processes
-# ---------------------------------------------------------------------------
-
-# Consecutive HTTP failures per port before force-restart
-HTTP_FAIL_THRESHOLD = 3
-_http_fail_counts: dict[int, int] = {}
-
-# Grace period: skip HTTP checks for N seconds after a service start/restart
-# (llama-server needs 30-60s to load models before /health responds)
-HTTP_GRACE_PERIOD_S = 90
-_service_start_ts: dict[str, float] = {}
-
-
 def _http_health_check(port: int, timeout: float = 5.0) -> bool:
-    """Ping llama-server /health endpoint. Returns True if healthy."""
     try:
         req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/health",
-            method="GET",
+            f"http://127.0.0.1:{port}/health", method="GET",
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
@@ -314,16 +256,10 @@ def _http_health_check(port: int, timeout: float = 5.0) -> bool:
 
 
 def _check_llm_http_health(port: int, service_name: str):
-    """
-    Check HTTP health for a running LLM service.
-    If systemd says active but HTTP fails HTTP_FAIL_THRESHOLD times
-    consecutively, force-restart the service.
-    """
     if not _is_service_active(service_name):
         _http_fail_counts[port] = 0
         return
 
-    # Grace period — skip checks while model is still loading
     started = _service_start_ts.get(service_name, 0)
     if started and (time.time() - started) < HTTP_GRACE_PERIOD_S:
         return
@@ -342,70 +278,14 @@ def _check_llm_http_health(port: int, service_name: str):
     )
 
     if count >= HTTP_FAIL_THRESHOLD:
-        LOG.error(
-            f"[HTTP] {service_name}:{port} hung — force-restarting"
-        )
+        LOG.error(f"[HTTP] {service_name}:{port} hung — force-restarting")
         _http_fail_counts[port] = 0
-        # Kill the hung process, then restart
         subprocess.run(
             ["systemctl", "--user", "kill", "--signal=SIGKILL", service_name],
             capture_output=True, timeout=5,
         )
         time.sleep(2)
         _start_service(service_name)
-
-
-# ---------------------------------------------------------------------------
-# Model swap
-# ---------------------------------------------------------------------------
-
-def _swap_to_chat():
-    """Swap GPU to Llama-3.1 (user is chatting)."""
-    global _gpu_mode, _last_swap_ts
-    LOG.info("=" * 40)
-    LOG.info("SWAP → CHAT MODE (Llama-3.1 on GPU)")
-    LOG.info("=" * 40)
-
-    # Stop reasoning model first to free VRAM
-    if _is_service_active(GPU_REASON):
-        _stop_service(GPU_REASON)
-        # Wait for VRAM to be released
-        time.sleep(3)
-
-    # Start chat model
-    if _start_service(GPU_CHAT):
-        _gpu_mode = "chat"
-        _last_swap_ts = time.time()
-        _stats["swaps_to_chat"] += 1
-        LOG.info("GPU now in CHAT mode (Llama-3.1)")
-    else:
-        # Fallback: restart reasoning model if chat failed
-        LOG.error("Failed to start chat LLM, reverting to reasoning")
-        _start_service(GPU_REASON)
-
-
-def _swap_to_reason():
-    """Swap GPU to DeepSeek-R1 (user is idle)."""
-    global _gpu_mode, _last_swap_ts
-    LOG.info("=" * 40)
-    LOG.info("SWAP → REASON MODE (DeepSeek-R1 on GPU)")
-    LOG.info("=" * 40)
-
-    # Stop chat model first to free VRAM
-    if _is_service_active(GPU_CHAT):
-        _stop_service(GPU_CHAT)
-        time.sleep(3)
-
-    # Start reasoning model
-    if _start_service(GPU_REASON):
-        _gpu_mode = "reason"
-        _last_swap_ts = time.time()
-        _stats["swaps_to_reason"] += 1
-        LOG.info("GPU now in REASON mode (DeepSeek-R1)")
-    else:
-        # Fallback: restart chat model if reasoning failed
-        LOG.error("Failed to start reasoning LLM, reverting to chat")
-        _start_service(GPU_CHAT)
 
 
 # ---------------------------------------------------------------------------
@@ -422,56 +302,29 @@ def _signal_handler(signum, _frame):
 
 
 def main():
-    global _running, _gpu_mode, _idle_since_ts, _active_since_ts, _last_swap_ts
+    global _running
 
     LOG.info("=" * 60)
-    LOG.info("LLM Manager — Single-GPU Model Swap + Guard")
-    LOG.info(f"  GPU chat:   {GPU_CHAT} (port {GPU_CHAT_PORT})")
-    LOG.info(f"  GPU reason: {GPU_REASON} (port {GPU_REASON_PORT})")
-    LOG.info(f"  CPU bg:     {CPU_BG} (port {CPU_BG_PORT})")
-    LOG.info(f"  Active < {USER_ACTIVE_THRESHOLD_S}s, Idle > {USER_IDLE_THRESHOLD_S}s")
-    LOG.info(f"  Swap delay: chat={SWAP_DELAY_TO_CHAT_S}s, reason={SWAP_DELAY_TO_REASON_S}s")
+    LOG.info("LLM Guard — Single-RLM Watchdog")
+    LOG.info(f"  GPU RLM: {GPU_RLM} (port {GPU_RLM_PORT})")
+    LOG.info(f"  CPU BG:  {CPU_BG} (port {CPU_BG_PORT})")
     LOG.info("=" * 60)
 
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
-    # Ensure CPU background model is running
+    # Ensure both models are running at startup
+    if not _is_service_active(GPU_RLM):
+        _start_service(GPU_RLM)
+    else:
+        _service_start_ts[GPU_RLM] = time.time()
+
     if not _is_service_active(CPU_BG):
         _start_service(CPU_BG)
-
-    # Detect initial state based on CURRENT user presence
-    idle_s = _get_idle_s()
-    user_is_here = idle_s < USER_ACTIVE_THRESHOLD_S
-    reason_up = _is_service_active(GPU_REASON)
-    chat_up = _is_service_active(GPU_CHAT)
-
-    LOG.info(f"Startup: user idle={idle_s:.0f}s ({'ACTIVE' if user_is_here else 'IDLE'}), "
-             f"reason={'UP' if reason_up else 'DOWN'}, chat={'UP' if chat_up else 'DOWN'}")
-
-    if user_is_here:
-        # User is active → we need chat model
-        _gpu_mode = "chat"
-        if reason_up:
-            _stop_service(GPU_REASON)
-            time.sleep(3)
-        if not chat_up:
-            _start_service(GPU_CHAT)
     else:
-        # User is idle → we need reasoning model
-        _gpu_mode = "reason"
-        if chat_up:
-            _stop_service(GPU_CHAT)
-            time.sleep(3)
-        if not reason_up:
-            _start_service(GPU_REASON)
+        _service_start_ts[CPU_BG] = time.time()
 
-    # No cooldown at startup — allow immediate swap if state changes
-    _last_swap_ts = 0.0
-    _idle_since_ts = 0.0 if user_is_here else time.time()
-    _active_since_ts = time.time() if user_is_here else 0.0
-
-    LOG.info(f"Initial GPU mode: {_gpu_mode}")
+    LOG.info("Initial state: RLM + CPU BG both targeted")
 
     while _running:
         try:
@@ -480,19 +333,17 @@ def main():
             # ── 0. Full shutdown signal ──────────────────────────────
             if FULL_SHUTDOWN_SIGNAL.exists():
                 LOG.info("=" * 60)
-                LOG.info("FULL SHUTDOWN — user closed overlay, unloading ALL LLMs")
+                LOG.info("FULL SHUTDOWN — unloading ALL LLMs")
                 LOG.info("=" * 60)
                 try:
                     FULL_SHUTDOWN_SIGNAL.unlink(missing_ok=True)
                 except Exception:
                     pass
 
-                # Stop ALL LLM services
-                for svc in [GPU_CHAT, GPU_REASON, CPU_BG]:
+                for svc in [GPU_RLM, CPU_BG]:
                     if _is_service_active(svc):
                         _stop_service(svc)
 
-                # Kill any remaining llama-server processes
                 time.sleep(2)
                 servers = _find_llama_servers()
                 for s in servers:
@@ -500,100 +351,40 @@ def main():
                     _kill_pid(s["pid"])
 
                 LOG.info("All LLMs unloaded. Waiting for restart signal...")
-                _write_health("shutdown", 0, False)
+                _write_health()
 
-                # Wait until shutdown signal is cleared (overlay restarted)
                 while _running and not FULL_STARTUP_SIGNAL.exists():
-                    # Also break if overlay restarts (user_closed removed)
                     if not USER_CLOSED_SIGNAL.exists():
-                        LOG.info("user_closed signal removed — Frank is restarting")
+                        LOG.info("user_closed signal removed — restarting")
                         break
                     time.sleep(2)
 
-                # Clean up startup signal if present
                 FULL_STARTUP_SIGNAL.unlink(missing_ok=True)
 
                 if _running:
-                    LOG.info("Resuming LLM Manager — restarting models...")
-                    idle_s = _get_idle_s()
-                    if idle_s < USER_ACTIVE_THRESHOLD_S:
-                        _gpu_mode = "chat"
-                        _start_service(GPU_CHAT)
-                    else:
-                        _gpu_mode = "reason"
-                        _start_service(GPU_REASON)
+                    LOG.info("Resuming — restarting models...")
+                    _start_service(GPU_RLM)
                     _start_service(CPU_BG)
-                    _last_swap_ts = 0.0
-                    LOG.info(f"Resumed in {_gpu_mode} mode")
+                    LOG.info("Resumed")
                 continue
 
-            idle_s = _get_idle_s()
-            now = time.time()
-            swap_age = now - _last_swap_ts
-            swapping = False
+            # ── 1. Ensure GPU RLM is running ─────────────────────────
+            if not _is_service_active(GPU_RLM):
+                LOG.warning("GPU RLM died, restarting")
+                _start_service(GPU_RLM)
+                _stats["rlm_restarts"] += 1
 
-            # ── 1. User presence tracking ────────────────────────────
-            user_active = idle_s < USER_ACTIVE_THRESHOLD_S
-            user_idle = idle_s > USER_IDLE_THRESHOLD_S
-
-            if user_active:
-                if _active_since_ts == 0.0:
-                    _active_since_ts = now
-                    LOG.info(f"User RETURNED (idle was {idle_s:.0f}s)")
-                _idle_since_ts = 0.0
-            elif user_idle:
-                if _idle_since_ts == 0.0:
-                    _idle_since_ts = now
-                _active_since_ts = 0.0
-
-            # ── 2. GPU model swap logic ──────────────────────────────
-            if swap_age > SWAP_COOLDOWN_S:
-
-                # User active + GPU is in reason mode → swap to chat
-                if (user_active and _gpu_mode == "reason"
-                        and _active_since_ts > 0
-                        and (now - _active_since_ts) >= SWAP_DELAY_TO_CHAT_S):
-                    swapping = True
-                    _swap_to_chat()
-
-                # User idle + GPU is in chat mode → swap to reason
-                elif (user_idle and _gpu_mode == "chat"
-                      and _idle_since_ts > 0
-                      and (now - _idle_since_ts) >= SWAP_DELAY_TO_REASON_S):
-                    swapping = True
-                    _swap_to_reason()
-
-            # ── 3. Ensure correct GPU service is actually running ────
-            if not swapping:
-                if _gpu_mode == "chat" and not _is_service_active(GPU_CHAT):
-                    LOG.warning("Chat LLM died unexpectedly, restarting")
-                    _start_service(GPU_CHAT)
-                elif _gpu_mode == "reason" and not _is_service_active(GPU_REASON):
-                    LOG.warning("Reasoning LLM died unexpectedly, restarting")
-                    _start_service(GPU_REASON)
-
-            # ── 4. Ensure the OTHER GPU service is NOT running ───────
-            if _gpu_mode == "chat" and _is_service_active(GPU_REASON):
-                LOG.warning("Both GPU models active! Stopping reasoning model")
-                _stop_service(GPU_REASON)
-            elif _gpu_mode == "reason" and _is_service_active(GPU_CHAT):
-                LOG.warning("Both GPU models active! Stopping chat model")
-                _stop_service(GPU_CHAT)
-
-            # ── 5. Ensure CPU background model is running ────────────
+            # ── 2. Ensure CPU BG is running ──────────────────────────
             if not _is_service_active(CPU_BG):
-                LOG.warning(f"CPU background LLM ({CPU_BG}) down, restarting")
+                LOG.warning(f"CPU BG ({CPU_BG}) down, restarting")
                 _start_service(CPU_BG)
                 _stats["cpu_bg_restarts"] += 1
 
-            # ── 5b. HTTP health checks (detect hung processes) ────────
-            if _gpu_mode == "chat":
-                _check_llm_http_health(GPU_CHAT_PORT, GPU_CHAT)
-            else:
-                _check_llm_http_health(GPU_REASON_PORT, GPU_REASON)
+            # ── 3. HTTP health checks ────────────────────────────────
+            _check_llm_http_health(GPU_RLM_PORT, GPU_RLM)
             _check_llm_http_health(CPU_BG_PORT, CPU_BG)
 
-            # ── 6. Kill rogue llama-server processes ─────────────────
+            # ── 4. Kill rogue llama-server processes ─────────────────
             servers = _find_llama_servers()
             for s in servers:
                 if s["port"] not in KNOWN_PORTS:
@@ -604,19 +395,18 @@ def main():
                     _kill_pid(s["pid"])
                     _stats["rogue_kills"] += 1
 
-            # Also stop any rogue systemd services
             for svc in ROGUE_SERVICES:
                 if _is_service_active(svc):
                     LOG.warning(f"Rogue service {svc} active — stopping")
                     _stop_service(svc)
 
-            # ── 7. Low-memory warning ────────────────────────────────
+            # ── 5. Low-memory warning ────────────────────────────────
             avail = _get_mem_available_mb()
             if avail > 0 and avail < 2048:
                 LOG.warning(f"LOW MEMORY: {avail}MB available")
 
             # ── Write health ─────────────────────────────────────────
-            _write_health(_gpu_mode, idle_s, swapping)
+            _write_health()
 
             # ── Sleep ────────────────────────────────────────────────
             for _ in range(CHECK_INTERVAL_S):
@@ -625,10 +415,10 @@ def main():
                 time.sleep(1)
 
         except Exception as e:
-            LOG.error(f"Manager error: {e}", exc_info=True)
+            LOG.error(f"Guard error: {e}", exc_info=True)
             time.sleep(10)
 
-    LOG.info("LLM Manager stopped")
+    LOG.info("LLM Guard stopped")
     LOG.info(f"Final stats: {json.dumps(_stats)}")
 
 

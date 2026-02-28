@@ -32,9 +32,9 @@ except ImportError:
 ROUTER_BASE = os.environ.get("AICORE_ROUTER_BASE", "http://127.0.0.1:8091").rstrip("/")
 MODELD_BASE = os.environ.get("AICORE_MODELD_BASE", "http://127.0.0.1:8090").rstrip("/")  # legacy
 
-# Chat-LLM: Llama-3.1-8B on CPU for casual/simple chat (frees GPU RLM for complex tasks)
-CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8102")
-CHAT_LLM_TIMEOUT_S = 120.0  # CPU inference — generous for 8B
+# Micro-LLM: Qwen2.5-3B on CPU for fallback when RLM/Router is down
+CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8105")
+CHAT_LLM_TIMEOUT_S = 120.0  # CPU inference — generous for 3B
 
 # Keywords that signal "use the heavy RLM" (chain-of-thought, deep reasoning)
 _COMPLEX_Q_KEYWORDS = re.compile(
@@ -74,11 +74,58 @@ except ImportError as _fb_err:
     print(f"[core] Output-Feedback-Loop not available: {_fb_err}")
 
 
+def _eb_record_tool_proxy(tool_path: str, payload: dict, result: dict,
+                          success_override: bool = None):
+    """Experiential Bridge: record tool proxy call to consciousness activity_log.
+
+    Direct SQLite write — does NOT import ConsciousnessDaemon (cross-process safe).
+    """
+    try:
+        import sqlite3 as _sql
+        from config.paths import get_db
+        tool_name = tool_path.strip("/").replace("/", "_")[:50]
+        if success_override is not None:
+            success = success_override
+        else:
+            success = result.get("ok", True) if isinstance(result, dict) else True
+        context = ""
+        if isinstance(payload, dict):
+            for key in ("query", "text", "path", "title", "name", "command", "event_id"):
+                if key in payload:
+                    context = f"{key}={str(payload[key])[:100]}"
+                    break
+        ts = time.time()
+        conn = _sql.connect(str(get_db("consciousness")), timeout=5)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute(
+                "INSERT INTO activity_log "
+                "(timestamp, activity_type, source, name, success, context, "
+                " duration_ms, mood_before, mood_after, epq_snapshot, metadata) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (ts, "tool_use", "core_proxy", tool_name, 1 if success else 0,
+                 context[:200], 0.0, 0.0, 0.0, "", "{}"),
+            )
+            conn.execute(
+                "DELETE FROM activity_log WHERE id NOT IN "
+                "(SELECT id FROM activity_log ORDER BY id DESC LIMIT 500)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        if _fb_process_event:
+            evt = "tool_success" if success else "tool_failure"
+            _fb_process_event(evt, {"tool": tool_name})
+    except Exception:
+        pass
+
+
 def _run_feedback_loop(user_text: str, reply_text: str):
     """Run the Output-Feedback-Loop: analyze Frank's response and update all personality modules.
 
     This is the CRITICAL integration — without this, /chat API produces zero persistent changes.
     """
+    global _META_LAST_TS  # Fix #27: was missing → UnboundLocalError at line 233
     if not _FEEDBACK_AVAILABLE or not reply_text or reply_text == "(empty)":
         return
     try:
@@ -267,6 +314,7 @@ def _run_feedback_loop(user_text: str, reply_text: str):
         try:
             from personality.e_pq import get_epq
             _epq = get_epq()
+            _epq._refresh_state()  # D-2 fix: read current DB values before modifying
             old_mood = _epq._state.mood_buffer
             correction = (_HOMEOSTASIS_TARGET - old_mood) * _HOMEOSTASIS_RATE
             _epq._state.mood_buffer = max(-1.0, min(1.0, old_mood + correction))
@@ -275,6 +323,28 @@ def _run_feedback_loop(user_text: str, reply_text: str):
                      old_mood, _epq._state.mood_buffer, correction)
         except Exception as e:
             LOG.warning("feedback: homeostasis FAILED: %s", e)
+
+        # 8. Experiential Bridge: record chat activity (direct DB write)
+        try:
+            import sqlite3 as _sql
+            from config.paths import get_db
+            _ts = time.time()
+            _conn = _sql.connect(str(get_db("consciousness")), timeout=5)
+            try:
+                _conn.execute("PRAGMA journal_mode=WAL")
+                _conn.execute(
+                    "INSERT INTO activity_log "
+                    "(timestamp, activity_type, source, name, success, context, "
+                    " duration_ms, mood_before, mood_after, epq_snapshot, metadata) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (_ts, "chat", "core", "user_chat", 1,
+                     user_text[:200], 0.0, 0.0, 0.0, "", "{}"),
+                )
+                _conn.commit()
+            finally:
+                _conn.close()
+        except Exception:
+            pass
 
         LOG.info("feedback loop completed successfully")
 
@@ -411,7 +481,7 @@ _FALLBACK_IDENTITY = (
 
 def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
                    temperature: float = 0.65) -> Optional[Dict[str, Any]]:
-    """Call the Chat-LLM (Llama 3.1 8B on CPU) directly via /v1/chat/completions.
+    """Call the Micro-LLM (Qwen2.5-3B on CPU) directly via /v1/chat/completions.
     Returns dict with 'ok', 'text', 'model' or None on failure."""
     url = f"{CHAT_LLM_URL}/v1/chat/completions"
     payload = json.dumps({
@@ -437,9 +507,9 @@ def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
                 msg = choices[0].get("message", {})
                 text = (msg.get("content") or "").strip()
                 if text:
-                    return {"ok": True, "text": text, "model": "llama-3.1-8b", "ts": time.time()}
+                    return {"ok": True, "text": text, "model": "qwen2.5-3b", "ts": time.time()}
     except Exception as e:
-        LOG.warning("Chat-LLM call failed: %s", e)
+        LOG.warning("Micro-LLM call failed: %s", e)
     return None
 
 
@@ -913,6 +983,12 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     obj = {"ok": False, "error": "invalid_upstream_json", "raw": raw[:500]}
                 self._json(200, obj)
+
+            # Experiential Bridge: record tool proxy call
+            try:
+                _eb_record_tool_proxy(upstream_path, payload, obj)
+            except Exception:
+                pass
             return
 
         except urllib.error.HTTPError as e:
@@ -922,9 +998,21 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 body = "<failed to read body>"
             self._json(e.code, {"ok": False, "error": "tools_upstream_http", "code": e.code, "body": body[:2000]})
+            # EB: record tool failure
+            try:
+                _eb_record_tool_proxy(upstream_path, payload or {}, {},
+                                      success_override=False)
+            except Exception:
+                pass
             return
         except Exception as e:
             self._json(502, {"ok": False, "error": "tools_upstream_failed", "detail": str(e)})
+            # EB: record tool failure
+            try:
+                _eb_record_tool_proxy(upstream_path, payload or {}, {},
+                                      success_override=False)
+            except Exception:
+                pass
             return
 
     def do_GET(self):
@@ -1341,11 +1429,11 @@ class Handler(BaseHTTPRequestHandler):
                     )
 
             except Exception as e:
-                # RLM failed → try Chat-LLM (CPU) as fallback
-                LOG.warning("RLM failed (%s), falling back to Chat-LLM", e)
+                # RLM failed → try Micro-LLM (Qwen2.5-3B, CPU) as fallback
+                LOG.warning("RLM failed (%s), falling back to Micro-LLM", e)
                 route = _chat_llm_call(grounded_text, identity, max_tokens=max_tokens)
                 if route:
-                    LOG.info("Chat-LLM fallback responded (%d chars)", len(route.get("text", "")))
+                    LOG.info("Micro-LLM fallback responded (%d chars)", len(route.get("text", "")))
 
             if route is None:
                 self._json(

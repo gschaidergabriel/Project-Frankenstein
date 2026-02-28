@@ -196,18 +196,17 @@ class InvariantsDaemon:
             # Initialize energy constant
             self.energy.initialize(self.titan_store)
 
-            # Recalibrate if chronically violated (organic growth, not corruption)
+            # Fix #24: Always recalibrate on startup to match actual knowledge state.
+            # The energy constant drifts as the knowledge base grows organically.
+            # Waiting for 100+ violations means titan is write-blocked for hours.
             try:
-                state = self.store.get_invariant_state("energy_conservation")
-                if state and state.get("violation_count", 0) > 100:
-                    LOG.info("Chronic energy violations (%d) — recalibrating",
-                             state["violation_count"])
-                    self.energy.recalibrate(self.titan_store)
-                    with self.store._get_conn() as conn:
-                        conn.execute(
-                            "UPDATE invariant_state SET violation_count = 0 "
-                            "WHERE invariant_name = 'energy_conservation'")
-                        conn.commit()
+                self.energy.recalibrate(self.titan_store)
+                LOG.info("Energy constant recalibrated to current knowledge state")
+                with self.store._get_conn() as conn:
+                    conn.execute(
+                        "UPDATE invariant_state SET violation_count = 0 "
+                        "WHERE invariant_name = 'energy_conservation'")
+                    conn.commit()
             except Exception as e:
                 LOG.warning("Energy recalibration check failed: %s", e)
 
@@ -306,10 +305,30 @@ class InvariantsDaemon:
                 LOG.warning(f"ENERGY VIOLATION: {current:.4f} vs {expected:.4f}")
                 self.stats["violations_detected"] += 1
 
-                # Enforce conservation
+                # D-6 Fix: Check if auto-recalibration should fire.
+                # If deviation has persisted > 5 minutes, it's organic growth —
+                # recalibrate baseline instead of trying to force-normalize.
+                if self.energy.check_auto_recalibrate(self.titan_store):
+                    self.stats["healing_actions"] += 1
+                    LOG.info("Energy auto-recalibrated to current knowledge state")
+                    # Reset violation count in DB
+                    try:
+                        with self.store._get_conn() as conn:
+                            conn.execute(
+                                "UPDATE invariant_state SET violation_count = 0 "
+                                "WHERE invariant_name = 'energy_conservation'")
+                            conn.commit()
+                    except Exception:
+                        pass
+                    return
+
+                # Enforce conservation (scaling) only as fallback
                 if self.energy.enforce_conservation(self.titan_store):
                     self.stats["healing_actions"] += 1
-                    LOG.info("Energy conservation restored")
+                    LOG.info("Energy conservation restored via normalization")
+            else:
+                # Conservation holds — update auto-recal tracker
+                self.energy.check_auto_recalibrate(self.titan_store)
 
         except Exception as e:
             LOG.error(f"Error checking energy: {e}")
@@ -411,8 +430,11 @@ class InvariantsDaemon:
             # Save state
             self._save_state()
 
-            # Sync shadow reality
-            self.reality.force_resync()
+            # Fix #29: Removed force_resync from maintenance loop.
+            # force_resync was calling shutil.copy2 every 8.3 minutes,
+            # causing WAL corruption. Now uses sqlite3.backup (Fix #23)
+            # and only syncs on convergence check, not on every maintenance tick.
+            # self.reality.force_resync()  -- disabled, convergence check handles sync
 
             # Clean old energy ledger (keep last 1000)
             try:

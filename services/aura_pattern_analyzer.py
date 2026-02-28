@@ -868,6 +868,10 @@ class PatternDiscovery:
                     if row:
                         co = json.loads(row[0] or "{}")
                         co[tgt] = co.get(tgt, 0) + 1
+                        # Cap co-occurrence map at top 50 entries
+                        if len(co) > 50:
+                            top_50 = dict(sorted(co.items(), key=lambda x: -x[1])[:50])
+                            co = top_50
                         conn.execute(
                             "UPDATE discovered_patterns SET co_occurrences = ? WHERE name = ?",
                             (json.dumps(co), src),
@@ -1854,19 +1858,78 @@ def analyze_deep(metas: List[MetaAnalysis], deep_num: int,
     if not dr.core_themes:
         dr.core_themes.append("Keine dominanten Themen — System in gleichmäßigem Fluss")
 
-    # Pattern library assessment
+    # Pattern library assessment — enriched with category, co-occurrence, tiers
     lib_stats = discovery.get_pattern_library_stats()
-    dr.pattern_library_assessment = (
-        f"Pattern-Bibliothek: {lib_stats.get('total_discovered', 0)} entdeckte Patterns, "
+    total = lib_stats.get('total_discovered', 0)
+    pa_parts = [
+        f"Pattern-Bibliothek: {total} entdeckte Patterns, "
         f"Ø Konfidenz {lib_stats.get('avg_confidence', 0):.0%}, "
         f"Ø Relevanz {lib_stats.get('avg_relevance', 0):.0%}, "
-        f"Gesamt-Sichtungen: {lib_stats.get('total_sightings', 0)}. "
-    )
+        f"Gesamt-Sichtungen: {lib_stats.get('total_sightings', 0)}."
+    ]
     top = lib_stats.get("top_patterns", [])
     if top:
-        dr.pattern_library_assessment += (
-            "Häufigste: " + ", ".join(f"{p['name']}({p['seen']}x)" for p in top[:3])
+        pa_parts.append(
+            "Häufigste: " + ", ".join(
+                f"{p['name']}({p['seen']}x, {p.get('category','?')})" for p in top[:5]
+            )
         )
+
+    # Enrich from DB: categories, co-occurrence network, confidence tiers
+    try:
+        _pa_conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+        # Category distribution
+        cat_rows = _pa_conn.execute("""
+            SELECT category, COUNT(*), AVG(confidence)
+            FROM discovered_patterns GROUP BY category ORDER BY COUNT(*) DESC
+        """).fetchall()
+        if cat_rows and total > 0:
+            cat_parts = []
+            for cat, cnt, avg_c in cat_rows:
+                cat_parts.append(f"{cat}: {cnt} ({cnt*100//total}%, Ø {avg_c:.0%})")
+            pa_parts.append("Kategorien: " + ", ".join(cat_parts))
+
+        # Co-occurrence network — strongest pairs
+        co_rows = _pa_conn.execute("""
+            SELECT name, co_occurrences FROM discovered_patterns
+            WHERE co_occurrences != '{}' ORDER BY times_seen DESC LIMIT 20
+        """).fetchall()
+        if co_rows:
+            strongest = None
+            total_edges = 0
+            for name, co_json in co_rows:
+                co = json.loads(co_json or "{}")
+                total_edges += len(co)
+                for partner, count in co.items():
+                    if strongest is None or count > strongest[2]:
+                        strongest = (name, partner, count)
+            if strongest:
+                pa_parts.append(
+                    f"Stärkstes Paar: {strongest[0]} ↔ {strongest[1]} "
+                    f"({strongest[2]}x gemeinsam)"
+                )
+            pa_parts.append(f"Netzwerk: {total_edges} Co-Occurrence-Kanten")
+
+        # Confidence tiers
+        tiers = _pa_conn.execute("""
+            SELECT
+                SUM(CASE WHEN confidence >= 0.8 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN confidence >= 0.5 AND confidence < 0.8 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN confidence < 0.5 THEN 1 ELSE 0 END)
+            FROM discovered_patterns
+        """).fetchone()
+        if tiers and any(tiers):
+            pa_parts.append(
+                f"Reife: {tiers[0] or 0} etabliert (≥80%), "
+                f"{tiers[1] or 0} aufstrebend (50-80%), "
+                f"{tiers[2] or 0} frisch (<50%)"
+            )
+
+        _pa_conn.close()
+    except Exception:
+        pass
+
+    dr.pattern_library_assessment = "Pattern-Analyse:\n  " + "\n  ".join(pa_parts)
 
     # Accumulated wisdom — synthesis
     wisdom_parts = []
@@ -1944,6 +2007,43 @@ def analyze_deep(metas: List[MetaAnalysis], deep_num: int,
 # ═══════════════════════════════════════════════════════════
 #  FRANK INTEGRATION — Queue for Idle Reflection
 # ═══════════════════════════════════════════════════════════
+
+# D-8 fix: Delta-gate to prevent stereotypical AURA reflections.
+# Only queue block reports when metrics changed meaningfully.
+_last_queued_block = {"density": None, "entropy": None, "change_rate": None,
+                      "most_active_zone": None}
+
+
+def _block_has_delta(ba: BlockAnalysis) -> bool:
+    """Return True if this block differs enough from the last queued one.
+
+    Thresholds: density +/-2%, entropy +/-0.05, change_rate +/-3%,
+    or the most-active zone changed.
+    """
+    m = _last_queued_block
+    if m["density"] is None:
+        # First block — always queue
+        _last_queued_block.update(
+            density=ba.avg_density, entropy=ba.avg_entropy,
+            change_rate=ba.avg_change_rate,
+            most_active_zone=ba.most_active_zone,
+        )
+        return True
+
+    has_delta = (
+        abs(ba.avg_density - m["density"]) > 0.02
+        or abs(ba.avg_entropy - m["entropy"]) > 0.05
+        or abs(ba.avg_change_rate - m["change_rate"]) > 0.03
+        or ba.most_active_zone != m["most_active_zone"]
+    )
+    if has_delta:
+        _last_queued_block.update(
+            density=ba.avg_density, entropy=ba.avg_entropy,
+            change_rate=ba.avg_change_rate,
+            most_active_zone=ba.most_active_zone,
+        )
+    return has_delta
+
 
 def queue_for_frank(report: str, level: str = "block"):
     """Queue a report for Frank to reflect on during idle.
@@ -2031,6 +2131,30 @@ def format_block_report(ba: BlockAnalysis) -> str:
 
     if ba.discovered_count > 0:
         lines.append(f"\n{ba.discovered_count} neue Patterns autonom entdeckt!")
+
+    # Pattern Library Context — inject top discovered patterns
+    try:
+        conn = sqlite3.connect(str(ANALYZER_DB), timeout=2)
+        top_pats = conn.execute("""
+            SELECT name, times_seen, confidence, category, co_occurrences
+            FROM discovered_patterns
+            ORDER BY times_seen DESC LIMIT 5
+        """).fetchall()
+        conn.close()
+        if top_pats:
+            lines.append(f"\nPattern-Bibliothek (Top {len(top_pats)}):")
+            for p in top_pats:
+                co_occ = json.loads(p[4]) if p[4] else {}
+                co_str = ""
+                if co_occ:
+                    top_co = sorted(co_occ.items(), key=lambda x: -x[1])[:2]
+                    co_str = f" | co-occurs: {', '.join(f'{k}({v}x)' for k, v in top_co)}"
+                lines.append(
+                    f"  {p[0]}: {p[1]}x gesehen, "
+                    f"Konfidenz {p[2]:.0%}, Kategorie {p[3]}{co_str}"
+                )
+    except Exception:
+        pass
 
     # Thought-Aura correlation
     if ba.concurrent_thoughts:
@@ -2219,6 +2343,14 @@ class AuraPatternAnalyzer:
     sends reports to Frank at each level.
     """
 
+    # Retention policy: how long to keep data per table
+    RETENTION_SNAPSHOTS = 4 * 3600      # 4 hours
+    RETENTION_BLOCKS = 24 * 3600        # 24 hours
+    RETENTION_METAS = 7 * 86400         # 7 days
+    RETENTION_QUEUE = 3600              # 1 hour (processed only)
+    RETENTION_CORRELATIONS = 24 * 3600  # 24 hours
+    RETENTION_INTERVAL = 600            # run cleanup every 10 minutes
+
     def __init__(self):
         _init_db()
         self.discovery = PatternDiscovery()
@@ -2234,6 +2366,9 @@ class AuraPatternAnalyzer:
         self._blocks: List[BlockAnalysis] = []
         self._metas: List[MetaAnalysis] = []
         self._prev_grid: Optional[np.ndarray] = None
+
+        # Retention
+        self._last_retention = 0.0
 
         # Load counters from DB
         self._load_counters()
@@ -2260,6 +2395,89 @@ class AuraPatternAnalyzer:
             conn.close()
         except Exception:
             pass
+
+    def _run_retention(self):
+        """Periodic DB cleanup — prevents unbounded growth."""
+        now = time.time()
+        if now - self._last_retention < self.RETENTION_INTERVAL:
+            return
+        self._last_retention = now
+
+        try:
+            conn = sqlite3.connect(str(ANALYZER_DB), timeout=5)
+
+            # Snapshots: keep 4 hours
+            cutoff_snap = now - self.RETENTION_SNAPSHOTS
+            del_snap = conn.execute(
+                "DELETE FROM snapshots WHERE ts < ?", (cutoff_snap,)
+            ).rowcount
+
+            # Blocks: keep 24 hours
+            cutoff_block = now - self.RETENTION_BLOCKS
+            del_block = conn.execute(
+                "DELETE FROM blocks WHERE ts < ?", (cutoff_block,)
+            ).rowcount
+
+            # Metas: keep 7 days
+            cutoff_meta = now - self.RETENTION_METAS
+            del_meta = conn.execute(
+                "DELETE FROM metas WHERE ts < ?", (cutoff_meta,)
+            ).rowcount
+
+            # Deep reflections: keep permanently (no delete)
+
+            # Reflection queue: processed entries older than 1 hour
+            cutoff_queue = now - self.RETENTION_QUEUE
+            del_queue = conn.execute(
+                "DELETE FROM reflection_queue WHERE processed = 1 AND ts < ?",
+                (cutoff_queue,)
+            ).rowcount
+
+            # Thought-aura correlations: keep 24 hours
+            cutoff_corr = now - self.RETENTION_CORRELATIONS
+            del_corr = conn.execute(
+                "DELETE FROM thought_aura_correlations WHERE ts < ?",
+                (cutoff_corr,)
+            ).rowcount
+
+            # Discovered patterns: strip heavy pattern_data from low-value old patterns
+            cutoff_strip = now - 86400  # 24h
+            stripped = conn.execute("""
+                UPDATE discovered_patterns SET pattern_data = NULL
+                WHERE pattern_data IS NOT NULL
+                  AND confidence < 0.5 AND last_seen < ?
+            """, (cutoff_strip,)).rowcount
+
+            # Trim bloated co_occurrence maps (> ~5 KB → top 50)
+            bloated = conn.execute("""
+                SELECT name, co_occurrences FROM discovered_patterns
+                WHERE LENGTH(co_occurrences) > 5000
+            """).fetchall()
+            trimmed = 0
+            for name, co_json in bloated:
+                co = json.loads(co_json or "{}")
+                if len(co) > 50:
+                    top_50 = dict(sorted(co.items(), key=lambda x: -x[1])[:50])
+                    conn.execute(
+                        "UPDATE discovered_patterns SET co_occurrences = ? WHERE name = ?",
+                        (json.dumps(top_50), name),
+                    )
+                    trimmed += 1
+
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            conn.commit()
+            conn.close()
+
+            total_del = del_snap + del_block + del_meta + del_queue + del_corr
+            if total_del > 0 or stripped > 0 or trimmed > 0:
+                LOG.info(
+                    "Retention cleanup: -%d snap, -%d block, -%d meta, "
+                    "-%d queue, -%d corr, %d pat stripped, %d co-occ trimmed",
+                    del_snap, del_block, del_meta, del_queue, del_corr,
+                    stripped, trimmed
+                )
+        except Exception as e:
+            LOG.debug("Retention cleanup failed: %s", e)
 
     def run(self):
         """Main loop — runs forever."""
@@ -2331,10 +2549,13 @@ class AuraPatternAnalyzer:
                 block = analyze_block(self._snapshots, self.block_num, self.discovery)
                 save_block(block)
 
-                # Queue for Frank's idle reflection
-                report = format_block_report(block)
+                # Queue for Frank's idle reflection (D-8: only if metrics changed)
                 LOG.info("L1 Block #%d: %s", block.block_num, block.narrative[:80])
-                queue_for_frank(report, "block")
+                if _block_has_delta(block):
+                    report = format_block_report(block)
+                    queue_for_frank(report, "block")
+                else:
+                    LOG.debug("L1 Block #%d: skipped queue (no delta)", block.block_num)
 
                 self._blocks.append(block)
 
@@ -2380,6 +2601,9 @@ class AuraPatternAnalyzer:
                         self.deep_num -= 1
                     finally:
                         self._metas.clear()
+
+        # Periodic retention cleanup
+        self._run_retention()
 
     def status(self) -> Dict:
         """Get current analyzer status."""

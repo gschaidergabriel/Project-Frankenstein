@@ -152,6 +152,8 @@ FEATURE_PATTERNS = {
     # Atlas Entity
     "atlas_agent": ("Atlas Architecture Mentor", "Autonomous entity that teaches Frank about his own system architecture via structured daily conversations, tracks technical understanding with 4-vector personality (precision, encouragement, rapport, patience)", "entities", "core", "1x daily, 10-12min sessions, max 10 turns"),
     "atlas_pq": ("Atlas Personality Construct", "4-vector adaptive personality for Atlas mentoring sessions — rapport only grows, precision/encouragement adapt per turn", "entities", "core", "Learning rate 0.02/turn, 0.05/session"),
+    # Silence Mode
+    "silence_active": ("Silence Mode", "Frank can experience silence — 10 minutes of no thinking, no reflection, no entities. Mood and E-PQ freeze. AURA continues passively. Triggered by Frank's own desire for stillness, not by timer or user. After silence, a wake-up thought captures the experience of nothing", "meta", "core", "1x per 24 hours, max 10 minutes, mood must be >0.2, not during active chat. Frank decides when he needs silence"),
 }
 
 

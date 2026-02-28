@@ -409,7 +409,8 @@ def get_frank_identity() -> str:
 # For backwards compatibility, keep FRANK_IDENTITY as a property-like access
 FRANK_IDENTITY = get_frank_identity()
 
-TOOLS_CONTEXT_TTL_S = float(os.environ.get("AICORE_TOOLS_CONTEXT_TTL_S", "6.0"))
+# Cycle 5 D-10: Increased from 6s to 30s to reduce excessive polling of /tools/sys/summary
+TOOLS_CONTEXT_TTL_S = float(os.environ.get("AICORE_TOOLS_CONTEXT_TTL_S", "30.0"))
 
 INGEST_BASE_ENV = os.environ.get("AICORE_INGEST_BASE", "").strip().rstrip("/")
 INGEST_PORT_CANDIDATES = [8094, 8092, 8093, 8095, 8096, 8097]

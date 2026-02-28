@@ -118,10 +118,10 @@ class TripleReality:
 
         if shadow_needs_init and self.primary_path.exists():
             self.shadow_path.parent.mkdir(parents=True, exist_ok=True)
-            # Atomic copy: write to tmp then rename (prevents corruption on crash)
-            tmp_path = self.shadow_path.with_suffix('.tmp')
-            shutil.copy2(self.primary_path, tmp_path)
-            os.replace(str(tmp_path), str(self.shadow_path))
+            # Fix #23: Use sqlite3.backup() instead of shutil.copy2()
+            # shutil.copy2 on a live WAL database copies only the main file,
+            # missing -wal and -shm, causing "database disk image is malformed"
+            self._sqlite_backup(self.primary_path, self.shadow_path)
             LOG.info("Initialized shadow from primary: %s", self.shadow_path)
 
         # Create validator if it doesn't exist
@@ -495,9 +495,8 @@ class TripleReality:
             # For now, just resync shadow to primary
             # A full implementation would restore both from backup
             if self.primary_path.exists():
-                tmp_path = self.shadow_path.with_suffix('.tmp')
-                shutil.copy2(self.primary_path, tmp_path)
-                os.replace(str(tmp_path), str(self.shadow_path))
+                # Fix #23: sqlite3.backup() instead of shutil.copy2()
+                self._sqlite_backup(self.primary_path, self.shadow_path)
                 LOG.info("Rolled back shadow to primary state")
 
             # Reseed random generators
@@ -509,13 +508,25 @@ class TripleReality:
             LOG.error(f"Error rolling back: {e}")
             return False
 
+    @staticmethod
+    def _sqlite_backup(src_path: Path, dst_path: Path):
+        """Safely copy a SQLite DB using the backup API (WAL-safe)."""
+        src = sqlite3.connect(str(src_path))
+        try:
+            dst = sqlite3.connect(str(dst_path))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+
     def force_resync(self):
         """Force resync shadow to primary."""
         try:
             if self.primary_path.exists():
-                tmp_path = self.shadow_path.with_suffix('.tmp')
-                shutil.copy2(self.primary_path, tmp_path)
-                os.replace(str(tmp_path), str(self.shadow_path))
+                # Fix #23: sqlite3.backup() instead of shutil.copy2()
+                self._sqlite_backup(self.primary_path, self.shadow_path)
                 LOG.info("Force resynced shadow to primary")
 
                 # Reset divergence counts

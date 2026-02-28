@@ -75,6 +75,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 LOG = logging.getLogger("muse_agent")
 LOG.setLevel(logging.DEBUG)
+LOG.propagate = False  # Cycle 5 D-5: prevent double-logging via root
 
 if not LOG.handlers:  # guard against duplicate handlers on importlib.reload()
     _fh = logging.FileHandler(LOG_DIR / "muse_agent.log", encoding="utf-8")
@@ -393,12 +394,27 @@ class SessionMemory:
 # LLM communication
 # ---------------------------------------------------------------------------
 
+def _interruptible_sleep(seconds: float, idle_threshold: float = 30.0) -> bool:
+    """Sleep in 5s chunks, abort if user returns. Returns True if interrupted."""
+    for elapsed in range(0, int(seconds), 5):
+        time.sleep(min(5, seconds - elapsed))
+        if _get_xprintidle_s() < idle_threshold:
+            LOG.info("User returned during LLM wait — aborting")
+            return True
+    return False
+
+
 def _call_llm(url: str, payload: dict, timeout: int = RESPONSE_TIMEOUT,
               retries: int = 3) -> Optional[str]:
     """POST to local LLM endpoint with retry for model loading."""
     data = json.dumps(payload).encode("utf-8")
 
     for attempt in range(retries):
+        # Check user idle before each retry
+        if attempt > 0 and _get_xprintidle_s() < 30:
+            LOG.info("User active — skipping LLM retry %d/%d", attempt + 1, retries)
+            return None
+
         req = urllib.request.Request(
             url, data=data, headers={"Content-Type": "application/json"},
         )
@@ -416,31 +432,36 @@ def _call_llm(url: str, payload: dict, timeout: int = RESPONSE_TIMEOUT,
                     if "Loading model" in text or "empty completion" in text:
                         LOG.info("Model loading, waiting 30s (attempt %d/%d)...",
                                  attempt + 1, retries)
-                        time.sleep(30)
+                        if _interruptible_sleep(30):
+                            return None
                         continue
                     return None
                 if not text.strip():
                     LOG.warning("Empty response from %s, retrying...", url)
-                    time.sleep(10)
+                    if _interruptible_sleep(10):
+                        return None
                     continue
                 return text
         except urllib.error.HTTPError as e:
             if e.code in (502, 503):
                 LOG.warning("HTTP %d from %s, waiting 30s (attempt %d/%d)...",
                             e.code, url, attempt + 1, retries)
-                time.sleep(30)
+                if _interruptible_sleep(30):
+                    return None
                 continue
             LOG.error("LLM call failed (%s): %s", url, e)
             return None
         except urllib.error.URLError as e:
             LOG.warning("LLM connection error (%s): %s (attempt %d/%d)",
                         url, e, attempt + 1, retries)
-            time.sleep(15)
+            if _interruptible_sleep(15):
+                return None
             continue
         except Exception as e:
             LOG.warning("LLM call error (%s): %s (attempt %d/%d)",
                         url, e, attempt + 1, retries)
-            time.sleep(10)
+            if _interruptible_sleep(10):
+                return None
             continue
 
     LOG.error("All %d attempts failed for %s", retries, url)
@@ -495,7 +516,9 @@ def _fire_epq_event(event_type: str, sentiment: str) -> Optional[Dict]:
 def _get_current_mood_buffer() -> float:
     try:
         from personality.e_pq import get_epq
-        return get_epq()._state.mood_buffer
+        epq = get_epq()
+        epq._refresh_state()  # D-5 fix: read current DB values
+        return epq._state.mood_buffer
     except Exception:
         return 0.0
 
@@ -1008,7 +1031,10 @@ class MuseAgent:
             frank_response = _ask_frank(muse_msg, self.session_id, prior_context=ctx)
             if not frank_response:
                 LOG.warning("Frank not responding. Waiting 30s and retrying...")
-                time.sleep(30)
+                if _interruptible_sleep(30):
+                    reason = f"user_returned (idle={_get_xprintidle_s():.0f}s)"
+                    LOG.info("EXIT CONDITION: %s (during Frank retry)", reason)
+                    break
                 frank_response = _ask_frank(muse_msg, self.session_id, prior_context=ctx)
                 if not frank_response:
                     LOG.error("Frank still unresponsive. Ending.")
@@ -1098,6 +1124,11 @@ class MuseAgent:
 
         # Update muse personality (macro-adjustment)
         self.pq.update_after_session(positive_turns, negative_turns, turn)
+
+        # Fix #43: Fire aggregate entity_session event for mood sync
+        overall_sentiment = "positive" if positive_turns > negative_turns else (
+            "negative" if negative_turns > positive_turns else "neutral")
+        _fire_epq_event("entity_session", overall_sentiment)
 
         # Store session end
         final_mood = _get_current_mood_buffer()
@@ -1225,7 +1256,11 @@ def run():
         exit_reason = "error"
     finally:
         _release_pid_lock()
-        LOG.info("Agent exiting.")
+        # Cycle 5 D-7: Clear module-level reference to allow GC of agent + history
+        _agent_instance = None
+        del agent
+        import gc; gc.collect()
+        LOG.info("Agent exiting (memory released).")
     return exit_reason
 
 

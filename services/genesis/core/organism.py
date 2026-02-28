@@ -268,6 +268,11 @@ class IdeaOrganism:
             fitness += modifiers["exploration"]
             factors += 1
 
+        # Skill ideas thrive when drive is high (Frank wants to improve)
+        if "action_bias" in modifiers and self.genome.idea_type == "skill":
+            fitness += modifiers["action_bias"] * 0.8
+            factors += 1
+
         # Actionable ideas thrive when drive is high
         if "action_bias" in modifiers:
             impact = self.genome.traits.get("impact", 0.5)
@@ -386,7 +391,7 @@ class IdeaOrganism:
 
         # 5. Has a concrete origin?
         if genome.origin in ("code_analysis", "error_analysis", "observation",
-                             "github", "fusion"):
+                             "github", "fusion", "consciousness_insight"):
             score += 1
 
         passed = score >= 2
@@ -417,7 +422,7 @@ class IdeaOrganism:
     def crystallize(self):
         """Crystallize into final form."""
         self.stage = IdeaStage.CRYSTAL
-        LOG.info(f"Organism {self.id} crystallized! Genome: {self.genome.idea_type}/{self.genome.target}")
+        LOG.debug(f"Organism {self.id} crystallized! Genome: {self.genome.idea_type}/{self.genome.target}")
 
     def reproduce(self) -> "IdeaOrganism":
         """Create offspring (costs energy)."""

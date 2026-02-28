@@ -150,7 +150,7 @@ class FASConnector:
             return False
 
         try:
-            # Format proposals for popup
+            # Format proposals for popup — include FAS-compatible fields
             features = []
             for p in proposals:
                 features.append({
@@ -158,11 +158,19 @@ class FASConnector:
                     "name": p.get("title", "Genesis Proposal"),
                     "description": p.get("description", ""),
                     "confidence": p.get("resonance", 0.7),
+                    # FAS detail dialog fields
+                    "feature_type": p.get("feature_type", p.get("genome", {}).get("type", "optimization")),
+                    "file_path": p.get("file_path", p.get("genome", {}).get("target", "")),
+                    "repo_name": p.get("repo_name", p.get("genome", {}).get("origin", "genesis")),
+                    "confidence_score": p.get("confidence_score", p.get("fitness", 0.5)),
+                    "code_snippet": p.get("code_snippet", ""),
+                    "why_specific": p.get("why_specific", ""),
                     "source": "genesis",
                     "approach": p.get("approach", ""),
                     "risk_assessment": p.get("risk_assessment", ""),
                     "expected_benefit": p.get("expected_benefit", ""),
                     "genome": p.get("genome", {}),
+                    "metadata": p.get("metadata", {}),
                 })
 
             env = os.environ.copy()

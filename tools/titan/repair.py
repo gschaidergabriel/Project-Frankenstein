@@ -86,7 +86,7 @@ def repair_orphaned_vectors() -> int:
         LOG.info("No vector files found, nothing to repair")
         return 0
 
-    conn = sqlite3.connect(str(TITAN_DB))
+    conn = sqlite3.connect(str(TITAN_DB), timeout=30)
     valid_ids = {r[0] for r in conn.execute("SELECT id FROM nodes").fetchall()}
     conn.close()
 
@@ -195,7 +195,7 @@ def main():
     backup(VECTORS_IDS)
 
     # 2. Get pre-repair stats
-    conn = sqlite3.connect(str(TITAN_DB))
+    conn = sqlite3.connect(str(TITAN_DB), timeout=30)
     nodes_before = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
     edges_before = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     LOG.info(f"PRE-REPAIR: nodes={nodes_before}, edges={edges_before}")
@@ -214,7 +214,7 @@ def main():
     reingest_chat_history(days=30)
 
     # 7. Post-repair stats
-    conn = sqlite3.connect(str(TITAN_DB))
+    conn = sqlite3.connect(str(TITAN_DB), timeout=30)
     nodes_after = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
     edges_after = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     conn.close()

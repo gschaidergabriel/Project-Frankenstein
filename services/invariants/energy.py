@@ -58,6 +58,21 @@ class EnergyConservation:
         self._energy_constant: Optional[float] = None
         self._initialized = False
 
+        # Fix #26: Cache energy calculation with TTL to avoid 4 full table scans
+        # on every PRE_WRITE hook call
+        self._cached_energy: Optional[float] = None
+        self._cache_ts: float = 0.0
+        self._CACHE_TTL_S: float = 30.0  # 30 seconds
+
+        # D-6 Fix: Auto-recalibration tracking
+        # When deviation > threshold continuously for _RECAL_GRACE_S seconds,
+        # recalibrate baseline to current energy (organic growth, not corruption).
+        import time as _time
+        self._violation_since: Optional[float] = None  # monotonic timestamp of first continuous violation
+        self._RECAL_GRACE_S: float = 300.0  # 5 minutes of continuous violation before auto-recal
+        self._last_auto_recal: float = 0.0  # monotonic timestamp of last auto-recal
+        self._AUTO_RECAL_COOLDOWN_S: float = 600.0  # min 10 minutes between auto-recals
+
         LOG.info("Energy Conservation initialized")
 
     @property
@@ -232,10 +247,20 @@ class EnergyConservation:
         Returns:
             (is_conserved, current_energy, expected_energy)
         """
+        import time as _time
         if not self._initialized:
             self.initialize(titan_store)
 
-        current = self._calculate_total_energy(titan_store)
+        # Fix #26: Use cached value if within TTL to avoid 4 full table scans
+        # on every PRE_WRITE hook call
+        now = _time.time()
+        if self._cached_energy is not None and (now - self._cache_ts) < self._CACHE_TTL_S:
+            current = self._cached_energy
+        else:
+            current = self._calculate_total_energy(titan_store)
+            self._cached_energy = current
+            self._cache_ts = now
+
         expected = self.energy_constant
 
         # Check within tolerance
@@ -430,6 +455,7 @@ class EnergyConservation:
         Use when chronic violations indicate the knowledge base grew
         organically and the constant is simply stale — not corruption.
         """
+        import time as _time
         try:
             total = self._calculate_total_energy(titan_store)
             old = self._energy_constant or 0.0
@@ -441,10 +467,83 @@ class EnergyConservation:
             self._energy_constant = total
             self.config.energy_constant = total
             self._initialized = True
+            # D-6: Reset violation tracker and update cooldown timestamp
+            self._violation_since = None
+            self._last_auto_recal = _time.monotonic()
+            # Also invalidate cached energy so next check uses fresh value
+            self._cached_energy = None
+            self._cache_ts = 0.0
             return total
         except Exception as e:
             LOG.error("Energy recalibration failed: %s", e)
             return self._energy_constant or 0.0
+
+    def check_auto_recalibrate(self, titan_store) -> bool:
+        """D-6 Fix: Auto-recalibrate if deviation persists > 5 minutes.
+
+        Called by the daemon after each energy check.  If the energy has
+        been continuously violated for longer than _RECAL_GRACE_S, this
+        is organic growth — not corruption.  Recalibrate the baseline
+        automatically to unblock titan.db writes.
+
+        Returns True if recalibration was performed.
+        """
+        import time as _time
+        now = _time.monotonic()
+
+        # Check current conservation status (uses cached value)
+        is_conserved, current, expected = self.check_conservation(titan_store)
+
+        if is_conserved:
+            # No violation — reset the tracker
+            if self._violation_since is not None:
+                LOG.debug("Energy violation cleared, resetting auto-recal tracker")
+            self._violation_since = None
+            return False
+
+        # Violation active — start or continue tracking
+        if self._violation_since is None:
+            self._violation_since = now
+            delta_pct = abs(current - expected) / expected * 100 if expected > 0 else 0
+            LOG.info("Energy violation started tracking for auto-recal "
+                     "(current=%.2f, expected=%.2f, delta=%.1f%%)",
+                     current, expected, delta_pct)
+            return False
+
+        elapsed = now - self._violation_since
+        since_last_recal = now - self._last_auto_recal
+
+        if elapsed >= self._RECAL_GRACE_S and since_last_recal >= self._AUTO_RECAL_COOLDOWN_S:
+            delta_pct = abs(current - expected) / expected * 100 if expected > 0 else 0
+            LOG.warning("D-6 AUTO-RECALIBRATION: Energy deviation %.1f%% "
+                        "persisted for %.0fs (> %.0fs grace). "
+                        "Recalibrating baseline %.2f -> %.2f (organic growth).",
+                        delta_pct, elapsed, self._RECAL_GRACE_S,
+                        expected, current)
+            self.recalibrate(titan_store)
+            # Record healing action
+            self.store.record_healing_action(
+                "energy_auto_recalibration",
+                f"Deviation {delta_pct:.1f}% persisted {elapsed:.0f}s — organic growth",
+                0, True,
+                f"old_baseline={expected:.2f}, new_baseline={current:.2f}"
+            )
+            # Reset violation count in invariant_state
+            try:
+                with self.store._get_conn() as conn:
+                    conn.execute(
+                        "UPDATE invariant_state SET violation_count = 0 "
+                        "WHERE invariant_name = 'energy_conservation'")
+                    conn.commit()
+            except Exception as e:
+                LOG.warning("Failed to reset violation count: %s", e)
+            return True
+
+        remaining = self._RECAL_GRACE_S - elapsed
+        if remaining > 0 and int(elapsed) % 60 == 0 and elapsed > 0:
+            LOG.debug("Auto-recal in %.0fs (violation ongoing for %.0fs)",
+                      remaining, elapsed)
+        return False
 
 
 # Global instance

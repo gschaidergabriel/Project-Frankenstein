@@ -1,6 +1,6 @@
 # Human-AI Co-Development of Autonomous Local AI Systems: Method, Evidence, and Limitations
 
-**Gabriel Unterweger**
+**Gabriel Gschaider**
 Project Frankenstein — F.R.A.N.K.
 February 2026
 

@@ -228,6 +228,7 @@ Key environment variables:
 | Parameter architecture | [Why Mood, E-PQ, and AURA — theory, constraints, positioning](papers/PARAMETER_ARCHITECTURE.md) |
 | GRF → Frank bridge | [Formal mapping: 8 GRF principles → specific code](papers/GRF_IMPLEMENTATION_BRIDGE.md) |
 | Alignment Is Misaligned | [Why Containment Fails and Coevolution Is the Only Path](papers/ALIGNMENT_IS_MISALIGNED.md) |
+| Synthetic Psychology | [Defining the field: Engineering the Inner Life of AI Systems](papers/SYNTHETIC_PSYCHOLOGY.md) |
 | Use cases catalog | [USECASES.md](USECASES.md) |
 | Whitepaper | [papers/WHITEPAPER.md](papers/WHITEPAPER.md) |
 | The story behind Frank | [ABOUT.md](ABOUT.md) |

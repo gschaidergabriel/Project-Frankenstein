@@ -13,7 +13,7 @@
 
 Built by one person with zero programming experience, using Claude as co-developer. 200k+ lines of code (160k Python, 40k JS/HTML/CSS, systemd, shell) in 2 months. Derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf). [Read the full story.](ABOUT.md)
 
-**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[Parameter Architecture](papers/PARAMETER_ARCHITECTURE.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](papers/WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
+**[User Manual](MANUAL.md)** | **[How Frank Works](HOW_IT_WORKS.md)** | **[Architecture](ARCHITECTURE.md)** | **[Consciousness](CONSCIOUSNESS.md)** | **[Synthetic Psychology](papers/SYNTHETIC_PSYCHOLOGY.md)** | **[Parameter Architecture](papers/PARAMETER_ARCHITECTURE.md)** | **[GRF → Frank Bridge](papers/GRF_IMPLEMENTATION_BRIDGE.md)** | **[Alignment Is Misaligned](papers/ALIGNMENT_IS_MISALIGNED.md)** | **[Contributions](CONTRIBUTIONS.md)** | **[Use Cases](USECASES.md)** | **[Whitepaper](papers/WHITEPAPER.md)** | **[Community Forum](https://daemonweave.vercel.app/)**
 
 An AI that thinks when you're not talking to it, dreams when it's idle, feels its own hardware, and evolves its personality over months — running entirely on your machine.
 

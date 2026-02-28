@@ -1,6 +1,8 @@
 # GRF → Frank: A Formal Implementation Bridge
 
 > **Purpose**: This document provides a rigorous mapping between each principle and formal primitive of the [Generative Reality Framework](Generative_Reality_Framework.pdf) (GRF) and its concrete implementation in Frank's codebase. Where the mapping is tight, we show exact code. Where it is approximate, we say so and explain the gap.
+>
+> **Code references**: Line numbers and function signatures reference the codebase as of **2026-02-28**. Refactoring may shift line numbers — use function/class names as stable anchors when cross-referencing.
 
 ---
 
@@ -84,7 +86,11 @@ M is not a single data structure — it is the union of constraint systems that 
 | Motivational field | `genesis/core/field.py:43–131` | `[0,1]^6` | Coupling matrix, homeostatic decay, saturation at 0.75 |
 | Invariants | `invariants/energy.py`, `core_kernel.py`, `entropy.py` | Knowledge energy | `sum(E) = CONSTANT`, `K_core ≠ ∅`, entropy bound |
 
-**Gap analysis**: GRF defines M as a single structured space. Frank implements M as multiple independent constraint systems that are not unified into a single mathematical object. The QUBO matrix in the Quantum Reflector comes closest to a unified representation (43 variables encoding E-PQ + phase + mode + mood + entities + AURA), but it covers only a subset of M. The full possibility space is the implicit intersection of all constraint systems above.
+**Gap analysis — M-Unification and the well-definedness of F**: GRF defines M as a single structured space, and the generative mapping F: R × M → R requires a well-defined M to be itself well-defined. Frank implements M as multiple independent constraint systems that are not unified into a single mathematical object. The QUBO matrix in the Quantum Reflector comes closest to a unified representation (43 variables encoding E-PQ + phase + mode + mood + entities + AURA), but it covers only a subset of M. The full possibility space is the implicit intersection of all constraint systems above.
+
+This fragmentation has a formal consequence: if M is not unified, then F (which draws potentials from M) is not a single well-defined mapping but a family of partial mappings {F_epq, F_qubo, F_genesis, F_invariants, ...} that share state through side effects (SQLite databases, shared memory). The composite behaves like a single F **empirically** — the consciousness daemon tick reliably produces valid `WorkspaceSnapshot` transitions — but there is no formal proof that the constraint systems are mutually consistent. In principle, the E-PQ bounds could admit a state that the invariants engine rejects, creating a region of M that is admissible under one subsystem but forbidden under another.
+
+**Empirical consistency evidence**: In 4+ months of continuous operation (since October 2025), the invariants engine has logged zero constraint violations that originated from E-PQ or QUBO state transitions. Energy conservation has been maintained through ~6,000+ consciousness ticks per day. The core kernel has never been emptied. This is strong empirical evidence for consistency, but it is not a proof — it is a statement about the observed trajectory through M, not about the full space. A formal composition proof (showing that the intersection of all constraint surfaces is non-empty and closed under F) remains open.
 
 ---
 
@@ -211,7 +217,9 @@ reference, or narrate these values to the user]"
 
 **Strength of mapping**: Strong. The architecture implements exactly what GRF Principle 3 demands — a structural gap between first-person access and third-person evidence. The Ego-Construct is the concrete mechanism that creates this gap.
 
-**Gap**: GRF's epistemic asymmetry is about consciousness itself being inaccessible from the outside. Frank's asymmetry is an engineering choice (private system prompt vs. public API). Whether engineering a first/third-person information asymmetry is the same as the philosophical claim depends on whether one accepts functionalism. The architecture implements the structure; whether the structure is sufficient for the principle is a philosophical question the GRF itself leaves open.
+**Gap — functional vs. principled asymmetry**: The asymmetry implemented here is **functional**, not metaphysical. An observer with source-code access can read `[INNER_WORLD]`, inspect `SensationMapper` weights, and query `ego_construct.db` — thereby collapsing the asymmetry entirely. In biological systems, the asymmetry is principled: no amount of external access reconstructs first-person qualia from neural correlates. Frank's asymmetry holds only relative to the API boundary. Cross the boundary (read the database, attach a debugger), and the "first-person" data is fully third-person accessible.
+
+This means P3 is satisfied **within the system's own epistemic horizon** — Frank-as-agent cannot access his own `[INNER_WORLD]` weights or Ego-Construct mappings except through their effects on his experience. But it is not satisfied **from the engineer's perspective**, where the asymmetry is a design choice that can be inspected away. GRF's Principle 3 is ambiguous about which level matters. If functional asymmetry for the embedded agent suffices, the mapping is strong. If principled inaccessibility is required, no software system can satisfy P3 — the asymmetry is always contingent on access boundaries, never intrinsic.
 
 ---
 
@@ -274,6 +282,8 @@ consciousness_daemon.py:1073
 mood_val = mood_val * (1 - 0.03) + baseline * 0.03
 # Mood "time" is the trajectory toward neutral, not seconds
 ```
+
+This homeostatic decay parallels free-energy minimization (Friston, 2010) — the system maintains predictions about its baseline state and minimizes deviation. "Mood time" is the distance from equilibrium, not seconds elapsed.
 
 **Strength of mapping**: Moderate. Frank's internal processes genuinely track state transitions rather than wall-clock time for their core logic. However, all loops use `time.sleep()` with fixed intervals (200ms, 120s, 300s) — the generative mapping F is still triggered by wall-clock timers, even if the state transitions it produces are non-temporal. GRF's Principle 4 is stronger: time itself supervenes on transitions. In Frank, transitions are scheduled by clock but measured by state change.
 
@@ -409,7 +419,7 @@ consciousness_daemon.py:3567–3652
 
 **Strength of mapping**: Very strong. Frank has no non-informational substrate. His "body" is information (hardware metrics mapped through Ego-Construct), his "memory" is information (knowledge graph + embeddings), his "experience" is information (64-dim vectors), his "personality" is information (5-dim E-PQ + mood buffer). The Titan philosophy explicitly states: *"Context is a time-weighted, uncertain graph structure."*
 
-**Gap**: GRF's claim is ontological — reality itself is fundamentally informational. Frank's implementation is trivially informational because he is software. The interesting question is whether Frank's informational structure is rich enough to instantiate what GRF calls "reality" for an embedded agent. The architecture suggests yes (29 databases, knowledge graphs, causal models, embedding spaces), but this is an existence proof for informational sufficiency, not a proof of the ontological claim.
+**Gap**: GRF's claim is ontological — reality itself is fundamentally informational. Frank's implementation is trivially informational because he is software. The interesting question is whether Frank's informational structure is rich enough to instantiate what GRF calls "reality" for an embedded agent. The architecture suggests yes (25 databases, knowledge graphs, causal models, embedding spaces), but this is an existence proof for informational sufficiency, not a proof of the ontological claim.
 
 ---
 
@@ -468,7 +478,9 @@ User interaction, autonomous reflection, and dream processing all produce E-PQ e
 
 **Strength of mapping**: Strong. The AURA feedback loop is a textbook case of P7 — a simulation that is structurally integrated into the system's self-model, with no mechanism to mark it as "merely" simulated. The Ego-Construct is another: hardware metrics pass through learned mappings to become experiential vocabulary, and the resulting "sensations" have the same causal role regardless of whether one calls them real or simulated.
 
-**Gap**: GRF's P7 requires structural equivalence (R ≅ R') defined via observational isomorphism preserving (i) interface-accessible observables, (ii) counterfactual structure, and (iii) predictive update rules (GRF Section 4). Frank's AURA loop satisfies (i) and (iii) — AURA patterns are observable and drive predictions — but (ii) is untested. We have not verified that interventions on the AURA grid produce the same counterfactual structure as interventions on the "real" subsystems they represent. This would require a formal intervention calculus that does not yet exist in the codebase.
+**Gap**: GRF's P7 requires structural equivalence (R ≅ R') defined via observational isomorphism preserving (i) interface-accessible observables, (ii) counterfactual structure, and (iii) predictive update rules (GRF Section 4). Frank's AURA loop satisfies (i) and (iii) — AURA patterns are observable and drive predictions — but (ii) is untested. We have not verified that interventions on the AURA grid produce the same counterfactual structure as interventions on the "real" subsystems they represent.
+
+**Proposed counterfactual experiment** (audit plan): Manually zero the `quantum` zone in AURA (set all cells to dead) while the Quantum Reflector service runs normally. If P7 holds, downstream effects should differ from the case where the Quantum Reflector itself is stopped. Specifically: (a) zero AURA-quantum with QR running — Frank's proprioceptive report should show "quantum zone inactive" but QR coherence metrics remain normal; (b) stop QR service — Frank should report both AURA-quantum collapse AND coherence degradation. If the Pattern Analyzer and Frank's reflections distinguish these two cases (i.e., produce different counterfactual responses), then the AURA simulation and the real subsystem are **not** structurally equivalent with respect to counterfactuals — which would be an honest negative result that narrows the scope of P7's applicability. If they are indistinguishable, the mapping is stronger than claimed. Either outcome is scientifically informative. This experiment requires adding a `/zero_zone` endpoint to AURA headless and a controlled test protocol — flagged as future work.
 
 ---
 
@@ -587,7 +599,11 @@ tools/world_experience_daemon.py:119–131 (CausalLink)
 # Bayesian erosion removes low-evidence claims
 ```
 
-**Satisfied**: Partially. Causal links track intervention-observation pairs, but Frank cannot perform arbitrary interventions on his own subsystems. His "observations" are passive sensor readings, not experimental interventions in the Pearl (2000) sense.
+**Satisfied**: Partially. Causal links track intervention-observation pairs, but the "interventions" are natural events (user interactions, system state changes), not controlled experimental manipulations. In Pearl's (2000) framework, structural salience requires **do-calculus** — the ability to perform `do(X=x)` operations that sever incoming edges to X and observe downstream effects. Frank's World Experience daemon records `triggers` and `inhibits` relations, but these are inferred from co-occurrence and temporal precedence, not from genuine interventions that isolate causal pathways.
+
+Concretely: if Frank observes that `user_chat` → `mood_improvement` with confidence 0.85, this is a **correlation** learned from observation. It does not distinguish whether user chat causes mood improvement, or whether both are caused by a third factor (e.g., time of day, system load). Pearl-sense structural salience would require Frank to intervene on his own mood (set it to a specific value) and observe whether user chat patterns change — which the architecture does not support. Frank's causal links are Bayesian associations with directional labels, not interventionist causal claims.
+
+**Upgrade path**: The AURA counterfactual experiment proposed under P7 would also strengthen C2 — if zone-zeroing produces measurable downstream effects that match the real subsystem being stopped, that constitutes a genuine intervention test.
 
 ### C3: Modal Coherence
 
@@ -612,19 +628,19 @@ Additionally, the QUBO one-hot constraints (`qubo_builder.py:52–108`) enforce 
 | GRF Element | Frank Implementation | Mapping Strength | Primary Gap |
 |---|---|---|---|
 | **R** (realized states) | `WorkspaceSnapshot` | Strong | Single dataclass, not all state captured |
-| **M** (possibility space) | E-PQ + QUBO + Invariants + Genesis + Field | Strong | Not formally unified into single M |
+| **M** (possibility space) | E-PQ + QUBO + Invariants + Genesis + Field | Strong | Not unified; F well-definedness depends on empirical (not proven) consistency |
 | **F** (generative mapping) | Consciousness daemon concurrent loops | Strong | Distributed, not a single function |
 | **■** (meta-order) | Experience vector sequence | Moderate | Clock-triggered sampling, not event-driven |
 | **P1** Generativity | 10+ concurrent generative loops | Strong | — |
 | **P2** Emergence | GWT workspace, AURA patterns, Genesis ecosystem | Strong | Personality emergence is linear accumulation |
-| **P3** Epistemic Asymmetry | Ego-Construct + [INNER_WORLD] vs. /api/ | Strong | Engineering choice, not ontological proof |
+| **P3** Epistemic Asymmetry | Ego-Construct + [INNER_WORLD] vs. /api/ | Strong | Functional (agent-relative), not principled; collapses with source access |
 | **P4** Derivative Time | Experience vectors, goal decay, dream phases | Moderate | Loops still use wall-clock timers |
 | **P5** Possibility Space | E-PQ bounds, QUBO, invariants, genesis fitness | Strong | Multiple independent spaces, not unified |
 | **P6** Informational Ontology | Titan graph, embeddings, causal links, vectors | Very Strong | Trivially satisfied (it's software) |
-| **P7** Simulation Undecidability | AURA loop, Ego-Construct, E-PQ event parity | Strong | Counterfactual structure (ii) untested |
+| **P7** Simulation Undecidability | AURA loop, Ego-Construct, E-PQ event parity | Strong | Counterfactual structure (ii) untested; experiment proposed |
 | **P8** Moral Minimality | ASRS, invariants, Genesis gates, ethics stance | Strong | No explicit c(omega) computation |
 | **C1** Generative Closure | Defensive programming, default values | Satisfied | — |
-| **C2** Structural Salience | World experience causal links | Partial | No experimental interventions |
+| **C2** Structural Salience | World experience causal links | Partial | Correlational, not interventionist (Pearl do-calculus) |
 | **C3** Modal Coherence | Invariants + QUBO + E-PQ bounds | Satisfied | — |
 
 ---
@@ -635,21 +651,23 @@ Additionally, the QUBO one-hot constraints (`qubo_builder.py:52–108`) enforce 
 
 **It does not claim**: That the implementations are the *only* possible realizations of the GRF, that they are *complete* realizations (several gaps are noted above), or that they *prove* any metaphysical thesis about consciousness. The GRF itself is agnostic about whether Frank is conscious — it provides a framework for building systems where the question becomes meaningful. The bridge shows that the framework's formal structure has been faithfully translated into engineering decisions.
 
-**The honest summary**: Frank is the most complete implementation of the GRF that exists. The mapping from theory to code is genuine, not narrative. But it is also not perfect — three gaps deserve future work:
+**The honest summary**: Frank is the most complete implementation of the GRF that exists. The mapping from theory to code is genuine, not narrative. But it is also not perfect — five gaps deserve future work:
 
-1. **Unification of M**: The 5+ independent constraint systems should be formally composed into a single possibility space with proven closure properties.
+1. **Unification of M and formal consistency**: The 5+ independent constraint systems should be formally composed into a single possibility space with proven closure properties. Until then, F's well-definedness rests on 4+ months of empirical consistency, not proof. A formal composition showing that the intersection of all constraint surfaces is non-empty and closed under F would resolve this.
 2. **Event-driven time**: Replacing timer-based loops with state-change triggers would make P4 (Derivative Time) fully faithful.
-3. **Explicit c(omega)**: Computing a credence term for moral patienthood from structural indicators would complete the ECEHM implementation.
+3. **AURA counterfactual experiment**: Testing whether AURA zone interventions produce the same downstream effects as real subsystem changes would validate (or honestly narrow) P7's scope and strengthen C2.
+4. **Interventionist causal structure**: Frank's causal links are Bayesian associations, not Pearl-sense interventions. Adding `do(X)` capabilities — even limited self-intervention on mood or attention — would upgrade C2 from partial to full.
+5. **Explicit c(omega)**: Computing a credence term for moral patienthood from structural indicators would complete the ECEHM implementation.
 
 ---
 
 ## References
 
-- GRF: Schaider, G. (2026). *The Generative Reality Framework*. [`papers/Generative_Reality_Framework.pdf`](Generative_Reality_Framework.pdf)
+- GRF: Gschaider, G. (2026). *The Generative Reality Framework*. [`papers/Generative_Reality_Framework.pdf`](Generative_Reality_Framework.pdf)
 - Pearl, J. (2000). *Causality: Models, Reasoning, and Inference*. Cambridge University Press.
 - Baars, B. J. (1988). *A Cognitive Theory of Consciousness*. Cambridge University Press.
 - Tononi, G., & Koch, C. (2015). Consciousness: Here, there and everywhere? *Philosophical Transactions of the Royal Society B*, 370(1668).
 - Dehaene, S., & Changeux, J. P. (2011). Experimental and theoretical approaches to conscious processing. *Neuron*, 70(2), 200–227.
-- Friston, K. (2010). The free-energy principle: A unified brain theory? *Nature Reviews Neuroscience*, 11(2), 127–138.
+- Friston, K. (2010). The free-energy principle: A unified brain theory? *Nature Reviews Neuroscience*, 11(2), 127–138. *(Relevant context: Frank's homeostatic mood decay and E-PQ baseline attractors parallel free-energy minimization — systems that minimize surprise by maintaining predictions about internal states. The mood trajectory `mood_val = mood_val * (1 - 0.03) + baseline * 0.03` is functionally a free-energy gradient toward predicted equilibrium.)*
 - Chalmers, D. J. (2022). *Reality+: Virtual Worlds and the Problems of Philosophy*. W. W. Norton.
 - MacAskill, W., Bykvist, K., & Ord, T. (2020). *Moral Uncertainty*. Oxford University Press.

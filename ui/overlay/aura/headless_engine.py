@@ -48,6 +48,10 @@ class HeadlessAuraEngine:
         self._quantum_colors = np.zeros((GRID_SIZE, GRID_SIZE, 3), dtype=np.float32)
         self._has_quantum = False
 
+        # Stochastic density map from fine grid (2560×2560 → 256×256 avg)
+        self._density_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        self._has_density = False
+
         self._generation = 0
         self._running = False
         self._thread: threading.Thread | None = None
@@ -87,6 +91,12 @@ class HeadlessAuraEngine:
         """Get per-cell quantum blended RGB (256,256,3) float32, or None."""
         if self._has_quantum:
             return self._quantum_colors
+        return None
+
+    def get_density_map(self) -> np.ndarray | None:
+        """Get stochastic density map (256,256) float32 0.0-1.0, or None."""
+        if self._has_density:
+            return self._density_map
         return None
 
     def get_metadata(self) -> dict:
@@ -192,6 +202,17 @@ class HeadlessAuraEngine:
             except Exception:
                 pass
 
+        # Decode stochastic density map if present
+        density = None
+        if "density_b64" in data:
+            try:
+                d_bytes = base64.b64decode(data["density_b64"])
+                density = np.frombuffer(d_bytes, dtype=np.uint8).reshape(
+                    GRID_SIZE, GRID_SIZE,
+                ).astype(np.float32) / 255.0
+            except Exception:
+                pass
+
         with self._lock:
             prev_grid = self._grids[self._read_idx]
 
@@ -217,6 +238,15 @@ class HeadlessAuraEngine:
                 self._quantum_colors[:] = qcolors
                 self._has_quantum = True
 
+            # Store stochastic density map with temporal smoothing
+            if density is not None:
+                if self._has_density:
+                    # Blend 70% previous + 30% new for flicker-free transitions
+                    self._density_map[:] = self._density_map * 0.7 + density * 0.3
+                else:
+                    self._density_map[:] = density
+                self._has_density = True
+
             # Swap buffers
             self._write_idx, self._read_idx = self._read_idx, self._write_idx
             self._generation = gen
@@ -227,6 +257,7 @@ class HeadlessAuraEngine:
                 "mood": data.get("mood", 0.0),
                 "coherence": data.get("coherence", 0.5),
                 "hw_temp": data.get("hw_temp", 0),
+                "cpu_percent": data.get("cpu_percent", 0.0),
                 "ram_usage": data.get("ram_usage", 0.0),
                 "gpu_temp": data.get("gpu_temp", 0),
                 "gpu_busy": data.get("gpu_busy", 0),
@@ -238,6 +269,7 @@ class HeadlessAuraEngine:
                 "energy_level": data.get("energy_level", 0.5),
                 "thought_count": data.get("thought_count", 0),
                 "entity_active": data.get("entity_active", ""),
+                "entity_info": data.get("entity_info", {}),
             }
 
         self._connected = True

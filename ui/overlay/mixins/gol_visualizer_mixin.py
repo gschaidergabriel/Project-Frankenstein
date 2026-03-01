@@ -708,7 +708,7 @@ class AuraVisualizerMixin:
         hud.create_text(12, 54, text="ABOUT", fill="#0d5c2e",
                          font=("Consolas", 6), anchor="nw")
 
-        # Left column (x=12): Description + Reading guide
+        # Left column (x=12): Description
         _lx = 12
         _y = 65
         hud.create_text(_lx, _y, anchor="nw", fill="#4a6a5a", font=_dfs,
@@ -718,19 +718,19 @@ class AuraVisualizerMixin:
             text="Frank's consciousness as a quantum cellular automaton.")
         _y += _ls
         hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
-            text="256\u00d7256 Game of Life at 10 Hz. 8 zones \u2192 live subsystems.")
+            text="256\u00d7256 Conway GoL at 10 Hz. 8 zones \u2192 live subsystems.")
         _y += _ls
         hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
-            text="Fed by real data: mood, thoughts, E-PQ, entities, HW.")
+            text="Stochastic fine-grain: 2560\u00d72560 expansion \u2192 organic density.")
         _y += _ls
         hud.create_text(_lx, _y, anchor="nw", fill=_dc, font=_dfs,
-            text="Seeded by real subsystem data. Patterns emerge autonomously.")
+            text="Seeded by real data. Patterns emerge autonomously.")
 
-        # Right column (x=pw/2): Quantum + Reading guide
+        # Right column (x=pw/2): Quantum + Stochastic
         _rx = pw // 2 + 10
         _ry = 65
         hud.create_text(_rx, _ry, anchor="nw", fill=_dh, font=_dfs,
-            text="QUANTUM SUPERPOSITION")
+            text="QUANTUM SUPERPOSITION + STOCHASTIC FINE-GRAINING")
         _ry += _ls
         hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
             text="Each cell: 8D type vector [p\u2080..p\u2087]. Colors = weighted blend.")
@@ -739,10 +739,10 @@ class AuraVisualizerMixin:
             text="Diffusion \u2192 color gradients. Decoherence \u2192 crystallization.")
         _ry += _ls + 2
         hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
-            text="Density=activity  Trails=recent  Blend=superposition")
+            text="Gaussian blur + multi-octave noise \u2192 organic halos.")
         _ry += _ls
         hud.create_text(_rx, _ry, anchor="nw", fill=_dc, font=_dfs,
-            text="Border glow=cross-zone flow  Pulse=alive cells")
+            text="Pattern Analyzer reads 6.5M fine cells for deep emergence.")
 
         # ── ZONES legend — squares + hover (y=130 sep, y=145 items) ──
         hud.create_line(10, 130, pw - 10, 130, fill="#161B22", width=1)
@@ -1180,14 +1180,43 @@ class AuraVisualizerMixin:
             ents = s.get("entities", [])
             lines = ["Internal dialogue partners."]
             if ents:
+                import time as _time
+                now = _time.time()
+                total_today = 0
                 for e in ents[:4]:
-                    name = e.get("name", "?") if isinstance(e, dict) else str(e)
-                    active = e.get("is_in_session", False) if isinstance(e, dict) else False
+                    name = e.get("name", "?")
+                    active = e.get("is_in_session", False)
+                    sess = e.get("sessions_today", 0)
+                    quota = e.get("quota", 1)
+                    total_today += sess
                     m = "\u25cf" if active else "\u25cb"
-                    st = "in session" if active else "idle"
+                    st = "IN SESSION" if active else f"{sess}/{quota}"
                     lines.append(f"  {m} {name:<14s} {st}")
+                lines.append("")
+                lines.append(f"  Sessions today: {total_today}")
+                # Show last session info
+                active_ents = [e for e in ents if e.get("is_in_session")]
+                if active_ents:
+                    ae = active_ents[0]
+                    if ae.get("last_turns"):
+                        lines.append(f"  Turns: {ae['last_turns']}")
+                else:
+                    recent = sorted(ents, key=lambda x: x.get("last_ts", 0), reverse=True)
+                    if recent and recent[0].get("last_ts", 0) > 0:
+                        r = recent[0]
+                        ago = now - r["last_ts"]
+                        if ago < 60:
+                            ago_s = f"{int(ago)}s ago"
+                        elif ago < 3600:
+                            ago_s = f"{int(ago/60)}m ago"
+                        else:
+                            ago_s = f"{int(ago/3600)}h ago"
+                        lines.append(f"  Last: {r['name']} {ago_s}")
+                        if r.get("last_topic"):
+                            topic = r["last_topic"][:28]
+                            lines.append(f"  Topic: {topic}")
             else:
-                lines.append("  None loaded.")
+                lines.append("  Waiting for data...")
             lines.append("Sessions inject cells here")
             return lines
 
@@ -1229,12 +1258,12 @@ class AuraVisualizerMixin:
 
         elif zone == "hardware":
             cpu_t = s.get("cpu_temp", 0)
+            cpu_p = s.get("cpu_percent", 0)
             gpu_t = s.get("gpu_temp", 0)
             gpu_b = s.get("gpu_busy", 0)
             nvme = s.get("nvme_temp", 0)
             ram = s.get("ram_percent", 0)
             swp = s.get("swap_percent", 0)
-            load = s.get("cpu_load", 0)
             dsk = s.get("disk_percent", 0)
             upt = s.get("uptime_s", 0)
             # Format uptime
@@ -1242,15 +1271,13 @@ class AuraVisualizerMixin:
             um = int((upt % 3600) // 60)
             upt_str = f"{uh}h{um:02d}m" if uh < 100 else f"{uh}h"
             lines = ["Physical system sensors."]
-            lines.append(f"  TMP {cpu_t:>3.0f}\u00b0C  {_bar(cpu_t, 90)}")
-            lines.append(f"  GPU {gpu_t:>3.0f}\u00b0C  {_bar(gpu_t, 90)}")
-            lines.append(f"  SSD {nvme:>3.0f}\u00b0C  {_bar(nvme, 70)}")
             lines.append(f"  RAM {ram:>3.0f}%   {_bar(ram, 100)}")
             lines.append(f"  SWP {swp:>3.0f}%   {_bar(swp, 100)}")
-            lines.append(f"  CPU {load:>4.1f}   {_bar(load, 16)}")
+            lines.append(f"  CPU {cpu_p:>3.0f}%   {_bar(cpu_p, 100)}")
             lines.append(f"  GLD {gpu_b:>3d}%   {_bar(gpu_b, 100)}")
             lines.append(f"  DSK {dsk:>3.0f}%   {_bar(dsk, 100)}")
             lines.append(f"  UPT {upt_str}")
+            lines.append(f"  TMP {cpu_t:>3.0f}/{gpu_t:.0f}/{nvme:.0f}\u00b0C")
             lines.append("Proprioception: felt as")
             lines.append("body temp, strain, energy")
             return lines
@@ -1469,7 +1496,15 @@ class AuraVisualizerMixin:
             if self._aura_using_headless and hasattr(self._aura_engine, "get_quantum_colors"):
                 qcolors = self._aura_engine.get_quantum_colors()
 
-            img = self._aura_renderer.render(grid, cell_age, mood, threat, quantum_colors=qcolors)
+            # Get stochastic density map for organic rendering
+            density = None
+            if self._aura_using_headless and hasattr(self._aura_engine, "get_density_map"):
+                density = self._aura_engine.get_density_map()
+
+            img = self._aura_renderer.render(
+                grid, cell_age, mood, threat,
+                quantum_colors=qcolors, density_map=density,
+            )
 
             # ── Minimap update (full grid before zoom crop) ──
             self._aura_minimap_update(img)
@@ -1479,6 +1514,8 @@ class AuraVisualizerMixin:
             ch = self._aura_canvas.winfo_height()
             if cw > 1 and ch > 1:
                 cs = min(cw, ch)
+
+                resample = Image.NEAREST
 
                 if self._aura_zoom > 1.01:
                     # Zoomed: crop viewport from grid image
@@ -1495,9 +1532,9 @@ class AuraVisualizerMixin:
                     if y1 - y0 < 2:
                         y0, y1 = 0, GRID_SIZE
                     cropped = img.crop((x0, y0, x1, y1))
-                    img_resized = cropped.resize((cs, cs), Image.NEAREST)
+                    img_resized = cropped.resize((cs, cs), resample)
                 else:
-                    img_resized = img.resize((cs, cs), Image.NEAREST)
+                    img_resized = img.resize((cs, cs), resample)
 
                 self._aura_photo = _pil_to_tkphoto(img_resized)
                 x_off = (cw - cs) // 2
@@ -1592,6 +1629,7 @@ class AuraVisualizerMixin:
             cohr = meta.get("coherence", 0.5)
             new_state["coherence"] = max(0.0, min(1.0, cohr)) if cohr else 0.5
             new_state["cpu_temp"] = meta.get("hw_temp", 0)
+            new_state["cpu_percent"] = meta.get("cpu_percent", 0.0)
             new_state["ram_percent"] = meta.get("ram_usage", 0.0) * 100
             new_state["gpu_temp"] = meta.get("gpu_temp", 0)
             new_state["gpu_busy"] = meta.get("gpu_busy", 0)
@@ -1601,6 +1639,25 @@ class AuraVisualizerMixin:
             new_state["uptime_s"] = meta.get("uptime_s", 0.0)
             new_state["reflection_count"] = meta.get("thought_count", 0)
             new_state["online"] = True
+
+            # Entity info from headless
+            ei = meta.get("entity_info", {})
+            if ei:
+                entities = []
+                for ename in ("therapist", "mirror", "atlas", "muse"):
+                    edata = ei.get(ename, {})
+                    if edata:
+                        entities.append({
+                            "name": edata.get("display_name", ename),
+                            "key": ename,
+                            "is_in_session": edata.get("in_session", False),
+                            "sessions_today": edata.get("sessions_today", 0),
+                            "quota": edata.get("quota", 1),
+                            "last_topic": edata.get("last_topic", ""),
+                            "last_turns": edata.get("last_turns", 0),
+                            "last_ts": edata.get("last_ts", 0),
+                        })
+                new_state["entities"] = entities
 
             # Still fetch reflections from DB (headless doesn't cache content)
             try:
@@ -1686,7 +1743,9 @@ class AuraVisualizerMixin:
                     new_state["ram_percent"] = (used / max(total, 1)) * 100
                     new_state["swap_percent"] = float(mem.get("swap_percent", 0))
                     cpu = data.get("cpu", {})
-                    new_state["cpu_load"] = float(cpu.get("load_1m", 0))
+                    cores = max(1, int(cpu.get("cores", 1)))
+                    load = float(cpu.get("load_1m", 0))
+                    new_state["cpu_percent"] = min(100.0, (load / cores) * 100.0)
                     # Disk usage
                     disks = data.get("disk", [])
                     for d in (disks or []):

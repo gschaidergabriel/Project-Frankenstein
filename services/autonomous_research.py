@@ -48,13 +48,25 @@ WEBD_BASE = os.environ.get("AICORE_WEBD_URL", "http://127.0.0.1:8093")
 # Safety limits
 MAX_TOOL_CALLS = 10          # Per session hard cap
 MIN_IDLE_S = 900             # 15 min user idle minimum
-COOLDOWN_S = 3600            # 1 hour between sessions
+COOLDOWN_S = 1800            # 30 min between sessions (Gabriel spec: max 2/hour)
 MAX_DAILY = 5                # Max 5 sessions per 24h
 LLM_TIMEOUT_S = 360.0        # Match consciousness daemon
 TOOL_TIMEOUT_S = 30.0        # Per tool call
 PLAN_MAX_TOKENS = 300        # For research plan generation
 SYNTHESIS_MAX_TOKENS = 500   # For result synthesis
 DECISION_MAX_TOKENS = 120    # For yes/no decision
+
+# Curated domain whitelist for web_fetch — only trusted knowledge sources
+DOMAIN_WHITELIST = frozenset({
+    "arxiv.org", "nature.com", "science.org", "plato.stanford.edu",
+    "wikipedia.org", "en.wikipedia.org", "sciencedirect.com",
+    "ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov",
+    "scholar.google.com", "semanticscholar.org",
+    "lesswrong.com", "alignmentforum.org",
+    "arstechnica.com", "quantamagazine.org",
+    "philosophynow.org", "iep.utm.edu",
+    "bbc.com", "reuters.com", "apnews.com",
+})
 
 # Allowed tools — read-only + web search + memory + code sandbox
 ALLOWED_TOOLS = frozenset({
@@ -71,6 +83,9 @@ ALLOWED_TOOLS = frozenset({
     "sys_summary",             # System info
     "aura_introspect",         # Self-awareness
     "code_execute",            # Sandboxed Python (Firejail)
+    "experiment",              # Run lab experiment (physics/chem/astro/gol/math/electronics)
+    "hypothesize",             # Generate a testable hypothesis
+    "test_hypothesis",         # Test hypothesis via experiment
 })
 
 # DB path
@@ -264,6 +279,9 @@ class AutonomousResearch:
             "entity_sessions_search(query) — search your entity conversations\n"
             "fs_read(path) — read a local file\n"
             "code_execute(code, language) — run Python in sandbox\n"
+            "experiment(description) — run a lab simulation (physics, chemistry, astronomy, GoL, math, electronics)\n"
+            "hypothesize(observation) — generate a testable hypothesis from an observation\n"
+            "test_hypothesis(hypothesis_id) — test a hypothesis via experiment\n"
             "aura_introspect(depth) — examine your own consciousness state\n"
         )
         system = (
@@ -337,6 +355,45 @@ class AutonomousResearch:
         # code_execute needs special handling (via executor)
         if tool_name == "code_execute":
             return self._call_code_execute(tool_input)
+
+        # experiment — run simulation via experiment lab
+        if tool_name == "experiment":
+            try:
+                from services.experiment_lab import get_lab
+                desc = tool_input.get("description", "")
+                return get_lab().run_from_description(desc)
+            except Exception as e:
+                return f"[Experiment failed: {e}]"
+
+        # hypothesize — generate testable hypothesis from observation
+        if tool_name == "hypothesize":
+            try:
+                from services.hypothesis_engine import get_hypothesis_engine
+                engine = get_hypothesis_engine()
+                obs = tool_input.get("observation", "")
+                result = engine.on_idle_thought(obs, 0.5)
+                return result or "[No hypothesis generated from this observation]"
+            except Exception as e:
+                return f"[Hypothesis generation failed: {e}]"
+
+        # test_hypothesis — test via experiment
+        if tool_name == "test_hypothesis":
+            try:
+                from services.hypothesis_engine import get_hypothesis_engine
+                engine = get_hypothesis_engine()
+                h_id = tool_input.get("hypothesis_id", "")
+                result = engine.request_experiment(h_id)
+                return result or "[Experiment not possible for this hypothesis]"
+            except Exception as e:
+                return f"[Hypothesis test failed: {e}]"
+
+        # Domain whitelist filter for web_fetch
+        if tool_name == "web_fetch":
+            url = tool_input.get("url", "")
+            if not self._is_whitelisted_url(url):
+                LOG.info("Research: blocked web_fetch to non-whitelisted domain: %s",
+                         url[:100])
+                return f"[Blocked: {url[:60]} not on domain whitelist]"
 
         endpoint = _TOOL_ENDPOINTS.get(tool_name)
         if not endpoint:
@@ -445,25 +502,31 @@ class AutonomousResearch:
             LOG.warning("Failed to store research in memory: %s", e)
 
     def _fire_epq(self):
-        """Fire E-PQ event for autonomous research — boosts autonomy."""
+        """Fire E-PQ event — direct call, no HTTP (cross-process safe)."""
         try:
-            payload = json.dumps({
-                "source": "autonomous_research",
-                "deltas": {
-                    "autonomy": 0.4,
-                    "precision": 0.2,
-                    "mood": 0.3,
-                },
-            }).encode()
-            req = urllib.request.Request(
-                f"{CORE_BASE}/epq/event",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=5.0)
+            from personality.e_pq import process_event
+            process_event("autonomous_research", {"source": "research"})
         except Exception as e:
             LOG.debug("E-PQ event failed (non-critical): %s", e)
+
+    @staticmethod
+    def _is_whitelisted_url(url: str) -> bool:
+        """Check if a URL's domain is on the whitelist."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            domain = parsed.hostname or ""
+            # Check exact match and parent domain (e.g. en.wikipedia.org → wikipedia.org)
+            if domain in DOMAIN_WHITELIST:
+                return True
+            parts = domain.split(".")
+            if len(parts) > 2:
+                parent = ".".join(parts[-2:])
+                if parent in DOMAIN_WHITELIST:
+                    return True
+        except Exception:
+            pass
+        return False
 
     # ------------------------------------------------------------------
     # Resource gates

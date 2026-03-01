@@ -118,6 +118,13 @@ class GenesisDaemon:
             ConsciousnessInsight(),
         ]
 
+        # Optional sensors (graceful degradation if dependencies missing)
+        try:
+            from services.genesis.sensors.hypothesis_sensor import HypothesisSensor
+            self.sensors.append(HypothesisSensor())
+        except ImportError:
+            LOG.debug("HypothesisSensor not available")
+
         # Reflection
         self.reflector = SelfReflector()
 

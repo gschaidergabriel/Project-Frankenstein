@@ -15,6 +15,7 @@ CPU:  Minimal (GoL on 256x256 numpy array)
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -24,14 +25,17 @@ import threading
 import time
 import urllib.request
 import urllib.error
+import zlib
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from scipy.ndimage import convolve, gaussian_filter, zoom
+from scipy.signal import correlate2d
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 # --- Logging ---
 logging.basicConfig(
@@ -44,7 +48,16 @@ LOG = logging.getLogger("aura_headless")
 # --- Config ---
 GRID_SIZE = 256
 TICK_HZ = 10  # GoL steps per second
-SEED_INTERVAL_S = 5.0  # Re-seed from services every N seconds
+SEED_INTERVAL_S = 10.0  # Re-seed from services every N seconds
+
+# --- Stochastic Fine Graining ---
+FINE_SIZE = 2560           # Stochastic fine grid (256 × 10)
+SCALE = 10                 # Expansion factor per axis
+EXPAND_SIGMA = 2.5         # Gaussian blur sigma for organic halos (at 256×256)
+NOISE_BLEND_RATE = 0.08    # Temporal noise coherence (low=smooth morph, high=flicker)
+NOISE_AMPLITUDE = 0.12     # ±12% probability variation for organic texture
+NOISE_OCTAVES = 3          # Multi-frequency organic texture layers
+FINE_INTERVAL = 21         # Recompute fine grid every N ticks (~2s at 10Hz), odd to align with stochastic
 
 # Resolve data paths
 try:
@@ -91,26 +104,28 @@ PATTERNS = {
 # --- Pattern detection (pure numpy, no scipy) ---
 
 def _count_pattern(region: np.ndarray, pattern: np.ndarray) -> int:
-    """Count occurrences of a GoL pattern in a region via sliding window."""
+    """Count GoL pattern occurrences via 2D correlation (C-only, no GIL contention)."""
     ph, pw = pattern.shape
     rh, rw = region.shape
     if rh < ph or rw < pw:
         return 0
-    target = int(pattern.sum())
-    count = 0
-    # Sliding window with step=2 for performance (patterns don't overlap much)
-    for y in range(0, rh - ph + 1, 2):
-        for x in range(0, rw - pw + 1, 2):
-            window = region[y:y+ph, x:x+pw]
-            if int((window * pattern).sum()) == target:
-                count += 1
-    return count
+    # correlate2d runs entirely in C — releases GIL for full computation
+    r = region.astype(np.float32)
+    p = pattern.astype(np.float32)
+    # Positive match: alive cells match pattern
+    pos = correlate2d(r, p, mode='valid')
+    # Negative match: dead cells in pattern region must be 0
+    anti_p = 1.0 - p
+    neg = correlate2d(r, anti_p, mode='valid')
+    matches = (pos == pattern.sum()) & (neg == 0.0)
+    return int(matches.sum())
 
 
 # --- Data fetching (from real services) ---
 
 def _read_db_value(db_name: str, query: str, default=None):
     """Safely read a single value from a SQLite database."""
+    conn = None
     try:
         db_path = get_db(db_name)
         if not db_path.exists():
@@ -118,12 +133,37 @@ def _read_db_value(db_name: str, query: str, default=None):
         conn = sqlite3.connect(str(db_path), timeout=2.0)
         conn.row_factory = sqlite3.Row
         row = conn.execute(query).fetchone()
-        conn.close()
         if row:
             return row[0] if len(row) == 1 else dict(row)
         return default
     except Exception:
         return default
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _read_db_rows(db_name: str, query: str, params=()) -> list:
+    """Safely read multiple rows from a SQLite database."""
+    conn = None
+    try:
+        db_path = get_db(db_name)
+        if not db_path.exists():
+            return []
+        conn = sqlite3.connect(str(db_path), timeout=2.0)
+        rows = conn.execute(query, params).fetchall()
+        return rows
+    except Exception:
+        return []
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _http_get(url: str, timeout: float = 2.0) -> Optional[dict]:
@@ -153,6 +193,33 @@ def _get_cpu_temp() -> int:
     except Exception:
         pass
     return 0
+
+
+_prev_cpu_idle = 0
+_prev_cpu_total = 0
+
+
+def _get_cpu_percent() -> float:
+    """Read CPU usage percentage from /proc/stat (delta between calls)."""
+    global _prev_cpu_idle, _prev_cpu_total
+    try:
+        with open("/proc/stat") as f:
+            line = f.readline()  # First line: cpu  user nice system idle ...
+        parts = line.split()
+        if parts[0] != "cpu":
+            return 0.0
+        vals = [int(x) for x in parts[1:]]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  # idle + iowait
+        total = sum(vals)
+        d_idle = idle - _prev_cpu_idle
+        d_total = total - _prev_cpu_total
+        _prev_cpu_idle = idle
+        _prev_cpu_total = total
+        if d_total <= 0:
+            return 0.0
+        return (1.0 - d_idle / d_total) * 100.0
+    except Exception:
+        return 0.0
 
 
 def _get_ram_usage() -> float:
@@ -247,8 +314,10 @@ def _get_uptime() -> float:
 
 
 # --- Quantum dynamics constants ---
-DIFFUSION_RATE = 0.04       # How fast type distributions blend with neighbors
-DECOHERENCE_RATE = 0.002    # How fast dominant types sharpen over time
+DIFFUSION_RATE = 0.03       # How fast type distributions blend with neighbors
+DECOHERENCE_RATE = 0.001    # How fast dominant types sharpen (reduced to prevent monochrome)
+ZONE_ANCHOR_RATE = 0.008    # Gentle pull toward home zone (only for cells IN their home zone)
+ZONE_ANCHOR_INTERVAL = 5    # Re-anchor every N ticks (2x/second at 10Hz)
 NUM_TYPES = 8               # Number of subsystem types
 
 # Zone colors (RGB 0-1 float) — must match overlay renderer
@@ -292,6 +361,7 @@ class AuraHeadless:
         self.mood = 0.0
         self.coherence = 0.0
         self.hw_temp = 0
+        self.cpu_percent = 0.0
         self.ram_usage = 0.0
         self.gpu_temp = 0
         self.gpu_busy = 0
@@ -303,9 +373,15 @@ class AuraHeadless:
         self.energy_level = 0.5
         self.thought_count = 0
         self.entity_active = ""
+        self.entity_info: Dict[str, Dict] = {}  # Rich entity data for overlay
 
         self._lock = threading.Lock()
         self._last_seed_time = 0.0
+        self._seed_pending = False
+        self._grid_cache: dict = {}  # Pre-encoded /grid response (atomic swap)
+        self._grid_json_bytes: bytes = b'{}'  # Pre-serialized JSON (no GIL in HTTP handler)
+        self._grid_fine_json_bytes: bytes = b'{}'  # With fine grid included
+        self._fine_grid_zb64: str = ""  # Pre-compressed fine grid (updated every FINE_INTERVAL)
 
         # Zone map: static assignment (cell → home zone)
         self.zone_map = np.zeros((size, size), dtype=np.uint8)
@@ -329,42 +405,122 @@ class AuraHeadless:
         self.quantum_colors = np.zeros((size, size, 3), dtype=np.float32)
         self._update_quantum_colors()
 
+        # ── Stochastic fine grid ──
+        self._fine_grid = np.zeros((FINE_SIZE, FINE_SIZE), dtype=np.uint8)
+        self._density_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        self._noise_field_256 = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        self._prob_field = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        self._rng = np.random.default_rng(42)
+
     def tick(self):
         """One quantum GoL step: Conway + type diffusion + decoherence."""
+        _t0 = time.monotonic()
         with self._lock:
             old_grid = self.grid.copy()
-
-            # 1. Standard Conway step (binary birth/death)
             self.grid = self._conway_step(self.grid)
+            _t1 = time.monotonic()
 
-            # 2. Quantum type diffusion
-            self._diffuse_types(old_grid)
+            # Diffuse every 2nd tick (5 Hz) — saves ~45ms, visually identical
+            if self.generation % 2 == 0:
+                self._diffuse_types(old_grid)
+            _t2 = time.monotonic()
 
-            # 3. Decoherence (dominant type slowly sharpens)
             self._decohere()
-
-            # 4. Update blended quantum colors
+            # Zone anchoring: prevent monochrome convergence
+            if self.generation % ZONE_ANCHOR_INTERVAL == 0:
+                self._zone_anchor()
             self._update_quantum_colors()
+            # Stochastic expand every 2nd tick (5 Hz) — density map changes slowly
+            if self.generation % 2 == 1:
+                self._stochastic_expand()
+            _t3 = time.monotonic()
 
             self.generation += 1
 
-            # Re-seed from services periodically
-            now = time.time()
-            if now - self._last_seed_time >= SEED_INTERVAL_S:
-                self._seed_from_services()
-                self._last_seed_time = now
+            if self._seed_pending:
+                self._apply_seeds()
+                self._seed_pending = False
 
             self.history.append(self._snapshot_stats())
 
+            # Fast array snapshots for /grid cache (memcpy only)
+            _grid_copy = self.grid.copy()
+            _grid_bytes = _grid_copy.tobytes()
+            _zone_bytes = self.zone_map.tobytes()
+            _qcolors_copy = self.quantum_colors.copy()
+            _density_copy = self._density_map.copy()
+            _type_dist_copy = self.type_dist.copy()
+            _prob_copy = self._prob_field.copy() if self._prob_field is not None else None
+            _gen = self.generation
+            _do_fine = (_gen % FINE_INTERVAL == 1) and _prob_copy is not None
+            _t4 = time.monotonic()
+
+        # Build /grid cache OUTSIDE lock (fast, ~3ms)
+        self._build_grid_cache(
+            _grid_bytes, _zone_bytes, _qcolors_copy,
+            _density_copy, _type_dist_copy, _gen, _grid_copy,
+        )
+
+        # Fine grid in background thread (~160ms, doesn't block tick loop at all)
+        if _do_fine:
+            threading.Thread(
+                target=self._compute_fine_grid_async,
+                args=(_prob_copy,),
+                daemon=True,
+                name="aura-fine-grid",
+            ).start()
+
+        _t5 = time.monotonic()
+
+        total = (_t5 - _t0) * 1000
+        if total > 40 or self.generation % 500 == 0:
+            LOG.info(
+                f"Tick {self.generation}: total={total:.0f}ms "
+                f"conway={(_t1-_t0)*1000:.0f} diffuse={(_t2-_t1)*1000:.0f} "
+                f"rest={(_t3-_t2)*1000:.0f} copy={(_t4-_t3)*1000:.0f} "
+                f"cache={(_t5-_t4)*1000:.0f}"
+            )
+
+    def start_seed_thread(self):
+        """Start background thread for periodic service data fetching."""
+        def _seed_loop():
+            while True:
+                try:
+                    self._seed_from_services()
+                    self._seed_pending = True
+                except Exception as e:
+                    LOG.debug("Seed error: %s", e)
+                time.sleep(SEED_INTERVAL_S)
+        t = threading.Thread(target=_seed_loop, daemon=True, name="aura-seed")
+        t.start()
+
+    def _apply_seeds(self):
+        """Apply cached service data as cell seeds (called under lock, no I/O)."""
+        epq_activity = sum(abs(v) for v in self.epq_vectors.values()) / max(len(self.epq_vectors), 1)
+        self._seed_zone("epq", epq_activity)
+        self._seed_zone("mood", abs(self.mood) * 0.8 + 0.1)
+        thought_activity = min(self.thought_count / 10.0, 1.0)
+        self._seed_zone("thoughts", thought_activity * 0.6 + 0.05)
+        entity_activity = 0.6 if self.entity_active else 0.05
+        self._seed_zone("entities", entity_activity)
+        self._seed_zone("ego", self.energy_level * 0.5 + 0.1)
+        self._seed_zone("quantum", self.coherence * 0.6 + 0.1)
+        self._seed_zone("memory", 0.15 + abs(self.mood) * 0.2)
+        hw_stress = (self.hw_temp / 100.0) * 0.2 + (self.gpu_temp / 100.0) * 0.2 + self.ram_usage * 0.2 + (self.gpu_busy / 100.0) * 0.2
+        self._seed_zone("hw", min(hw_stress, 0.8))
+
     def _conway_step(self, grid: np.ndarray) -> np.ndarray:
-        """Standard Conway's Game of Life (B3/S23)."""
-        neighbors = np.zeros_like(grid, dtype=np.int16)
-        for di in (-1, 0, 1):
-            for dj in (-1, 0, 1):
-                if di == 0 and dj == 0:
-                    continue
-                neighbors += np.roll(np.roll(grid, di, 0), dj, 1)
-        return ((neighbors == 3) | ((grid == 1) & (neighbors == 2))).astype(np.uint8)
+        """Standard Conway's Game of Life (B3/S23). Pure numpy chain — no Python loops."""
+        p = np.pad(grid, 1, mode='wrap')  # (258, 258)
+        s = self.size
+        # 8 neighbor sum in a single expression — releases GIL for entire computation
+        n = (p[0:s, 0:s] + p[0:s, 1:s+1] + p[0:s, 2:s+2] +
+             p[1:s+1, 0:s]               + p[1:s+1, 2:s+2] +
+             p[2:s+2, 0:s] + p[2:s+2, 1:s+1] + p[2:s+2, 2:s+2])
+        return ((n == 3) | ((grid == 1) & (n == 2))).astype(np.uint8)
+
+    _NEIGHBOR_KERNEL = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=np.float32)
+    _NEIGHBOR_KERNEL_3D = _NEIGHBOR_KERNEL[:, :, np.newaxis]  # (3,3,1) for 3D convolve
 
     def _diffuse_types(self, old_grid: np.ndarray):
         """Quantum type propagation: alive cells blend type_dist with neighbors."""
@@ -372,17 +528,11 @@ class AuraHeadless:
         deaths = (self.grid == 0) & (old_grid == 1)
         surviving = (self.grid == 1) & (old_grid == 1)
 
-        # Compute neighbor-weighted type average
-        neighbor_types = np.zeros_like(self.type_dist)
-        neighbor_count = np.zeros((self.size, self.size), dtype=np.float32)
-        for di in (-1, 0, 1):
-            for dj in (-1, 0, 1):
-                if di == 0 and dj == 0:
-                    continue
-                shifted_types = np.roll(np.roll(self.type_dist, di, 0), dj, 1)
-                shifted_alive = np.roll(np.roll(old_grid, di, 0), dj, 1).astype(np.float32)
-                neighbor_types += shifted_types * shifted_alive[:, :, np.newaxis]
-                neighbor_count += shifted_alive
+        # Single 3D convolution: (256,256,8) × (3,3,1) → spatial sum per type (one C call)
+        alive_f = old_grid.astype(np.float32)
+        weighted = self.type_dist * alive_f[:, :, np.newaxis]
+        neighbor_types = convolve(weighted, self._NEIGHBOR_KERNEL_3D, mode='wrap')
+        neighbor_count = convolve(alive_f, self._NEIGHBOR_KERNEL, mode='wrap')
 
         # Avoid division by zero
         safe_count = np.maximum(neighbor_count, 1.0)[:, :, np.newaxis]
@@ -397,20 +547,20 @@ class AuraHeadless:
                 self.type_dist,
             )
 
-        # Newborn cells: inherit type from alive neighbors
+        # Newborn cells: mostly inherit neighbor type (emergent color migration)
+        # Only 10% zone tint so patterns can cross zone boundaries with their color
         if births.any():
-            birth_has_neighbors = births & (neighbor_count > 0)
-            self.type_dist[birth_has_neighbors] = neighbor_avg[birth_has_neighbors]
-            # Births with no alive neighbors (shouldn't happen in Conway) → zone default
-            birth_no_neighbors = births & (neighbor_count == 0)
-            if birth_no_neighbors.any():
-                for zone_name, (x1, y1, x2, y2) in ZONE_BOUNDS.items():
-                    zone_id = self.ZONE_IDS[zone_name]
-                    local_births = birth_no_neighbors[y1:y2, x1:x2]
-                    if local_births.any():
-                        default = np.zeros(NUM_TYPES, dtype=np.float32)
-                        default[zone_id] = 1.0
-                        self.type_dist[y1:y2, x1:x2][local_births] = default
+            zone_ids = self.zone_map[births]
+            zone_onehot = np.zeros((int(births.sum()), NUM_TYPES), dtype=np.float32)
+            zone_onehot[np.arange(len(zone_ids)), zone_ids] = 1.0
+
+            birth_has_neighbors = (neighbor_count[births] > 0)
+            new_dist = np.where(
+                birth_has_neighbors[:, np.newaxis],
+                neighbor_avg[births] * 0.9 + zone_onehot * 0.1,
+                zone_onehot,  # No neighbors → pure zone type
+            )
+            self.type_dist[births] = new_dist
 
         # Dead cells: fade type_dist (ghost trail)
         if deaths.any():
@@ -443,33 +593,116 @@ class AuraHeadless:
         sums[sums == 0] = 1.0
         self.type_dist[alive] = alive_dist / sums
 
+    def _zone_anchor(self):
+        """Gently pull cells toward home zone type — but ONLY cells still in their home zone.
+
+        Cells that migrated into foreign zones keep their color freely,
+        enabling emergent cross-zone color mixing and pattern migration.
+        """
+        alive = self.grid == 1
+        if not alive.any():
+            return
+        zone_ids = self.zone_map[alive]
+        dist = self.type_dist[alive]
+        # Only anchor cells whose dominant type matches their home zone
+        # (= they haven't been "recolored" by foreign neighbors)
+        dominant = dist.argmax(axis=1)
+        at_home = (dominant == zone_ids)
+        if not at_home.any():
+            return
+        # Apply boost only to at-home cells
+        boost = np.zeros_like(dist)
+        home_indices = np.where(at_home)[0]
+        boost[home_indices, zone_ids[at_home]] = ZONE_ANCHOR_RATE
+        dist = dist + boost
+        sums = dist.sum(axis=1, keepdims=True)
+        sums[sums == 0] = 1.0
+        self.type_dist[alive] = dist / sums
+
     def _update_quantum_colors(self):
         """Compute per-cell blended RGB from type_dist × zone colors."""
         # type_dist: (256,256,8), ZONE_COLORS_RGB: (8,3)
         # Result: (256,256,3) — weighted sum
         self.quantum_colors = np.einsum('ijk,kl->ijl', self.type_dist, ZONE_COLORS_RGB)
 
+    def _stochastic_expand(self):
+        """Compute organic density map at 256×256 (~5ms, no fine grid here)."""
+        # 1. Probability field at 256×256: gaussian blur for organic transitions
+        self._prob_field = gaussian_filter(
+            self.grid.astype(np.float32), sigma=EXPAND_SIGMA,
+        )
+
+        # 2. Multi-octave noise at 256×256 (temporal coherent)
+        noise = self._evolve_noise()
+        np.clip(
+            self._prob_field + noise * NOISE_AMPLITUDE, 0.0, 1.0,
+            out=self._prob_field,
+        )
+
+        # 3. Density map = probability field (law of large numbers: E[Bernoulli(p)] = p)
+        self._density_map = self._prob_field
+
+    def _compute_fine_grid_async(self, prob_field: np.ndarray):
+        """Generate 2560×2560 stochastic fine grid in background thread.
+
+        Uses own RNG to avoid thread-safety issues with self._rng.
+        numpy/zlib release GIL — tick thread runs unimpeded.
+        """
+        try:
+            rng = np.random.default_rng()
+            # Expand probability 256→2560 via repeat
+            prob = np.repeat(prob_field, SCALE, axis=0)
+            prob = np.repeat(prob, SCALE, axis=1)
+            # Add fine-scale perturbation for organic texture within blocks
+            prob += rng.standard_normal(prob.shape, dtype=np.float32) * 0.04
+            np.clip(prob, 0.0, 1.0, out=prob)
+            # Bernoulli sample
+            fine = (rng.random((FINE_SIZE, FINE_SIZE)) < prob).astype(np.uint8)
+            self._fine_grid = fine
+            # Pre-compress for /grid?fine=1
+            packed = np.packbits(fine)
+            compressed = zlib.compress(packed.tobytes(), level=4)
+            zb64 = base64.b64encode(compressed).decode("ascii")
+            self._fine_grid_zb64 = zb64
+            # Update pre-serialized fine JSON atomically
+            if self._grid_cache:
+                fine_cache = dict(self._grid_cache)
+                fine_cache["fine_grid_zb64"] = zb64
+                self._grid_fine_json_bytes = json.dumps(fine_cache).encode()
+        except Exception as e:
+            LOG.debug("Fine grid error: %s", e)
+
+    def _evolve_noise(self) -> np.ndarray:
+        """Multi-octave organic noise at 256×256 with temporal coherence.
+
+        3 octaves at decreasing resolution create fractal, dendritric patterns.
+        np.repeat for fast integer-factor upscale (10x faster than scipy.zoom).
+        Temporal blend prevents flicker → smooth morphing.
+        """
+        target = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        for octave in range(NOISE_OCTAVES):
+            base = max(4, GRID_SIZE >> (octave + 1))  # 128, 64, 32
+            scale = GRID_SIZE // base                   # 2, 4, 8
+            amp = 1.0 / (1 << octave)
+            raw = self._rng.standard_normal((base, base)).astype(np.float32)
+            # np.repeat: blocky upscale (pure C memcpy, ~0.1ms vs ~3ms for zoom)
+            upscaled = np.repeat(np.repeat(raw, scale, axis=0), scale, axis=1)
+            target += upscaled * amp
+        # Temporal blend: smooth evolution
+        self._noise_field_256 = (
+            self._noise_field_256 * (1.0 - NOISE_BLEND_RATE)
+            + target * NOISE_BLEND_RATE
+        )
+        return self._noise_field_256
+
     def _seed_from_services(self):
-        """Inject real subsystem data as living cells into zones."""
+        """Fetch real subsystem data (I/O-heavy, runs in background thread)."""
         self._fetch_mood()
         self._fetch_epq()
         self._fetch_quantum()
         self._fetch_hardware()
         self._fetch_thoughts()
         self._fetch_entities()
-
-        epq_activity = sum(abs(v) for v in self.epq_vectors.values()) / max(len(self.epq_vectors), 1)
-        self._seed_zone("epq", epq_activity)
-        self._seed_zone("mood", abs(self.mood) * 0.8 + 0.1)
-        thought_activity = min(self.thought_count / 10.0, 1.0)
-        self._seed_zone("thoughts", thought_activity * 0.6 + 0.05)
-        entity_activity = 0.6 if self.entity_active else 0.05
-        self._seed_zone("entities", entity_activity)
-        self._seed_zone("ego", self.energy_level * 0.5 + 0.1)
-        self._seed_zone("quantum", self.coherence * 0.6 + 0.1)
-        self._seed_zone("memory", 0.15 + abs(self.mood) * 0.2)
-        hw_stress = (self.hw_temp / 100.0) * 0.2 + (self.gpu_temp / 100.0) * 0.2 + self.ram_usage * 0.2 + (self.gpu_busy / 100.0) * 0.2
-        self._seed_zone("hw", min(hw_stress, 0.8))
 
     def _seed_zone(self, zone: str, intensity: float):
         """Inject cells with quantum type initialization."""
@@ -546,6 +779,7 @@ class AuraHeadless:
     def _fetch_hardware(self):
         """Read hardware state."""
         self.hw_temp = _get_cpu_temp()
+        self.cpu_percent = _get_cpu_percent()
         self.ram_usage = _get_ram_usage()
         self.gpu_temp = _get_gpu_temp()
         self.gpu_busy = _get_gpu_busy()
@@ -563,27 +797,119 @@ class AuraHeadless:
         )
         self.thought_count = int(val) if val else 0
 
+    _ENTITY_NAMES = {
+        "therapist": "Dr. Hibbert",
+        "mirror": "Kairos",
+        "atlas": "Atlas",
+        "muse": "Echo",
+    }
+    _ENTITY_QUOTAS = {
+        "therapist": 3,
+        "mirror": 1,
+        "atlas": 1,
+        "muse": 1,
+    }
+
     def _fetch_entities(self):
-        """Check if any entity is currently active."""
-        # Check entity session recency
-        val = _read_db_value(
-            "therapist",
-            "SELECT MAX(timestamp) FROM sessions",
-            0
-        )
-        if val and time.time() - float(val) < 300:
-            self.entity_active = "therapist"
-            return
-        for name in ("mirror", "atlas", "muse"):
-            val = _read_db_value(
+        """Fetch rich entity data for overlay info panel."""
+        import datetime
+        now = time.time()
+        today_start = datetime.datetime.now().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).timestamp()
+        active = ""
+        info: Dict[str, Dict] = {}
+
+        for name in ("therapist", "mirror", "atlas", "muse"):
+            # Sessions today (column is start_time, not timestamp)
+            rows = _read_db_rows(
                 name,
-                "SELECT MAX(timestamp) FROM sessions",
-                0
+                "SELECT start_time, turns, primary_topic, outcome, end_time "
+                "FROM sessions WHERE start_time > ? "
+                "ORDER BY start_time DESC",
+                (today_start,),
             )
-            if val and time.time() - float(val) < 300:
-                self.entity_active = name
-                return
-        self.entity_active = ""
+            sessions_today = len(rows)
+            last_ts = 0.0
+            last_topic = ""
+            last_turns = 0
+            in_session = False
+            if rows:
+                last_ts = float(rows[0][0]) if rows[0][0] else 0.0
+                last_turns = int(rows[0][1]) if rows[0][1] else 0
+                last_topic = str(rows[0][2] or "")
+                latest_end = rows[0][4]  # end_time
+                # Session active if end_time is None or very recent
+                if latest_end is None or (now - last_ts) < 300:
+                    in_session = True
+            if in_session and not active:
+                active = name
+
+            info[name] = {
+                "display_name": self._ENTITY_NAMES[name],
+                "in_session": in_session,
+                "sessions_today": sessions_today,
+                "quota": self._ENTITY_QUOTAS[name],
+                "last_ts": last_ts,
+                "last_topic": last_topic[:40],
+                "last_turns": last_turns,
+            }
+
+        self.entity_active = active
+        self.entity_info = info
+
+    def _build_grid_cache(self, grid_bytes, zone_bytes, qcolors, density, type_dist, gen, grid_raw):
+        """Build /grid response from array snapshots (runs OUTSIDE lock)."""
+        qcolors_u8 = np.clip(qcolors * 255, 0, 255).astype(np.uint8)
+        dominant = type_dist.argmax(axis=2).astype(np.uint8)
+        density_u8 = np.clip(density * 255, 0, 255).astype(np.uint8)
+
+        # Pre-compute quantum metrics (no lock needed, uses snapshot copies)
+        alive = grid_raw == 1
+        if alive.any():
+            dists = np.clip(type_dist[alive], 1e-10, 1.0)
+            cell_entropy = -np.sum(dists * np.log2(dists), axis=1)
+            qe = float(np.mean(cell_entropy))
+        else:
+            qe = 0.0
+        max_entropy = np.log2(NUM_TYPES)
+        qc = max(0.0, 1.0 - qe / max_entropy)
+
+        # Atomic dict assignment — /grid reads this without lock
+        self._grid_cache = {
+            "generation": gen,
+            "size": self.size,
+            "quantum": True,
+            "grid_b64": base64.b64encode(grid_bytes).decode("ascii"),
+            "zone_map_b64": base64.b64encode(zone_bytes).decode("ascii"),
+            "quantum_colors_b64": base64.b64encode(qcolors_u8.tobytes()).decode("ascii"),
+            "dominant_type_b64": base64.b64encode(dominant.tobytes()).decode("ascii"),
+            "density_b64": base64.b64encode(density_u8.tobytes()).decode("ascii"),
+            "fine_size": FINE_SIZE,
+            "zone_names": {0: "epq", 1: "mood", 2: "thoughts", 3: "entities",
+                           4: "ego", 5: "quantum", 6: "memory", 7: "hw"},
+            "mood": self.mood,
+            "coherence": self.coherence,
+            "hw_temp": self.hw_temp,
+            "cpu_percent": self.cpu_percent,
+            "ram_usage": self.ram_usage,
+            "gpu_temp": self.gpu_temp,
+            "gpu_busy": self.gpu_busy,
+            "nvme_temp": self.nvme_temp,
+            "swap_percent": self.swap_percent,
+            "disk_percent": self.disk_percent,
+            "uptime_s": self.uptime_s,
+            "epq_vectors": dict(self.epq_vectors),
+            "energy_level": self.energy_level,
+            "thought_count": self.thought_count,
+            "entity_active": self.entity_active,
+            "entity_info": self.entity_info,
+            "quantum_entropy": round(qe, 4),
+            "quantum_coherence": round(qc, 4),
+        }
+
+        # Pre-serialize JSON (eliminates GIL contention from HTTP JSON encoding)
+        self._grid_json_bytes = json.dumps(self._grid_cache).encode()
 
     def _snapshot_stats(self) -> dict:
         """Compact snapshot for history."""
@@ -697,10 +1023,12 @@ class AuraHeadless:
         max_entropy = np.log2(NUM_TYPES)  # ~3.0 for 8 types
         return max(0.0, 1.0 - qe / max_entropy)
 
-    def detect_anomalies(self) -> List[str]:
-        """Global anomaly detection."""
+    def detect_anomalies(self, zones: Dict | None = None) -> List[str]:
+        """Global anomaly detection (reuses zones dict if provided)."""
+        if zones is None:
+            zones = self.zone_stats()
         anomalies = []
-        for name, stats in self.zone_stats().items():
+        for name, stats in zones.items():
             if stats["anomaly"]:
                 trend = stats["trend"]
                 anomalies.append(f"{name} zone {trend} anomaly (density={stats['density']})")
@@ -788,7 +1116,7 @@ class AuraHeadless:
             lines.append("")
             lines.append("INTERACTIONS: " + " | ".join(interactions))
 
-        anomalies = self.detect_anomalies()
+        anomalies = self.detect_anomalies(zones)
         if anomalies:
             lines.append("")
             for a in anomalies:
@@ -821,14 +1149,14 @@ class AuraHeadless:
             "global": {
                 "total_alive": int(self.grid.sum()),
                 "entropy": self.compute_entropy(),
-                "quantum_entropy": round(self.quantum_entropy(), 3),
-                "quantum_coherence": round(self.quantum_coherence_score(), 3),
+                "quantum_entropy": self._grid_cache.get("quantum_entropy", 0.0),
+                "quantum_coherence": self._grid_cache.get("quantum_coherence", 0.0),
                 "coherence": self.coherence,
                 "mood": self.mood,
                 "temperature": self.hw_temp,
             },
             "zones": zones,
-            "anomalies": self.detect_anomalies(),
+            "anomalies": self.detect_anomalies(zones),
         }
         if depth == "diagnostic":
             result["diagnostic"] = {
@@ -836,6 +1164,7 @@ class AuraHeadless:
                 "epq_vectors": self.epq_vectors,
                 "energy_level": self.energy_level,
                 "entity_active": self.entity_active,
+                "entity_info": self.entity_info,
                 "thought_count": self.thought_count,
             }
             if len(self.history) >= 10:
@@ -868,16 +1197,21 @@ def _is_gaming_active() -> bool:
 aura = AuraHeadless()
 
 def _tick_loop():
-    """Run GoL simulation at TICK_HZ."""
+    """Run GoL simulation at TICK_HZ with accurate timing."""
+    import gc
+    gc.disable()  # No GC pauses — numpy refcount handles cleanup, no cyclic refs
     interval = 1.0 / TICK_HZ
     LOG.info(f"GoL tick loop started ({TICK_HZ} Hz, {GRID_SIZE}x{GRID_SIZE})")
     while True:
+        t0 = time.monotonic()
         try:
             if not _is_gaming_active():
                 aura.tick()
         except Exception as e:
             LOG.error(f"Tick error: {e}")
-        time.sleep(interval)
+        remaining = interval - (time.monotonic() - t0)
+        if remaining > 0:
+            time.sleep(remaining)
 
 
 # --- FastAPI app ---
@@ -895,12 +1229,13 @@ def _ensure_tick_thread():
     _tick_thread_started = True
     t = threading.Thread(target=_tick_loop, daemon=True)
     t.start()
+    aura.start_seed_thread()
     LOG.info(f"[AURA] Headless Introspect active")
-    LOG.info(f"[AURA] Grid: {GRID_SIZE}x{GRID_SIZE}, Tick: {TICK_HZ} Hz, Seed: every {SEED_INTERVAL_S}s")
+    LOG.info(f"[AURA] Conway: {GRID_SIZE}x{GRID_SIZE}, Fine: {FINE_SIZE}x{FINE_SIZE}, Tick: {TICK_HZ} Hz")
 
 
 @app.get("/health")
-def health():
+async def health():
     _ensure_tick_thread()
     return {
         "ok": True,
@@ -910,36 +1245,59 @@ def health():
     }
 
 
+_introspect_text_cache = {"data": None, "time": 0.0}
+
 @app.get("/introspect")
-def introspect_endpoint(depth: str = "full"):
-    """LLM-readable text output (GET)."""
+async def introspect_endpoint(depth: str = "full"):
+    """LLM-readable text output (GET, cached 5s)."""
     _ensure_tick_thread()
+    now = time.monotonic()
+    cache = _introspect_text_cache
+    if cache["data"] is not None and now - cache["time"] < 5.0:
+        return PlainTextResponse(cache["data"])
     text = aura.introspect(depth)
+    _introspect_text_cache["data"] = text
+    _introspect_text_cache["time"] = now
     return PlainTextResponse(text)
 
 
 @app.post("/introspect")
-def introspect_endpoint_post(body: dict = {}):
-    """LLM-readable text output (POST — for agentic tool executor)."""
+async def introspect_endpoint_post(body: dict = {}):
+    """LLM-readable text output (POST — for agentic tool executor, cached 5s)."""
     depth = body.get("depth", "full")
-    text = aura.introspect(depth)
+    now = time.monotonic()
+    cache = _introspect_text_cache
+    if cache["data"] is not None and now - cache["time"] < 5.0:
+        text = cache["data"]
+    else:
+        text = aura.introspect(depth)
+        _introspect_text_cache["data"] = text
+        _introspect_text_cache["time"] = now
     return {"ok": True, "text": text, "generation": aura.generation}
 
 
+_introspect_json_cache = {"data": None, "time": 0.0}
+
 @app.get("/introspect/json")
-def introspect_json_endpoint(depth: str = "full"):
-    """Structured JSON output."""
-    return JSONResponse(aura.introspect_json(depth))
+async def introspect_json_endpoint(depth: str = "full"):
+    """Structured JSON output (cached 5s to avoid GIL contention)."""
+    now = time.monotonic()
+    cache = _introspect_json_cache
+    if cache["data"] is not None and now - cache["time"] < 5.0:
+        return JSONResponse(cache["data"])
+    result = aura.introspect_json(depth)
+    _introspect_json_cache["data"] = result
+    _introspect_json_cache["time"] = now
+    return JSONResponse(result)
 
 
 @app.post("/inject")
-def inject_endpoint(body: dict):
+async def inject_endpoint(body: dict):
     """Inject cells into the live simulation.
 
     Body: {"cells_b64": base64-encoded uint8 256x256 mask (1=inject)}
     Or:   {"positions": [[y,x], [y,x], ...]}
     """
-    import base64
     _ensure_tick_thread()
     count = 0
     with aura._lock:
@@ -971,54 +1329,9 @@ def inject_endpoint(body: dict):
 
 
 @app.get("/grid")
-def grid_endpoint():
-    """Raw grid + quantum state export.
-
-    Returns base64-encoded 256x256 arrays:
-    - grid_b64: binary cell states (0/1), uint8
-    - zone_map_b64: static zone IDs (0-7), uint8
-    - quantum_colors_b64: per-cell blended RGB (256×256×3), uint8 (0-255)
-    - dominant_type_b64: per-cell dominant type index, uint8
-    - Full subsystem context
-    """
-    import base64
+async def grid_endpoint(fine: int = 0):
+    """Raw grid export — returns pre-serialized JSON (zero CPU in HTTP handler)."""
     _ensure_tick_thread()
-    with aura._lock:
-        grid_bytes = aura.grid.tobytes()
-        zone_bytes = aura.zone_map.tobytes()
-        gen = aura.generation
-        # Quantum: blended colors quantized to uint8
-        qcolors_u8 = np.clip(aura.quantum_colors * 255, 0, 255).astype(np.uint8)
-        qcolors_bytes = qcolors_u8.tobytes()
-        # Dominant type per cell
-        dominant = aura.type_dist.argmax(axis=2).astype(np.uint8)
-        dominant_bytes = dominant.tobytes()
-    return {
-        "generation": gen,
-        "size": aura.size,
-        "quantum": True,
-        "grid_b64": base64.b64encode(grid_bytes).decode("ascii"),
-        "zone_map_b64": base64.b64encode(zone_bytes).decode("ascii"),
-        "quantum_colors_b64": base64.b64encode(qcolors_bytes).decode("ascii"),
-        "dominant_type_b64": base64.b64encode(dominant_bytes).decode("ascii"),
-        "zone_names": {0: "epq", 1: "mood", 2: "thoughts", 3: "entities",
-                       4: "ego", 5: "quantum", 6: "memory", 7: "hw"},
-        # Subsystem context
-        "mood": aura.mood,
-        "coherence": aura.coherence,
-        "hw_temp": aura.hw_temp,
-        "ram_usage": aura.ram_usage,
-        "gpu_temp": aura.gpu_temp,
-        "gpu_busy": aura.gpu_busy,
-        "nvme_temp": aura.nvme_temp,
-        "swap_percent": aura.swap_percent,
-        "disk_percent": aura.disk_percent,
-        "uptime_s": aura.uptime_s,
-        "epq_vectors": aura.epq_vectors,
-        "energy_level": aura.energy_level,
-        "thought_count": aura.thought_count,
-        "entity_active": aura.entity_active,
-        # Quantum scalar metrics
-        "quantum_entropy": round(float(aura.quantum_entropy()), 4),
-        "quantum_coherence": round(float(aura.quantum_coherence_score()), 4),
-    }
+    if fine and aura._grid_fine_json_bytes:
+        return Response(content=aura._grid_fine_json_bytes, media_type="application/json")
+    return Response(content=aura._grid_json_bytes, media_type="application/json")

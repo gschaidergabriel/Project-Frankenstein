@@ -94,6 +94,8 @@ DB_PATHS = {
     "dream": DB_DIR / "dream.db",
     "autonomous_research": DB_DIR / "autonomous_research.db",
     "aura_analyzer": DB_DIR / "aura_analyzer.db",
+    "experiment_lab": DB_DIR / "experiment_lab.db",
+    "hypothesis_engine": DB_DIR / "hypothesis_engine.db",
     "aicore": DB_DIR / "aicore.sqlite",
 }
 

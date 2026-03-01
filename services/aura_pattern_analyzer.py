@@ -364,11 +364,16 @@ class Snapshot:
     # Cross-zone pattern analysis
     cross_zone_events: List[str] = field(default_factory=list)
 
+    # Stochastic fine grid metrics (computed during fetch, grid not stored)
+    fine_size: int = 0
+    fine_density: float = 0.0
+    fine_entropy: float = 0.0
+
 
 def fetch_grid() -> Optional[Snapshot]:
     """Fetch raw grid + zone map + subsystem context from AURA headless."""
     try:
-        req = urllib.request.Request(f"{AURA_URL}/grid", method="GET")
+        req = urllib.request.Request(f"{AURA_URL}/grid?fine=1", method="GET")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read())
 
@@ -399,6 +404,25 @@ def fetch_grid() -> Optional[Snapshot]:
             except Exception:
                 pass
 
+        # Stochastic fine grid: compute metrics then discard (too large to store)
+        fine_density = 0.0
+        fine_entropy = 0.0
+        fine_size = data.get("fine_size", 0)
+        if "fine_grid_zb64" in data and fine_size > 0:
+            try:
+                import zlib
+                compressed = base64.b64decode(data["fine_grid_zb64"])
+                packed = np.frombuffer(zlib.decompress(compressed), dtype=np.uint8)
+                fine_grid = np.unpackbits(packed)[:fine_size * fine_size]
+                fine_density = float(fine_grid.sum()) / len(fine_grid)
+                if 0 < fine_density < 1:
+                    import math as _m
+                    fine_entropy = -(_m.log2(fine_density) * fine_density
+                                    + _m.log2(1 - fine_density) * (1 - fine_density))
+                del fine_grid  # Don't store 6.25 MB per snapshot
+            except Exception as e:
+                LOG.debug("Fine grid decode failed: %s", e)
+
         return Snapshot(
             ts=time.time(),
             generation=data["generation"],
@@ -416,6 +440,9 @@ def fetch_grid() -> Optional[Snapshot]:
             dominant_type=dominant_type,
             quantum_entropy=data.get("quantum_entropy", 0.0),
             quantum_coherence=data.get("quantum_coherence", 1.0),
+            fine_size=fine_size,
+            fine_density=fine_density,
+            fine_entropy=fine_entropy,
         )
     except Exception as e:
         LOG.debug("Grid fetch failed: %s", e)
@@ -514,6 +541,8 @@ def compute_metrics(snap: Snapshot, prev_grid: Optional[np.ndarray] = None):
         snap.quantum_dominant_zones = [
             z for z, _ in sorted(diffusion_zones, key=lambda x: -x[1])
         ][:3]
+
+    # Fine grid density/entropy are already computed in fetch_grid()
 
     # Cross-zone pattern analysis: detect activity at zone borders
     _analyze_cross_zone(snap)

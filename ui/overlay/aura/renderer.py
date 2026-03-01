@@ -117,11 +117,15 @@ class AuraRenderer:
         mood_buffer: float = 0.5,
         threat_intensity: float = 0.0,
         quantum_colors: np.ndarray | None = None,
+        density_map: np.ndarray | None = None,
     ) -> Image.Image:
         """Full render pass: noise → cells+trails → bloom → output.
 
         quantum_colors: optional (256,256,3) float32 per-cell RGB from quantum
                         type distribution. If provided, overrides static zone colors.
+        density_map: optional (256,256) float32 stochastic density (0.0-1.0).
+                     When provided, enables organic continuous-brightness rendering
+                     instead of binary alive/dead.
         """
 
         # ── Update visual decay (trails) ──
@@ -137,13 +141,25 @@ class AuraRenderer:
         # ── Layer 1: Base noise (dark background) ──
         img = self._base_noise.copy()
 
-        # ── Layer 2: Cells + Trails (additive) ──
+        # Color source
+        color_source = quantum_colors if quantum_colors is not None else self._zone_colors
+
+        # ── Layer 2a: Organic ambient glow from density (subtle, underneath) ──
+        if density_map is not None:
+            # Only glow where density exists but cell is NOT alive (the halos)
+            halo_mask = (density_map > 0.01) & (grid == 0) & (self._visual_decay < 0.05)
+            if np.any(halo_mask):
+                d_halo = density_map[halo_mask]
+                halo_colors = color_source[halo_mask]
+                # Subtle ambient glow — dim enough to not overpower sharp cells
+                halo_bright = np.clip(d_halo * 0.5, 0.0, 0.15) * breath
+                img[halo_mask] += halo_colors * halo_bright[:, np.newaxis]
+
+        # ── Layer 2b: Sharp cells + trails (original rendering, always) ──
         visible = self._visual_decay > 0.01
         if np.any(visible):
             decay = self._visual_decay[visible]
-            # Use quantum blended colors if available, else static zone colors
-            color_source = quantum_colors if quantum_colors is not None else self._zone_colors
-            colors = color_source[visible]  # (N, 3)
+            colors = color_source[visible]
 
             # Mood → saturation
             sat = 0.4 + max(0.0, min(1.0, mood_buffer)) * 0.6

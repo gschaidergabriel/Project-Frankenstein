@@ -18,6 +18,8 @@ class AuraRenderer {
         // Current grid state (from server)
         this.grid = null;
         this.colors = null;
+        this.density = null;  // Stochastic density map (256×256 uint8)
+        this.hasDensity = false;
 
         // ImageData for direct pixel manipulation
         this.imageData = this.ctx.createImageData(256, 256);
@@ -50,6 +52,12 @@ class AuraRenderer {
         this.grid = this._decodeB64(data.grid_b64);
         this.colors = this._decodeB64(data.quantum_colors_b64);
 
+        // Decode stochastic density map if available
+        if (data.density_b64) {
+            this.density = this._decodeB64(data.density_b64);
+            this.hasDensity = true;
+        }
+
         // Update HUD
         this._updateHUD(data);
 
@@ -79,39 +87,45 @@ class AuraRenderer {
         const px = this.pixels;
         this.breathPhase += 0.04;
         const breathMod = 1.0 + Math.sin(this.breathPhase) * 0.06;
+        const useDensity = this.hasDensity && this.density;
 
         for (let i = 0; i < 65536; i++) {
             const pi = i * 4;
             const ci = i * 3;
+
             const alive = grid[i];
 
+            // Layer 1: Subtle ambient glow from density (halos between cells)
+            if (useDensity && !alive) {
+                const d = this.density[i] / 255.0;
+                if (d > 0.01 && this.trailAlpha[i] < 0.05) {
+                    const glow = Math.min(0.15, d * 0.5) * breathMod;
+                    px[pi]     = Math.min(255, colors[ci]     * glow);
+                    px[pi + 1] = Math.min(255, colors[ci + 1] * glow);
+                    px[pi + 2] = Math.min(255, colors[ci + 2] * glow);
+                    px[pi + 3] = 255;
+                    continue;
+                }
+            }
+
+            // Layer 2: Sharp cells + trails (original rendering)
             if (alive) {
-                // Living cell: use quantum colors with breathing
                 const r = Math.min(255, colors[ci] * breathMod);
                 const g = Math.min(255, colors[ci + 1] * breathMod);
                 const b = Math.min(255, colors[ci + 2] * breathMod);
-                px[pi] = r;
-                px[pi + 1] = g;
-                px[pi + 2] = b;
-                px[pi + 3] = 255;
+                px[pi] = r; px[pi + 1] = g; px[pi + 2] = b; px[pi + 3] = 255;
                 this.trailAlpha[i] = 1.0;
             } else {
-                // Dead cell: ghost trail decay
                 this.trailAlpha[i] *= 0.88;
                 const alpha = this.trailAlpha[i];
-
                 if (alpha > 0.02 && this.prevColors) {
-                    // Fade using previous color
-                    px[pi] = this.prevColors[ci] * alpha * 0.5;
+                    px[pi]     = this.prevColors[ci]     * alpha * 0.5;
                     px[pi + 1] = this.prevColors[ci + 1] * alpha * 0.5;
                     px[pi + 2] = this.prevColors[ci + 2] * alpha * 0.5;
                     px[pi + 3] = 255;
                 } else {
-                    // Dark background with subtle noise
                     const noise = Math.random() * 3;
-                    px[pi] = noise;
-                    px[pi + 1] = noise + 1;
-                    px[pi + 2] = noise;
+                    px[pi] = noise; px[pi + 1] = noise + 1; px[pi + 2] = noise;
                     px[pi + 3] = 255;
                 }
             }

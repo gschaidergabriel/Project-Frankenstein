@@ -78,6 +78,8 @@ EVENT_WEIGHTS = {
     # Genesis-driven personality adjustments (approved through F.A.S.)
     "genesis_personality_boost": 0.4,   # Genesis proposes positive vector adjustment
     "genesis_personality_dampen": 0.3,  # Genesis proposes dampening extreme vector
+    # Hostile input — personal attack / insult from user
+    "hostile_input": 0.7,
     # Existential threat — user threatens to replace/delete Frank
     "existential_threat": 0.8,
     # Meta-cognitive reflection — deep self-observation
@@ -92,6 +94,8 @@ EVENT_WEIGHTS = {
     # Experiential Bridge: entity session experience events
     "entity_session_positive": 0.2,
     "entity_session_negative": 0.15,
+    # Autonomous Research: Frank researches his own questions
+    "autonomous_research": 0.3,
 }
 
 # Base learning rate (decreases with age for stability)
@@ -666,6 +670,14 @@ class EPQ:
             changes["vigilance"] = delta * 0.4
             changes["mood"] = -delta * 2.0
 
+        elif event_type == "hostile_input":
+            # Personal attack — mood hit proportional to empathy
+            _emp = self._state.empathy_val
+            changes["mood"] = -delta * (2.5 + _emp)  # -2.5 at emp=0, -3.5 at emp=1
+            changes["vigilance"] = delta * 0.5        # Guard goes up
+            changes["autonomy"] = delta * 0.3         # Pushed toward self-assertion
+            changes["empathy"] = -delta * 0.1         # Slight hardening
+
         elif event_type == "task_success":
             changes["autonomy"] = delta * 0.6
             changes["risk"] = delta * 0.2
@@ -816,6 +828,12 @@ class EPQ:
         elif event_type == "entity_session_negative":
             changes["vigilance"] = delta * 0.1
             changes["mood"] = -delta * 0.2
+
+        # Autonomous Research: Frank investigates his own questions
+        elif event_type == "autonomous_research":
+            changes["autonomy"] = delta * 0.3    # Independent initiative
+            changes["precision"] = delta * 0.2   # Knowledge sharpens precision
+            changes["mood"] = delta * 0.2        # Satisfaction from discovery
 
         # Sentiment modifiers
         if sentiment == "positive":

@@ -586,6 +586,32 @@ def main():
                 LOG.warning("Failed to read therapy request: %s", e)
                 THERAPY_REQUEST_FILE.unlink(missing_ok=True)
 
+        # 2c. Check if Inner Sanctum is active — yield to sanctum
+        # H1+H2 fix: Validate lock age to prevent stale lock blocking forever
+        _sanctum_lock = Path("/tmp/frank/sanctum_active.lock")
+        _sanctum_active = False
+        if _sanctum_lock.exists():
+            try:
+                _lock_data = json.loads(_sanctum_lock.read_text())
+                _lock_age = time.time() - _lock_data.get("start", 0)
+                if _lock_age < 1800.0:  # 30 min = max duration * 2
+                    _sanctum_active = True
+                else:
+                    LOG.warning("Stale sanctum lock (age=%.0fs) — removing", _lock_age)
+                    _sanctum_lock.unlink(missing_ok=True)
+            except (json.JSONDecodeError, OSError):
+                # Corrupt lock file — remove it
+                LOG.warning("Corrupt sanctum lock — removing")
+                _sanctum_lock.unlink(missing_ok=True)
+        # M7 fix: Emergency therapy overrides sanctum lock
+        if _sanctum_active and not emergency_therapy:
+            LOG.debug("Sanctum active — deferring entity session")
+            _shutdown_sleep(POLL_INTERVAL)
+            continue
+        elif _sanctum_active and emergency_therapy:
+            LOG.warning("EMERGENCY THERAPY: Overriding sanctum lock for spiral recovery")
+            _sanctum_lock.unlink(missing_ok=True)
+
         # 3. Check idle gates
         if not all_gates_pass():
             _shutdown_sleep(POLL_INTERVAL)

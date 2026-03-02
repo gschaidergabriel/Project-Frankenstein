@@ -98,6 +98,13 @@ DB_PATHS = {
     "hypothesis_engine": DB_DIR / "hypothesis_engine.db",
     "nerd_physics": DB_DIR / "nerd_physics.db",
     "aicore": DB_DIR / "aicore.sqlite",
+    "subconscious": DB_DIR / "subconscious.db",
+}
+
+# Model files (neural networks)
+MODELS_DIR = AICORE_DATA / "models"
+MODEL_PATHS = {
+    "subconscious": MODELS_DIR / "subconscious.pt",
 }
 
 # State files (JSON)

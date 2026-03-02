@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """
 F.A.S. Popup Connector - Connects Genesis to the user interface.
-Accumulates crystals and only launches the popup when enough proposals are ready.
+
+NEW FLOW (Mar 2026):
+  Genesis Crystal → consciousness.db genesis_proposals → Frank reviews during idle
+  → Frank-approved proposals accumulate in _pending_proposals → FAS popup at threshold
+
+Frank is the gatekeeper. Only proposals he approves reach the user.
 """
 
 from typing import Dict, Optional, List
 from pathlib import Path
 from datetime import datetime
 import json
+import sqlite3
 import subprocess
 import os
 import logging
+import time
 
 from ..core.manifestation import Crystal
 
@@ -34,14 +41,36 @@ except ImportError:
     _FAS_POPUP_SCRIPT = Path(__file__).resolve().parents[3] / "ui" / "fas_popup" / "main_window.py"
     _FAS_POPUP_LOG = Path.home() / ".local" / "share" / "frank" / "logs" / "genesis" / "fas_popup.log"
 
-# Minimum proposals before showing popup
+# Minimum Frank-approved proposals before showing popup
 MIN_PROPOSALS_FOR_POPUP = 7
+
+# consciousness.db path (lazy-init)
+_CONSCIOUSNESS_DB: Optional[Path] = None
+
+
+def _get_consciousness_db() -> Path:
+    """Get consciousness.db path."""
+    global _CONSCIOUSNESS_DB
+    if _CONSCIOUSNESS_DB is None:
+        try:
+            from config.paths import DB_FILES
+            _CONSCIOUSNESS_DB = DB_FILES["consciousness"]
+        except (ImportError, KeyError):
+            _CONSCIOUSNESS_DB = (
+                Path.home() / ".local" / "share" / "frank" / "db" / "consciousness.db"
+            )
+    return _CONSCIOUSNESS_DB
 
 
 class FASConnector:
     """
-    Connects Genesis manifestations to the F.A.S. Popup system.
-    Accumulates proposals and only shows popup when threshold is reached.
+    Connects Genesis manifestations to Frank's review queue and the F.A.S. Popup.
+
+    Flow:
+      1. manifest_crystal() → writes to consciousness.db genesis_proposals
+      2. Frank reviews during idle time (consciousness daemon)
+      3. Frank-approved proposals arrive via submit_frank_approved()
+      4. FAS popup launches when enough Frank-approved proposals accumulate
     """
 
     def __init__(self):
@@ -54,6 +83,8 @@ class FASConnector:
         self.popup_process = None
         self._pending_proposals: List[Dict] = []
         self._load_pending()
+
+    # ── Persistence (Frank-approved proposals waiting for FAS) ────
 
     def _load_pending(self):
         """Load pending proposals from disk (survives restarts)."""
@@ -72,47 +103,116 @@ class FASConnector:
         except Exception as e:
             LOG.warning(f"Failed to save pending proposals: {e}")
 
+    # ── Genesis → Frank's Review Queue ────────────────────────────
+
     def manifest_crystal(self, crystal: Crystal) -> bool:
+        """Queue a crystal for Frank's review in consciousness.db.
+
+        This is the new entry point. Proposals no longer go directly to FAS.
+        Frank reviews them during idle time and decides what reaches the user.
         """
-        Queue a crystal for the F.A.S. popup.
-        Only launches popup when MIN_PROPOSALS_FOR_POPUP are accumulated.
-        Returns True if crystal was queued (or popup launched).
-        """
+        return self.queue_for_frank_review(crystal)
+
+    def queue_for_frank_review(self, crystal: Crystal) -> bool:
+        """Write crystal to genesis_proposals table for Frank's idle review."""
         try:
-            # Create proposal data
             proposal = crystal.to_proposal_dict()
-            proposal["source"] = "genesis_emergent"
-            proposal["manifest_time"] = datetime.now().isoformat()
-
-            # Dedup: don't add if same id already pending
-            existing_ids = {p.get("id") for p in self._pending_proposals}
-            if proposal.get("id") in existing_ids:
-                LOG.debug(f"Crystal {crystal.id} already pending, skipping")
+            db_path = _get_consciousness_db()
+            conn = sqlite3.connect(str(db_path), timeout=10.0)
+            conn.execute("PRAGMA busy_timeout = 10000")
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO genesis_proposals "
+                    "(crystal_id, title, description, approach, risk_assessment, "
+                    "expected_benefit, resonance, feature_type, file_path, "
+                    "code_snippet, proposal_json, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        crystal.id,
+                        crystal.title or "Genesis Proposal",
+                        crystal.description or "",
+                        crystal.approach or "",
+                        crystal.risk_assessment or "",
+                        crystal.expected_benefit or "",
+                        crystal.resonance,
+                        getattr(crystal.organism.genome, "idea_type", "optimization"),
+                        getattr(crystal.organism.genome, "target", ""),
+                        proposal.get("code_snippet", ""),
+                        json.dumps(proposal),
+                        time.time(),
+                    ),
+                )
+                conn.commit()
+                LOG.info("Crystal %s queued for Frank review (resonance=%.2f)",
+                         crystal.id, crystal.resonance)
                 return True
+            finally:
+                conn.close()
+        except Exception as e:
+            LOG.error("Failed to queue crystal for Frank: %s", e)
+            return False
 
-            # Add to pending list
-            self._pending_proposals.append(proposal)
-            self._save_pending()
+    # ── Frank-approved → FAS Queue ────────────────────────────────
 
-            # Write notification file (for external monitoring)
-            self._write_notification(proposal)
+    def submit_frank_approved(self, proposal_dict: Dict,
+                              source: str = "frank_approved") -> bool:
+        """Add a Frank-approved proposal to the FAS pending queue.
 
-            pending_count = len(self._pending_proposals)
-            LOG.info(f"Crystal {crystal.id} queued ({pending_count}/{MIN_PROPOSALS_FOR_POPUP})")
+        This is the ONLY path proposals reach the FAS popup now.
+        Called by consciousness daemon after Frank's idle review.
+        """
+        proposal_dict["source"] = source
+        proposal_dict["manifest_time"] = datetime.now().isoformat()
 
-            # Check if we have enough to show popup
-            if pending_count >= MIN_PROPOSALS_FOR_POPUP:
-                if not self.is_popup_active():
-                    LOG.info(f"Threshold reached ({pending_count} proposals), launching popup")
-                    return self._launch_popup(self._pending_proposals)
-                else:
-                    LOG.debug("Popup already active, waiting for it to close")
-
+        # Dedup
+        existing_ids = {p.get("id") for p in self._pending_proposals}
+        if proposal_dict.get("id") in existing_ids:
+            LOG.debug("Proposal %s already in FAS queue", proposal_dict.get("id"))
             return True
 
+        self._pending_proposals.append(proposal_dict)
+        self._save_pending()
+        self._write_notification(proposal_dict)
+
+        pending_count = len(self._pending_proposals)
+        LOG.info("Frank-approved proposal queued for FAS (%d/%d)",
+                 pending_count, MIN_PROPOSALS_FOR_POPUP)
+
+        if pending_count >= MIN_PROPOSALS_FOR_POPUP:
+            if not self.is_popup_active():
+                LOG.info("FAS threshold reached (%d proposals), launching popup",
+                         pending_count)
+                return self._launch_popup(self._pending_proposals)
+
+        return True
+
+    # ── User Decision Feedback ────────────────────────────────────
+
+    def notify_user_decision(self, crystal_ids: list, decision: str):
+        """Update genesis_proposals table with user's FAS decision.
+
+        Called after FAS popup closes. Updates fas_status so consciousness
+        daemon can give mood rewards for accepted proposals.
+        """
+        fas_status = "user_approved" if decision == "approve" else "user_rejected"
+        try:
+            db_path = _get_consciousness_db()
+            conn = sqlite3.connect(str(db_path), timeout=10.0)
+            conn.execute("PRAGMA busy_timeout = 10000")
+            now = time.time()
+            for cid in crystal_ids:
+                conn.execute(
+                    "UPDATE genesis_proposals SET fas_status = ?, fas_decided_at = ? "
+                    "WHERE crystal_id = ?",
+                    (fas_status, now, cid),
+                )
+            conn.commit()
+            conn.close()
+            LOG.info("Updated %d proposals → fas_status=%s", len(crystal_ids), fas_status)
         except Exception as e:
-            LOG.error(f"Failed to manifest crystal: {e}")
-            return False
+            LOG.warning("Failed to notify user decision: %s", e)
+
+    # ── Existing popup methods (unchanged) ────────────────────────
 
     def get_pending_count(self) -> int:
         """Return how many proposals are pending."""
@@ -150,7 +250,6 @@ class FASConnector:
             return False
 
         try:
-            # Format proposals for popup — include FAS-compatible fields
             features = []
             for p in proposals:
                 features.append({
@@ -158,14 +257,13 @@ class FASConnector:
                     "name": p.get("title", "Genesis Proposal"),
                     "description": p.get("description", ""),
                     "confidence": p.get("resonance", 0.7),
-                    # FAS detail dialog fields
                     "feature_type": p.get("feature_type", p.get("genome", {}).get("type", "optimization")),
                     "file_path": p.get("file_path", p.get("genome", {}).get("target", "")),
                     "repo_name": p.get("repo_name", p.get("genome", {}).get("origin", "genesis")),
                     "confidence_score": p.get("confidence_score", p.get("fitness", 0.5)),
                     "code_snippet": p.get("code_snippet", ""),
                     "why_specific": p.get("why_specific", ""),
-                    "source": "genesis",
+                    "source": p.get("source", "genesis"),
                     "approach": p.get("approach", ""),
                     "risk_assessment": p.get("risk_assessment", ""),
                     "expected_benefit": p.get("expected_benefit", ""),
@@ -177,7 +275,6 @@ class FASConnector:
             env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
             env["PYTHONPATH"] = str(self.popup_script.parent.parent.parent)
 
-            # Clean stale result file before launching
             if RESULT_FILE.exists():
                 RESULT_FILE.unlink()
 
@@ -205,25 +302,18 @@ class FASConnector:
             return False
 
     def check_popup_result(self) -> Optional[Dict]:
-        """
-        Check if popup returned a result.
-        Returns the decision if available.
-        Clears pending proposals after user decision.
-        """
+        """Check if popup returned a result."""
         if RESULT_FILE.exists():
             try:
                 result = json.loads(RESULT_FILE.read_text())
-                RESULT_FILE.unlink()  # Clean up
+                RESULT_FILE.unlink()
 
-                # Clear pending proposals after any user decision
                 decision = result.get("decision", "defer")
                 if decision in ("approve", "reject"):
                     self._pending_proposals.clear()
                     self._save_pending()
                     LOG.info(f"Cleared pending proposals after {decision}")
                 elif decision == "defer":
-                    # Keep proposals but don't re-show until more accumulate
-                    # Mark as deferred so we need MIN more before showing again
                     LOG.info(f"User deferred, keeping {len(self._pending_proposals)} proposals")
 
                 return result

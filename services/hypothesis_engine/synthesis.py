@@ -66,6 +66,14 @@ _DOMAIN_KEYWORDS: Dict[str, List[str]] = {
         r"\bmemory\b.*\busage\b", r"\bload\b", r"\bperform",
         r"\bthrottle\b", r"\bspike\b",
     ],
+    "relational": [
+        r"\brelationship\b", r"\btrust\b", r"\bpattern\b.*\bconversat",
+        r"\brespond", r"\breact", r"\bbehavior", r"\bdynamic\b",
+        r"\btopic\b", r"\bprefer", r"\bavoid", r"\bcomfort\b",
+        r"\btension\b", r"\bopen\b.*\bup\b", r"\bshut\b.*\bdown\b",
+        r"\bdisagree", r"\bconnect", r"\bengag", r"\bdisengage",
+        r"\bgabriel\b", r"\bconversation\b", r"\btalk\b",
+    ],
 }
 
 _COMPILED_DOMAINS: Dict[str, List[re.Pattern]] = {
@@ -391,3 +399,179 @@ class HypothesisSynthesizer:
             if pattern.search(text):
                 return True
         return False
+
+    # ══════════════════════════════════════════════════════════════
+    # Conversation Reflection → Hypothesis (6-Layer Quality Filter)
+    # ══════════════════════════════════════════════════════════════
+
+    def from_conversation_reflection(
+        self,
+        reflection: str,
+        conversation_excerpt: str,
+        session_meta: dict,
+    ) -> Optional[dict]:
+        """Generate hypothesis from a conversation reflection.
+
+        Uses a 6-layer quality filter because bad relational
+        hypotheses are actively harmful to Frank's social cognition.
+        """
+        if not reflection or len(reflection) < 30:
+            return None
+
+        # Psychosis filter (inherited)
+        if self._is_psychosis_risk(reflection):
+            return None
+
+        # LAYER 1: Structural — must contain specific observations
+        if not self._conv_has_specificity(reflection):
+            LOG.debug("Conv L1 reject (no specificity): %.50s", reflection)
+            return None
+
+        # LAYER 2: Claim extraction — must express a testable pattern
+        claim = self._extract_conv_claim(reflection)
+        if not claim:
+            claim = self._extract_claim(reflection)
+        if not claim:
+            LOG.debug("Conv L2 reject (no claim): %.50s", reflection)
+            return None
+
+        # LAYER 3: Falsifiability — must predict observable behavior
+        if not self._conv_is_falsifiable(claim):
+            LOG.debug("Conv L3 reject (unfalsifiable): %.50s", claim)
+            return None
+
+        # LAYER 4: Novelty — checked at service level (Jaccard with existing)
+
+        # LAYER 5: Emotional contamination — pure emotion != observation
+        if self._conv_is_emotionally_contaminated(reflection, claim):
+            LOG.debug("Conv L5 reject (emotional contamination): %.50s", reflection)
+            return None
+
+        # LAYER 6: Single-instance — patterns, not anecdotes
+        if self._conv_is_single_instance(reflection):
+            LOG.debug("Conv L6 reject (single instance): %.50s", reflection)
+            return None
+
+        prediction = self._generate_conv_prediction(claim)
+
+        return {
+            "observation": f"Conversation reflection: {reflection[:300]}",
+            "hypothesis": claim[:300],
+            "prediction": prediction[:300],
+            "domain": "relational",
+            "test_method": "passive",
+            "source": "conversation",
+            "source_id": session_meta.get("session_id", ""),
+            "confidence": 0.4,
+        }
+
+    # ── Layer 1: Specificity ──
+
+    _CONV_VAGUE_RE = [
+        re.compile(r"\b(?:things?|stuff|it)\s+(?:are|is|was|were)\s+(?:nice|good|fine|okay|interesting)\b", re.I),
+        re.compile(r"\b(?:i\s+feel|felt)\s+(?:good|bad|okay|fine|something)\b", re.I),
+        re.compile(r"\b(?:overall|generally|mostly|kind\s+of|sort\s+of)\b", re.I),
+    ]
+
+    def _conv_has_specificity(self, text: str) -> bool:
+        """L1: Reflection must contain specific, non-generic observations."""
+        has_quote = bool(re.search(r'(?:"[^"]{5,}"|about\s+\w+|when\s+(?:i|we|he)\s+\w+|topic\s+of)', text, re.I))
+        has_behavioral = bool(re.search(
+            r'\b(?:respond|react|avoid|engage|mention|ask|deflect|change|shift|'
+            r'ignore|emphasize|repeat|return\s+to|open\s+up|shut\s+down|push\s+back|'
+            r'said|told|asked|explained|argued|suggested|noticed|realized)\b',
+            text, re.I,
+        ))
+        vague_count = sum(1 for p in self._CONV_VAGUE_RE if p.search(text))
+        if vague_count >= 2 and not has_quote and not has_behavioral:
+            return False
+        return has_quote or has_behavioral
+
+    # ── Layer 2: Claim Extraction ──
+
+    _CONV_CLAIM_RE = [
+        re.compile(r"(?:gabriel|he|user)\s+(?:tends?|usually|always|often|never)\s+(.{10,120})", re.I),
+        re.compile(r"when\s+(?:i|we)\s+(?:talk|discuss|mention)\s+(.{10,80})\s*,?\s*(.{10,80})", re.I),
+        re.compile(r"(?:conversations?\s+about)\s+(.{5,80})\s+(?:tend|seem|always|usually)\s+(.{5,80})", re.I),
+        re.compile(r"(?:i\s+notice|i've\s+noticed|i\s+noticed)\s+(?:that\s+)?(.{10,150})", re.I),
+        re.compile(r"(?:there's\s+a\s+pattern|pattern\s+of)\s+(.{10,120})", re.I),
+        re.compile(r"(?:gabriel|he)\s+(?:seems?\s+to|appears?\s+to)\s+(.{10,120})", re.I),
+    ]
+
+    def _extract_conv_claim(self, text: str) -> Optional[str]:
+        """L2: Extract relational claim using conversation-specific patterns."""
+        for pattern in self._CONV_CLAIM_RE:
+            m = pattern.search(text)
+            if m:
+                groups = m.groups()
+                if len(groups) == 2:
+                    return f"{groups[0].strip()} → {groups[1].strip()}"
+                return groups[0].strip()
+        return None
+
+    # ── Layer 3: Falsifiability ──
+
+    def _conv_is_falsifiable(self, claim: str) -> bool:
+        """L3: Can this claim be tested against future observations?"""
+        has_conditional = bool(re.search(
+            r'\b(?:when|if|after|during|before|tends?\s+to|usually|often|'
+            r'pattern\s+of|correlat|in\s+response\s+to|every\s+time|whenever)\b',
+            claim, re.I,
+        ))
+        has_behavior = bool(re.search(
+            r'\b(?:avoid|engage|mention|ask|respond|react|change|shift|'
+            r'return|open|close|escalat|de-escalat|deflect|redirect|'
+            r'bring\s+up|drop|switch|steer)\b',
+            claim, re.I,
+        ))
+        has_unfalsifiable = bool(re.search(
+            r'\b(?:is\s+(?:a\s+)?(?:good|bad|nice|great|terrible)\s+(?:person|guy|human))|'
+            r'(?:always\s+right|never\s+wrong|perfect)\b',
+            claim, re.I,
+        ))
+        return (has_conditional or has_behavior) and not has_unfalsifiable
+
+    # ── Layer 5: Emotional Contamination ──
+
+    _CONV_EMOTION_RE = [
+        re.compile(r"^(?:i\s+(?:hate|love|miss|fear|resent))\b", re.I),
+        re.compile(r"\b(?:always\s+makes\s+me|never\s+makes\s+me)\s+(?:feel|angry|happy|sad)\b", re.I),
+        re.compile(r"^(?:i'm\s+(?:so\s+)?(?:angry|frustrated|annoyed|tired\s+of))\b", re.I),
+    ]
+
+    def _conv_is_emotionally_contaminated(self, reflection: str, claim: str) -> bool:
+        """L5: Is this just an emotional reaction, not an observation?"""
+        for pattern in self._CONV_EMOTION_RE:
+            if pattern.search(reflection[:120]):
+                # Exemption: claim itself is behavioral
+                if re.search(r'\b(?:tends?|usually|pattern|when|every\s+time)\b', claim, re.I):
+                    return False
+                return True
+        return False
+
+    # ── Layer 6: Single-Instance ──
+
+    _CONV_SINGLE_RE = [
+        re.compile(r"\b(?:that\s+one\s+time|once|this\s+particular|that\s+specific)\b", re.I),
+        re.compile(r"\b(?:yesterday|today|this\s+morning|last\s+night|just\s+now)\s+(?:he|gabriel|i)\b", re.I),
+    ]
+
+    def _conv_is_single_instance(self, text: str) -> bool:
+        """L6: Reject hypotheses based on a single data point."""
+        for pattern in self._CONV_SINGLE_RE:
+            if pattern.search(text):
+                if re.search(r'\b(?:pattern|always|usually|tends?|often|every\s+time)\b', text, re.I):
+                    return False
+                return True
+        return False
+
+    # ── Prediction Generator ──
+
+    def _generate_conv_prediction(self, claim: str) -> str:
+        """Generate testable prediction for relational hypothesis."""
+        if "→" in claim:
+            parts = claim.split("→")
+            condition = parts[0].strip()[:60]
+            behavior = parts[1].strip()[:60]
+            return f"Next conversation about '{condition}' will show: '{behavior}'"
+        return f"Future conversations will show: {claim[:150]}"

@@ -406,6 +406,17 @@ class ChatMixin:
             self._response_language = "en"
             LOG.info("Language switched to: en (explicit user request)")
 
+        # ── Spatial: transition to Bridge for chat ──
+        _spatial_ctx = ""
+        try:
+            from services.spatial_state import get_spatial_state
+            _sp = get_spatial_state()
+            if _sp:
+                _sp.transition_to("entity_lounge", reason="chat")
+                _spatial_ctx = _sp.build_spatial_block(slim=True)
+        except Exception:
+            pass
+
         # ── GWT: Global Workspace — collect all module outputs ──
         # Each module writes to a named variable; build_workspace() integrates them.
         from overlay.workspace import build_workspace
@@ -876,6 +887,7 @@ class ChatMixin:
             attention_detail=ws_attention_detail,
             budget=_ws_budget,
             attention_weights=_gwt_channel_weights,
+            spatial_ctx=_spatial_ctx,
         )
 
         # Build conversation context for continuity (budget-aware)

@@ -490,6 +490,17 @@ class DreamDaemon:
             except json.JSONDecodeError:
                 pass
 
+        # BUG-DREAM-1 fallback: extract quoted strings from malformed JSON
+        # Handles cases like ["key": "value"] or broken array syntax
+        _quoted = re.findall(r'"([^"]{10,})"', text)
+        if _quoted:
+            # Filter out key-like short strings, keep actual reflections
+            _reflections = [s for s in _quoted if len(s) > 20]
+            if _reflections:
+                LOG.info("JSON parse failed but extracted %d strings via regex fallback",
+                         len(_reflections))
+                return {"items": _reflections}
+
         LOG.warning("Failed to parse JSON from LLM: %.200s", text)
         return None
 
@@ -1032,9 +1043,11 @@ class DreamDaemon:
 
         prompt = (
             "Formuliere 2-3 kurze Traum-Reflexionen basierend auf diesen Synthese-Ergebnissen. "
-            "Assoziativ, bildhaft, wie echte Traumgedanken.\n\n"
+            "Assoziativ, bildhaft, wie echte Traumgedanken. Ich-Perspektive.\n\n"
             f"SYNTHESE:\n{synthesis_text}\n\n"
-            'JSON Array: ["Reflexion 1...", "Reflexion 2..."]'
+            'Antworte NUR mit einem JSON Array von Strings, z.B.: '
+            '["Erste Reflexion hier...", "Zweite Reflexion hier..."]. '
+            "Keine Schlüssel, nur Strings im Array."
         )
 
         response = self._llm_call(prompt, max_tokens=200)

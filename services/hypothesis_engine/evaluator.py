@@ -68,6 +68,65 @@ class HypothesisEvaluator:
 
         return self._check_sentiment_prediction(h, idle_thought)
 
+    def evaluate_against_conversation(
+        self, hypothesis_id: str, conversation_text: str,
+    ) -> Optional[str]:
+        """Check a relational hypothesis against new conversation data.
+
+        Uses behavioral keyword matching to test predicted patterns.
+        Returns: 'confirmed' | 'refuted' | None
+        """
+        h = self._store.get(hypothesis_id)
+        if not h or h["status"] != "active":
+            return None
+        if h.get("domain") != "relational":
+            return None
+
+        prediction = h["prediction"].lower()
+        hypothesis = h["hypothesis"].lower()
+        conv_lower = conversation_text.lower()
+
+        # Extract behavioral terms from hypothesis
+        behavior_terms = re.findall(
+            r'\b(?:avoid|engage|mention|respond|react|deflect|'
+            r'redirect|escalat|open\s+up|shut\s+down|bring\s+up|'
+            r'change|shift|return|steer|drop|switch)\w*\b',
+            hypothesis,
+        )
+        if not behavior_terms:
+            return None
+
+        # Check presence
+        matches = sum(1 for term in behavior_terms if term in conv_lower)
+
+        if matches >= 2:
+            return self._resolve(
+                h, "confirmed",
+                f"Pattern observed: {matches}/{len(behavior_terms)} behavioral markers in conversation",
+            )
+
+        # Track exposure count via result field
+        prev_checks = 0
+        if h.get("result") and "checks:" in h["result"]:
+            try:
+                prev_checks = int(h["result"].split("checks:")[1].split()[0])
+            except (ValueError, IndexError):
+                prev_checks = 0
+
+        new_checks = prev_checks + 1
+        self._store.update(hypothesis_id, {
+            "result": f"checks:{new_checks} matches:{matches}",
+        })
+
+        # Refute after 5+ conversations with no pattern
+        if new_checks >= 5 and matches == 0:
+            return self._resolve(
+                h, "refuted",
+                f"Pattern not observed after {new_checks} conversation checks",
+            )
+
+        return None
+
     # ═══════════════════════════════════════════
     # ACTIVE TEST (via Experiment Lab)
     # ═══════════════════════════════════════════

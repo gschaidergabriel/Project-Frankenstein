@@ -50,6 +50,12 @@ except ImportError:
     _HAS_ENTITY_LLM = False
 
 try:
+    from ext.voice_guard import enforce_first_person, VOICE_REPAIR_INSTRUCTION
+    _HAS_VOICE_GUARD = True
+except ImportError:
+    _HAS_VOICE_GUARD = False
+
+try:
     from config.paths import get_db, AICORE_LOG, RUNTIME_DIR
     THERAPIST_DB = get_db("therapist")
     CHAT_DB = get_db("chat_memory")
@@ -92,7 +98,7 @@ MAX_TURNS = 12
 MAX_DURATION_MINUTES = 15
 TURN_DELAY_MIN = 30
 TURN_DELAY_MAX = 60
-RESPONSE_TIMEOUT = 120
+RESPONSE_TIMEOUT = 45  # Reduced from 120s — shorter blocking window for user-return abort
 PID_FILE = RUNTIME_DIR / "therapist_agent.pid"
 
 # ---------------------------------------------------------------------------
@@ -707,7 +713,7 @@ class TherapistAgent:
 
         # User returned (keyboard/mouse active)
         idle_s = _get_xprintidle_s()
-        if idle_s < 30 and turn >= 3:
+        if idle_s < 30:
             return True, f"user_returned (idle={idle_s:.0f}s)"
 
         # Sustained positive after enough turns
@@ -895,6 +901,10 @@ class TherapistAgent:
         if not opening:
             LOG.error("Failed to generate opening. Aborting.")
             return
+        # Abort check after opening generation
+        if _get_xprintidle_s() < 30:
+            LOG.info("User returned during opening generation — aborting session")
+            return
         opening = _clean_response(opening)
 
         LOG.info("\n[%s → Frank] (opening):\n%s\n", THERAPIST_NAME, opening)
@@ -906,8 +916,15 @@ class TherapistAgent:
         if not frank_response:
             LOG.error("Frank did not respond to opening. Aborting.")
             return
+        # Abort check after Frank's opening response
+        if _get_xprintidle_s() < 30:
+            LOG.info("User returned after opening response — aborting session")
+            return
 
         frank_response = _clean_response(frank_response)
+        _voice_reprompt = False
+        if _HAS_VOICE_GUARD:
+            frank_response, _voice_reprompt = enforce_first_person(frank_response)
         LOG.info("\n[Frank → %s] (opening):\n%s\n", THERAPIST_NAME, frank_response)
         history.append({"speaker": "frank", "text": frank_response})
 
@@ -937,7 +954,7 @@ class TherapistAgent:
             _abort = False
             for _elapsed in range(0, delay, 5):
                 time.sleep(min(5, delay - _elapsed))
-                if _get_xprintidle_s() < 30 and turn >= 3:
+                if _get_xprintidle_s() < 30:
                     LOG.info("User returned during delay — aborting early")
                     _abort = True
                     break
@@ -958,6 +975,11 @@ class TherapistAgent:
             if not therapist_msg:
                 LOG.error("Failed to generate therapist message. Ending.")
                 break
+            # Abort check after LLM call
+            if _get_xprintidle_s() < 30:
+                reason = f"user_returned (idle={_get_xprintidle_s():.0f}s)"
+                LOG.info("\nEXIT CONDITION: %s (after entity LLM)", reason)
+                break
 
             therapist_msg = _clean_response(therapist_msg)
             LOG.info("\n[%s → Frank] (turn %d):\n%s\n", THERAPIST_NAME, turn, therapist_msg)
@@ -966,19 +988,32 @@ class TherapistAgent:
 
             # Get Frank's response (with conversation context to avoid loops)
             ctx = get_history_text(last_n=4)
-            frank_response = _ask_frank(therapist_msg, self.session_id, prior_context=ctx)
+            _msg = therapist_msg
+            if _voice_reprompt and _HAS_VOICE_GUARD:
+                _msg = f"{VOICE_REPAIR_INSTRUCTION}\n\n{therapist_msg}"
+            frank_response = _ask_frank(_msg, self.session_id, prior_context=ctx)
             if not frank_response:
                 LOG.warning("Frank not responding. Waiting 30s and retrying...")
                 if _interruptible_sleep(30):
                     reason = f"user_returned (idle={_get_xprintidle_s():.0f}s)"
                     LOG.info("EXIT CONDITION: %s (during Frank retry)", reason)
                     break
-                frank_response = _ask_frank(therapist_msg, self.session_id, prior_context=ctx)
+                frank_response = _ask_frank(_msg, self.session_id, prior_context=ctx)
                 if not frank_response:
                     LOG.error("Frank still unresponsive. Ending.")
                     break
 
             frank_response = _clean_response(frank_response)
+            _voice_reprompt = False
+            if _HAS_VOICE_GUARD:
+                frank_response, _voice_reprompt = enforce_first_person(frank_response)
+            # Abort check after Frank's response
+            if _get_xprintidle_s() < 30:
+                LOG.info("\nEXIT CONDITION: user_returned (after Frank response, turn %d)", turn)
+                reason = f"user_returned (idle={_get_xprintidle_s():.0f}s)"
+                # Still store the response we got before aborting
+                self.memory.store_message(self.session_id, turn, "frank", frank_response)
+                break
             LOG.info("\n[Frank → %s] (turn %d):\n%s\n", THERAPIST_NAME, turn, frank_response)
             history.append({"speaker": "frank", "text": frank_response})
 
@@ -1012,9 +1047,14 @@ class TherapistAgent:
         self.memory.store_message(self.session_id, turn, "therapist", closing)
         history.append({"speaker": "therapist", "text": closing})
 
-        frank_final = _ask_frank(closing, self.session_id)
+        _closing_msg = closing
+        if _voice_reprompt and _HAS_VOICE_GUARD:
+            _closing_msg = f"{VOICE_REPAIR_INSTRUCTION}\n\n{closing}"
+        frank_final = _ask_frank(_closing_msg, self.session_id)
         if frank_final:
             frank_final = _clean_response(frank_final)
+            if _HAS_VOICE_GUARD:
+                frank_final, _ = enforce_first_person(frank_final)
             LOG.info("\n[Frank → %s] (closing):\n%s\n", THERAPIST_NAME, frank_final)
             self.memory.store_message(self.session_id, turn, "frank", frank_final)
             history.append({"speaker": "frank", "text": frank_final})

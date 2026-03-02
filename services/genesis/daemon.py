@@ -330,6 +330,19 @@ class GenesisDaemon:
 
     _MIN_STATE_DURATION_S = 10.0  # Minimum time in any state before downgrade
 
+    @staticmethod
+    def _is_gaming_active() -> bool:
+        """Check if gaming mode is active."""
+        try:
+            state_file = Path("/tmp/frank/gaming_mode_state.json")
+            if state_file.exists():
+                data = json.loads(state_file.read_text())
+                if data.get("active", False):
+                    return True
+        except Exception:
+            pass
+        return False
+
     def _update_state(self):
         """Update contemplation state based on conditions.
 
@@ -337,6 +350,14 @@ class GenesisDaemon:
         before a downgrade transition can occur, preventing oscillation.
         Upgrades (toward active) are always immediate.
         """
+        # Gaming mode: force DORMANT
+        if self._is_gaming_active():
+            if self.state != ContemplationState.DORMANT:
+                LOG.info("Gaming mode active — forcing DORMANT")
+                self.state = ContemplationState.DORMANT
+                self.last_state_change = datetime.now()
+            return
+
         activation = self.field.get_activation_level()
         user_sensor = self._get_sensor("user_presence")
         system_sensor = self._get_sensor("system_pulse")
@@ -361,7 +382,8 @@ class GenesisDaemon:
 
         # S2-06: Upgrade cooldown after downgrade — prevent immediate re-upgrade
         # that defeats the purpose of the downgrade (e.g. active→awakening→active bounce)
-        _UPGRADE_COOLDOWN_S = 5.0
+        # BUG-2 fix: increased from 5s to 30s — 5s was too short, caused rapid ping-pong
+        _UPGRADE_COOLDOWN_S = 30.0
         can_upgrade = True
         if self._last_downgrade_time is not None:
             since_downgrade = (now - self._last_downgrade_time).total_seconds()
@@ -392,14 +414,18 @@ class GenesisDaemon:
             if can_downgrade and (user_active or system_load > self.config.max_cpu_for_active):
                 self.state = ContemplationState.STIRRING
             # Upgrade: immediate (but respects post-downgrade cooldown)
-            elif can_upgrade and activation > self.config.active_threshold:
+            # BUG-2 fix: +0.03 dead-zone to prevent oscillation at threshold boundary
+            elif can_upgrade and activation > self.config.active_threshold + 0.03:
                 self.state = ContemplationState.ACTIVE
 
         elif self.state == ContemplationState.ACTIVE:
             # Downgrade: only after min duration (except user_active which is always immediate)
             if user_active:
                 self.state = ContemplationState.DORMANT
-            elif can_downgrade and system_load > self.config.max_cpu_for_active:
+            elif can_downgrade and (
+                system_load > self.config.max_cpu_for_active
+                or activation < self.config.awakening_threshold  # BUG-2: also downgrade if activation drops
+            ):
                 self.state = ContemplationState.AWAKENING
 
         elif self.state == ContemplationState.PRESENTING:
@@ -475,18 +501,18 @@ class GenesisDaemon:
         )
 
         if crystal:
-            LOG.info(f"Manifestation! Crystal: {crystal.id} (pending: {self.fas_connector.get_pending_count() + 1})")
+            LOG.info(f"Manifestation! Crystal: {crystal.id} → queued for Frank review")
             self.current_crystal = crystal
             self.stats["manifestations"] += 1
 
-            # Queue crystal — popup only launches when threshold reached
+            # Queue crystal for Frank's idle review (no longer direct to FAS)
             self.fas_connector.manifest_crystal(crystal)
 
-            # Only enter PRESENTING state if popup was actually launched
+            # Check if FAS popup was launched (Frank may have approved enough)
             if self.fas_connector.is_popup_active():
                 self.state = ContemplationState.PRESENTING
                 self.last_state_change = datetime.now()
-                LOG.info("Popup launched, entering PRESENTING state")
+                LOG.info("FAS popup active, entering PRESENTING state")
 
     def _process_presenting(self):
         """Process while presenting to user."""
@@ -514,6 +540,11 @@ class GenesisDaemon:
         decision = result.get("decision", "defer")
         crystal = self.current_crystal
 
+        # Notify genesis_proposals table of user decision (for mood rewards)
+        feature_ids = result.get("features", [])
+        if feature_ids and decision in ("approve", "reject"):
+            self.fas_connector.notify_user_decision(feature_ids, decision)
+
         if not crystal:
             self.state = ContemplationState.DORMANT
             return
@@ -524,6 +555,10 @@ class GenesisDaemon:
         if decision == "approve":
             LOG.info(f"Crystal {crystal.id} approved!")
             self.stats["successful_manifestations"] += 1
+
+            # ── Skill proposals: write SKILL.md to disk ──
+            if crystal.organism.genome.idea_type == "skill":
+                self._install_approved_skill(crystal)
 
             genome = crystal.organism.genome
 
@@ -584,6 +619,39 @@ class GenesisDaemon:
         self.current_crystal = None
         self.state = ContemplationState.REFLECTING
         self.last_state_change = datetime.now()
+
+    def _install_approved_skill(self, crystal: Crystal):
+        """Write an approved skill proposal to disk as SKILL.md."""
+        try:
+            proposal = crystal.to_proposal_dict()
+            code = proposal.get("code_snippet", "")
+            if not code or len(code) < 50:
+                LOG.warning("Skill proposal %s has no code_snippet, skipping install",
+                            crystal.id)
+                return
+            slug = getattr(crystal.organism.genome, "target", "") or crystal.id
+            # Sanitize slug
+            slug = "".join(c if c.isalnum() or c == "-" else "-" for c in slug).strip("-")
+            if not slug:
+                slug = f"frank-skill-{crystal.id[:8]}"
+
+            skills_dir = Path(__file__).resolve().parents[2] / "skills" / slug
+            skills_dir.mkdir(parents=True, exist_ok=True)
+            skill_path = skills_dir / "SKILL.md"
+            skill_path.write_text(code)
+            LOG.info("Skill '%s' installed to %s", slug, skill_path)
+
+            # Reload skill registry
+            try:
+                from skills import get_skill_registry
+                registry = get_skill_registry()
+                registry.reload()
+                LOG.info("Skill registry reloaded after installing '%s'", slug)
+            except Exception as e:
+                LOG.warning("Could not reload skill registry: %s", e)
+
+        except Exception as e:
+            LOG.error("Failed to install skill %s: %s", crystal.id, e)
 
     def _execute_personality_adjustment(self, crystal: Crystal) -> bool:
         """Execute a personality vector adjustment via E-PQ.

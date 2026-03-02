@@ -31,7 +31,15 @@ from typing import Any, Callable, Dict, List, Optional
 LOG = logging.getLogger("sanctum")
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Session lifecycle DISABLED — Frank now lives permanently in his world.
+# The spatial_state.py module replaces the session-based Sanctum.
+# LOCATIONS, ENTITY_APPEARANCES, physics helpers, and data-gathering
+# functions remain importable for use by spatial_state.py and entities.
+# ---------------------------------------------------------------------------
+SESSION_DISABLED = True
+
+# ---------------------------------------------------------------------------
+# Configuration (legacy — retained for reference)
 # ---------------------------------------------------------------------------
 
 SANCTUM_MAX_DURATION_S = 3600.0         # 1 hour max per session
@@ -892,6 +900,9 @@ class SanctumManager:
 
     def request_entry(self):
         """Initiate sanctum entry with delay."""
+        if SESSION_DISABLED:
+            LOG.debug("SANCTUM request_entry: SESSION_DISABLED (permanent embodiment)")
+            return
         if self.active or self.pending:
             LOG.debug("SANCTUM request_entry: skip (active=%s, pending=%s)",
                        self.active, self.pending)
@@ -909,6 +920,9 @@ class SanctumManager:
 
     def enter(self):
         """Enter the sanctum after delay."""
+        if SESSION_DISABLED:
+            LOG.debug("SANCTUM enter: SESSION_DISABLED (permanent embodiment)")
+            return
         now = time.time()
         self.active = True
         self.pending = False

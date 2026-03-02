@@ -270,6 +270,58 @@ class HypothesisEngine:
         return result
 
     # ═══════════════════════════════════════════
+    # HOOK 7: Conversation Reflection
+    # ═══════════════════════════════════════════
+
+    def on_conversation_reflection(
+        self,
+        reflection: str,
+        conversation_excerpt: str,
+        session_meta: dict,
+    ) -> Optional[str]:
+        """Process a conversation reflection for hypothesis generation.
+
+        Quality filter is INSIDE the synthesizer (6 layers).
+        Additional: max 5 active relational hypotheses, Jaccard novelty check.
+        """
+        if not self._check_budget("created"):
+            return None
+
+        # Domain cap: max 5 active relational hypotheses
+        relational_count = self.store.count_active_by_domain("relational")
+        if relational_count >= 5:
+            return None
+
+        h_data = self.synthesizer.from_conversation_reflection(
+            reflection, conversation_excerpt, session_meta,
+        )
+        if not h_data:
+            return None
+
+        # LAYER 4 (Novelty): Check against existing relational hypotheses
+        existing = self.store.get_by_status("active", limit=20)
+        for ex in existing:
+            if ex.get("domain") != "relational":
+                continue
+            new_words = set(h_data["hypothesis"].lower().split())
+            old_words = set(ex["hypothesis"].lower().split())
+            union = new_words | old_words
+            if union:
+                jaccard = len(new_words & old_words) / len(union)
+                if jaccard > 0.4:
+                    LOG.debug("Conv hypothesis rejected L4 (novelty J=%.2f vs %s)",
+                              jaccard, ex["id"])
+                    return None
+
+        h_id = self.store.create(h_data)
+        if not h_id:
+            return None
+
+        self._increment_budget("created")
+        LOG.info("New relational hypothesis %s: %s", h_id, h_data["hypothesis"][:60])
+        return f"H-{h_id}: {h_data['hypothesis'][:80]}"
+
+    # ═══════════════════════════════════════════
     # CONTEXT GENERATORS
     # ═══════════════════════════════════════════
 

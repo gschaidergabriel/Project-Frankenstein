@@ -106,9 +106,9 @@ PID_FILES: dict[str, Path] = {
 }
 
 POLL_INTERVAL      = 600   # 10 min between idle checks
-COOLDOWN_COMPLETED = 300   # 5 min after a completed session
+COOLDOWN_COMPLETED = 300   # 5 min after completed session
 COOLDOWN_RETURNED  = 600   # 10 min after user_returned
-IDLE_THRESHOLD     = 300   # 5 min idle required before starting
+IDLE_THRESHOLD     = 300   # 5 min idle required
 CHAT_SILENCE_S     = 300   # 5 min since last user chat
 GPU_MAX_LOAD       = 0.50  # 50% GPU threshold
 

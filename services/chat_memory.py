@@ -84,6 +84,36 @@ CREATE TABLE IF NOT EXISTS retrieval_metrics (
     latency_ms      INTEGER,
     timestamp       REAL
 );
+
+CREATE TABLE IF NOT EXISTS consolidation_tracker (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type         TEXT NOT NULL,
+    source_id           TEXT NOT NULL,
+    emotional_charge    REAL DEFAULT 0.0,
+    surprise_factor     REAL DEFAULT 0.0,
+    tension_level       REAL DEFAULT 0.0,
+    consolidation_level REAL DEFAULT 0.0,
+    times_reflected     INTEGER DEFAULT 0,
+    last_reflected_at   REAL,
+    created_at          REAL NOT NULL,
+    topics              TEXT,
+    mood_start          REAL,
+    mood_end            REAL,
+    UNIQUE(source_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ct_source ON consolidation_tracker(source_type);
+CREATE INDEX IF NOT EXISTS idx_ct_level ON consolidation_tracker(consolidation_level);
+
+CREATE TABLE IF NOT EXISTS conversation_reflections (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id      TEXT,
+    reflection      TEXT NOT NULL,
+    reflection_type TEXT DEFAULT 'post_hoc',
+    timestamp       REAL NOT NULL,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cr_session ON conversation_reflections(session_id);
+CREATE INDEX IF NOT EXISTS idx_cr_ts ON conversation_reflections(timestamp);
 """
 
 # FTS5 and triggers created separately (can't be in multi-statement exec)
@@ -862,6 +892,265 @@ class ChatMemoryDB:
             "total_sessions": sessions,
             "sessions_with_summary": summaries,
         }
+
+    # ── Consolidation Tracking ─────────────────────────────────────
+
+    def populate_consolidation_entry(
+        self,
+        session_id: str,
+        source_type: str = "conversation",
+    ):
+        """Create a consolidation tracker entry for a closed session.
+
+        Computes emotional_charge, surprise_factor, tension_level from
+        the actual message content. Called when sessions close.
+        """
+        with self._lock:
+            # Skip if already tracked
+            existing = self._conn.execute(
+                "SELECT id FROM consolidation_tracker WHERE source_type=? AND source_id=?",
+                (source_type, session_id),
+            ).fetchone()
+            if existing:
+                return
+
+            # Get session messages
+            msgs = self._conn.execute(
+                """SELECT text, is_user, timestamp FROM messages
+                   WHERE session_id=? AND text != '[archived]'
+                   ORDER BY timestamp""",
+                (session_id,),
+            ).fetchall()
+            if len(msgs) < 2:
+                return
+
+            # Emotional charge: sentiment intensity from keywords
+            _POS = {"danke", "super", "toll", "genial", "perfekt", "liebe", "geil",
+                    "love", "great", "awesome", "amazing", "happy", "freude", "cool"}
+            _NEG = {"scheisse", "mist", "schlecht", "nervig", "frustrierend", "angry",
+                    "sad", "enttaeuscht", "disappointed", "hate", "fuck", "damn",
+                    "problem", "fehler", "bug", "kaputt", "broken"}
+            pos_count = 0
+            neg_count = 0
+            question_count = 0
+            disagree_count = 0
+            total_words = 0
+            topics = set()
+            _DISAGREE = {"nein", "falsch", "stimmt nicht", "no", "wrong", "disagree",
+                         "aber", "nicht wirklich", "not really"}
+
+            for m in msgs:
+                text_lower = m["text"].lower()
+                words = text_lower.split()
+                total_words += len(words)
+                pos_count += sum(1 for w in words if w in _POS)
+                neg_count += sum(1 for w in words if w in _NEG)
+                if "?" in m["text"]:
+                    question_count += 1
+                for d in _DISAGREE:
+                    if d in text_lower:
+                        disagree_count += 1
+                        break
+                # Extract topic words (4+ chars, not stopwords)
+                for w in words:
+                    if len(w) >= 5 and w not in {"nicht", "diese", "einer", "meine",
+                                                  "hatte", "wurde", "werde", "about",
+                                                  "would", "could", "should", "there"}:
+                        topics.add(w)
+
+            n_msgs = len(msgs)
+            emotional_charge = min(1.0, (pos_count + neg_count) / max(1, n_msgs) * 0.5)
+
+            # Surprise: topic diversity / message count
+            unique_topics = len(topics)
+            surprise_factor = min(1.0, unique_topics / max(1, n_msgs) * 0.3)
+
+            # Tension: disagreement + questions ratio
+            tension_level = min(1.0, (disagree_count * 2 + question_count * 0.5) / max(1, n_msgs))
+
+            # Mood (rough: positive - negative)
+            mood_val = 0.5 + (pos_count - neg_count) * 0.1
+            mood_val = max(0.0, min(1.0, mood_val))
+
+            topics_json = json.dumps(sorted(list(topics)[:20]))
+
+            self._conn.execute(
+                """INSERT OR IGNORE INTO consolidation_tracker
+                   (source_type, source_id, emotional_charge, surprise_factor,
+                    tension_level, consolidation_level, times_reflected,
+                    created_at, topics, mood_start, mood_end)
+                   VALUES (?, ?, ?, ?, ?, 0.0, 0, ?, ?, ?, ?)""",
+                (source_type, session_id, emotional_charge, surprise_factor,
+                 tension_level, msgs[0]["timestamp"], topics_json, mood_val, mood_val),
+            )
+            self._conn.commit()
+
+    def get_unprocessed_memories(
+        self,
+        source_type: str = "conversation",
+        limit: int = 20,
+    ) -> List[dict]:
+        """Get memories that need consolidation (low consolidation_level)."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT * FROM consolidation_tracker
+                   WHERE source_type = ? AND consolidation_level < 1.0
+                   ORDER BY consolidation_level ASC, created_at DESC
+                   LIMIT ?""",
+                (source_type, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_consolidation_stats(self) -> dict:
+        """Stats for subconscious state encoding."""
+        with self._lock:
+            row = self._conn.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE consolidation_level < 0.3) as unprocessed,
+                    AVG(emotional_charge) FILTER (WHERE consolidation_level < 0.3) as avg_charge,
+                    MAX(emotional_charge) FILTER (WHERE consolidation_level < 0.3) as max_charge,
+                    MIN(created_at) FILTER (WHERE consolidation_level < 0.3) as oldest,
+                    SUM(1.0 - consolidation_level) as total_deficit,
+                    MAX(surprise_factor) FILTER (WHERE consolidation_level < 0.3) as max_surprise,
+                    MAX(tension_level) FILTER (WHERE consolidation_level < 0.3) as max_tension,
+                    COUNT(*) FILTER (WHERE consolidation_level < 0.3 AND
+                        created_at > ?) as recent_important,
+                    COUNT(*) as total
+                FROM consolidation_tracker
+                WHERE source_type = 'conversation'
+            """, (time.time() - 10800,)).fetchone()  # 3h for recent
+        if not row or row["total"] == 0:
+            return {
+                "unprocessed": 0, "avg_charge": 0.0, "max_charge": 0.0,
+                "oldest_age_hours": 0.0, "total_deficit": 0.0,
+                "max_surprise": 0.0, "max_tension": 0.0,
+                "recent_important": 0, "total": 0,
+            }
+        oldest_ts = row["oldest"] or time.time()
+        return {
+            "unprocessed": row["unprocessed"] or 0,
+            "avg_charge": row["avg_charge"] or 0.0,
+            "max_charge": row["max_charge"] or 0.0,
+            "oldest_age_hours": (time.time() - oldest_ts) / 3600,
+            "total_deficit": row["total_deficit"] or 0.0,
+            "max_surprise": row["max_surprise"] or 0.0,
+            "max_tension": row["max_tension"] or 0.0,
+            "recent_important": row["recent_important"] or 0,
+            "total": row["total"],
+        }
+
+    def update_consolidation(self, source_id: str, delta: float = 0.3):
+        """Increase consolidation_level after a reflection."""
+        with self._lock:
+            self._conn.execute(
+                """UPDATE consolidation_tracker
+                   SET consolidation_level = MIN(1.0, consolidation_level + ?),
+                       times_reflected = times_reflected + 1,
+                       last_reflected_at = ?
+                   WHERE source_id = ?""",
+                (delta, time.time(), source_id),
+            )
+            self._conn.commit()
+
+    # ── Conversation Reflection Support ────────────────────────────
+
+    def get_sessions_with_summaries(self, limit: int = 10) -> List[dict]:
+        """Get sessions that have summaries, ordered by recency.
+
+        Used by consciousness daemon for conversation reflection.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT session_id, started_at, ended_at, message_count, summary
+                   FROM sessions
+                   WHERE summary != '' AND summary IS NOT NULL
+                     AND message_count >= 3
+                   ORDER BY started_at DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_conversation_excerpt(
+        self,
+        session_id: str,
+        max_messages: int = 20,
+        max_chars: int = 2000,
+    ) -> str:
+        """Get a compact text excerpt of a conversation for reflection.
+
+        Returns user/frank dialogue as natural text, truncated to budget.
+        """
+        msgs = self.get_session_messages(session_id, limit=max_messages)
+        lines = []
+        chars = 0
+        for m in msgs:
+            if m.get("is_system"):
+                continue
+            role = "Gabriel" if m.get("is_user") else "Frank"
+            text = m["text"]
+            if text == "[archived]":
+                continue
+            if len(text) > 300:
+                text = text[:300] + "..."
+            line = f"{role}: {text}"
+            if chars + len(line) > max_chars:
+                break
+            lines.append(line)
+            chars += len(line) + 1
+        return "\n".join(lines)
+
+    def store_conversation_reflection(
+        self,
+        session_id: str,
+        reflection: str,
+        reflection_type: str = "post_hoc",
+    ):
+        """Store Frank's reflection about a conversation back into chat_memory.
+
+        This enriches conversational memory with meta-knowledge.
+        """
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO conversation_reflections
+                   (session_id, reflection, reflection_type, timestamp, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (session_id, reflection[:1000], reflection_type,
+                 time.time(), datetime.now().isoformat()),
+            )
+            self._conn.commit()
+
+    def get_recent_reflections(self, limit: int = 5) -> List[dict]:
+        """Get recent conversation reflections for context building."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT session_id, reflection, reflection_type, timestamp
+                   FROM conversation_reflections
+                   ORDER BY timestamp DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def backfill_consolidation_tracker(self):
+        """Create consolidation entries for all existing sessions that lack one.
+
+        Safe to call multiple times — uses INSERT OR IGNORE.
+        """
+        with self._lock:
+            sessions = self._conn.execute(
+                """SELECT session_id FROM sessions
+                   WHERE ended_at IS NOT NULL AND message_count >= 3
+                     AND session_id NOT IN (
+                       SELECT source_id FROM consolidation_tracker
+                       WHERE source_type = 'conversation'
+                     )"""
+            ).fetchall()
+        for s in sessions:
+            try:
+                self.populate_consolidation_entry(s["session_id"])
+            except Exception as e:
+                LOG.debug("Backfill skip %s: %s", s["session_id"], e)
 
     def close(self):
         """Close database connection."""

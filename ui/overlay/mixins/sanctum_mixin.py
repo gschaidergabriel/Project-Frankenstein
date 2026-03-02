@@ -70,7 +70,12 @@ class SanctumMixin:
     """Overlay mixin for Inner Sanctum session awareness."""
 
     def _init_sanctum_watcher(self):
-        """Initialize Sanctum polling. Called from __init__ after _build_ui."""
+        """Initialize Sanctum polling. Called from __init__ after _build_ui.
+
+        NOTE: Sanctum sessions are DISABLED (permanent embodiment).
+        Polling is stopped — no lock file will ever be created.
+        All state variables kept for compatibility.
+        """
         self._sanctum_active = False
         self._sanctum_banner = None
         self._sanctum_border = None
@@ -86,7 +91,8 @@ class SanctumMixin:
         self._sanctum_cleanup_after_id = None
         self._sanctum_pixel_labels = []
         self._sanctum_bar_segments = []
-        self.after(_POLL_MS, self._sanctum_poll)
+        # Sanctum sessions disabled — no polling needed
+        # self.after(_POLL_MS, self._sanctum_poll)
 
     def _sanctum_poll(self):
         """Poll sanctum lock file to detect state changes.

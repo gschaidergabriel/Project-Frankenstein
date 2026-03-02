@@ -178,6 +178,8 @@ def _init_db():
     """Initialize analyzer database."""
     ANALYZER_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(ANALYZER_DB))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

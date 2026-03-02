@@ -759,9 +759,9 @@ class AuraHeadless:
             ctx = get_personality_context()
             if ctx and "vectors" in ctx:
                 self.epq_vectors = {k: float(v) for k, v in ctx["vectors"].items()}
-            if ctx and "mood_value" in ctx:
-                self.mood = float(ctx["mood_value"])
-            self.energy_level = 0.5 + self.mood * 0.3  # Derive from mood
+            # Don't overwrite mood from DB [0,1] with E-PQ [-1,1] — keep DB value
+            # self.mood is already set by _fetch_mood() in [0,1] range
+            self.energy_level = 0.5 + (self.mood - 0.5) * 0.6  # Derive from [0,1] mood
         except Exception:
             pass
         if not self.epq_vectors:
@@ -1237,11 +1237,16 @@ def _ensure_tick_thread():
 @app.get("/health")
 async def health():
     _ensure_tick_thread()
+    grid = aura.grid
+    alive = int(grid.sum()) if grid is not None else 0
+    total = grid.size if grid is not None else 0
     return {
         "ok": True,
         "service": "aura-headless",
         "generation": aura.generation,
         "uptime_s": int(time.time() - aura.start_time),
+        "alive_cells": alive,
+        "total_cells": total,
     }
 
 

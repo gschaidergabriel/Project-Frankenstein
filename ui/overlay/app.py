@@ -61,6 +61,7 @@ from overlay.mixins.password_mixin import PasswordMixin
 from overlay.mixins.qr_mixin import QrMixin
 from overlay.mixins.printer_mixin import PrinterMixin
 from overlay.mixins.notification_mixin import NotificationMixin
+from overlay.mixins.sanctum_mixin import SanctumMixin
 from overlay.mixins.log_panel_mixin import LogPanelMixin
 from overlay.mixins.gol_visualizer_mixin import AuraVisualizerMixin
 
@@ -88,6 +89,7 @@ class ChatOverlay(
     QrMixin,
     PrinterMixin,
     NotificationMixin,
+    SanctumMixin,             # Inner Sanctum session awareness
     LogPanelMixin,            # Daemon activity log panel
     AuraVisualizerMixin,  # Inner life visualizer
     AppWorkersMixin,
@@ -326,6 +328,10 @@ class ChatOverlay(
         self._seen_notification_ids = set()
         self.after(25000, self._notification_poll_timer)
         LOG.info("Notification poll timer scheduled")
+
+        # Inner Sanctum session awareness (pixel-art banner + input blocking)
+        self._init_sanctum_watcher()
+        LOG.info("Sanctum watcher initialized")
 
         # WebUI ↔ Overlay chat sync (poll DB for external messages)
         self._webui_sync_last_id = self._get_max_message_id()

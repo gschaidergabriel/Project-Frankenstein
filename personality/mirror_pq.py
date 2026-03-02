@@ -77,7 +77,7 @@ class MirrorPQ:
 
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._state: Optional[MirrorState] = None
         self._ensure_schema()
         self._load_state()

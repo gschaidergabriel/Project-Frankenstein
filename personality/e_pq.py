@@ -220,7 +220,7 @@ class EPQ:
 
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._conn: Optional[sqlite3.Connection] = None
         self._state: Optional[PersonalityState] = None
         self._mood: MoodState = MoodState()

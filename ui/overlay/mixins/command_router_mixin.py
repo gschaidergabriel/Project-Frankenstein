@@ -154,6 +154,10 @@ class CommandRouterMixin:
 
     # ---------- Send Logic ----------
     def _on_send(self):
+        # Block sends while Frank is in the Inner Sanctum
+        if getattr(self, '_sanctum_input_blocked', False):
+            return
+
         msg = self.entry.get().strip()
         if not msg:
             return

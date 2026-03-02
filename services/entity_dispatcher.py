@@ -380,21 +380,23 @@ def all_gates_pass() -> bool:
 
 # ── Session Runner ─────────────────────────────────────────────────────
 
-def _eb_get_mood() -> float:
-    """Experiential Bridge: get current mood from consciousness.db."""
+def _eb_get_mood() -> Optional[float]:
+    """Experiential Bridge: get current mood from consciousness.db.
+    Returns None on failure to avoid spurious mood deltas."""
     try:
         from config.paths import get_db
         cons_db = get_db("consciousness")
-        conn = sqlite3.connect(str(cons_db), timeout=2)
+        conn = sqlite3.connect(str(cons_db), timeout=5)
         try:
+            conn.execute("PRAGMA busy_timeout=5000")
             row = conn.execute(
                 "SELECT mood_value FROM mood_trajectory ORDER BY id DESC LIMIT 1"
             ).fetchone()
-            return row[0] if row else 0.0
+            return row[0] if row else None
         finally:
             conn.close()
     except Exception:
-        return 0.0
+        return None
 
 
 def _eb_record_entity_experience(entity: str, display: str,
@@ -427,6 +429,10 @@ def _eb_record_entity_experience(entity: str, display: str,
             pass
 
         ts = time.time()
+        # Guard against None mood values (DB read failure)
+        if pre_mood is None or post_mood is None:
+            LOG.debug("Mood read failed, skipping experience recording")
+            return
         mood_delta = round(post_mood - pre_mood, 3)
         context = summary[:200] if summary else f"Session with {display}"
         metadata_json = json.dumps({
@@ -436,9 +442,10 @@ def _eb_record_entity_experience(entity: str, display: str,
 
         # 1. Direct activity_log write
         cons_db = str(get_db("consciousness"))
-        conn = sqlite3.connect(cons_db, timeout=5)
+        conn = sqlite3.connect(cons_db, timeout=10)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=10000")
             conn.execute(
                 "INSERT INTO activity_log "
                 "(timestamp, activity_type, source, name, success, context, "
@@ -594,7 +601,7 @@ def main():
             try:
                 _lock_data = json.loads(_sanctum_lock.read_text())
                 _lock_age = time.time() - _lock_data.get("start", 0)
-                if _lock_age < 1800.0:  # 30 min = max duration * 2
+                if _lock_age < 7200.0:  # 2h = max duration (3600s) * 2
                     _sanctum_active = True
                 else:
                     LOG.warning("Stale sanctum lock (age=%.0fs) — removing", _lock_age)

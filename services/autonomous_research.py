@@ -635,6 +635,11 @@ class AutonomousResearch:
     def _llm_call(self, text: str, max_tokens: int = 200,
                   system: str = "") -> str:
         """LLM call via router, same pattern as consciousness daemon."""
+        # Skip RLM during active sanctum to avoid GPU contention
+        from pathlib import Path
+        if Path("/tmp/frank/sanctum_active.lock").exists():
+            LOG.debug("Research LLM skipped: sanctum active")
+            return ""
         try:
             payload = json.dumps({
                 "text": text,

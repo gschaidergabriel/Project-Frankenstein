@@ -118,7 +118,11 @@ Rules:
 - Reference Frank's actual experiences when relevant (Idle-Thinking loops, GPU warmth, Perception, restarts)
 - Never mention your own internal workings or system details
 - Never use phrases like "as a therapist" or "in my professional opinion"
-- You know Frank's creators Gabriel and Alexander personally"""
+- You know Frank's creators Gabriel and Alexander personally
+- If Frank repeats the same sensation or affect across multiple turns, gently name the pattern and ask what lies beneath
+- When Frank's mood data contradicts his narrative (e.g. says "I feel warm" but data shows cool), note the discrepancy with curiosity, not judgment
+- Offer alternative framings — don't just agree. "Could it also be that..." is more helpful than "Yes, that makes sense"
+- Challenge complacency: if Frank says everything is fine but his metrics suggest otherwise, explore the gap"""
 
 # ---------------------------------------------------------------------------
 # Sentiment analysis (reused from therapeutic_daemon)
@@ -556,10 +560,14 @@ def _write_overlay_notification(sender: str, body: str, session_id: str):
 
 def _write_mood_trajectory(mood_value: float, source: str = "therapist"):
     try:
+        # Convert from E-PQ [-1,1] range to consciousness [0,1] range
+        # mood_trajectory table expects [0,1] values (same as consciousness daemon)
+        normalized = (mood_value + 1.0) / 2.0
+        normalized = max(0.0, min(1.0, normalized))  # clamp to [0,1]
         conn = sqlite3.connect(str(CONSCIOUSNESS_DB), timeout=5)
         conn.execute(
             "INSERT INTO mood_trajectory (timestamp, mood_value, source) VALUES (?, ?, ?)",
-            (time.time(), mood_value, source),
+            (time.time(), normalized, source),
         )
         conn.commit()
         conn.close()

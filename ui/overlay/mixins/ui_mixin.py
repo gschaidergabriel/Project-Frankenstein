@@ -745,8 +745,7 @@ class UiMixin:
             import urllib.request
             checks = {
                 "Core":  ["http://127.0.0.1:8088/health"],
-                "LLM":   ["http://127.0.0.1:8101/health",
-                           "http://127.0.0.1:8102/health"],
+                "LLM":   ["http://127.0.0.1:8101/health"],
                 "Tools": ["http://127.0.0.1:8096/health"],
             }
             results = {}

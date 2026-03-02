@@ -643,19 +643,19 @@ class QUBOBuilder:
         old_surp = old_state.surprise_level > 0.3
         new_surp = new_state.surprise_level > 0.3
         if old_surp != new_surp:
-            h[36] = (-0.3 - 0.3 * new_state.surprise_level) if new_surp else 0.1
+            h[36] = (-0.3 - 0.3 * new_state.surprise_level) if new_surp else 3.0
             changed_indices.add(36)
 
         # Confidence threshold crossing?
         old_conf = old_state.confidence_anchor > 0.6
         new_conf = new_state.confidence_anchor > 0.6
         if old_conf != new_conf:
-            h[37] = -0.4 if new_conf else 0.1
+            h[37] = -0.4 if new_conf else 3.0
             changed_indices.add(37)
 
         # Goal urgency?
         if old_state.has_urgent_goal != new_state.has_urgent_goal:
-            h[38] = -0.5 if new_state.has_urgent_goal else 0.1
+            h[38] = -0.5 if new_state.has_urgent_goal else 3.0
             changed_indices.add(38)
 
         # AURA anomaly?

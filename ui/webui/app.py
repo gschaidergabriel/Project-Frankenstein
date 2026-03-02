@@ -34,7 +34,7 @@ AURA_URL = "http://127.0.0.1:8098"
 QUANTUM_URL = "http://127.0.0.1:8097"
 WHISPER_URL = "http://127.0.0.1:8103"
 LLM_RLM_URL = "http://127.0.0.1:8101"     # DeepSeek-R1 (GPU, reasoning/idle)
-LLM_CHAT_URL = "http://127.0.0.1:8102"    # Llama-3.1 (GPU, chat)
+LLM_CHAT_URL = "http://127.0.0.1:8101"    # DeepSeek-R1 (single RLM)
 LLM_MICRO_URL = "http://127.0.0.1:8105"   # Qwen-3B (CPU, background)
 
 from config.paths import DB_DIR, TEMP_FILES

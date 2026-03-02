@@ -105,7 +105,7 @@ DREAM_LLM_SYSTEM = (
 
 # E-PQ homeostasis targets during dreaming
 HOMEOSTASIS_TARGETS = {
-    "mood_buffer": 0.5,
+    "mood_buffer": 0.0,
     "precision_val": 0.5,
     "risk_val": 0.0,
     "empathy_val": 0.7,
@@ -586,6 +586,11 @@ class DreamDaemon:
         if self._is_gaming_active():
             return False
 
+        # Don't dream during sanctum or entity sessions (RLM contention)
+        from pathlib import Path
+        if Path("/tmp/frank/sanctum_active.lock").exists():
+            return False
+
         status = self._get_current_status()
 
         # If paused, check resume conditions (lower idle threshold)
@@ -1054,13 +1059,22 @@ class DreamDaemon:
         # Write to consciousness.db
         try:
             conn = sqlite3.connect(str(CONSCIOUSNESS_DB_PATH), timeout=10.0)
+            conn.execute("PRAGMA busy_timeout=10000")
             now = time.time()
+            # Read current mood for accurate reflection metadata
+            try:
+                row = conn.execute(
+                    "SELECT mood_value FROM mood_trajectory ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                current_mood = row[0] if row else 0.5
+            except Exception:
+                current_mood = 0.5
             for ref in reflections[:5]:
                 if isinstance(ref, str) and ref.strip():
                     conn.execute(
                         "INSERT INTO reflections (timestamp, trigger, content, "
                         "mood_before, mood_after, reflection_depth) VALUES (?, ?, ?, ?, ?, ?)",
-                        (now, "dream", ref.strip(), 0.0, 0.0, 2),
+                        (now, "dream", ref.strip(), current_mood, current_mood, 2),
                     )
             conn.commit()
             conn.close()
@@ -1076,18 +1090,20 @@ class DreamDaemon:
         try:
             from personality.e_pq import get_epq
             epq = get_epq()
-            state = epq.get_state()
 
-            for dim, target in HOMEOSTASIS_TARGETS.items():
-                current = getattr(state, dim, None)
-                if current is not None:
-                    new_val = current + (target - current) * DREAM_HOMEOSTASIS_RATE
-                    new_val = max(-1.0, min(1.0, new_val))
-                    setattr(state, dim, new_val)
+            with epq._lock:
+                state = epq._state
+                if state is None:
+                    return
 
-            # Save updated state
-            epq._state = state
-            epq._save_state("dream_homeostasis")
+                for dim, target in HOMEOSTASIS_TARGETS.items():
+                    current = getattr(state, dim, None)
+                    if current is not None:
+                        new_val = current + (target - current) * DREAM_HOMEOSTASIS_RATE
+                        new_val = max(-1.0, min(1.0, new_val))
+                        setattr(state, dim, new_val)
+
+                epq._save_state("dream_homeostasis")
             LOG.info("Applied dream homeostasis to E-PQ vectors")
         except Exception as e:
             LOG.warning("Failed to apply homeostasis: %s", e)
@@ -1403,6 +1419,15 @@ if __name__ == "__main__":
         n.notify("READY=1")
     except ImportError:
         pass
+
+    import signal as _sig
+
+    def _sigterm_handler(signum, frame):
+        LOG.info("Received SIGTERM, shutting down gracefully...")
+        daemon.stop()
+        sys.exit(0)
+
+    _sig.signal(_sig.SIGTERM, _sigterm_handler)
 
     try:
         while True:

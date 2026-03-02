@@ -137,6 +137,7 @@ class GenesisDaemon:
         self.running = False
         self.tick_count = 0
         self.last_state_change = datetime.now()
+        self._last_downgrade_time: Optional[datetime] = None  # S2-06: upgrade cooldown after downgrade
 
         # Current crystal being presented
         self.current_crystal: Optional[Crystal] = None
@@ -181,6 +182,9 @@ class GenesisDaemon:
         # Notify systemd we're ready
         sd_notify("READY=1")
         sd_notify(f"STATUS=Genesis starting in {self.state.value} state")
+
+        # S2-06: Reset hysteresis timer to loop start (not __init__ time)
+        self.last_state_change = datetime.now()
 
         # Main loop
         self._main_loop()
@@ -351,15 +355,26 @@ class GenesisDaemon:
             system_load = metrics.get("cpu", 0.5)
 
         # Hysteresis: time in current state
-        time_in_state = (datetime.now() - self.last_state_change).total_seconds()
+        now = datetime.now()
+        time_in_state = (now - self.last_state_change).total_seconds()
         can_downgrade = time_in_state >= self._MIN_STATE_DURATION_S
+
+        # S2-06: Upgrade cooldown after downgrade — prevent immediate re-upgrade
+        # that defeats the purpose of the downgrade (e.g. active→awakening→active bounce)
+        _UPGRADE_COOLDOWN_S = 5.0
+        can_upgrade = True
+        if self._last_downgrade_time is not None:
+            since_downgrade = (now - self._last_downgrade_time).total_seconds()
+            if since_downgrade < _UPGRADE_COOLDOWN_S:
+                can_upgrade = False
 
         # State transition logic
         old_state = self.state
 
         if self.state == ContemplationState.DORMANT:
-            # Upgrade: always immediate
-            if (activation > self.config.stirring_threshold and
+            # Upgrade: immediate (but respects post-downgrade cooldown)
+            if (can_upgrade and
+                activation > self.config.stirring_threshold and
                 not user_active and
                 system_load < self.config.max_cpu_for_awakening):
                 self.state = ContemplationState.STIRRING
@@ -368,16 +383,16 @@ class GenesisDaemon:
             # Downgrade: only after min duration
             if can_downgrade and (user_active or system_load > self.config.max_cpu_for_awakening):
                 self.state = ContemplationState.DORMANT
-            # Upgrade: always immediate
-            elif activation > self.config.awakening_threshold:
+            # Upgrade: immediate (but respects post-downgrade cooldown)
+            elif can_upgrade and activation > self.config.awakening_threshold:
                 self.state = ContemplationState.AWAKENING
 
         elif self.state == ContemplationState.AWAKENING:
             # Downgrade: only after min duration
             if can_downgrade and (user_active or system_load > self.config.max_cpu_for_active):
                 self.state = ContemplationState.STIRRING
-            # Upgrade: always immediate
-            elif activation > self.config.active_threshold:
+            # Upgrade: immediate (but respects post-downgrade cooldown)
+            elif can_upgrade and activation > self.config.active_threshold:
                 self.state = ContemplationState.ACTIVE
 
         elif self.state == ContemplationState.ACTIVE:
@@ -402,6 +417,13 @@ class GenesisDaemon:
             LOG.info(f"State: {old_state.value} → {self.state.value} "
                     f"(activation={activation:.2f})")
             self.last_state_change = datetime.now()
+            # S2-06: Track downgrades to apply upgrade cooldown
+            _STATE_ORDER = {
+                ContemplationState.DORMANT: 0, ContemplationState.STIRRING: 1,
+                ContemplationState.AWAKENING: 2, ContemplationState.ACTIVE: 3,
+            }
+            if _STATE_ORDER.get(self.state, 0) < _STATE_ORDER.get(old_state, 0):
+                self._last_downgrade_time = self.last_state_change
             self.stats["state_history"].append({
                 "time": datetime.now().isoformat(),
                 "from": old_state.value,

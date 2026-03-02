@@ -1625,7 +1625,11 @@ class AuraVisualizerMixin:
             if epq:
                 new_state["epq_vectors"] = epq
             mood_val = meta.get("mood", 0.0)
-            new_state["mood_buffer"] = abs(mood_val) if mood_val is not None else 0.5
+            # mood_val from headless is E-PQ mood_buffer [-1,1] — convert to [0,1]
+            if mood_val is not None:
+                new_state["mood_buffer"] = max(0.0, min(1.0, (mood_val + 1.0) / 2.0))
+            else:
+                new_state["mood_buffer"] = 0.5
             cohr = meta.get("coherence", 0.5)
             new_state["coherence"] = max(0.0, min(1.0, cohr)) if cohr else 0.5
             new_state["cpu_temp"] = meta.get("hw_temp", 0)

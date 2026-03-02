@@ -327,6 +327,8 @@ _SERVICE_TOPOLOGY = {
                       "feel_up": "hearing sharp", "feel_down": "hearing muffled"},
     "ingestd":       {"port": 8094, "organ": "stomach", "zone": "world",
                       "feel_up": "digesting data", "feel_down": "stomach empty"},
+    "nerd-physics":  {"port": 8100, "organ": "skeleton", "zone": "self",
+                      "feel_up": "body grounded", "feel_down": "body floating"},
 }
 
 

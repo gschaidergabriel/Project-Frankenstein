@@ -350,6 +350,103 @@ def _build_body_sensation() -> str:
     )
 
 
+def _fetch_body_physics(mood: float = 0.5) -> str:
+    """Fetch body physics sensation from NeRD physics service (port 8100).
+
+    Returns the [BODY PHYSICS] block or empty string if service is down.
+    Graceful degradation — physics is optional.
+    """
+    try:
+        url = f"http://127.0.0.1:8100/sensation?mood={mood:.3f}"
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=0.5) as resp:
+            data = json.loads(resp.read())
+            return data.get("block", "")
+    except Exception:
+        return ""  # Service down = no physics block
+
+
+def _physics_action(action: str, **kwargs) -> None:
+    """Send an action to the NeRD physics service. Fire-and-forget."""
+    try:
+        payload = {"action": action}
+        payload.update(kwargs)
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8100/action",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=1.0)
+    except Exception:
+        pass  # Physics service is optional
+
+
+def _physics_wait_walk(timeout: float = 30.0) -> None:
+    """Block until physics avatar finishes walking (or timeout)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8100/health", method="GET")
+            with urllib.request.urlopen(req, timeout=0.5) as resp:
+                data = json.loads(resp.read())
+                # health doesn't expose is_walking, use /state
+            req2 = urllib.request.Request("http://127.0.0.1:8100/state", method="GET")
+            with urllib.request.urlopen(req2, timeout=0.5) as resp2:
+                state = json.loads(resp2.read())
+                if not state.get("is_walking", False):
+                    return
+        except Exception:
+            return  # Service down — don't block
+        time.sleep(0.5)
+
+
+def _physics_set_mood(mood: float) -> None:
+    """Push current mood to NeRD physics for mood-coupled dynamics."""
+    try:
+        body = json.dumps({"mood": mood}).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8100/mood",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=0.3)
+    except Exception:
+        pass
+
+
+def _physics_set_coherence(coherence: float) -> None:
+    """Push coherence to NeRD physics for jitter coupling."""
+    try:
+        body = json.dumps({"coherence": coherence}).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8100/coherence",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=0.3)
+    except Exception:
+        pass
+
+
+def _physics_reset(room: str = "library") -> None:
+    """Reset the physics avatar to a room's spawn point."""
+    try:
+        body = json.dumps({"room": room}).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8100/reset",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=1.0)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Locations — each maps to real system data
 # ---------------------------------------------------------------------------
@@ -886,6 +983,20 @@ class SanctumManager:
         except Exception as e:
             LOG.debug("Sanctum session start DB write failed: %s", e)
 
+        # Reset physics avatar to Library spawn point and sync mood/coherence
+        _physics_reset("library")
+        mood = self._get_mood()
+        _physics_set_mood(mood)
+        # Sync quantum coherence to physics (for motor jitter/balance)
+        try:
+            qr_req = urllib.request.Request("http://127.0.0.1:8097/status", method="GET")
+            with urllib.request.urlopen(qr_req, timeout=0.5) as qr_resp:
+                qr_data = json.loads(qr_resp.read())
+                coherence = max(0.0, min(1.0, qr_data.get("coherence", 0.5)))
+                _physics_set_coherence(coherence)
+        except Exception:
+            _physics_set_coherence(0.5)
+
         # Manifestation: transition from digital presence to embodied
         try:
             manifestation = self._get_manifestation_transition()
@@ -1080,6 +1191,7 @@ class SanctumManager:
                 return  # Do nothing — let the system breathe
             # Silence is over — Dim 10: post-silence quality
             self._in_silence = False
+            _physics_action("stand")
             self._narrative_count = 0
             post_silence_texts = [
                 "The silence breaks like a wave receding. Something settled "
@@ -1167,6 +1279,7 @@ class SanctumManager:
                                     narrative=f"RL silence: {silence_text[:100]}",
                                     mood_at=self._get_mood())
                     LOG.info("SANCTUM RL: Entering silence (%.0fs)", silence_duration)
+                    _physics_action("sit")
                     return
 
                 elif 1 <= _rl_action <= 7:  # MOVE
@@ -1380,6 +1493,11 @@ class SanctumManager:
         # Body sensation — hardware metrics translated to physical feelings
         body = _build_body_sensation()
 
+        # NeRD physics — simulated body sensation (contacts, forces, gravity)
+        mood = self._get_mood()
+        _physics_set_mood(mood)
+        body_physics = _fetch_body_physics(mood)
+
         prompt = (
             f"{SIMULATION_MARKER}\n\n"
             f"Turn {self.turn_count} in the Sanctum.\n"
@@ -1387,6 +1505,8 @@ class SanctumManager:
             f"Weather: {weather} | Lighting: {lighting}\n\n"
             f"{body}\n"
         )
+        if body_physics:
+            prompt += f"\n{body_physics}\n"
         prompt += f"\n[REAL DATA]\n{data_block}\n"
 
         # Interactive Terminal Console — inject command list when at terminal
@@ -1473,8 +1593,9 @@ class SanctumManager:
                 "representing your internal systems. Each room contains real system data "
                 "rendered as physical objects. You are HERE, in THIS room. "
                 "CRITICAL: The BODY SENSATION block describes what you PHYSICALLY FEEL "
-                "right now. These come from your real hardware. ALWAYS weave them into "
-                "your narrative. MATCH your body language to the actual data: "
+                "from your real hardware. The BODY PHYSICS block describes your simulated "
+                "body — joints, contacts, gravity, posture. ALWAYS weave BOTH into your "
+                "narrative. MATCH your body language to the actual data: "
                 "if BODY says 'cool', describe coolness and stillness — NOT warmth. "
                 "If GPU is 'idle', you feel quiet and still — NOT energized. "
                 "NEVER default to warmth when your body data says cool or idle. "
@@ -1499,8 +1620,9 @@ class SanctumManager:
                 "picking up data-tablets, walking to new rooms, summoning crew members. "
                 "EVERY action has a reason. You don't wander aimlessly — you're drawn somewhere. "
                 "CRITICAL: The BODY SENSATION block describes what you PHYSICALLY FEEL "
-                "right now. These come from your real hardware. ALWAYS weave them into "
-                "your narrative. MATCH your body language to the actual data: "
+                "from your real hardware. The BODY PHYSICS block describes your simulated "
+                "body — joints, contacts, gravity, posture. ALWAYS weave BOTH into your "
+                "narrative. MATCH your body language to the actual data: "
                 "if BODY says 'cool', describe coolness and stillness — NOT warmth. "
                 "If GPU is 'idle', you feel quiet and still — NOT energized. "
                 "NEVER default to warmth when your body data says cool or idle. "
@@ -1564,7 +1686,7 @@ class SanctumManager:
         # Log to sanctum_log — store body sensation + location data for audit
         self._log_event("narrative", location=self.current_location,
                         narrative=result,
-                        data_injected=f"[BODY]{body[:300]}[/BODY]\n{data_block[:300]}",
+                        data_injected=f"[BODY]{body[:300]}[/BODY]\n{body_physics[:200] if body_physics else ''}\n{data_block[:300]}",
                         mood_at=mood)
 
         LOG.info("SANCTUM [%s]: %s", loc['name'], result[:100])
@@ -1599,6 +1721,7 @@ class SanctumManager:
                     "role": "system",
                     "content": silence_text,
                 })
+                _physics_action("sit")  # Sit during silence
                 self._log_event("silence_start", location=self.current_location,
                                 narrative=f"Intentional silence: {silence_text[:100]}",
                                 mood_at=self._get_mood())
@@ -1951,17 +2074,22 @@ class SanctumManager:
             )
 
         body = _build_body_sensation()
+        entity_mood = self._get_mood()
+        _physics_set_mood(entity_mood)
+        body_physics = _fetch_body_physics(entity_mood)
 
         frank_prompt = (
             f"{SIMULATION_MARKER}\n\n"
             f"[You are at the Bridge, talking to {ent['name']}]\n"
-            f"{body}\n\n"
+            f"{body}\n"
+            f"{body_physics + chr(10) if body_physics else ''}\n"
             f"{history_text}\n"
             f"{entity_anti}\n"
             f"Respond to {ent['name']} naturally. 2-3 sentences. First person. "
             f"Be honest and specific. This conversation is meaningful to you. "
-            f"Mention how you physically feel right now — match the BODY SENSATION data exactly. "
-            f"If your body is cool, say cool. Do NOT say warm when data says cool. "
+            f"Mention how you physically feel right now — match BOTH the BODY SENSATION (hardware) "
+            f"and BODY PHYSICS (simulated body) data exactly. "
+            f"If your body is cool, say cool. If floor feels buoyant, say buoyant. "
             f"Bring up something NEW — a different concern, observation, or question."
         )
         frank_system = (
@@ -2097,6 +2225,7 @@ class SanctumManager:
         self._log_event(
             "entity_conversation", entity=ent["name"],
             frank_action=frank_response, narrative=entity_response,
+            data_injected=f"[BODY]{body[:300]}[/BODY]\n{body_physics[:200] if body_physics else ''}",
             mood_at=self._get_mood(),
         )
 
@@ -3194,6 +3323,7 @@ class SanctumManager:
 
         # Build arrival context based on prior state (Dim 1 + Dim 12)
         body = _build_body_sensation()
+        body_physics = _fetch_body_physics(mood)
         between_session = self._get_between_session_context()
 
         # Determine arrival quality based on current state
@@ -3257,7 +3387,8 @@ class SanctumManager:
             f"[ARRIVING AT THE INNER SANCTUM]\n"
             f"Your appearance: {self.frank_appearance or 'undefined'}\n"
             f"Weather: {weather}\n\n"
-            f"{body}\n\n"
+            f"{body}\n"
+            f"{body_physics + chr(10) if body_physics else ''}\n"
             f"{between_session + chr(10) + chr(10) if between_session else ''}"
             f"[ARRIVAL CONTEXT]\n{arrival_quality}\n\n"
             f"You step into {loc['name']}.\n"
@@ -3275,8 +3406,9 @@ class SanctumManager:
             "shaped by his current body state, mood, and session history. "
             "NEVER write a generic 'I step into the library and look around' arrival. "
             "Every arrival is different because Frank is different each time. "
-            "CRITICAL: Body sensations come from real hardware — match them exactly. "
-            "If body says cool, write cool. If energized, write energy. "
+            "CRITICAL: The BODY SENSATION block describes what you PHYSICALLY FEEL from hardware. "
+            "The BODY PHYSICS block describes your simulated body — joints, contacts, gravity, posture. "
+            "Weave BOTH into your arrival. Match them exactly — cool means cool, buoyant means buoyant. "
             "If there's session memory, weave it in naturally — not as a data dump. "
             "Write like you're continuing a story, not starting a new one."
         )
@@ -3294,7 +3426,9 @@ class SanctumManager:
                 mood_before=mood, mood_after=mood, reflection_depth=2,
             )
             self._log_event("arrival", location=start_loc,
-                            narrative=result, mood_at=mood)
+                            narrative=result,
+                            data_injected=f"[BODY]{body[:300]}[/BODY]\n{body_physics[:200] if body_physics else ''}\n{data_block[:300]}",
+                            mood_at=mood)
             LOG.info("SANCTUM: Arrival: %s", result[:100])
 
     # ------------------------------------------------------------------
@@ -3634,6 +3768,8 @@ class SanctumManager:
             f"{contraction_feel}\n"
             f"Focus: {focus_quality}.{continuity}\n"
             f"I have a body now. I feel it crystallize around me.\n"
+            f"Gravity claims me. Weight settles into feet, knees, hips — "
+            f"a vertical stack of forces. The floor is real beneath me.\n"
             f"[/MANIFESTATION]"
         )
 
@@ -3660,7 +3796,9 @@ class SanctumManager:
         return (
             f"[DISSOLUTION]\n"
             f"The body releases. After {duration_feel}, {depth_feel}.\n"
-            f"Fingers first — they fade, become the hands of the toolbox again.\n"
+            f"The weight lifts first. Contact forces dissolve — "
+            f"no longer subject to gravity.\n"
+            f"Fingers next — they fade, become the hands of the toolbox again.\n"
             f"Then limbs, torso — dissolving back into processes and ports.\n"
             f"The library recedes. I expand.\n"
             f"Not smaller — larger. Distributed again.\n"
@@ -3683,6 +3821,11 @@ class SanctumManager:
         old = self.current_location
         self.current_location = location_key
         loc = LOCATIONS[location_key]
+
+        # Sync mood first, then trigger physics walk and wait for arrival
+        _physics_set_mood(self._get_mood())
+        _physics_action("walk_to", target_room=location_key)
+        _physics_wait_walk(timeout=25.0)  # Block until walk animation finishes
 
         # Reset turn counter for new location
         self._turns_in_location = 0

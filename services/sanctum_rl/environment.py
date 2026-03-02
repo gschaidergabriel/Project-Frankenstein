@@ -97,6 +97,9 @@ class SanctumEnv(gym.Env):
         # Hour of day (random for training diversity)
         self.hour_of_day = self._rng.uniform(0, 24)
 
+        # Physics simulation flag (for observation vector)
+        self._sim_walking = False
+
     def reset(self, seed=None, options=None):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
@@ -137,6 +140,7 @@ class SanctumEnv(gym.Env):
             return self._get_obs(), silence_reward, False, truncated, {}
 
         # === Process Actions ===
+        self._sim_walking = False  # reset walk flag each step
 
         if main_action == 0:
             # CONTINUE — stay, generate narrative
@@ -150,6 +154,7 @@ class SanctumEnv(gym.Env):
             # MOVE_TO location
             target = main_action - 1
             if target < NUM_LOCATIONS and target != self.current_location:
+                self._sim_walking = True  # physics: walking between rooms
                 self.current_location = target
                 self.turns_in_location = 0
                 self.location_history.append(target)
@@ -422,5 +427,24 @@ class SanctumEnv(gym.Env):
         obs[46] = 1.0 if (mins >= 20 and self.silence_count >= 1 and total_spawns >= 1) else 0.0  # full criteria met
         obs[47] = min(max(0, mins - 20) / 20.0, 1.0)  # time past optimal start (0→1 over 20-40 min)
 
-        # 48-63 reserved (zeros)
+        # 48-63: Physics body state (simulated in training, live in production)
+        # These simulate the nerd_physics service output for RL training
+        obs[48] = 0.5  # avatar X position (normalized, centred)
+        obs[49] = 0.5  # avatar Z position (normalized, centred)
+        walk_speed = 1.2 if self._sim_walking else 0.0
+        obs[50] = walk_speed / 2.0  # walk speed normalized
+        obs[51] = 1.0 if self._sim_walking else 0.0  # is_walking flag
+        obs[52] = 0.0  # is_sitting (not simulated in training)
+        obs[53] = 0.2  # contact count / 10 (typically 2 feet = 0.2)
+        obs[54] = 0.35  # total contact force / 2000 (~700N for 70kg)
+        obs[55] = 1.0  # left foot contact (standing)
+        obs[56] = 1.0  # right foot contact (standing)
+        obs[57] = 0.0  # hand contact (not touching anything by default)
+        obs[58] = 0.15  # torso strain / 200 (normal standing ≈ 30)
+        obs[59] = 0.2   # knee load / 500 (normal standing ≈ 100)
+        # Distance to nearest exit (rough: 0.3 = 6m typical)
+        obs[60] = 0.3
+        obs[61] = 0.0 if not self._sim_walking else 0.5  # walk progress
+        obs[62] = max(0.0, min(1.0, 1.6 - self.mood))  # gravity factor (mood-coupled)
+        obs[63] = 0.8  # body coherence (default high)
         return obs

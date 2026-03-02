@@ -96,6 +96,7 @@ DB_PATHS = {
     "aura_analyzer": DB_DIR / "aura_analyzer.db",
     "experiment_lab": DB_DIR / "experiment_lab.db",
     "hypothesis_engine": DB_DIR / "hypothesis_engine.db",
+    "nerd_physics": DB_DIR / "nerd_physics.db",
     "aicore": DB_DIR / "aicore.sqlite",
 }
 

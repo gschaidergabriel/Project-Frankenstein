@@ -7,11 +7,13 @@ Falls back to heuristic behavior if model is missing.
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import time
+import urllib.request
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -27,6 +29,10 @@ DEFAULT_MODEL_PATH = Path.home() / ".local" / "share" / "frank" / "models" / "sa
 
 class SanctumPolicy:
     """Trained RL policy for sanctum behavior decisions."""
+
+    _physics_cache: Optional[Dict] = None
+    _physics_cache_ts: float = 0.0
+    _PHYSICS_CACHE_TTL: float = 5.0  # seconds
 
     def __init__(self, model_path: Path = DEFAULT_MODEL_PATH):
         self._model = SanctumMLP()
@@ -171,6 +177,39 @@ class SanctumPolicy:
         obs[46] = 1.0 if (mins >= 20 and silence_count >= 1 and total_spawns >= 1) else 0.0
         obs[47] = min(max(0, mins - 20) / 20.0, 1.0)
 
+        # 48-63: Physics body state from NeRD physics service
+        physics = self._get_cached_physics()
+        if physics:
+            obs[48] = physics.get("root_x", 0.5)
+            obs[49] = physics.get("root_z", 0.5)
+            obs[50] = physics.get("walk_speed", 0.0) / 2.0
+            obs[51] = 1.0 if physics.get("is_walking", False) else 0.0
+            obs[52] = 1.0 if physics.get("is_sitting", False) else 0.0
+            obs[53] = physics.get("num_contacts", 2) / 10.0
+            obs[54] = physics.get("total_force", 700.0) / 2000.0
+            obs[55] = 1.0 if physics.get("l_foot_contact", True) else 0.0
+            obs[56] = 1.0 if physics.get("r_foot_contact", True) else 0.0
+            obs[57] = 1.0 if physics.get("hand_contact", False) else 0.0
+            obs[58] = physics.get("torso_strain", 30.0) / 200.0
+            obs[59] = physics.get("knee_load", 100.0) / 500.0
+            obs[60] = 0.3  # distance to exit (not tracked yet)
+            obs[61] = physics.get("walk_progress", 0.0)
+            obs[62] = max(0.0, min(1.0, 1.6 - mood))  # gravity factor
+            obs[63] = 0.8  # body coherence default
+        else:
+            # Default standing values when physics service is down
+            obs[48] = 0.5   # root_x centred
+            obs[49] = 0.5   # root_z centred
+            obs[53] = 0.2   # num_contacts / 10 (2 feet)
+            obs[54] = 0.35  # total_force / 2000 (~700N)
+            obs[55] = 1.0   # l_foot contact
+            obs[56] = 1.0   # r_foot contact
+            obs[58] = 0.15  # torso strain (~30)
+            obs[59] = 0.2   # knee load (~100)
+            obs[60] = 0.3   # distance to exit
+            obs[62] = max(0.0, min(1.0, 1.6 - mood))  # gravity factor
+            obs[63] = 0.8   # body coherence
+
         return obs
 
     def _get_action_mask(self, manager) -> torch.BoolTensor:
@@ -226,6 +265,45 @@ class SanctumPolicy:
             mask[8] = False
 
         return mask
+
+    def _get_cached_physics(self) -> Optional[Dict]:
+        """Fetch physics state with 5s TTL cache. Returns None if service is down."""
+        now = time.time()
+        if self._physics_cache is not None and (now - self._physics_cache_ts) < self._PHYSICS_CACHE_TTL:
+            return self._physics_cache
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8100/state", method="GET")
+            with urllib.request.urlopen(req, timeout=0.5) as resp:
+                data = json.loads(resp.read())
+            # Normalize root position to [0, 1] range (rooms span roughly -20 to +20)
+            root_pos = data.get("root_pos", [0, 0, 0])
+            # Extract contact details
+            contacts = data.get("contacts", [])
+            l_foot = any(c["link"] == "l_foot" for c in contacts)
+            r_foot = any(c["link"] == "r_foot" for c in contacts)
+            hand_contact = any("hand" in c["link"] for c in contacts)
+            total_force = sum(c.get("force", 0) for c in contacts)
+            torso_strain = abs(data.get("torques", [0.0] * 19)[2]) if len(data.get("torques", [])) > 2 else 30.0
+            knee_load = sum(abs(data["torques"][i]) for i in [13, 17]) if len(data.get("torques", [])) > 17 else 100.0
+            self._physics_cache = {
+                "root_x": (root_pos[0] + 20) / 40.0,  # normalize -20..+20 to 0..1
+                "root_z": (root_pos[2] + 20) / 40.0,
+                "walk_speed": data.get("walk_speed", 0.0),
+                "is_walking": data.get("is_walking", False),
+                "is_sitting": data.get("is_sitting", False),
+                "num_contacts": data.get("num_contacts", 2),
+                "total_force": total_force,
+                "l_foot_contact": l_foot,
+                "r_foot_contact": r_foot,
+                "hand_contact": hand_contact,
+                "torso_strain": torso_strain,
+                "knee_load": knee_load,
+                "walk_progress": data.get("walk_progress", 0.0),
+            }
+            self._physics_cache_ts = now
+            return self._physics_cache
+        except Exception:
+            return None
 
     def _heuristic_decide(self, manager) -> Tuple[int, int]:
         """

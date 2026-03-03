@@ -2866,7 +2866,9 @@ class ConsciousnessDaemon:
             pass
 
         # AURA coherence
-        aura_coh = getattr(self, '_cached_aura_state', {}).get('coherence', 0.5)
+        # _cached_aura_state is a str summary, not dict; coherence from QR cache
+        _qr = getattr(self, '_cached_qr_state', {})
+        aura_coh = _qr.get('coherence', 0.5) if isinstance(_qr, dict) else 0.5
 
         # Temporal
         now = time.time()
@@ -2942,7 +2944,7 @@ class ConsciousnessDaemon:
             chat_count_today=getattr(self, '_chat_count_today', 0),
             entity_count_today=0,
             idle_thought_count=self._idle_think_count,
-            user_present=self._user_present,
+            user_present=(self._get_mouse_idle_s() < 300),
             hours_uptime=(now - getattr(self, '_start_ts', now)) / 3600,
             unprocessed_conversations=consol.get("unprocessed", 0),
             avg_emotional_charge=consol.get("avg_charge", 0.0),
@@ -3265,7 +3267,7 @@ class ConsciousnessDaemon:
             "mood_value": self._current_workspace.mood_value,
             "mood_label": "neutral",
             "mood_trend": "stable",
-            "user_present": self._user_present,
+            "user_present": (self._get_mouse_idle_s() < 300),
             "current_room": self._spatial.current_room if self._spatial else "library",
             "services_up": [],
             "services_down": [],

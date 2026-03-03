@@ -511,6 +511,13 @@ class ConsciousnessDaemon:
         self._chat_memory_db = None         # Lazy-loaded ChatMemoryDB
         self._last_subconscious_state: Optional[any] = None
 
+        # --- ACC Monitor ---
+        self._acc_monitor = None           # Lazy-loaded
+        self._acc_cached_aura_json = None  # AURA zone JSON for ACC
+
+        # --- Thalamus (sensory gating) ---
+        self._thalamus = None  # Lazy-loaded
+
         # --- Genesis Proposal Review ---
         self._last_proposal_review_ts: float = 0.0
         self._proposal_review_count_today: int = 0
@@ -668,6 +675,15 @@ class ConsciousnessDaemon:
         except Exception:
             pass
 
+        # 9. ACC conflict state — second-order self-monitoring (skip in slim)
+        if not slim:
+            try:
+                _acc_res = self._acc_monitor.last_result if self._acc_monitor else None
+                if _acc_res and _acc_res.proprio_line:
+                    parts.append(_acc_res.proprio_line)
+            except Exception:
+                pass
+
         return "[PROPRIO] " + " | ".join(parts)
 
     def _check_port(self, port: int) -> bool:
@@ -751,6 +767,168 @@ class ConsciousnessDaemon:
 
         return " | ".join(parts)
 
+    def _gather_acc_state(self):
+        """Gather cached state for ACC Monitor. Zero external calls."""
+        try:
+            from services.acc_monitor import ACCInputState
+            from personality.e_pq import get_epq
+            from services.amygdala import get_amygdala
+
+            epq_state = get_epq().get_state()
+            amyg = get_amygdala()
+            recent_alerts = amyg.get_recent_alerts(300)
+            identity_attacks = sum(1 for a in recent_alerts
+                                  if a.primary_category == "identity_attack")
+
+            # AURA mood zone from cached JSON
+            aura_mood_density = 0.0
+            if self._acc_cached_aura_json:
+                zones = self._acc_cached_aura_json.get("zones", {})
+                mood_zone = zones.get("mood", {})
+                aura_mood_density = mood_zone.get("density", 0.0)
+
+            # QR from cached state string
+            qr_energy = 0.0
+            qr_violations = 0
+            qr_trend = "stable"
+            if hasattr(self, '_cached_qr_state') and self._cached_qr_state:
+                import re as _re
+                m = _re.search(r'E=([-\d.]+)', self._cached_qr_state)
+                if m:
+                    qr_energy = float(m.group(1))
+                m2 = _re.search(r'(\d+) violation', self._cached_qr_state)
+                if m2:
+                    qr_violations = int(m2.group(1))
+                if "drifting" in self._cached_qr_state:
+                    qr_trend = "degrading"
+                elif "coherent" in self._cached_qr_state:
+                    qr_trend = "improving"
+
+            # Service health
+            services_down = len(getattr(self, '_cached_failed_services', set()))
+
+            # Prediction surprise
+            try:
+                surprise_avg = self.get_surprise_level()
+            except Exception:
+                surprise_avg = 0.0
+
+            # Rumination + goals
+            rumination = getattr(self, '_rumination_score', 0.0)
+            has_goals = bool(getattr(self, '_active_goals_summary', ''))
+
+            return ACCInputState(
+                epq_mood_buffer=epq_state.mood_buffer,
+                epq_vigilance=epq_state.vigilance_val,
+                epq_precision=epq_state.precision_val,
+                epq_confidence=getattr(epq_state, 'confidence_anchor', 0.5),
+                epq_autonomy=epq_state.autonomy_val,
+                aura_mood_density=aura_mood_density,
+                amygdala_alert_count_5min=len(recent_alerts),
+                amygdala_identity_attacks_5min=identity_attacks,
+                qr_energy=qr_energy,
+                qr_violations=qr_violations,
+                qr_trend=qr_trend,
+                services_total=15,
+                services_down=services_down,
+                prediction_surprise_avg=surprise_avg,
+                rumination_score=rumination,
+                has_active_goals=has_goals,
+            )
+        except Exception as e:
+            LOG.debug("ACC state gathering failed: %s", e)
+            return None
+
+    def _gather_thalamic_state(self, slim: bool = False):
+        """Gather all sensory data for thalamic gating. Zero external calls."""
+        try:
+            from services.thalamus import ThalamicInputState
+            from personality.e_pq import get_epq
+
+            epq_state = get_epq().get_state()
+            p = self._current_perceptual
+            ws = self._current_workspace
+
+            # Mood word
+            mv = ws.mood_value
+            if mv > 0.7:
+                mood_word = "good"
+            elif mv > 0.4:
+                mood_word = "okay"
+            elif mv > 0.2:
+                mood_word = "low"
+            else:
+                mood_word = "flat"
+
+            # Amygdala
+            amyg_cat, amyg_urg, amyg_age = "", 0.0, 9999.0
+            try:
+                from services.amygdala import get_amygdala
+                _amyg = get_amygdala()
+                amyg_age = _amyg.last_alert_age_s
+                if amyg_age < 300:
+                    amyg_cat = _amyg.last_category
+                    amyg_urg = _amyg.last_urgency
+            except Exception:
+                pass
+
+            # ACC
+            acc_line = ""
+            acc_total = 0.0
+            if self._acc_monitor and self._acc_monitor.last_result:
+                _acc_res = self._acc_monitor.last_result
+                acc_line = _acc_res.proprio_line or ""
+                acc_total = _acc_res.total_conflict
+
+            # Perception events
+            events = []
+            if self._perception_events_window:
+                events = list(self._perception_events_window[-6:])
+
+            return ThalamicInputState(
+                vigilance=epq_state.vigilance_val,
+                ultradian_phase=getattr(self, '_ultradian_phase', 'focus'),
+                chat_idle_s=time.time() - self._last_chat_ts,
+                is_entity_active=self._is_entity_active(),
+                is_gaming=self._is_gaming_active(),
+                is_reflecting=getattr(self, '_reflecting', False),
+                rumination_score=getattr(self, '_rumination_score', 0.0),
+                mood_value=mv,
+                slim=slim,
+                # Hardware
+                self_cpu_pct=self._cached_self_cpu_pct,
+                env_cpu_pct=self._cached_env_cpu_pct,
+                cpu_temp=p.cpu_temp,
+                gpu_load=p.gpu_load,
+                gpu_attribution=self._cached_gpu_attribution,
+                self_ram_mb=self._cached_self_ram_mb,
+                env_ram_mb=self._cached_env_ram_mb,
+                # Mood
+                mood_word=mood_word,
+                mood_numeric=mv,
+                # User
+                mouse_idle_s=p.mouse_idle_s,
+                # AURA
+                aura_state=getattr(self, '_cached_aura_state', ''),
+                # QR
+                qr_state=getattr(self, '_cached_qr_state', ''),
+                # Perception
+                perception_events=events,
+                # Service
+                service_health=getattr(self, '_cached_service_health', ''),
+                failed_services=len(getattr(self, '_cached_failed_services', set())),
+                # Amygdala
+                amygdala_category=amyg_cat,
+                amygdala_urgency=amyg_urg,
+                amygdala_age_s=amyg_age,
+                # ACC
+                acc_proprio_line=acc_line,
+                acc_total_conflict=acc_total,
+            )
+        except Exception as e:
+            LOG.debug("Thalamic state gathering failed: %s", e)
+            return None
+
     def _refresh_proprioception_caches(self):
         """Refresh slow caches (AURA, QR) — called from workspace update loop, not every tick."""
         # AURA Headless (port 8098)
@@ -784,8 +962,17 @@ class ConsciousnessDaemon:
                     self._prev_aura_data_for_hyp = aura_now
                 except Exception:
                     pass
+                # ACC: Cache AURA zone-level JSON (mood density etc.)
+                try:
+                    import urllib.request as _ur
+                    _req2 = _ur.Request("http://127.0.0.1:8098/introspect/json")
+                    with _ur.urlopen(_req2, timeout=1.5) as _resp2:
+                        self._acc_cached_aura_json = json.loads(_resp2.read())
+                except Exception:
+                    self._acc_cached_aura_json = None
         except Exception:
             self._cached_aura_state = ""
+            self._acc_cached_aura_json = None
 
         # Quantum Reflector (port 8097)
         try:
@@ -1561,6 +1748,22 @@ class ConsciousnessDaemon:
 
         # Refresh proprioception caches (AURA, QR — slow endpoints)
         self._refresh_proprioception_caches()
+
+        # ── ACC Monitor tick — self-model vs reality conflict detection ──
+        try:
+            if self._acc_monitor is None:
+                from services.acc_monitor import get_acc
+                self._acc_monitor = get_acc()
+            _acc_state = self._gather_acc_state()
+            if _acc_state:
+                _acc_result = self._acc_monitor.tick(_acc_state)
+                if _acc_result.total_conflict > 0.5:
+                    LOG.info("ACC: total=%.2f dominant=%s (%.2f)",
+                             _acc_result.total_conflict,
+                             _acc_result.dominant_channel,
+                             _acc_result.dominant_salience)
+        except Exception as _acc_err:
+            LOG.debug("ACC tick failed: %s", _acc_err)
 
         # ── Ego-Construct Auto-Training (every 5th update ~2.5 min) ──
         self._ws_update_count += 1
@@ -6982,8 +7185,20 @@ class ConsciousnessDaemon:
                 "First person. Honest. Embodied. React to what I feel, don't report it."
             )
 
-        # Inject proprioception — passive background awareness
-        proprio = self._build_proprioception(slim=slim_proprio)
+        # Inject proprioception — thalamic sensory gating
+        try:
+            if self._thalamus is None:
+                from services.thalamus import get_thalamus
+                self._thalamus = get_thalamus()
+            _thal_state = self._gather_thalamic_state(slim=slim_proprio)
+            if _thal_state:
+                _gate_result = self._thalamus.gate(_thal_state)
+                proprio = _gate_result.proprio_text
+            else:
+                proprio = self._build_proprioception(slim=slim_proprio)
+        except Exception as e:
+            LOG.debug("Thalamus gate failed, falling back: %s", e)
+            proprio = self._build_proprioception(slim=slim_proprio)
         # Inject spatial context — room + organ health (replaces [PRESENCE])
         spatial = self._spatial.build_spatial_block(
             mood=self._current_workspace.mood_value,

@@ -355,6 +355,10 @@ class Subconscious:
         conn = sqlite3.connect(str(self._db_path), timeout=5)
         try:
             conn.executescript(_SCHEMA)
+            # Migration: add mask column if missing (pre-v86 schema)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(transitions)")}
+            if "mask" not in cols:
+                conn.execute("ALTER TABLE transitions ADD COLUMN mask BLOB")
             conn.commit()
         finally:
             conn.close()

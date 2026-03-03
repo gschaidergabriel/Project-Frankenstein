@@ -106,7 +106,7 @@ CATEGORY_PROMPT_RANGES: Dict[str, Tuple[int, int]] = {
 
 # ── Network Constants ──
 
-STATE_DIM = 80
+STATE_DIM = 86
 
 # PPO Hyperparameters
 LEARNING_RATE = 3e-4
@@ -931,10 +931,11 @@ class Subconscious:
 # ══════════════════════════════════════════════════
 
 class SubconsciousStateEncoder:
-    """Encodes Frank's internal state as an 80-dim feature vector.
+    """Encodes Frank's internal state as an 86-dim feature vector.
 
     The consciousness daemon passes raw data; this class normalizes
-    and structures it for the network.
+    and structures it for the network. Includes proprioceptive
+    differentiation: self vs environment resource attribution.
     """
 
     def encode(
@@ -943,6 +944,13 @@ class SubconsciousStateEncoder:
         mood: float = 0.5,
         mood_trend: float = 0.0,
         energy: float = 0.5,
+        # Proprioceptive differentiation (self/env split)
+        self_cpu: float = 0.0,
+        env_cpu: float = 0.0,
+        self_ram_pct: float = 0.0,
+        env_ram_pct: float = 0.0,
+        gpu_self_likely: float = 0.5,
+        env_presence: float = 0.0,
         rumination_score: float = 0.0,
         epq_precision: float = 0.0,
         epq_risk: float = 0.0,
@@ -995,13 +1003,20 @@ class SubconsciousStateEncoder:
         exploration_rate: float = 1.0,
         training_progress: float = 0.0,
     ) -> torch.Tensor:
-        """Encode complete state as 80-dim tensor."""
+        """Encode complete state as 86-dim tensor."""
         features = []
 
-        # === Current State (15 dims) ===
+        # === Current State (21 dims) ===
         features.append(float(np.clip(mood, 0, 1)))
         features.append(float(np.clip(mood_trend, -1, 1)))
         features.append(float(np.clip(energy, 0, 1)))
+        # Proprioceptive differentiation: self vs environment resource split
+        features.append(float(np.clip(self_cpu, 0, 1)))
+        features.append(float(np.clip(env_cpu, 0, 1)))
+        features.append(float(np.clip(self_ram_pct, 0, 1)))
+        features.append(float(np.clip(env_ram_pct, 0, 1)))
+        features.append(float(np.clip(gpu_self_likely, 0, 1)))
+        features.append(float(np.clip(env_presence, 0, 1)))
         features.append(float(np.clip(rumination_score, 0, 1)))
         features.append(float(np.clip(epq_precision, -1, 1)))
         features.append(float(np.clip(epq_risk, -1, 1)))

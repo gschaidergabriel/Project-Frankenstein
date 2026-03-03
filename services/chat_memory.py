@@ -740,6 +740,12 @@ class ChatMemoryDB:
 
             if closed:
                 self._conn.commit()
+        # Populate consolidation entries for newly closed sessions
+        for row in (rows or []):
+            try:
+                self.populate_consolidation_entry(row["session_id"])
+            except Exception:
+                pass
         return closed
 
     def get_sessions_for_summarization(self, limit: int = 3) -> List[dict]:
@@ -914,10 +920,11 @@ class ChatMemoryDB:
             if existing:
                 return
 
-            # Get session messages
+            # Get session messages (exclude system messages)
             msgs = self._conn.execute(
                 """SELECT text, is_user, timestamp FROM messages
                    WHERE session_id=? AND text != '[archived]'
+                   AND is_system=0
                    ORDER BY timestamp""",
                 (session_id,),
             ).fetchall()
@@ -968,9 +975,16 @@ class ChatMemoryDB:
             # Tension: disagreement + questions ratio
             tension_level = min(1.0, (disagree_count * 2 + question_count * 0.5) / max(1, n_msgs))
 
-            # Mood (rough: positive - negative)
-            mood_val = 0.5 + (pos_count - neg_count) * 0.1
-            mood_val = max(0.0, min(1.0, mood_val))
+            # Mood: compute separately for first and second half
+            mid = max(1, n_msgs // 2)
+            first_half = msgs[:mid]
+            second_half = msgs[mid:] if mid < n_msgs else msgs
+            _pos_s = sum(1 for m in first_half for w in m["text"].lower().split() if w in _POS)
+            _neg_s = sum(1 for m in first_half for w in m["text"].lower().split() if w in _NEG)
+            _pos_e = sum(1 for m in second_half for w in m["text"].lower().split() if w in _POS)
+            _neg_e = sum(1 for m in second_half for w in m["text"].lower().split() if w in _NEG)
+            mood_start = max(0.0, min(1.0, 0.5 + (_pos_s - _neg_s) * 0.1))
+            mood_end = max(0.0, min(1.0, 0.5 + (_pos_e - _neg_e) * 0.1))
 
             topics_json = json.dumps(sorted(list(topics)[:20]))
 
@@ -981,7 +995,7 @@ class ChatMemoryDB:
                     created_at, topics, mood_start, mood_end)
                    VALUES (?, ?, ?, ?, ?, 0.0, 0, ?, ?, ?, ?)""",
                 (source_type, session_id, emotional_charge, surprise_factor,
-                 tension_level, msgs[0]["timestamp"], topics_json, mood_val, mood_val),
+                 tension_level, msgs[0]["timestamp"], topics_json, mood_start, mood_end),
             )
             self._conn.commit()
 

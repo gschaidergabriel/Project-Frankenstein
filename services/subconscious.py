@@ -145,7 +145,8 @@ CREATE TABLE IF NOT EXISTS transitions (
     action      INTEGER NOT NULL,
     reward      REAL NOT NULL,
     log_prob    REAL NOT NULL,
-    value_est   REAL NOT NULL
+    value_est   REAL NOT NULL,
+    mask        BLOB             -- action mask at selection time (NULL=all available)
 );
 
 CREATE TABLE IF NOT EXISTS meta (
@@ -202,7 +203,7 @@ def _log_norm(x: float, scale: float = 24.0) -> float:
 
 def _pack_state(state: torch.Tensor) -> bytes:
     """Pack float32 tensor to bytes for SQLite BLOB."""
-    return state.numpy().astype(np.float32).tobytes()
+    return state.detach().cpu().numpy().astype(np.float32).tobytes()
 
 
 def _unpack_state(blob: bytes) -> torch.Tensor:
@@ -217,7 +218,7 @@ class ThoughtOutcome:
     """Outcome of an idle thought — used for reward computation."""
     thought_type: str
     stored: bool = False
-    jaccard_with_recent: float = 1.0
+    jaccard_with_recent: float = -1.0  # -1 = not measured (skips novelty reward)
     rumination_before: float = 0.0
     rumination_after: float = 0.0
     mood_before: float = 0.5
@@ -463,11 +464,12 @@ class Subconscious:
         else:
             r -= 0.3  # Mild penalty for wasted LLM call
 
-        # Novelty
-        if outcome.jaccard_with_recent < 0.25:
-            r += 0.5
-        elif outcome.jaccard_with_recent > 0.6:
-            r -= 0.5
+        # Novelty (skip if not measured: -1.0 sentinel)
+        if outcome.jaccard_with_recent >= 0.0:
+            if outcome.jaccard_with_recent < 0.25:
+                r += 0.5
+            elif outcome.jaccard_with_recent > 0.6:
+                r -= 0.5
 
         # Anti-rumination
         rumination_delta = outcome.rumination_after - outcome.rumination_before
@@ -530,14 +532,18 @@ class Subconscious:
         reward: float,
         log_prob: float,
         value_est: float,
+        mask: torch.Tensor = None,
     ):
-        """Record a (s, a, r, lp, v) transition for training."""
+        """Record a (s, a, r, lp, v, mask) transition for training."""
+        mask_blob = _pack_state(mask) if mask is not None else None
         conn = self._get_conn()
         try:
             conn.execute(
-                """INSERT INTO transitions (timestamp, state, action, reward, log_prob, value_est)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (time.time(), _pack_state(state), action, reward, log_prob, value_est),
+                """INSERT INTO transitions
+                   (timestamp, state, action, reward, log_prob, value_est, mask)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (time.time(), _pack_state(state), action, reward, log_prob,
+                 value_est, mask_blob),
             )
             # Record thought history
             conn.execute(
@@ -569,18 +575,26 @@ class Subconscious:
         conn = self._get_conn()
         try:
             rows = conn.execute(
-                "SELECT state, action, reward, log_prob, value_est FROM transitions ORDER BY id"
+                "SELECT state, action, reward, log_prob, value_est, mask "
+                "FROM transitions ORDER BY id"
             ).fetchall()
-            return [
-                {
-                    "state": _unpack_state(r["state"]),
+            buf = []
+            for r in rows:
+                state = _unpack_state(r["state"])
+                if state.shape[0] != STATE_DIM:
+                    continue  # Skip stale transitions from old schema
+                mask = None
+                if r["mask"] is not None:
+                    mask = _unpack_state(r["mask"])
+                buf.append({
+                    "state": state,
                     "action": r["action"],
                     "reward": r["reward"],
                     "log_prob": r["log_prob"],
                     "value_est": r["value_est"],
-                }
-                for r in rows
-            ]
+                    "mask": mask,
+                })
+            return buf
         finally:
             conn.close()
 
@@ -616,6 +630,14 @@ class Subconscious:
         actions = torch.tensor([t["action"] for t in buffer], dtype=torch.long)
         old_log_probs = torch.tensor([t["log_prob"] for t in buffer], dtype=torch.float32)
         returns_tensor = torch.tensor(returns, dtype=torch.float32)
+        # Action masks: stored alongside transitions for consistent ratio computation
+        masks_list = []
+        for t in buffer:
+            if t["mask"] is not None:
+                masks_list.append(t["mask"])
+            else:
+                masks_list.append(torch.ones(NUM_ACTIONS))
+        masks = torch.stack(masks_list)
 
         self.net.train()
         total_loss = 0.0
@@ -633,9 +655,11 @@ class Subconscious:
                 batch_old_lp = old_log_probs[batch_idx]
                 batch_adv = adv_tensor[batch_idx]
                 batch_returns = returns_tensor[batch_idx]
+                batch_masks = masks[batch_idx]
 
-                # Forward
+                # Forward — apply same mask as during action selection
                 logits, values_pred = self.net(batch_states)
+                logits = logits.masked_fill(batch_masks == 0, float("-inf"))
                 dist = torch.distributions.Categorical(logits=logits)
                 new_log_probs = dist.log_prob(batch_actions)
                 entropy = dist.entropy().mean()
@@ -676,23 +700,21 @@ class Subconscious:
         # Update meta in DB
         self._save_meta()
 
+        # Prune old data to prevent unbounded growth
+        self._prune_tables()
+
         LOG.info("Training complete: loss=%.4f, steps=%d, train_steps=%d, entropy=%.4f",
                  avg_loss, self._total_steps, self._total_training_steps, self._entropy_coeff)
         return avg_loss
 
     def _compute_gae(self, rewards: List[float], values: List[float]) -> List[float]:
-        """Generalized Advantage Estimation."""
-        n = len(rewards)
-        advantages = [0.0] * n
-        last_gae = 0.0
+        """Advantage estimation for independent transitions.
 
-        for t in reversed(range(n)):
-            next_value = values[t + 1] if t + 1 < n else 0.0
-            delta = rewards[t] + GAMMA * next_value - values[t]
-            last_gae = delta + GAMMA * GAE_LAMBDA * last_gae
-            advantages[t] = last_gae
-
-        return advantages
+        Each idle thought is essentially an independent episode — thoughts are
+        hours apart, not sequential steps in a trajectory. Using per-step
+        advantage (reward - baseline) instead of temporal GAE propagation.
+        """
+        return [r - v for r, v in zip(rewards, values)]
 
     # ── Persistence ──
 
@@ -753,6 +775,27 @@ class Subconscious:
                     (key, value),
                 )
             conn.commit()
+        finally:
+            conn.close()
+
+    def _prune_tables(self):
+        """Prune old rows from thought_history, hallucination_log, transitions."""
+        cutoff_30d = time.time() - 30 * 86400
+        cutoff_7d = time.time() - 7 * 86400
+        conn = self._get_conn()
+        try:
+            # Keep last 30 days of thought_history
+            conn.execute("DELETE FROM thought_history WHERE timestamp < ?", (cutoff_30d,))
+            # Keep last 30 days of hallucination_log
+            conn.execute("DELETE FROM hallucination_log WHERE timestamp < ?", (cutoff_30d,))
+            # Keep last 500 transitions (training buffer)
+            conn.execute(
+                "DELETE FROM transitions WHERE rowid NOT IN "
+                "(SELECT rowid FROM transitions ORDER BY timestamp DESC LIMIT 500)"
+            )
+            conn.commit()
+        except Exception as e:
+            LOG.debug("Prune failed: %s", e)
         finally:
             conn.close()
 
@@ -1024,12 +1067,12 @@ class SubconsciousStateEncoder:
         features.append(1.0 if has_testable_hypothesis else 0.0)
 
         # === Reward History (7 dims) ===
-        features.append(float(np.clip(avg_reward_last_5, -3, 5)) / 5.0)
-        features.append(float(np.clip(avg_reward_last_20, -3, 5)) / 5.0)
+        features.append(float(np.clip(avg_reward_last_5, -7, 7)) / 7.0)
+        features.append(float(np.clip(avg_reward_last_20, -7, 7)) / 7.0)
         features.append(float(np.clip(reward_trend, -2, 2)) / 2.0)
-        features.append(float(np.clip(best_recent_type_reward, -3, 5)) / 5.0)
-        features.append(float(np.clip(worst_recent_type_reward, -3, 5)) / 5.0)
-        features.append(float(np.clip(exploration_rate, 0, 2)))
+        features.append(float(np.clip(best_recent_type_reward, -7, 7)) / 7.0)
+        features.append(float(np.clip(worst_recent_type_reward, -7, 7)) / 7.0)
+        features.append(float(np.clip(exploration_rate, 0, 2)) / 2.0)
         features.append(float(np.clip(training_progress, 0, 1)))
 
         assert len(features) == STATE_DIM, f"State dim mismatch: {len(features)} != {STATE_DIM}"

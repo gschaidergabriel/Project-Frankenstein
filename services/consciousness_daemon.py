@@ -155,7 +155,7 @@ GOAL_EXTRACT_TOKENS = 150  # RLM reasoning overhead
 GOAL_CONFLICT_TOKENS = 120
 
 # Deep Idle Reflection
-IDLE_REFLECT_MIN_SILENCE_S = 1200.0     # 20 min User-Stille
+IDLE_REFLECT_MIN_SILENCE_S = 1500.0     # 25 min User-Stille (matches RLM_IDLE_GATE_S)
 IDLE_REFLECT_INTERVAL_S = 3600.0        # Max 1 Reflexion pro Stunde
 IDLE_REFLECT_MAX_TOKENS = 500           # Deep reflection — RLM produces better quality with room
 IDLE_REFLECT_MAX_DAILY = 10
@@ -387,6 +387,8 @@ class ConsciousnessDaemon:
         self._reflecting: bool = False
         self._reflect_chat_ts_snapshot: float = 0.0
         self._idle_think_count: int = 0  # Counter for goal extraction
+        self._start_ts: float = time.time()  # Daemon start time (for uptime feature)
+        self._chat_count_today: int = 0  # Chat count today (for subconscious state)
 
         # Feature training state
         self._last_feature_training_ts: float = 0.0
@@ -1269,6 +1271,7 @@ class ConsciousnessDaemon:
         now = time.time()
         with self._lock:
             self._last_chat_ts = now
+            self._chat_count_today += 1
             self._interaction_times.append(now)
             # Keep last 50 interaction times
             if len(self._interaction_times) > 50:
@@ -2897,6 +2900,7 @@ class ConsciousnessDaemon:
 
         # Hypothesis state
         h_active, h_acc, h_relational = 0, 0.0, 0
+        h_last_hours = 24.0
         if self._hypothesis_engine:
             try:
                 stats = self._hypothesis_engine.get_stats()
@@ -2905,6 +2909,10 @@ class ConsciousnessDaemon:
                 from services.hypothesis_engine.store import HypothesisStore
                 _hs = HypothesisStore()
                 h_relational = _hs.count_active_by_domain("relational")
+                # Time since last hypothesis created
+                latest = _hs.get_by_status("active", limit=1)
+                if latest and latest[0].get("created_at"):
+                    h_last_hours = (now - latest[0]["created_at"]) / 3600
             except Exception:
                 pass
 
@@ -2925,11 +2933,27 @@ class ConsciousnessDaemon:
             if rewards:
                 best_r = max(rewards)
                 worst_r = min(rewards)
+            # Compute actual reward averages from thought_history
+            try:
+                _conn = sub._get_conn()
+                _rows = _conn.execute(
+                    "SELECT reward FROM thought_history ORDER BY id DESC LIMIT 20"
+                ).fetchall()
+                _conn.close()
+                _rvals = [r["reward"] for r in _rows]
+                if len(_rvals) >= 5:
+                    avg5 = sum(_rvals[:5]) / 5
+                if len(_rvals) >= 20:
+                    avg20 = sum(_rvals) / 20
+                if len(_rvals) >= 10:
+                    r_trend = sum(_rvals[:5]) / 5 - sum(_rvals[5:10]) / 5
+            except Exception:
+                pass
 
         return enc.encode(
             mood=mood,
             mood_trend=mood_trend,
-            energy=self._current_workspace.mood_value,  # Approx
+            energy=getattr(self._current_workspace, 'energy_value', mood * 0.8 + 0.1),
             rumination_score=self._rumination_score,
             epq_precision=epq_vals[0],
             epq_risk=epq_vals[1],
@@ -2967,6 +2991,7 @@ class ConsciousnessDaemon:
             active_hypotheses=h_active,
             hypothesis_accuracy=h_acc,
             relational_hypotheses=h_relational,
+            hours_since_last_hypothesis=h_last_hours,
             has_testable_hypothesis=h_active > 0,
             avg_reward_last_5=avg5,
             avg_reward_last_20=avg20,
@@ -3193,6 +3218,7 @@ class ConsciousnessDaemon:
                 self._last_conv_reflect_ts = now
         except Exception as e:
             LOG.warning("Conversation reflection failed: %s", e)
+            self._last_conv_reflect_ts = time.time()  # Cooldown even on failure
 
         return False
 
@@ -3381,8 +3407,8 @@ class ConsciousnessDaemon:
         room_patterns = re.findall(
             r'(?:walked?\s+(?:to|into|through|from)\s+(?:the\s+)?|'
             r'(?:in|at|inside|entered?)\s+(?:the\s+)?)'
-            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-            text,
+            r'([a-zA-Z]+(?:\s+[a-zA-Z]+)*)',
+            text_lower,
         )
         for room_ref in room_patterns:
             room_key = room_ref.lower().strip()
@@ -3773,10 +3799,59 @@ class ConsciousnessDaemon:
             LOG.warning("Hypothesis review failed: %s", e)
         return False
 
+    def _post_idle_thought_processing(self, text: str, prompt_q: str,
+                                      evidence: float = 0.5):
+        """Shared post-processing for all idle thoughts (valid and short)."""
+        # Thought continuity
+        self._last_idle_thought = text
+        first_sentence = text.split(".")[0][:80]
+        self._recent_thought_topics.append(first_sentence)
+        if len(self._recent_thought_topics) > 10:
+            self._recent_thought_topics = self._recent_thought_topics[-10:]
+        # World Experience observation
+        self._observe_world(
+            "consciousness.idle_thought", "consciousness.reflection",
+            relation="generates", evidence=evidence,
+            metadata_effect={"trigger": "idle", "prompt": prompt_q[:50]},
+        )
+        # Counters + periodic triggers
+        self._idle_think_count += 1
+        if self._idle_think_count % 5 == 0:
+            try:
+                self.extract_goal_from_reflection(text)
+            except Exception:
+                pass
+        if self._idle_think_count % 3 == 0:
+            try:
+                self._check_cognitive_spiral()
+            except Exception:
+                pass
+        try:
+            self._check_stagnation(text)
+        except Exception:
+            pass
+        try:
+            if self._detect_silence_request(text):
+                LOG.info("SILENCE: Frank expressed desire for silence: %.60s", text)
+                self._request_silence(duration_s=600.0)
+        except Exception:
+            pass
+        if self._idle_think_count % 4 == 0:
+            try:
+                self._maybe_aura_introspect(text)
+            except Exception:
+                pass
+        if self._idle_think_count % 6 == 0:
+            try:
+                self._maybe_autonomous_research(text)
+            except Exception:
+                pass
+
     def _record_subconscious_outcome(self, sub, state, action, log_prob, value,
                                      thought_type, stored, mood_summary,
                                      hallucination_score=0.0,
-                                     hallucination_violations=0):
+                                     hallucination_violations=0,
+                                     mask=None):
         """Record a thought outcome for subconscious training.
 
         The hallucination_score (0-1) comes from the prefrontal cortex
@@ -3801,6 +3876,22 @@ class ConsciousnessDaemon:
             recent = sub._recent_types[-20:] if sub._recent_types else []
             type_frac = sum(1 for t in recent if t == thought_type) / max(len(recent), 1)
 
+            # Compute actual Jaccard similarity with recent thoughts
+            jaccard = -1.0  # Sentinel: not measured
+            last_thought = getattr(self, '_last_idle_thought', None)
+            if last_thought and stored:
+                words_new = set(last_thought.lower().split())
+                recent_topics = getattr(self, '_recent_thought_topics', [])
+                if recent_topics and words_new:
+                    sims = []
+                    for t in recent_topics[-7:]:
+                        words_old = set(t.lower().split())
+                        union = len(words_new | words_old)
+                        if union > 0:
+                            sims.append(len(words_new & words_old) / union)
+                    if sims:
+                        jaccard = max(sims)
+
             outcome = ThoughtOutcome(
                 stored=stored,
                 thought_type=thought_type,
@@ -3808,14 +3899,16 @@ class ConsciousnessDaemon:
                 mood_after=mood_after,
                 rumination_before=rumination_before,
                 rumination_after=rumination_after,
+                jaccard_with_recent=jaccard,
                 type_fraction_in_last_20=type_frac,
                 consolidation_processed=(
-                    stored and thought_type == "conversation_reflection"),
+                    stored and thought_type in (
+                        "conversation_reflection", "entity_reflection")),
                 hallucination_score=hallucination_score,
                 hallucination_violations=hallucination_violations,
             )
             reward = sub.compute_reward(outcome)
-            sub.record_transition(state, action, reward, log_prob, value)
+            sub.record_transition(state, action, reward, log_prob, value, mask)
         except Exception as e:
             LOG.debug("Subconscious outcome recording failed: %s", e)
 
@@ -4031,14 +4124,15 @@ class ConsciousnessDaemon:
         sub_value = None
         sub_state = None
 
+        sub_mask = None
         sub = self._get_subconscious()
         if sub and not sub.should_fallback():
             try:
                 import torch
                 from services.subconscious import THOUGHT_CATEGORIES, CATEGORY_PROMPT_RANGES
                 sub_state = self._encode_subconscious_state()
-                mask = self._get_subconscious_action_mask()
-                sub_action, sub_log_prob, sub_value = sub.select_action(sub_state, mask)
+                sub_mask = self._get_subconscious_action_mask()
+                sub_action, sub_log_prob, sub_value = sub.select_action(sub_state, sub_mask)
                 thought_type = THOUGHT_CATEGORIES[sub_action]
                 LOG.info("Subconscious → %s (action=%d, value=%.2f)",
                          thought_type, sub_action, sub_value)
@@ -4064,22 +4158,21 @@ class ConsciousnessDaemon:
             stored = self._do_conversation_reflection()
             self._record_subconscious_outcome(
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary)
+                thought_type, stored, mood_summary, mask=sub_mask)
             return
 
         if thought_type == "entity_reflection":
-            # Entity reflection: use existing entity-style reflection
             stored = self._do_entity_reflection()
             self._record_subconscious_outcome(
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary)
+                thought_type, stored, mood_summary, mask=sub_mask)
             return
 
         if thought_type == "hypothesis_review":
             stored = self._do_hypothesis_review()
             self._record_subconscious_outcome(
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary)
+                thought_type, stored, mood_summary, mask=sub_mask)
             return
 
         if thought_type == "raw_expression":
@@ -4088,7 +4181,7 @@ class ConsciousnessDaemon:
             stored = self._do_raw_expression(mood_summary, focus)
             self._record_subconscious_outcome(
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary)
+                thought_type, stored, mood_summary, mask=sub_mask)
             return
 
         # ── Prompt-based categories ────────────────────────────────
@@ -4333,7 +4426,8 @@ class ConsciousnessDaemon:
                             sub, sub_state, sub_action, sub_log_prob, sub_value,
                             thought_type, False, mood_summary,
                             hallucination_score=_h_score,
-                            hallucination_violations=len(_violations))
+                            hallucination_violations=len(_violations),
+                            mask=sub_mask)
                         return
                     # Mild hallucination: log but allow (LLM might have valid parts)
 
@@ -4361,66 +4455,14 @@ class ConsciousnessDaemon:
                 # Hypothesis Engine: every 5th thought
                 self._maybe_feed_hypothesis_engine(
                     result.strip(), self._current_workspace.mood_value)
+                # ── Post-processing: same pipeline as all other thought paths ──
+                self._post_idle_thought_processing(
+                    result.strip(), prompt_question, evidence=0.5)
             elif result:
                 LOG.info("Idle thought too short (%d chars), discarded: %s",
                          len(result.strip()), result.strip())
-                # Thought continuity: remember this thought for next iteration
-                self._last_idle_thought = result.strip()
-                # Repetition guard: track first sentence + key phrases as topic
-                first_sentence = result.strip().split(".")[0][:80]
-                self._recent_thought_topics.append(first_sentence)
-                if len(self._recent_thought_topics) > 10:
-                    self._recent_thought_topics = self._recent_thought_topics[-10:]
-                # World Experience: idle thought observed
-                self._observe_world(
-                    "consciousness.idle_thought", "consciousness.reflection",
-                    relation="generates", evidence=0.1,
-                    metadata_effect={"trigger": "idle", "prompt": prompt_question[:50]},
-                )
-                # Extract goals from every 5th idle thought
-                self._idle_think_count += 1
-                if self._idle_think_count % 5 == 0:
-                    try:
-                        self.extract_goal_from_reflection(result.strip())
-                    except Exception:
-                        pass
-                # Spiral detection: check last 3 idle thoughts for
-                # self-reduction patterns (every 3rd thought)
-                if self._idle_think_count % 3 == 0:
-                    try:
-                        self._check_cognitive_spiral()
-                    except Exception:
-                        pass
-                # Stagnation detection + Rumination: check thought loops
-                try:
-                    self._check_stagnation(result.strip())
-                    self._update_rumination_score(result.strip())
-                except Exception:
-                    pass
-                # Silence Mode: detect if Frank wants silence
-                try:
-                    if self._detect_silence_request(result.strip()):
-                        LOG.info("SILENCE: Frank expressed desire for silence: %.60s",
-                                 result.strip())
-                        self._request_silence(duration_s=600.0)  # 10 min default
-                except Exception:
-                    pass
-                # Inner Sanctum sessions disabled — Frank lives permanently
-                # in his world via SpatialState. No session entry needed.
-                # AURA Introspection: Frank decides if he wants to look inward
-                # Every 4th thought, ask if introspection would help
-                if self._idle_think_count % 4 == 0:
-                    try:
-                        self._maybe_aura_introspect(result.strip())
-                    except Exception as ae:
-                        LOG.debug("AURA introspect skipped: %s", ae)
-                # Autonomous Research: Frank can pursue research questions
-                # Every 6th thought, check if this thought is worth researching
-                if self._idle_think_count % 6 == 0:
-                    try:
-                        self._maybe_autonomous_research(result.strip())
-                    except Exception as re_:
-                        LOG.debug("Research skipped: %s", re_)
+                self._post_idle_thought_processing(
+                    result.strip(), prompt_question, evidence=0.1)
 
             # Record subconscious outcome for prompt-based thoughts
             # Include hallucination data so policy learns from reality checks
@@ -4434,12 +4476,13 @@ class ConsciousnessDaemon:
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
                 thought_type, stored, mood_summary,
                 hallucination_score=_h_score,
-                hallucination_violations=_h_viols)
+                hallucination_violations=_h_viols,
+                mask=sub_mask)
         except Exception as e:
             LOG.warning("Idle think LLM call failed: %s", e)
             self._record_subconscious_outcome(
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, False, mood_summary)
+                thought_type, False, mood_summary, mask=sub_mask)
 
     # ── AURA Queue Processing (idle-only) ─────────────────────────────
 
@@ -6684,6 +6727,20 @@ class ConsciousnessDaemon:
         user_chat_idle_s = time.time() - self._last_chat_ts
         user_too_recent = (user_chat_idle_s < RLM_IDLE_GATE_S)
 
+        # 25-min gate: block ALL RLM usage (including use_main_rlm) when user is active
+        if user_too_recent and not entity_active:
+            if use_main_rlm:
+                LOG.debug("RLM call blocked — user active %.0fs < %ds gate",
+                          user_chat_idle_s, RLM_IDLE_GATE_S)
+                return ""
+            # Non-RLM path: try micro-LLM, no GPU fallback
+            try:
+                return self._micro_llm_call(text, max_tokens, system)
+            except Exception as e:
+                LOG.debug("Micro-LLM unavailable and user active %.0fs — skipping RLM",
+                          user_chat_idle_s)
+                return ""
+
         # Try micro-LLM first (doesn't block GPU)
         if not use_main_rlm:
             try:
@@ -6692,13 +6749,9 @@ class ConsciousnessDaemon:
                 if entity_active:
                     LOG.debug("Micro-LLM unavailable and entity active — skipping RLM")
                     return ""
-                if user_too_recent:
-                    LOG.debug("Micro-LLM unavailable and user active %.0fs — skipping RLM",
-                              user_chat_idle_s)
-                    return ""
                 LOG.debug("Micro-LLM unavailable (%s), falling back to router", e)
 
-        # Fallback: main RLM via router
+        # RLM via router (user idle >= 25min or entity session active)
         payload = json.dumps({
             "text": text,
             "n_predict": max_tokens,

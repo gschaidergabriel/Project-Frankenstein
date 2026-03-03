@@ -26,6 +26,7 @@ DOMAIN_TO_STATION: Dict[str, Optional[str]] = {
     "affect": None,
     "hardware": None,
     "world": None,
+    "relational": None,
 }
 
 # ── Keywords that indicate experimental testability ──

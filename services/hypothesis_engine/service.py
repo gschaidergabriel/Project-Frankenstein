@@ -319,6 +319,23 @@ class HypothesisEngine:
 
         self._increment_budget("created")
         LOG.info("New relational hypothesis %s: %s", h_id, h_data["hypothesis"][:60])
+
+        # Passive test: evaluate active relational hypotheses against this conversation
+        for active in existing:
+            if active.get("domain") != "relational":
+                continue
+            if h_id and str(active["id"]) == str(h_id):
+                continue
+            try:
+                result = self.evaluator.evaluate_against_conversation(
+                    active["id"], conversation_excerpt)
+                if result:
+                    LOG.info("Hypothesis %s %s by conversation", active["id"], result)
+                    if result == "refuted":
+                        self.evaluator.auto_revise(active["id"], self.synthesizer)
+            except Exception as e:
+                LOG.debug("Conv eval failed for %s: %s", active["id"], e)
+
         return f"H-{h_id}: {h_data['hypothesis'][:80]}"
 
     # ═══════════════════════════════════════════

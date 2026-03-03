@@ -105,21 +105,27 @@ class HypothesisEvaluator:
                 f"Pattern observed: {matches}/{len(behavior_terms)} behavioral markers in conversation",
             )
 
-        # Track exposure count via result field
+        # Track exposure count + accumulated matches via result field
         prev_checks = 0
+        prev_total_matches = 0
         if h.get("result") and "checks:" in h["result"]:
             try:
                 prev_checks = int(h["result"].split("checks:")[1].split()[0])
             except (ValueError, IndexError):
                 prev_checks = 0
+            try:
+                prev_total_matches = int(h["result"].split("total:")[1].split()[0])
+            except (ValueError, IndexError):
+                prev_total_matches = 0
 
         new_checks = prev_checks + 1
+        total_matches = prev_total_matches + matches
         self._store.update(hypothesis_id, {
-            "result": f"checks:{new_checks} matches:{matches}",
+            "result": f"checks:{new_checks} total:{total_matches} last:{matches}",
         })
 
-        # Refute after 5+ conversations with no pattern
-        if new_checks >= 5 and matches == 0:
+        # Refute after 5+ conversations with zero accumulated matches
+        if new_checks >= 5 and total_matches == 0:
             return self._resolve(
                 h, "refuted",
                 f"Pattern not observed after {new_checks} conversation checks",

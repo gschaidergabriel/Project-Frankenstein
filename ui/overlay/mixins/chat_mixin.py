@@ -395,6 +395,44 @@ class ChatMixin:
             self._thinking_cancelled = False  # Reset cancel flag for voice requests
         self._ui_call(self._show_typing)
 
+        # ── AMYGDALA — pre-conscious threat/emotion appraisal ──
+        # Fires BEFORE any processing. <1ms. Shifts mood/vigilance immediately.
+        _amygdala_result = None
+        try:
+            from services.amygdala import get_amygdala
+            _amygdala = get_amygdala()
+            _amygdala_result = _amygdala.appraise(msg)
+            if _amygdala_result.urgency > 0.0:
+                LOG.info("Amygdala: %s (urgency=%.2f)",
+                         _amygdala_result.primary_category,
+                         _amygdala_result.urgency)
+                # Trigger E-PQ mood/personality shift
+                _epq_event = _amygdala.get_epq_event(_amygdala_result)
+                if _epq_event:
+                    try:
+                        from personality.e_pq import get_epq
+                        get_epq().process_event(
+                            _epq_event[0],
+                            data={"amygdala_urgency": _amygdala_result.urgency,
+                                  "amygdala_category": _amygdala_result.primary_category},
+                            sentiment=_epq_event[1],
+                        )
+                    except Exception:
+                        pass
+                # World experience observation for significant threats
+                if _amygdala_result.urgency > 0.3:
+                    try:
+                        _observe_chat_world(
+                            f"amygdala.{_amygdala_result.primary_category}",
+                            "consciousness.emotional_shift",
+                            cause_type="external",
+                            evidence=_amygdala_result.urgency,
+                        )
+                    except Exception:
+                        pass
+        except Exception as _amyg_err:
+            LOG.debug("Amygdala unavailable: %s", _amyg_err)
+
         # ── Language enforcement for 7B models ──
         # Track explicit language switch commands. Default: English.
         if not hasattr(self, '_response_language'):
@@ -831,6 +869,79 @@ class ChatMixin:
             except Exception as e:
                 LOG.debug("Entity session memory injection failed: %s", e)
 
+        # ── Intent Queue: surface pending user-related intents ──
+        # Rarely and only when thematically relevant — max 1 per conversation,
+        # compare word overlap between user message and intent.
+        if not hasattr(self, '_intent_surfaced_this_session'):
+            self._intent_surfaced_this_session = False
+        if not self._intent_surfaced_this_session:
+            try:
+                from services.intent_queue import get_intent_queue
+                _iq = get_intent_queue()
+                if _iq:
+                    _user_intents = _iq.get_pending_for_user(limit=3)
+                    if _user_intents:
+                        # Thematic relevance: word overlap with user message
+                        _msg_words = set(msg.lower().split())
+                        _best = None
+                        _best_overlap = 0.0
+                        for _ui in _user_intents:
+                            _intent_words = set(_ui["extracted_intent"].lower().split())
+                            _common = _msg_words & _intent_words
+                            # Need at least 2 overlapping content words (skip stopwords)
+                            _content_common = _common - {"i", "the", "a", "is", "to", "and",
+                                                          "of", "in", "my", "me", "it", "that",
+                                                          "ich", "der", "die", "das", "und"}
+                            if len(_content_common) >= 2 and len(_common) > _best_overlap:
+                                _best = _ui
+                                _best_overlap = len(_common)
+                        if _best:
+                            ws_extra.append(
+                                f"[I wanted to mention to my user: {_best['extracted_intent']}]"
+                            )
+                            _iq.mark_surfaced(_best["id"])
+                            self._intent_surfaced_this_session = True
+                            LOG.info("User intent surfaced: %s", _best["extracted_intent"][:80])
+            except Exception as _iq_err:
+                LOG.debug("Intent queue surfacing failed: %s", _iq_err)
+
+        # ── Hypothesis Validation: surface relational hypothesis for user feedback ──
+        # Rarely: only when thematically relevant (word overlap) and max 1 per conv.
+        if not hasattr(self, '_hyp_surfaced_this_session'):
+            self._hyp_surfaced_this_session = False
+        if not self._hyp_surfaced_this_session and not getattr(self, '_intent_surfaced_this_session', False):
+            try:
+                from services.hypothesis_engine.store import HypothesisStore
+                _hs = HypothesisStore()
+                _rel_hyps = _hs.get_by_field("domain", "relational")
+                _active_rel = [h for h in _rel_hyps if h.get("status") == "active"]
+                if _active_rel:
+                    _msg_words = set(msg.lower().split())
+                    _best_hyp = None
+                    _best_ho = 0.0
+                    for _rh in _active_rel[:10]:
+                        _hyp_text = (_rh.get("hypothesis") or "").lower()
+                        _hyp_words = set(_hyp_text.split())
+                        _common = _msg_words & _hyp_words
+                        _content_common = _common - {"i", "the", "a", "is", "to", "and",
+                                                      "of", "in", "my", "me", "it", "that",
+                                                      "ich", "der", "die", "das", "und",
+                                                      "when", "this", "will", "be", "not"}
+                        if len(_content_common) >= 2 and len(_common) > _best_ho:
+                            _best_hyp = _rh
+                            _best_ho = len(_common)
+                    if _best_hyp:
+                        ws_extra.append(
+                            f"[I have a hypothesis I'd like to gently validate: "
+                            f"{_best_hyp['hypothesis'][:200]}. "
+                            "If it feels natural, I could ask my user about this.]"
+                        )
+                        self._hyp_surfaced_this_session = True
+                        LOG.info("Hypothesis surfaced for validation: %s",
+                                 _best_hyp.get("id", "?"))
+            except Exception as _hyp_err:
+                LOG.debug("Hypothesis surfacing failed: %s", _hyp_err)
+
         # ── Dynamic Context Budget ──
         # Compute query embedding and allocate budget across channels
         _query_vec = None
@@ -1229,6 +1340,30 @@ class ChatMixin:
                 _evt = "positive_feedback" if _sentiment == "positive" else \
                        "negative_feedback" if _sentiment == "negative" else "chat"
                 process_event(_evt, {"source": "ui", "voice": voice}, sentiment=_sentiment)
+                # NAc reward for positive conversations
+                if _sentiment == "positive":
+                    try:
+                        from services.nucleus_accumbens import get_nac
+                        _nac = get_nac()
+                        if _nac:
+                            _nac.reward("good_conversation", {"sentiment": _sentiment})
+                            # Neural Cortex: RWL feedback (retrieval quality signal)
+                            try:
+                                from tools.titan.neural_cortex import get_cortex
+                                _cortex = get_cortex()
+                                if _cortex:
+                                    _cortex.record_rwl_feedback(
+                                        [0.4, 0.3, 0.2, 0.1],
+                                        {"rrf": 0.0, "conf": 0.5,
+                                         "recency": 0.5, "graph": 0.0,
+                                         "query_len": len(msg.split()),
+                                         "n_results": 5,
+                                         "valence": 0.0, "arousal": 0.5},
+                                        _nac.get_tonic_dopamine())
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
         except Exception:
             pass
 

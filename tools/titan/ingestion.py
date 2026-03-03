@@ -310,8 +310,35 @@ class Architect:
                 # Add to vector store
                 self.vectors.add(node_id, entity)
 
-        # Store memory chunk (protected for 24h to survive first maintenance cycle)
+        # --- Neural Cortex: importance scoring + emotional tagging ---
+        _mis_confidence = base_confidence  # separate var, don't overwrite original
+        _valence, _arousal = 0.0, 0.5
         chunk_id = f"chunk_{event_id}"
+        _cortex = None
+        try:
+            from .neural_cortex import get_cortex
+            _cortex = get_cortex()
+            if _cortex:
+                # MIS: learned importance score
+                _mis_f = {
+                    "origin": origin,
+                    "claim_count": len(claims),
+                    "entity_count": len(entities),
+                    "topic_count": len(topics),
+                    "text_length": len(text),
+                    "has_user": "user" in text.lower(),
+                    "has_entity": bool(entities),
+                    "hour": datetime.now().hour,
+                }
+                _mis_confidence = _cortex.score_importance(_mis_f)
+
+                # ET: emotional tagging
+                _emb = self.vectors.embed(text)
+                _valence, _arousal = _cortex.tag_emotion(_emb)
+        except Exception:
+            pass
+
+        # Store memory chunk (protected for 24h to survive first maintenance cycle)
         self.sqlite.add_node(Node(
             id=chunk_id,
             type="memory",
@@ -320,14 +347,27 @@ class Architect:
             protected=True,
             metadata={
                 "origin": origin,
-                "confidence": max(base_confidence, 0.8),
+                "confidence": max(_mis_confidence, 0.8),
                 "full_text": text,
                 "event_id": event_id,
                 "unprotect_after": (datetime.now() + timedelta(hours=24)).isoformat(),
+                "valence": round(_valence, 3),
+                "arousal": round(_arousal, 3),
+                "claim_count": len(claims),
+                "entity_count": len(entities),
+                "topic_count": len(topics),
             }
         ))
         self.sqlite.index_for_fts(chunk_id, text, {"origin": origin})
         self.vectors.add(chunk_id, text)
+
+        # --- Neural Cortex: interference detection (after chunk node exists) ---
+        try:
+            if _cortex and claims:
+                _check_claim_interference(
+                    _cortex, self.sqlite, self.vectors, claims, chunk_id)
+        except Exception:
+            pass
 
         # Link entities to memory chunk (verify both nodes exist first)
         for entity in entities:
@@ -411,6 +451,42 @@ class Architect:
         )
 
         return True
+
+
+def _check_claim_interference(cortex, sqlite, vectors, claims, chunk_id):
+    """Check new claims against existing ones for contradictions.
+
+    Uses chunk_id (the memory node being ingested) as edge source — this node
+    is guaranteed to exist because it was added before this function runs.
+    """
+    try:
+        for claim in claims[:3]:  # limit to first 3 claims
+            claim_text = f"{claim.subject} {claim.predicate} {claim.obj}"
+            claim_emb = vectors.embed(claim_text)
+            # Find similar existing claims
+            similar = vectors.search(claim_text, limit=5)
+            for node_id, sim_score in similar:
+                if sim_score < 0.3:
+                    continue
+                if node_id == chunk_id:
+                    continue  # Don't compare with self
+                node = sqlite.get_node(node_id)
+                if not node:
+                    continue
+                existing_emb = vectors.embed(node.label)
+                interference = cortex.detect_interference(claim_emb, existing_emb)
+                if interference > 0.7:
+                    from .storage import Edge
+                    sqlite.add_edge(Edge(
+                        src=chunk_id, dst=node_id,
+                        relation="contradicts",
+                        confidence=interference,
+                        origin="neural_cortex",
+                        created_at=datetime.now().isoformat()
+                    ))
+                    break  # One contradiction per claim is enough
+    except Exception:
+        pass
 
 
 # Singleton architect instance

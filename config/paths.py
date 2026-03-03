@@ -99,12 +99,18 @@ DB_PATHS = {
     "nerd_physics": DB_DIR / "nerd_physics.db",
     "aicore": DB_DIR / "aicore.sqlite",
     "subconscious": DB_DIR / "subconscious.db",
+    "amygdala": DB_DIR / "amygdala.db",
+    "acc_monitor": DB_DIR / "acc_monitor.db",
+    "thalamus": DB_DIR / "thalamus.db",
+    "nucleus_accumbens": DB_DIR / "nucleus_accumbens.db",
+    "immune_system": DB_DIR / "immune_system.db",
 }
 
 # Model files (neural networks)
 MODELS_DIR = AICORE_DATA / "models"
 MODEL_PATHS = {
     "subconscious": MODELS_DIR / "subconscious.pt",
+    "immune_system": MODELS_DIR / "immune_system.pt",
 }
 
 # State files (JSON)

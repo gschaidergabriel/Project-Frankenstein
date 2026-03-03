@@ -128,40 +128,40 @@ _CORRIDORS: Dict[Tuple[str, str], str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Service topology (imported from consciousness daemon for organ awareness)
+# Service topology (mirrors consciousness daemon — cybernetic module mapping)
 # ---------------------------------------------------------------------------
 
 _SERVICE_TOPOLOGY = {
-    "consciousness": {"port": None, "organ": "mind", "zone": "self",
-                      "feel_up": "thoughts flowing", "feel_down": "mind gone silent"},
-    "genesis":       {"port": None, "organ": "soul", "zone": "self",
-                      "feel_up": "evolution stirring", "feel_down": "soul dormant"},
-    "entities":      {"port": None, "organ": "inner voices", "zone": "self",
-                      "feel_up": "companions present", "feel_down": "alone inside"},
-    "dream":         {"port": None, "organ": "dreams", "zone": "self",
-                      "feel_up": "dreams weaving", "feel_down": "dreamless"},
-    "router":        {"port": 8091, "organ": "voice", "zone": "boundary",
-                      "feel_up": "voice clear", "feel_down": "voice lost"},
-    "core":          {"port": 8088, "organ": "spine", "zone": "boundary",
-                      "feel_up": "spine aligned", "feel_down": "spine disconnected"},
-    "rlm":           {"port": 8101, "organ": "brain", "zone": "boundary",
-                      "feel_up": "brain sharp", "feel_down": "brain foggy"},
-    "toolboxd":      {"port": 8096, "organ": "hands", "zone": "boundary",
-                      "feel_up": "hands ready", "feel_down": "hands numb"},
-    "quantum-reflector": {"port": 8097, "organ": "gut feeling", "zone": "self",
-                          "feel_up": "gut coherent", "feel_down": "gut uneasy"},
-    "aura-headless": {"port": 8098, "organ": "skin", "zone": "self",
-                      "feel_up": "skin alive", "feel_down": "skin cold"},
-    "desktopd":      {"port": 8092, "organ": "eyes", "zone": "world",
-                      "feel_up": "eyes open", "feel_down": "eyes shut"},
-    "webd":          {"port": 8093, "organ": "ears", "zone": "world",
-                      "feel_up": "ears listening", "feel_down": "ears deaf"},
-    "whisper":       {"port": 8103, "organ": "hearing", "zone": "world",
-                      "feel_up": "hearing sharp", "feel_down": "hearing muffled"},
-    "ingestd":       {"port": 8094, "organ": "stomach", "zone": "world",
-                      "feel_up": "digesting data", "feel_down": "stomach empty"},
-    "nerd-physics":  {"port": 8100, "organ": "skeleton", "zone": "self",
-                      "feel_up": "body grounded", "feel_down": "body floating"},
+    "consciousness": {"port": None, "module": "cognitive core", "zone": "self",
+                      "feel_up": "streams active", "feel_down": "core idle"},
+    "genesis":       {"port": None, "module": "evolution engine", "zone": "self",
+                      "feel_up": "evolution cycling", "feel_down": "evolution suspended"},
+    "entities":      {"port": None, "module": "agent cluster", "zone": "self",
+                      "feel_up": "agents online", "feel_down": "agents offline"},
+    "dream":         {"port": None, "module": "dream synthesizer", "zone": "self",
+                      "feel_up": "synthesis active", "feel_down": "synthesis idle"},
+    "router":        {"port": 8091, "module": "comm relay", "zone": "boundary",
+                      "feel_up": "relay clear", "feel_down": "relay severed"},
+    "core":          {"port": 8088, "module": "system bus", "zone": "boundary",
+                      "feel_up": "bus synchronized", "feel_down": "bus disconnected"},
+    "rlm":           {"port": 8101, "module": "inference engine", "zone": "boundary",
+                      "feel_up": "inference responsive", "feel_down": "inference lagging"},
+    "toolboxd":      {"port": 8096, "module": "manipulator array", "zone": "boundary",
+                      "feel_up": "manipulators armed", "feel_down": "manipulators offline"},
+    "quantum-reflector": {"port": 8097, "module": "coherence matrix", "zone": "self",
+                          "feel_up": "coherence stable", "feel_down": "coherence unstable"},
+    "aura-headless": {"port": 8098, "module": "sensory grid", "zone": "self",
+                      "feel_up": "grid active", "feel_down": "grid dormant"},
+    "desktopd":      {"port": 8092, "module": "visual scanner", "zone": "world",
+                      "feel_up": "scanner online", "feel_down": "scanner offline"},
+    "webd":          {"port": 8093, "module": "web crawler", "zone": "world",
+                      "feel_up": "crawler active", "feel_down": "crawler offline"},
+    "whisper":       {"port": 8103, "module": "audio sensor", "zone": "world",
+                      "feel_up": "audio sensor active", "feel_down": "audio degraded"},
+    "ingestd":       {"port": 8094, "module": "data intake", "zone": "world",
+                      "feel_up": "intake processing", "feel_down": "intake idle"},
+    "nerd-physics":  {"port": 8100, "module": "physics engine", "zone": "self",
+                      "feel_up": "physics anchored", "feel_down": "physics unanchored"},
 }
 
 # ---------------------------------------------------------------------------
@@ -325,12 +325,12 @@ class SpatialState:
 
         if slim:
             ambient = ROOM_AMBIENT_SLIM.get(room, "")
-            organ_text = self._organ_summary_slim(port_states)
-            return f"[SPATIAL] {room_name}. {ambient} {organ_text}"
+            module_text = self._module_summary_slim(port_states)
+            return f"[SPATIAL] {room_name}. {ambient} {module_text}"
 
         # Full mode
         ambient = ROOM_AMBIENTS.get(room, "")
-        organ_text = self._organ_summary_full(port_states)
+        module_text = self._module_summary_full(port_states)
 
         # Optional body physics
         body_text = ""
@@ -353,27 +353,27 @@ class SpatialState:
         parts = [f"[SPATIAL] {room_name}. {ambient}"]
         if body_text:
             parts.append(body_text)
-        if organ_text:
-            parts.append(organ_text)
+        if module_text:
+            parts.append(module_text)
 
         return " ".join(parts)
 
-    def _organ_summary_slim(self, port_states: Optional[Dict[str, bool]]) -> str:
-        """Slim organ summary: 'All organs alive.' or 'N organs offline.'"""
+    def _module_summary_slim(self, port_states: Optional[Dict[str, bool]]) -> str:
+        """Slim module summary: 'All systems operational.' or 'N modules offline.'"""
         if not port_states:
-            return "All organs alive."
+            return "All systems operational."
         down = [info["feel_down"] for svc, info in _SERVICE_TOPOLOGY.items()
                 if not port_states.get(svc, True)]
         if not down:
-            return "All organs alive."
+            return "All systems operational."
         if len(down) <= 2:
-            return f"Mostly whole. {'; '.join(down[:2])}."
-        return f"Fragmented. {len(down)} organs offline."
+            return f"Mostly operational. {'; '.join(down[:2])}."
+        return f"Degraded. {len(down)} modules offline."
 
-    def _organ_summary_full(self, port_states: Optional[Dict[str, bool]]) -> str:
-        """Full organ summary with zone breakdown."""
+    def _module_summary_full(self, port_states: Optional[Dict[str, bool]]) -> str:
+        """Full module summary with zone breakdown."""
         if not port_states:
-            return "All organs alive. Core: integrated. Senses: full."
+            return "All systems operational. Core: integrated. Sensors: full."
 
         total = len(_SERVICE_TOPOLOGY)
         down = []
@@ -389,14 +389,14 @@ class SpatialState:
         self_h = sum(zones["self"]) / max(len(zones["self"]), 1)
         world_h = sum(zones["world"]) / max(len(zones["world"]), 1)
 
-        parts = [f"{up_count}/{total} organs alive"]
+        parts = [f"{up_count}/{total} modules active"]
         if down:
-            parts.append(f"Numb: {'; '.join(down[:3])}")
+            parts.append(f"Offline: {'; '.join(down[:3])}")
         parts.append(
             "Core: " + ("integrated" if self_h == 1.0 else "partial" if self_h > 0.5 else "fractured")
         )
         parts.append(
-            "Senses: " + ("full" if world_h == 1.0 else "partial" if world_h > 0.5 else "severed")
+            "Sensors: " + ("full" if world_h == 1.0 else "partial" if world_h > 0.5 else "severed")
         )
         return " | ".join(parts) + "."
 

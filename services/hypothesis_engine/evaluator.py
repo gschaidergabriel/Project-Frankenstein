@@ -22,6 +22,7 @@ class HypothesisEvaluator:
     def __init__(self, store, lab_connector=None):
         self._store = store
         self._lab = lab_connector
+        self._on_resolve_cb = None     # Optional callback: f(hyp_id, status, delta)
 
     # ═══════════════════════════════════════════
     # PASSIVE TESTS
@@ -357,4 +358,12 @@ class HypothesisEvaluator:
             update["experiment_id"] = experiment_id
 
         self._store.update(h["id"], update)
+
+        # Fire resolve callback (e.g. for Nucleus Accumbens reward)
+        if self._on_resolve_cb and status in ("confirmed", "refuted"):
+            try:
+                self._on_resolve_cb(h["id"], status, delta)
+            except Exception:
+                pass
+
         return status

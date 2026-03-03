@@ -57,7 +57,7 @@ _DETECTION_PATTERNS = [
 # Entity names — "his" near these names is a legitimate 3rd-person reference
 # to another character, not Frank talking about himself in 3rd person.
 _ENTITY_NAMES = re.compile(
-    r"\b(?:Dr\.?\s*Hibbert|Hibbert|Kairos|Atlas|Echo|Gabriel)\b",
+    r"\b(?:Dr\.?\s*Hibbert|Hibbert|Kairos|Atlas|Echo)\b",
     re.IGNORECASE,
 )
 

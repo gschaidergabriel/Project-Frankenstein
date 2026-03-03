@@ -248,6 +248,34 @@ class SQLiteStore:
     CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
     CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
     CREATE INDEX IF NOT EXISTS idx_claims_subject ON claims(subject);
+
+    -- Neural Cortex training signal tables
+    CREATE TABLE IF NOT EXISTS access_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL,
+        query_hash TEXT NOT NULL,
+        timestamp REAL NOT NULL,
+        score REAL DEFAULT 0.0
+    );
+    CREATE INDEX IF NOT EXISTS idx_access_node ON access_log(node_id);
+    CREATE INDEX IF NOT EXISTS idx_access_ts ON access_log(timestamp);
+
+    CREATE TABLE IF NOT EXISTS co_retrieval (
+        node_a TEXT NOT NULL,
+        node_b TEXT NOT NULL,
+        count INTEGER DEFAULT 1,
+        last_ts REAL NOT NULL,
+        PRIMARY KEY (node_a, node_b)
+    );
+    CREATE INDEX IF NOT EXISTS idx_co_ret_ts ON co_retrieval(last_ts);
+
+    CREATE TABLE IF NOT EXISTS rwl_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp REAL NOT NULL,
+        weights_used TEXT NOT NULL,
+        query_features TEXT NOT NULL,
+        reward REAL DEFAULT 0.0
+    );
     """
 
     def __init__(self, db_path: Path = TITAN_DB):

@@ -1157,6 +1157,16 @@ class DreamDaemon:
         except Exception as e:
             LOG.warning("Memory consolidation failed: %s", e)
 
+        # --- Neural Cortex: training cycle ---
+        try:
+            from tools.titan.neural_cortex import get_cortex
+            _cortex = get_cortex()
+            if _cortex:
+                _cortex.train_cycle()
+                LOG.info("Titan Neural Cortex: training cycle completed")
+        except Exception as e:
+            LOG.debug("Cortex training skipped: %s", e)
+
         # Fire observation to world experience daemon
         try:
             from tools.world_experience_daemon import get_daemon

@@ -169,6 +169,14 @@ class ContextBuilder:
         # 3. Fuse rankings with RRF
         fused_scores = reciprocal_rank_fusion(rankings)
 
+        # --- Neural Cortex: get cortex once, outside loop ---
+        _cortex = None
+        try:
+            from .neural_cortex import get_cortex
+            _cortex = get_cortex()
+        except Exception:
+            pass
+
         # 4. Build retrieved items with enrichment
         items = []
         for node_id, rrf_score in fused_scores.items():
@@ -194,17 +202,19 @@ class ContextBuilder:
 
             # Get vector score for this node
             vector_score = 0.0
-            for nid, score in vector_results:
-                if nid == node_id:
-                    vector_score = score
-                    break
+            if vector_results:
+                for nid, score in vector_results:
+                    if nid == node_id:
+                        vector_score = score
+                        break
 
             # Get FTS score for this node
             fts_score = 0.0
-            for nid, score in fts_results:
-                if nid == node_id:
-                    fts_score = score
-                    break
+            if fts_results:
+                for nid, score in fts_results:
+                    if nid == node_id:
+                        fts_score = score
+                        break
 
             # Calculate graph score (degree centrality)
             degree = self.sqlite.get_node_degree(node_id)
@@ -213,12 +223,27 @@ class ContextBuilder:
             # Get content from metadata
             content = node.metadata.get("full_text", node.label)
 
-            # Calculate final score
+            # --- Neural Cortex: learned retrieval weights ---
+            _weights = [0.4, 0.3, 0.2, 0.1]
+            if _cortex:
+                try:
+                    _rwl_f = {
+                        "rrf": rrf_score, "conf": effective_confidence,
+                        "recency": recency_score, "graph": graph_score,
+                        "query_len": len(query.split()),
+                        "n_results": len(fused_scores),
+                        "valence": node.metadata.get("valence", 0.0),
+                        "arousal": node.metadata.get("arousal", 0.5),
+                    }
+                    _weights = _cortex.get_retrieval_weights(_rwl_f)
+                except Exception:
+                    pass
+
             final_score = (
-                rrf_score * 0.4 +
-                effective_confidence * 0.3 +
-                recency_score * 0.2 +
-                graph_score * 0.1
+                rrf_score * _weights[0] +
+                effective_confidence * _weights[1] +
+                recency_score * _weights[2] +
+                graph_score * _weights[3]
             )
 
             items.append(RetrievedItem(
@@ -238,7 +263,19 @@ class ContextBuilder:
 
         # Sort by final score and limit
         items.sort(key=lambda x: x.final_score, reverse=True)
-        return items[:limit]
+        result = items[:limit]
+
+        # --- Neural Cortex: log retrieval access + co-retrieval ---
+        try:
+            if _cortex and result:
+                _ids = [it.node_id for it in result]
+                _scores = [it.final_score for it in result]
+                _cortex.log_access(_ids, query, _scores)
+                _cortex.log_co_retrieval(_ids)
+        except Exception:
+            pass
+
+        return result
 
     def expand_with_graph(self, items: List[RetrievedItem],
                            hops: int = 1) -> List[RetrievedItem]:

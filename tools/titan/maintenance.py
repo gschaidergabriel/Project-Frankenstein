@@ -109,6 +109,15 @@ class MaintenanceEngine:
         # 1. Update confidence decay
         stats.confidence_updated = self._decay_confidence()
 
+        # 1b. Neural Cortex: associative edge strengthening + cleanup
+        try:
+            from .neural_cortex import get_cortex
+            _cortex = get_cortex()
+            if _cortex:
+                _cortex.cleanup_access_log(max_age_days=30)
+        except Exception:
+            pass
+
         # 2. Find and prune candidates
         candidates = self._find_prune_candidates()
         stats.nodes_checked = len(candidates)

@@ -48,7 +48,7 @@ WEBD_BASE = os.environ.get("AICORE_WEBD_URL", "http://127.0.0.1:8093")
 # Safety limits
 MAX_TOOL_CALLS = 10          # Per session hard cap
 MIN_IDLE_S = 900             # 15 min user idle minimum
-COOLDOWN_S = 1800            # 30 min between sessions (Gabriel spec: max 2/hour)
+COOLDOWN_S = 1800            # 30 min between sessions (spec: max 2/hour)
 MAX_DAILY = 5                # Max 5 sessions per 24h
 LLM_TIMEOUT_S = 360.0        # Match consciousness daemon
 TOOL_TIMEOUT_S = 30.0        # Per tool call

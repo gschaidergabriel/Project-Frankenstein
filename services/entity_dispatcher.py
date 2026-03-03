@@ -515,6 +515,39 @@ def run_entity_session(entity: str) -> str:
     pre_mood = _eb_get_mood()
     pre_ts = time.time()
 
+    # Surface pending intents as frank_observations before session starts
+    _surfaced_intent_ids: list = []
+    try:
+        from services.intent_queue import get_intent_queue
+        _iq = get_intent_queue()
+        if _iq:
+            _pending = _iq.get_pending_for_entity(entity, limit=3)
+            if _pending:
+                from config.paths import get_db
+                _entity_db = get_db(entity)
+                if _entity_db.exists():
+                    _econn = sqlite3.connect(str(_entity_db), timeout=10)
+                    try:
+                        for _p in _pending:
+                            _econn.execute(
+                                "INSERT INTO frank_observations "
+                                "(timestamp, category, observation, confidence, "
+                                " related_topic) VALUES (?, ?, ?, ?, ?)",
+                                (time.time(), "intent",
+                                 f"[Inner resolution] {_p['extracted_intent']}",
+                                 0.7, _p.get("category", "")),
+                            )
+                            _surfaced_intent_ids.append(_p["id"])
+                        _econn.commit()
+                    finally:
+                        _econn.close()
+                    for _sid in _surfaced_intent_ids:
+                        _iq.mark_surfaced(_sid)
+                    LOG.info("Surfaced %d intent(s) for %s session",
+                             len(_surfaced_intent_ids), display)
+    except Exception as _iq_err:
+        LOG.debug("Intent surfacing failed: %s", _iq_err)
+
     try:
         mod = importlib.import_module(module_name)
         # Cycle 5 D-7: Removed importlib.reload() — #1 memory leak source.
@@ -533,6 +566,14 @@ def run_entity_session(entity: str) -> str:
                 _eb_record_entity_experience(entity, display, pre_mood, pre_ts, exit_reason)
             except Exception:
                 pass
+            # Mark surfaced intents as completed — the session happened
+            if _surfaced_intent_ids:
+                try:
+                    _iq2 = get_intent_queue()
+                    for _sid in _surfaced_intent_ids:
+                        _iq2.mark_completed(_sid)
+                except Exception:
+                    pass
 
         return exit_reason
     except KeyboardInterrupt:

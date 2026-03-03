@@ -1101,7 +1101,7 @@ class ChatMemoryDB:
         for m in msgs:
             if m.get("is_system"):
                 continue
-            role = "Gabriel" if m.get("is_user") else "Frank"
+            role = "User" if m.get("is_user") else "Frank"
             text = m["text"]
             if text == "[archived]":
                 continue

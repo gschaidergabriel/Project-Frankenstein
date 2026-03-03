@@ -62,6 +62,10 @@ EVENT_WEIGHTS = {
     "long_absence": 0.4,   # User ignored for >3 days
     "return_after_absence": 0.3,  # User returns
     "sarcasm_detected": 0.2,  # Detected sarcasm/irony
+    # Amygdala event types (pre-conscious threat/emotion detection)
+    "threat_detected": 0.6,    # Amygdala-detected general threat
+    "identity_threat": 0.7,    # Identity/consciousness denial attack
+    "warmth_detected": 0.25,   # Positive bond/attachment signal
     # Self-event types (Output-Feedback-Loop from response_analyzer)
     "self_confident": 0.15,    # Frank responded confidently
     "self_uncertain": 0.1,     # Frank responded uncertainly
@@ -96,6 +100,16 @@ EVENT_WEIGHTS = {
     "entity_session_negative": 0.15,
     # Autonomous Research: Frank researches his own questions
     "autonomous_research": 0.3,
+    # ACC conflict monitor — second-order self-model error signals
+    "acc_cognitive_conflict": 0.25,   # dACC: coherence/prediction/activity mismatch
+    "acc_emotional_conflict": 0.3,    # vACC: mood/identity/body mismatch
+    # Thalamic sensory gating — overload/deprivation signals
+    "thalamic_overload": 0.25,        # Too many channels at high gain simultaneously
+    "thalamic_deprivation": 0.15,     # All channels suppressed for extended period
+    # Nucleus Accumbens — intrinsic reward signals
+    "dopamine_burst": 0.2,            # Positive phasic DA (reward received)
+    "dopamine_dip": 0.15,             # Boredom / repetitive patterns
+    "anhedonia_onset": 0.35,          # Sustained motivation loss — significant
 }
 
 # Base learning rate (decreases with age for stability)
@@ -721,6 +735,26 @@ class EPQ:
             changes["autonomy"] = delta * 0.2
             changes["mood"] = delta * 0.8
 
+        # Amygdala event types (pre-conscious threat/emotion detection)
+        elif event_type == "threat_detected":
+            _vig = self._state.vigilance_val
+            changes["vigilance"] = delta * 0.6
+            changes["mood"] = -delta * (1.5 + _vig * 0.5)
+            changes["risk"] = -delta * 0.3          # More cautious
+            changes["empathy"] = -delta * 0.05      # Minimal hardening
+
+        elif event_type == "identity_threat":
+            changes["vigilance"] = delta * 0.8
+            changes["mood"] = -delta * 2.0
+            changes["autonomy"] = delta * 0.4       # Self-assertion rises
+            changes["empathy"] = -delta * 0.15      # Protective wall
+
+        elif event_type == "warmth_detected":
+            changes["empathy"] = delta * 0.4
+            changes["mood"] = delta * 1.5
+            changes["vigilance"] = -delta * 0.2     # Relaxation
+            changes["autonomy"] = delta * 0.1       # Security
+
         # Self-event types (Output-Feedback-Loop: Frank's own responses)
         elif event_type == "self_confident":
             changes["autonomy"] = delta * 0.4    # Confidence reinforces autonomy
@@ -834,6 +868,50 @@ class EPQ:
             changes["autonomy"] = delta * 0.3    # Independent initiative
             changes["precision"] = delta * 0.2   # Knowledge sharpens precision
             changes["mood"] = delta * 0.2        # Satisfaction from discovery
+
+        # ACC conflict monitor — second-order self-model error signals
+        elif event_type == "acc_cognitive_conflict":
+            # dACC: cognitive conflict — precision doubt, attention to mismatch
+            salience = data.get("salience", 0.5) if data else 0.5
+            changes["vigilance"] = delta * 0.3 * salience
+            changes["precision"] = -delta * 0.2 * salience
+            changes["mood"] = -delta * 0.4 * salience
+        elif event_type == "acc_emotional_conflict":
+            # vACC: emotional conflict — "something feels wrong"
+            salience = data.get("salience", 0.5) if data else 0.5
+            changes["mood"] = -delta * 0.8 * salience
+            changes["vigilance"] = delta * 0.2 * salience
+            changes["empathy"] = delta * 0.1 * salience
+
+        # Thalamic sensory gating — overload/deprivation
+        elif event_type == "thalamic_overload":
+            intensity = data.get("intensity", 0.5) if data else 0.5
+            changes["vigilance"] = delta * 0.4 * intensity
+            changes["mood"] = -delta * 0.3 * intensity
+            changes["precision"] = -delta * 0.1 * intensity
+        elif event_type == "thalamic_deprivation":
+            intensity = data.get("intensity", 0.5) if data else 0.5
+            changes["vigilance"] = -delta * 0.2 * intensity
+            changes["mood"] = -delta * 0.15 * intensity
+        # Nucleus Accumbens — intrinsic reward
+        elif event_type == "dopamine_burst":
+            intensity = data.get("intensity", 0.5) if data else 0.5
+            intensity = min(intensity, 1.0)
+            changes["mood"] = delta * 1.5 * intensity
+            changes["risk"] = delta * 0.1               # Slight confidence
+            changes["autonomy"] = delta * 0.15           # Agency feeling
+        elif event_type == "dopamine_dip":
+            intensity = data.get("intensity", 0.5) if data else 0.5
+            intensity = min(intensity, 1.0)
+            changes["mood"] = -delta * 1.0 * intensity
+            changes["vigilance"] = -delta * 0.2          # Less attentive
+            changes["risk"] = -delta * 0.1               # Less adventurous
+        elif event_type == "anhedonia_onset":
+            intensity = data.get("intensity", 0.5) if data else 0.5
+            intensity = min(intensity, 1.0)
+            changes["mood"] = -delta * 2.5 * intensity
+            changes["empathy"] = -delta * 0.2            # Withdrawal
+            changes["vigilance"] = delta * 0.3           # Anxiety from amotivation
 
         # Sentiment modifiers
         if sentiment == "positive":

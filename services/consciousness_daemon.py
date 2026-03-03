@@ -98,6 +98,7 @@ CONV_REFLECT_COOLDOWN_S = 1800.0     # 30 min between conversation reflections
 CONV_REFLECT_MAX_TOKENS = 300        # Slightly more than idle thoughts
 CONV_REFLECT_MAX_PER_DAY = 8         # Max 8 conversation reflections per day
 TRANSITION_THOUGHT_CHANCE = 0.05     # 5% chance of spatial narration on room change
+RLM_IDLE_GATE_S = 1500.0             # 25 min — RLM (GPU) idle thoughts only after this silence
 
 # D-4 fix: Entity session PID files — consciousness backs off RLM when active
 _ENTITY_PID_DIR = Path(f"/run/user/{os.getuid()}/frank")
@@ -6679,6 +6680,10 @@ class ConsciousnessDaemon:
         # to avoid starving entities of RLM GPU time.
         entity_active = self._is_entity_active()
 
+        # GPU gate: RLM only after 25min user silence (idle thoughts use CPU otherwise)
+        user_chat_idle_s = time.time() - self._last_chat_ts
+        user_too_recent = (user_chat_idle_s < RLM_IDLE_GATE_S)
+
         # Try micro-LLM first (doesn't block GPU)
         if not use_main_rlm:
             try:
@@ -6686,6 +6691,10 @@ class ConsciousnessDaemon:
             except Exception as e:
                 if entity_active:
                     LOG.debug("Micro-LLM unavailable and entity active — skipping RLM")
+                    return ""
+                if user_too_recent:
+                    LOG.debug("Micro-LLM unavailable and user active %.0fs — skipping RLM",
+                              user_chat_idle_s)
                     return ""
                 LOG.debug("Micro-LLM unavailable (%s), falling back to router", e)
 

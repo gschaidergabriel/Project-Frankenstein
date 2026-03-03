@@ -521,15 +521,18 @@ def run_entity_session(entity: str) -> str:
         # Reload creates duplicate module objects that never get GC'd.
         exit_reason = mod.run()
         if exit_reason is None:
-            exit_reason = "unknown"
+            exit_reason = "aborted"
         LOG.info("%s session ended: %s", display, exit_reason)
         _entity_notify(f"{display} Session", f"ended ({exit_reason})")
 
         # Experiential Bridge: record entity experience
-        try:
-            _eb_record_entity_experience(entity, display, pre_mood, pre_ts, exit_reason)
-        except Exception:
-            pass
+        # Skip recording for sessions that never actually started (no conversation happened)
+        _NO_SESSION_REASONS = {"pid_lock", "no_llm", "aborted"}
+        if exit_reason not in _NO_SESSION_REASONS:
+            try:
+                _eb_record_entity_experience(entity, display, pre_mood, pre_ts, exit_reason)
+            except Exception:
+                pass
 
         return exit_reason
     except KeyboardInterrupt:
@@ -651,6 +654,12 @@ def main():
             LOG.info("Shutdown signal during %s session — exiting.", display)
             break
 
+        elif exit_reason in ("pid_lock", "no_llm", "aborted"):
+            # Session never started — short cooldown, don't count
+            LOG.info("%s session aborted before start (%s). Cooldown 60s.",
+                     display, exit_reason)
+            _shutdown_sleep(60)
+
         elif exit_reason in COMPLETED_REASONS or any(
             exit_reason.startswith(r) for r in COMPLETED_REASONS
         ):
@@ -662,7 +671,6 @@ def main():
                      quotas["completed"][entity], DAILY_QUOTAS[entity],
                      COOLDOWN_COMPLETED)
             _shutdown_sleep(COOLDOWN_COMPLETED)
-
 
         else:
             # Unknown reason — treat conservatively, don't count

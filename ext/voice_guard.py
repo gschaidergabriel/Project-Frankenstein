@@ -54,6 +54,20 @@ _DETECTION_PATTERNS = [
     (_PAT_HIM, "him/himself"),
 ]
 
+# Entity names — "his" near these names is a legitimate 3rd-person reference
+# to another character, not Frank talking about himself in 3rd person.
+_ENTITY_NAMES = re.compile(
+    r"\b(?:Dr\.?\s*Hibbert|Hibbert|Kairos|Atlas|Echo|Gabriel)\b",
+    re.IGNORECASE,
+)
+
+
+def _near_entity_name(text: str, match_start: int, window: int = 120) -> bool:
+    """Check if a pronoun match is near an entity name (within window chars)."""
+    start = max(0, match_start - window)
+    end = min(len(text), match_start + window)
+    return bool(_ENTITY_NAMES.search(text[start:end]))
+
 
 def detect_third_person(text: str) -> Tuple[bool, int, str]:
     """Check whether text contains third-person voice about Frank.
@@ -67,7 +81,15 @@ def detect_third_person(text: str) -> Tuple[bool, int, str]:
     total = 0
     first_label = ""
     for pat, label in _DETECTION_PATTERNS:
-        hits = len(pat.findall(text))
+        if label == "Frank+verb":
+            # "Frank + verb" is always about Frank, no entity exception
+            hits = len(pat.findall(text))
+        else:
+            # For pronoun patterns (he/his/him), skip matches near entity names
+            hits = 0
+            for m in pat.finditer(text):
+                if not _near_entity_name(text, m.start()):
+                    hits += 1
         if hits and not first_label:
             first_label = label
         total += hits

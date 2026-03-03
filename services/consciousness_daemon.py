@@ -659,6 +659,15 @@ class ConsciousnessDaemon:
         if hasattr(self, '_cached_service_health') and self._cached_service_health:
             parts.append(f"Health: {self._cached_service_health}")
 
+        # 8. Amygdala alert state — pre-conscious emotional resonance
+        try:
+            from services.amygdala import get_amygdala
+            _amyg = get_amygdala()
+            if _amyg.last_alert_age_s < 300:  # Last alert < 5min
+                parts.append(f"Gut: {_amyg.last_category} ({_amyg.last_urgency:.0%})")
+        except Exception:
+            pass
+
         return "[PROPRIO] " + " | ".join(parts)
 
     def _check_port(self, port: int) -> bool:
@@ -4362,12 +4371,35 @@ class ConsciousnessDaemon:
 
         # Legacy fallback: random prompt selection (cold start / error)
         if thought_type is None:
-            from services.subconscious import THOUGHT_CATEGORIES, CATEGORY_PROMPT_RANGES
+            from services.subconscious import (
+                THOUGHT_CATEGORIES, CATEGORY_PROMPT_RANGES, CATEGORY_TO_IDX,
+            )
             # Weighted random matching old distribution (mostly regular prompts)
             _weights = [0.02, 0.01, 0.12, 0.12, 0.12, 0.12, 0.12,
                         0.10, 0.08, 0.05, 0.05, 0.05, 0.02, 0.02]
             thought_type = random.choices(THOUGHT_CATEGORIES, weights=_weights, k=1)[0]
             LOG.info("Subconscious fallback → %s", thought_type)
+
+            # BUG-1 fix: Record fallback transitions so the network can learn
+            # from ALL decisions, not just the ones it made itself.
+            if sub is not None:
+                try:
+                    import math
+                    sub_action = CATEGORY_TO_IDX[thought_type]
+                    sub_state = self._encode_subconscious_state()
+                    sub_mask = self._get_subconscious_action_mask()
+                    # Log-prob of the fallback policy (behavior policy)
+                    w_total = sum(_weights)
+                    sub_log_prob = math.log(
+                        max(_weights[sub_action] / w_total, 1e-8))
+                    # Value estimate from network (critic learns from all data)
+                    try:
+                        _, v = sub.net(sub_state)
+                        sub_value = v.item()
+                    except Exception:
+                        sub_value = 0.0
+                except Exception as e:
+                    LOG.debug("Fallback transition prep failed: %s", e)
 
         # ── Route to category-specific handler ─────────────────────
         # Some categories have dedicated handlers; the rest use prompt selection.
@@ -6716,8 +6748,21 @@ class ConsciousnessDaemon:
             (r"\b\d{3,}\s+tools?\b", "prompt-leak: N tools"),
         ]
 
+        # Entity names — "his/he/him" near these refer to entities, not Frank
+        _ENTITY_NAME_PAT = re.compile(
+            r"\b(?:Dr\.?\s*Hibbert|Hibbert|Kairos|Atlas|Echo|Gabriel)\b",
+            re.IGNORECASE)
+
         for pat, label in _HARD_REJECT:
-            if re.search(pat, text, re.IGNORECASE):
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                # Skip pronoun-based rejections if near an entity name
+                if label.startswith("3rd-person"):
+                    window = 120
+                    ctx_start = max(0, m.start() - window)
+                    ctx_end = min(len(text), m.end() + window)
+                    if _ENTITY_NAME_PAT.search(text[ctx_start:ctx_end]):
+                        continue  # Pronoun refers to entity, not Frank
                 LOG.info("REJECT idle thought [hard:%s]: %s", label, text[:80])
                 return ""
 
@@ -7586,13 +7631,18 @@ class ConsciousnessDaemon:
         gpu_delta = state.gpu_load - prev.gpu_load
         gpu_cooldown_ok = (state.timestamp - getattr(self, '_last_gpu_event_ts', 0)) > PERCEPT_GPU_COOLDOWN_S
         if gpu_cooldown_ok:
-            gpu_src = f":{self._cached_gpu_attribution}" if self._cached_gpu_attribution != "none" else ":mixed"
-            if gpu_delta > PERCEPT_GPU_LOAD_DELTA:
-                events.append(f"gpu_spike{gpu_src}")
-                self._last_gpu_event_ts = state.timestamp
-            elif gpu_delta < -PERCEPT_GPU_LOAD_DELTA:
-                events.append(f"gpu_drop{gpu_src}")
-                self._last_gpu_event_ts = state.timestamp
+            gpu_attr = self._cached_gpu_attribution
+            if gpu_attr == "none":
+                # GPU was idle at last scan — skip event (no meaningful attribution)
+                pass
+            else:
+                gpu_src = f":{gpu_attr}"
+                if gpu_delta > PERCEPT_GPU_LOAD_DELTA:
+                    events.append(f"gpu_spike{gpu_src}")
+                    self._last_gpu_event_ts = state.timestamp
+                elif gpu_delta < -PERCEPT_GPU_LOAD_DELTA:
+                    events.append(f"gpu_drop{gpu_src}")
+                    self._last_gpu_event_ts = state.timestamp
 
         # RAM pressure changes
         ram_delta = state.ram_pct - prev.ram_pct

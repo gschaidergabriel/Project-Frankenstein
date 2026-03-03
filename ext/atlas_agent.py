@@ -954,7 +954,7 @@ class AtlasAgent:
         """Main session entry point."""
         if not _acquire_pid_lock():
             LOG.info("Session aborted: PID lock held.")
-            return
+            return "pid_lock"
 
         try:
             return self._run_session_inner()
@@ -995,13 +995,13 @@ class AtlasAgent:
                 warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
                 if not warmup:
                     LOG.error("Neither Ollama nor Router available. Aborting.")
-                    return
+                    return "no_llm"
         else:
             LOG.info("Pre-warming Llama model...")
             warmup = _call_llm(ROUTER_URL, {"text": "Hello", "force": "llama", "n_predict": 16}, retries=5)
             if not warmup:
                 LOG.error("Could not pre-warm Llama. Aborting.")
-                return
+                return "no_llm"
             LOG.info("  Llama warm: OK (%s)", warmup[:50])
 
         # Initialize
@@ -1030,12 +1030,12 @@ class AtlasAgent:
         opening = self._generate_opening(strategy)
         if not opening:
             LOG.error("Failed to generate opening. Aborting.")
-            return
+            return "no_llm"
 
         # Abort check after opening generation
         if _get_xprintidle_s() < 30:
             LOG.info("User returned during opening generation — aborting session")
-            return
+            return "user_returned"
 
         opening = _clean_response(opening)
 
@@ -1047,12 +1047,12 @@ class AtlasAgent:
         frank_response = _ask_frank(opening, self.session_id)
         if not frank_response:
             LOG.error("Frank did not respond to opening. Aborting.")
-            return
+            return "no_llm"
 
         # Abort check after Frank's opening response
         if _get_xprintidle_s() < 30:
             LOG.info("User returned after opening response — aborting session")
-            return
+            return "user_returned"
 
         frank_response = _clean_response(frank_response)
         _voice_reprompt = False

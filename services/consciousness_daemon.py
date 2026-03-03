@@ -3760,8 +3760,32 @@ class ConsciousnessDaemon:
                 if epq.get("risk", 0) < -0.3:
                     violations.append("epq_hallucination:risk_high_but_actually_cautious")
 
+        # ── 8. Self-Address Confusion ──
+        # Frank talking to himself as if he were a therapist/support figure
+        # "I'm here for you/I", "let me know how I can support", "I'm listening"
+        # This is a confused LLM output, not genuine self-reflection
+        _self_address = [
+            "i'm here for you", "i'm here for i", "i am here for you",
+            "let me know how i can support", "how can i support you",
+            "how can i support i", "i'm always listening",
+            "take your time", "take my time, and let me",
+            "whatever you're feeling", "whatever i'm feeling, it's valid",
+            "you can talk to me", "i can talk to me",
+            "don't hesitate to reach out", "i'm here to help",
+            "how are you feeling today", "what's on your mind",
+        ]
+        for phrase in _self_address:
+            if phrase in text_lower:
+                violations.append(f"self_address_confusion:{phrase[:30]}")
+                break
+
         # ── Score ──
-        score = min(1.0, len(violations) * 0.3)
+        # Self-address confusion is always severe (LLM identity collapse)
+        has_self_addr = any("self_address" in v for v in violations)
+        if has_self_addr:
+            score = 0.9
+        else:
+            score = min(1.0, len(violations) * 0.3)
         valid = len(violations) == 0
 
         return {

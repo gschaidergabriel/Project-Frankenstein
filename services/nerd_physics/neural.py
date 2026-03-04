@@ -225,6 +225,14 @@ def train_neural_dynamics(
     optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.01)
 
+    # SFT Stabilizer: gradient clipping + weight decay
+    try:
+        from services.sft_stabilizer import get_stabilizer
+        _stab = get_stabilizer()
+        _sft_anchor = _stab.create_anchor(model, "nerd_physics", strength=0.02)
+    except Exception:
+        _stab = None
+
     # DataLoader
     train_ds = TensorDataset(X_train, Y_train, W_train)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -247,10 +255,17 @@ def train_neural_dynamics(
 
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            if _stab is not None:
+                _stab.safe_step(optimizer, model, 1.0)
+            else:
+                optimizer.step()
 
             total_loss += loss.item()
             n_batches += 1
+
+        # SFT: weight decay after each epoch
+        if _stab is not None:
+            _stab.apply_weight_decay(model, decay=1e-4)
 
         scheduler.step()
         avg_train = total_loss / max(n_batches, 1)

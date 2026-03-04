@@ -26,6 +26,9 @@ from .policy import SanctumMLP
 # Default model save path
 DEFAULT_MODEL_PATH = Path.home() / ".local" / "share" / "frank" / "models" / "sanctum_policy.pt"
 
+# SFT Stabilizer (module-level, initialized in train())
+_stab = None
+
 
 def make_envs(n_envs: int = 8):
     """Create n parallel environments."""
@@ -183,8 +186,11 @@ def train_epoch(policy, optimizer, obs, actions, entities, old_logprobs,
 
         optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(policy.parameters(), max_grad_norm)
-        optimizer.step()
+        if _stab is not None:
+            _stab.safe_step(optimizer, policy, max_grad_norm)
+        else:
+            nn.utils.clip_grad_norm_(policy.parameters(), max_grad_norm)
+            optimizer.step()
 
         total_loss += loss.item()
         total_pg_loss += pg_loss.item()
@@ -199,9 +205,19 @@ def train(timesteps: int = 1_000_000, save_path: Path = DEFAULT_MODEL_PATH,
           n_envs: int = 8, n_steps: int = 128, n_epochs: int = 4,
           lr: float = 3e-4, ent_coef: float = 0.02):
     """Train the sanctum policy."""
+    global _stab
     device = torch.device("cpu")
     policy = SanctumMLP().to(device)
     optimizer = optim.Adam(policy.parameters(), lr=lr, eps=1e-5)
+
+    # SFT Stabilizer: weight decay + gradient clipping + anchoring
+    try:
+        from services.sft_stabilizer import get_stabilizer
+        _stab = get_stabilizer()
+        _sft_anchor = _stab.create_anchor(policy, "sanctum_rl", strength=0.005)
+    except Exception:
+        _stab = None
+        _sft_anchor = None
 
     envs = make_envs(n_envs)
     batch_size = n_envs * n_steps
@@ -226,6 +242,10 @@ def train(timesteps: int = 1_000_000, save_path: Path = DEFAULT_MODEL_PATH,
                 policy, optimizer, obs, actions, entities, logprobs,
                 advantages, returns, values, ent_coef=ent_coef,
             )
+
+        # SFT: weight decay + health check after each update
+        if _stab is not None:
+            _stab.apply_weight_decay(policy, decay=1e-4)
 
         elapsed = time.time() - t0
         steps_done = update * batch_size

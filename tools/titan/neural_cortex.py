@@ -234,9 +234,24 @@ class TitanCortex:
         # Optimizers (lazy — created on first train)
         self._optimizers: Dict[str, optim.Optimizer] = {}
 
+        # SFT Stabilizer: weight decay + gradient clipping
+        try:
+            from services.sft_stabilizer import get_stabilizer
+            self._stab = get_stabilizer()
+        except Exception:
+            self._stab = None
+
         self._load_all()
         self._init_tables()
         self._set_eval_mode()
+
+        # SFT: create anchors for all 6 modules after load
+        self._sft_anchors: Dict[str, object] = {}
+        if self._stab:
+            for name, mod in [("titan_mis", self.mis), ("titan_et", self.et),
+                              ("titan_rwl", self.rwl), ("titan_as", self.as_),
+                              ("titan_cg", self.cg), ("titan_id", self.id_)]:
+                self._sft_anchors[name] = self._stab.create_anchor(mod, name)
 
         LOG.info("TitanCortex initialized — %d total parameters",
                  self.param_count())
@@ -490,6 +505,13 @@ class TitanCortex:
                 self._train_cg()
                 self._train_id()
                 self._training_steps += 1
+
+                # SFT: weight decay on all 6 modules
+                if self._stab:
+                    for mod in (self.mis, self.et, self.rwl,
+                                self.as_, self.cg, self.id_):
+                        self._stab.apply_weight_decay(mod, decay=5e-5)
+
                 self._save_all()
             except Exception as e:
                 LOG.warning("Cortex training failed: %s", e)
@@ -561,8 +583,11 @@ class TitanCortex:
         loss = nn.functional.mse_loss(pred, Y)
         opt.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.mis.parameters(), 1.0)
-        opt.step()
+        if self._stab:
+            self._stab.safe_step(opt, self.mis, 1.0)
+        else:
+            torch.nn.utils.clip_grad_norm_(self.mis.parameters(), 1.0)
+            opt.step()
         self._mis_steps += 1
         self.mis.eval()
 
@@ -641,8 +666,11 @@ class TitanCortex:
 
         opt.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.rwl.parameters(), 1.0)
-        opt.step()
+        if self._stab:
+            self._stab.safe_step(opt, self.rwl, 1.0)
+        else:
+            torch.nn.utils.clip_grad_norm_(self.rwl.parameters(), 1.0)
+            opt.step()
         self._rwl_steps += 1
 
     def _train_as(self):
@@ -814,6 +842,12 @@ class TitanCortex:
                     k: v.state_dict() for k, v in self._optimizers.items()
                 },
             }
+            # SFT: persist anchor reference weights
+            if self._sft_anchors:
+                checkpoint["sft_anchors"] = {
+                    name: anchor.get_ref_state()
+                    for name, anchor in self._sft_anchors.items()
+                }
             torch.save(checkpoint, str(tmp_path))
             tmp_path.rename(self._model_path)
             LOG.debug("Cortex saved (%d params)", self.param_count())
@@ -855,6 +889,13 @@ class TitanCortex:
                         o.load_state_dict(state)
                     except Exception:
                         pass  # Shape mismatch on architecture change
+
+            # SFT: restore anchor reference weights
+            sft_anchors_data = cp.get("sft_anchors", {})
+            if sft_anchors_data and hasattr(self, '_sft_anchors'):
+                for name, ref_state in sft_anchors_data.items():
+                    if name in self._sft_anchors:
+                        self._sft_anchors[name].load_ref_state(ref_state)
 
             LOG.info("Cortex loaded (step %d)", self._training_steps)
         except Exception as e:

@@ -41,6 +41,13 @@ class ImmuneTrainer:
         self.models = models
         self.db = db
 
+        # SFT Stabilizer: gradient clipping + weight decay
+        try:
+            from services.sft_stabilizer import get_stabilizer
+            self._stab = get_stabilizer()
+        except Exception:
+            self._stab = None
+
         # Optimizers (created on first use)
         self._opt_anomaly: Optional[optim.Adam] = None
         self._opt_baseline: Optional[optim.Adam] = None
@@ -61,6 +68,13 @@ class ImmuneTrainer:
             self._train_anomaly()
             self._train_baseline()
             self._train_restart()
+
+            # SFT: apply weight decay to all 3 nets (~0.01ms total)
+            if self._stab:
+                for model in (self.models.anomaly, self.models.baseline,
+                              self.models.restart):
+                    self._stab.apply_weight_decay(model, decay=5e-5)
+
             self.models._save()
         finally:
             self.models._set_eval_mode()
@@ -121,7 +135,10 @@ class ImmuneTrainer:
                 pred = self.models.anomaly(batch_x)
                 loss = criterion(pred, batch_y)
                 loss.backward()
-                opt.step()
+                if self._stab:
+                    self._stab.safe_step(opt, self.models.anomaly, 1.0)
+                else:
+                    opt.step()
 
                 total_loss += loss.item()
                 n_batches += 1
@@ -179,7 +196,10 @@ class ImmuneTrainer:
                 recon, _ = self.models.baseline(batch)
                 loss = criterion(recon, batch)
                 loss.backward()
-                opt.step()
+                if self._stab:
+                    self._stab.safe_step(opt, self.models.baseline, 1.0)
+                else:
+                    opt.step()
 
                 total_loss += loss.item()
                 mse_values.append(loss.item())
@@ -298,7 +318,10 @@ class ImmuneTrainer:
                     nn.functional.binary_cross_entropy(pred_cascade, byc)
                 )
                 loss.backward()
-                opt.step()
+                if self._stab:
+                    self._stab.safe_step(opt, self.models.restart, 1.0)
+                else:
+                    opt.step()
 
                 total_loss += loss.item()
                 n_batches += 1

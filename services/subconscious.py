@@ -327,6 +327,18 @@ class Subconscious:
             self.net.parameters(), lr=LEARNING_RATE, eps=1e-5
         )
 
+        # SFT Stabilizer: prevents weight degeneration
+        try:
+            from services.sft_stabilizer import get_stabilizer
+            self._stabilizer = get_stabilizer()
+            self._sft_anchor = self._stabilizer.create_anchor(
+                self.net, "subconscious", strength=0.005
+            )
+        except Exception as e:
+            LOG.warning("Subconscious: SFT stabilizer init failed: %s", e)
+            self._stabilizer = None
+            self._sft_anchor = None
+
         # Training state
         self._total_steps: int = 0
         self._total_training_steps: int = 0
@@ -677,20 +689,34 @@ class Subconscious:
                 # Value loss
                 value_loss = F.mse_loss(values_pred, batch_returns)
 
-                # Total loss
+                # Total loss (+ SFT anchor loss to prevent catastrophic forgetting)
                 loss = policy_loss + VALUE_COEFF * value_loss - self._entropy_coeff * entropy
+                if self._sft_anchor is not None:
+                    loss = loss + self._sft_anchor.anchor_loss(self.net)
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                # Gradient clipping for stability
-                nn.utils.clip_grad_norm_(self.net.parameters(), 0.5)
-                self.optimizer.step()
+                # Gradient clipping + step via SFT stabilizer
+                if self._stabilizer is not None:
+                    _gn = self._stabilizer.safe_step(self.optimizer, self.net, 0.5)
+                else:
+                    nn.utils.clip_grad_norm_(self.net.parameters(), 0.5)
+                    self.optimizer.step()
 
                 total_loss += loss.item()
                 n_updates += 1
 
         self.net.eval()
         self._total_training_steps += 1
+
+        # SFT: weight decay + health monitoring
+        if self._stabilizer is not None:
+            self._stabilizer.apply_weight_decay(self.net, decay=1e-4)
+            self._stabilizer.check_health(
+                self.net, "subconscious",
+                anchor=self._sft_anchor,
+                policy_entropy=float(entropy.item()) if n_updates > 0 else -1.0,
+            )
 
         # Decay entropy coefficient
         self._entropy_coeff = max(ENTROPY_MIN, self._entropy_coeff * ENTROPY_DECAY)
@@ -734,6 +760,9 @@ class Subconscious:
                 "recent_types": self._recent_types,
                 "per_type_avg_reward": self._per_type_avg_reward,
             }
+            # SFT: persist reference weights for anchor continuity
+            if self._sft_anchor is not None:
+                checkpoint["sft_anchor_ref"] = self._sft_anchor.get_ref_state()
             # Atomic save: write to tmp then rename
             tmp_path = self._model_path.with_suffix(".tmp")
             torch.save(checkpoint, str(tmp_path))
@@ -757,6 +786,11 @@ class Subconscious:
             self._entropy_coeff = checkpoint.get("entropy_coeff", ENTROPY_COEFF)
             self._recent_types = checkpoint.get("recent_types", [])
             self._per_type_avg_reward = checkpoint.get("per_type_avg_reward", {})
+            # SFT: restore anchor reference weights
+            if self._sft_anchor is not None and "sft_anchor_ref" in checkpoint:
+                self._sft_anchor.load_ref_state(checkpoint["sft_anchor_ref"])
+            elif self._sft_anchor is not None:
+                self._sft_anchor.update_reference(self.net)
             LOG.info("Model loaded: %d steps, %d training steps",
                      self._total_steps, self._total_training_steps)
         except Exception as e:

@@ -201,7 +201,8 @@ fi
 # [4/14] Python venv (main)
 # ============================================================================
 echo "[4/14] Setting up main Python virtual environment..."
-if [ ! -d "$VENV_DIR" ]; then
+if [ ! -d "$VENV_DIR" ] || ! "$VENV_DIR/bin/python3" --version &>/dev/null; then
+    rm -rf "$VENV_DIR"
     python3 -m venv "$VENV_DIR"
 fi
 "$VENV_DIR/bin/pip" install --upgrade pip -q
@@ -212,7 +213,8 @@ echo "  Done. ($("$VENV_DIR/bin/python3" --version))"
 # [5/14] Python venv (ingestd)
 # ============================================================================
 echo "[5/14] Setting up ingestd virtual environment..."
-if [ ! -d "$VENV_INGESTD" ]; then
+if [ ! -d "$VENV_INGESTD" ] || ! "$VENV_INGESTD/bin/python3" --version &>/dev/null; then
+    rm -rf "$VENV_INGESTD"
     python3 -m venv "$VENV_INGESTD"
 fi
 "$VENV_INGESTD/bin/pip" install --upgrade pip -q
@@ -789,14 +791,14 @@ ExecStart=$PYTHON_VENV -u $SCRIPT_DIR/services/invariants/daemon.py
 WatchdogSec=120
 Restart=on-failure
 RestartSec=10
-MemoryMax=200M
-MemoryHigh=150M
+MemoryMax=300M
+MemoryHigh=250M
 CPUQuota=25%
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=$AICORE_ROOT/database/invariants
-ReadWritePaths=$AICORE_ROOT/database
+ReadWritePaths=$DATA_DIR/db
 ReadWritePaths=$DATA_DIR/logs/invariants
+ReadWritePaths=$HOME/.config/frank
 NoNewPrivileges=true
 
 [Install]
@@ -1116,7 +1118,7 @@ Restart=always
 RestartSec=5
 StartLimitBurst=1000
 CPUQuota=5%
-MemoryMax=300M
+MemoryMax=500M
 Nice=5
 
 [Install]

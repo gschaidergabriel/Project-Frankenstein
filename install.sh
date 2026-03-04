@@ -204,11 +204,9 @@ echo "[4/14] Setting up main Python virtual environment..."
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
 fi
-source "$VENV_DIR/bin/activate"
-pip install --upgrade pip -q
-pip install -r "$SCRIPT_DIR/requirements.txt" -q
-deactivate
-echo "  Done. ($(python3 --version))"
+"$VENV_DIR/bin/pip" install --upgrade pip -q
+"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+echo "  Done. ($("$VENV_DIR/bin/python3" --version))"
 
 # ============================================================================
 # [5/14] Python venv (ingestd)
@@ -217,13 +215,11 @@ echo "[5/14] Setting up ingestd virtual environment..."
 if [ ! -d "$VENV_INGESTD" ]; then
     python3 -m venv "$VENV_INGESTD"
 fi
-source "$VENV_INGESTD/bin/activate"
-pip install --upgrade pip -q
-pip install -q \
+"$VENV_INGESTD/bin/pip" install --upgrade pip -q
+"$VENV_INGESTD/bin/pip" install -q \
     faster-whisper uvicorn fastapi httpx Pillow lxml \
-    coloredlogs annotated-doc \
+    coloredlogs annotated-doc numpy scipy \
     python-multipart pypdf python-docx
-deactivate
 echo "  Done."
 
 # ============================================================================
@@ -346,8 +342,12 @@ echo "[9/14] Installing Ollama (local vision inference)..."
 if command -v ollama &>/dev/null; then
     echo "  Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown'))"
 else
-    curl -fsSL https://ollama.com/install.sh | sh
-    echo "  Ollama installed."
+    if curl -fsSL https://ollama.com/install.sh | sh; then
+        echo "  Ollama installed."
+    else
+        echo "  WARNING: Ollama installation failed (network issue?). Vision features will be unavailable."
+        echo "  You can install manually later: curl -fsSL https://ollama.com/install.sh | sh"
+    fi
 fi
 
 # Configure Ollama for Vulkan if needed
@@ -515,7 +515,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/core/app.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/core/app.py
 Restart=always
 RestartSec=1
 
@@ -636,7 +636,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/modeld/app.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/modeld/app.py
 Restart=always
 RestartSec=1
 
@@ -654,7 +654,7 @@ WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=AICORE_TOOLBOX_PORT=8096
 Environment=DISPLAY=:0
-ExecStart=$PYTHON_SYS -u $SCRIPT_DIR/tools/toolboxd.py
+ExecStart=$PYTHON_VENV -u $SCRIPT_DIR/tools/toolboxd.py
 Restart=always
 RestartSec=0.5
 
@@ -672,7 +672,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/webd/app.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/webd/app.py
 Restart=always
 RestartSec=1
 
@@ -713,7 +713,7 @@ WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/desktopd/app.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/desktopd/app.py
 Restart=always
 RestartSec=1
 
@@ -731,7 +731,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/consciousness_daemon.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/services/consciousness_daemon.py
 Restart=always
 RestartSec=5
 
@@ -748,7 +748,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=DISPLAY=:0
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/gaming/gaming_mode.py --daemon
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/gaming/gaming_mode.py --daemon
 Restart=on-failure
 RestartSec=5
 
@@ -764,7 +764,7 @@ After=aicore-core.service
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS -m services.asrs.daemon
+ExecStart=$PYTHON_VENV -m services.asrs.daemon
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -785,7 +785,7 @@ Wants=aicore-core.service
 [Service]
 Type=notify
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS -u $SCRIPT_DIR/services/invariants/daemon.py
+ExecStart=$PYTHON_VENV -u $SCRIPT_DIR/services/invariants/daemon.py
 WatchdogSec=120
 Restart=on-failure
 RestartSec=10
@@ -885,7 +885,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/entity_dispatcher.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/services/entity_dispatcher.py
 Restart=on-failure
 RestartSec=60
 Nice=15
@@ -906,7 +906,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/llm_guard.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/services/llm_guard.py
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=0
@@ -929,7 +929,7 @@ Wants=aicore-core.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/quantum_reflector/main.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/services/quantum_reflector/main.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -949,7 +949,7 @@ Wants=aicore-core.service aicore-router.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/services/dream_daemon.py
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/services/dream_daemon.py
 Restart=always
 RestartSec=30
 Environment=PYTHONUNBUFFERED=1
@@ -1029,7 +1029,7 @@ Type=simple
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS services/aura_pattern_analyzer.py
+ExecStart=$PYTHON_VENV services/aura_pattern_analyzer.py
 Restart=always
 RestartSec=10
 
@@ -1110,7 +1110,7 @@ StartLimitIntervalSec=0
 Type=notify
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS -m services.neural_immune
+ExecStart=$PYTHON_VENV -m services.neural_immune
 WatchdogSec=60
 Restart=always
 RestartSec=5
@@ -1133,7 +1133,7 @@ Wants=aicore-core.service
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=$PYTHON_SYS -m services.nerd_physics.main
+ExecStart=$PYTHON_VENV -m services.nerd_physics.main
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -1165,7 +1165,7 @@ Type=oneshot
 WorkingDirectory=$SCRIPT_DIR
 Environment=PYTHONPATH=$SCRIPT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/${ent_script}
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/${ent_script}
 TimeoutStartSec=${ent_timeout}
 Nice=15
 RemainAfterExit=no"
@@ -1243,7 +1243,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=$PYTHON_SYS $SCRIPT_DIR/tools/fas_scavenger.py run
+ExecStart=$PYTHON_VENV $SCRIPT_DIR/tools/fas_scavenger.py run
 WorkingDirectory=$SCRIPT_DIR/tools
 Environment=PYTHONPATH=$SCRIPT_DIR
 StandardOutput=append:/tmp/fas.log

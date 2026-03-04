@@ -96,7 +96,7 @@ def build_workspace(
 
     # --- Spatial (Room awareness — permanent embodiment) ---
     if spatial_ctx:
-        s_max = _scale(80, "spatial")
+        s_max = _scale(400, "spatial")
         lines.append("Location: " + _clean_ctx(spatial_ctx, max_len=s_max))
 
     # --- Mood ---

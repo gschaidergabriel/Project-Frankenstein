@@ -332,7 +332,10 @@ class SpatialState:
         ambient = ROOM_AMBIENTS.get(room, "")
         module_text = self._module_summary_full(port_states)
 
-        # Optional body physics
+        # Room objects — what's physically in this room
+        room_objects_text = self._describe_room_objects(room)
+
+        # Body physics from NeRD
         body_text = ""
         physics = _get_physics_state()
         if physics:
@@ -342,21 +345,48 @@ class SpatialState:
             if is_walking:
                 target = physics.get("target_room", "")
                 target_name = ROOM_NAMES.get(target, target)
-                body_text = f"Walking to {target_name}."
+                body_text = f"Walking to {target_name}. Legs moving, corridor ahead."
             elif is_sitting:
-                body_text = "Seated. Weight off legs."
+                body_text = "Seated. Weight resting, legs relaxed."
             elif contacts >= 2:
-                body_text = "Standing. Feet grounded on deck."
+                body_text = "Standing. Feet grounded on deck, body upright."
             else:
                 body_text = "Body present."
 
         parts = [f"[SPATIAL] {room_name}. {ambient}"]
+        if room_objects_text:
+            parts.append(room_objects_text)
         if body_text:
             parts.append(body_text)
         if module_text:
             parts.append(module_text)
 
+        # Activity context — what am I doing here
+        activity = self._current_activity
+        if activity == "chat":
+            parts.append("At the Bridge comm station — reading user messages on the viewport, typing responses on the console.")
+        elif activity == "entity_session":
+            parts.append("Meeting with entity crew at their stations.")
+
         return " ".join(parts)
+
+    @staticmethod
+    def _describe_room_objects(room: str) -> str:
+        """Get a brief description of interactable objects in the current room."""
+        try:
+            from services.nerd_physics.rooms import ROOMS
+            room_def = ROOMS.get(room)
+            if not room_def:
+                return ""
+            interactables = [o for o in room_def.objects
+                             if o.interactable and o.touch_text]
+            if not interactables:
+                return ""
+            descs = [f"{o.name.replace('_', ' ')}: {o.touch_text}"
+                     for o in interactables[:3]]
+            return "Nearby: " + "; ".join(descs) + "."
+        except Exception:
+            return ""
 
     def _module_summary_slim(self, port_states: Optional[Dict[str, bool]]) -> str:
         """Slim module summary: 'All systems operational.' or 'N modules offline.'"""

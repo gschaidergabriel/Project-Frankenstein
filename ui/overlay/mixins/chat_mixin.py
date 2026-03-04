@@ -460,7 +460,7 @@ class ChatMixin:
             _sp = get_spatial_state()
             if _sp:
                 _sp.transition_to("entity_lounge", reason="chat")
-                _spatial_ctx = _sp.build_spatial_block(slim=True)
+                _spatial_ctx = _sp.build_spatial_block(slim=False)
         except Exception:
             pass
 

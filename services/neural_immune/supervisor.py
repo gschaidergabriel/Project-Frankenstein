@@ -22,6 +22,7 @@ Special cases preserved from frank_watchdog.py:
 import json
 import logging
 import math
+import os
 import signal
 import subprocess
 import time
@@ -36,6 +37,9 @@ from .models import ImmuneModels
 from .training import ImmuneTrainer
 
 LOG = logging.getLogger("immune.supervisor")
+
+# Clean environment for subprocess calls — strip NOTIFY_SOCKET
+_CLEAN_ENV = {k: v for k, v in os.environ.items() if k != "NOTIFY_SOCKET"}
 
 # Timing
 CHECK_INTERVAL = 15           # seconds between ticks
@@ -303,7 +307,7 @@ class ImmuneSystem:
                     LOG.warning("[frank-overlay] FREEZE — heartbeat stale %.0fs, force-restarting", age)
                     subprocess.run(
                         ["systemctl", "--user", "kill", "--signal=SIGKILL", "frank-overlay"],
-                        capture_output=True, timeout=5,
+                        capture_output=True, timeout=5, env=_CLEAN_ENV,
                     )
                     time.sleep(2)
                     self._overlay_lock.unlink(missing_ok=True)

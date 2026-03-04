@@ -164,7 +164,7 @@ MAX_TURNS = 10
 MAX_DURATION_MINUTES = 12
 TURN_DELAY_MIN = 25
 TURN_DELAY_MAX = 45
-RESPONSE_TIMEOUT = 45  # Reduced from 120s — shorter blocking window for user-return abort
+RESPONSE_TIMEOUT = 90  # RLM needs 55-75s (DeepSeek-R1 <think> + answer)
 PID_FILE = RUNTIME_DIR / "atlas_agent.pid"
 
 # ---------------------------------------------------------------------------

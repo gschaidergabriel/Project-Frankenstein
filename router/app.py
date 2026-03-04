@@ -2,25 +2,26 @@
 # -*- coding: utf-8 -*-
 
 """
-AI Core Router — Dual-Model Architecture (DeepSeek-R1 + Micro-LLM fallback)
+AI Core Router — 3-Tier Model Architecture
 
-Two models:
-  - DeepSeek-R1 (port 8101, GPU): Reasoning model for complex tasks,
-    consciousness, dream, research, agentic planning.
-  - Qwen2.5-3B Micro-LLM (port 8105, CPU): Lightweight fallback for when
-    RLM is down, casual chat, simple questions, entity agents.
+Three tiers (same GPU model, different budgets):
+  - Qwen2.5-3B Micro-LLM (port 8105, CPU): Simple/casual chat, greetings.
+  - Llama 8B LLM (port 8101, GPU): Normal questions — no token multiplier, fast.
+  - DeepSeek-R1 RLM (port 8101, GPU): Deep philosophical — full 2.5x token multiplier.
 
 Routing logic:
-  1. force="llama" → Micro-LLM (Qwen2.5-3B)
-  2. force="rlm"  → RLM (DeepSeek-R1)
-  3. No force     → auto-classify by text content:
-     - Short casual messages (greetings, small talk) → Micro-LLM
-     - Everything else → RLM
+  1. force="llama" → Qwen2.5-3B (CPU)
+  2. force="llm"   → Llama 8B (GPU, fast)
+  3. force="rlm"   → DeepSeek-R1 (GPU, full reasoning)
+  4. No force      → auto-classify:
+     - Casual/greetings → Qwen2.5-3B
+     - Normal questions → Llama 8B (GPU, no multiplier)
+     - Deep philosophical → DeepSeek-R1 (GPU, 2.5x multiplier)
 
 The router:
-- Uses /v1/chat/completions (OpenAI-compatible) for both models.
-- DeepSeek-R1 separates reasoning_content from answer content.
-- Qwen2.5-3B returns content directly (no reasoning phase).
+- Uses /v1/chat/completions (OpenAI-compatible) for all models.
+- Llama 8B and RLM use the same llama-server (DeepSeek-R1-Distill-Llama-8B).
+  Difference: LLM gets small token budget → fast. RLM gets 2.5x → deep reasoning.
 - Provides /route (blocking) and /route/stream (SSE) endpoints.
 - Handles /ingest for file uploads.
 - Guardrails for deterministic responses (ping test).
@@ -205,7 +206,7 @@ _CASUAL_PATTERNS = re.compile(
     r"^(ja|nein|yes|no|ok|okay|sure|klar|genau|stimmt|cool|nice|gut|good|great|super)\s*[.!?]?\s*$"
 )
 
-# Markers that indicate complex content → deepseek-r1
+# Markers that indicate normal-complexity content → llm (GPU, fast, no reasoning multiplier)
 _COMPLEX_MARKERS = (
     "explain", "analyze", "compare", "implement", "function", "code",
     "class ", "def ", "import ", "```", "error", "exception", "debug",
@@ -214,29 +215,35 @@ _COMPLEX_MARKERS = (
     "was ist der unterschied", "step by step", "schritt f\xfcr schritt",
     "calculate", "berechne", "algorithm", "database", "sql", "json", "xml",
     "translate this", "\xfcbersetz",
-    # Philosophical / existential / deep questions → need reasoning
+)
+
+# Deep philosophical / existential markers → rlm (GPU, full reasoning multiplier)
+_PHILOSOPHICAL_MARKERS = (
     "consciousness", "bewusstsein", "free will", "freier wille",
-    "meaning of life", "sinn des lebens", "purpose of", "zweck",
+    "meaning of life", "sinn des lebens", "purpose of existence", "zweck des lebens",
     "existence", "existenz", "reality", "realit\xe4t", "wirklichkeit",
     "philosophy", "philosophi", "metaphysic", "metaphysik",
     "moral", "ethic", "ethik", "soul", "seele",
     "what is life", "was ist leben", "what is death", "was ist tod",
     "what is love", "was ist liebe", "what is truth", "was ist wahrheit",
     "what is time", "was ist zeit", "what is god", "gibt es gott",
-    "do you think", "denkst du", "glaubst du", "do you believe",
     "what do you feel", "was f\xfchlst du", "are you alive", "bist du lebendig",
     "are you conscious", "bist du bewusst", "are you sentient",
     "what are you", "was bist du", "who are you really",
-    "think about", "nachdenken", "reflect on", "reflektier",
-    "why do we", "warum gibt es", "what happens when we die",
+    "why do we exist", "warum gibt es uns", "what happens when we die",
     "determinism", "determinismus", "nihilis", "absurd",
-    "simulation", "solipsism", "qualia", "hard problem",
-    "artificial intelligence", "k\xfcnstliche intelligenz",
+    "simulation hypothesis", "solipsism", "qualia", "hard problem",
     "singularity", "singularit\xe4t", "transhumanism",
 )
 
 def _classify_model(text: str, force: Optional[str]) -> str:
-    """Decide which model to use. Returns 'llama' or 'rlm'."""
+    """Decide which model to use.
+
+    Returns:
+      'llama' — Qwen2.5-3B (CPU, fast, simple/casual)
+      'llm'   — Llama 8B (GPU, fast, normal questions — no token multiplier)
+      'rlm'   — DeepSeek-R1 (GPU, full reasoning, only deep philosophical)
+    """
     # Explicit force from caller
     if force:
         f = force.lower().strip()
@@ -244,6 +251,8 @@ def _classify_model(text: str, force: Optional[str]) -> str:
             return "llama"
         if f in ("rlm", "deepseek", "deepseek-r1", "reason"):
             return "rlm"
+        if f in ("llm", "gpu", "fast"):
+            return "llm"
 
     # Extract actual user text (callers sometimes prepend context)
     user_text = text
@@ -252,18 +261,23 @@ def _classify_model(text: str, force: Optional[str]) -> str:
     elif "USER:" in text:
         user_text = text.split("USER:")[-1].strip()
 
-    # Short + matches casual pattern → llama
+    # Short + matches casual pattern → llama (Qwen CPU)
     if len(user_text) < 200 and _CASUAL_PATTERNS.search(user_text):
         return "llama"
 
-    # Very short with no complex markers → llama
+    # Very short with no complex or philosophical markers → llama
+    lower = user_text.lower()
     if len(user_text) < 60:
-        lower = user_text.lower()
-        if not any(m in lower for m in _COMPLEX_MARKERS):
+        if not any(m in lower for m in _COMPLEX_MARKERS) and \
+           not any(m in lower for m in _PHILOSOPHICAL_MARKERS):
             return "llama"
 
-    # Default → reasoning model
-    return "rlm"
+    # Deep philosophical / existential → rlm (full reasoning)
+    if any(m in lower for m in _PHILOSOPHICAL_MARKERS):
+        return "rlm"
+
+    # Default → llm (GPU, fast, no reasoning multiplier)
+    return "llm"
 
 # ---- guardrails -------------------------------------------------------------
 
@@ -529,7 +543,7 @@ def route(req: RouteRequest) -> RouteResponse:
     model_choice = _classify_model(text, req.force)
 
     if model_choice == "llama":
-        # ---- Micro-LLM path (Qwen2.5-3B, fast, no reasoning) ----
+        # ---- Micro-LLM path (Qwen2.5-3B, CPU, fast, no reasoning) ----
         max_tokens = caller_n  # No multiplier needed — no reasoning overhead
         temperature = req.temperature if req.temperature is not None else 0.7
         LOG.info(f"🔄 INFERENZ: qwen2.5-3b (max_tokens={max_tokens}, temp={temperature})")
@@ -539,9 +553,8 @@ def route(req: RouteRequest) -> RouteResponse:
                 text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature
             )
             if not answer:
-                # Fallback to RLM if micro-llm returns empty
-                LOG.warning("Micro-LLM returned empty, falling back to RLM")
-                raise RuntimeError("Micro-LLM empty answer — fallback to RLM")
+                LOG.warning("Micro-LLM returned empty, falling back to LLM (GPU)")
+                raise RuntimeError("Micro-LLM empty answer — fallback to LLM")
 
             _last_model = "qwen2.5-3b"
             _last_ts = time.time()
@@ -550,14 +563,43 @@ def route(req: RouteRequest) -> RouteResponse:
             return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
 
         except Exception as e:
-            LOG.warning(f"Micro-LLM failed ({e}), falling back to RLM")
+            LOG.warning(f"Micro-LLM failed ({e}), falling back to LLM (GPU)")
+            model_choice = "llm"  # Promote to GPU LLM, not full RLM
+
+    if model_choice == "llm":
+        # ---- LLM path (Llama 8B GPU, fast — no token multiplier) ----
+        max_tokens = max(caller_n, 256)  # Direct budget, no 2.5x multiplier
+        temperature = req.temperature if req.temperature is not None else 0.65
+        LOG.info(f"🔄 INFERENZ: llama-8b (max_tokens={max_tokens}, temp={temperature})")
+
+        try:
+            answer, reasoning = _rlm_chat_completion(
+                text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature
+            )
+            if not answer:
+                if reasoning:
+                    LOG.warning("LLM burned tokens on reasoning (%d chars), "
+                                "no answer — falling back to RLM", len(reasoning))
+                raise RuntimeError("LLM returned empty answer — escalate to RLM")
+
+            if reasoning:
+                LOG.info(f"💭 REASONING (llm): {len(reasoning)} chars")
+
+            _last_model = "llama-8b"
+            _last_ts = time.time()
+            out_preview = answer[:150].replace('\n', ' ')
+            LOG.info(f"✅ ANTWORT [llama-8b]: '{out_preview}...'")
+            return RouteResponse(ok=True, model="llama-8b", text=answer, ts=_last_ts)
+
+        except Exception as e:
+            LOG.warning(f"LLM failed ({e}), escalating to RLM")
             # Fall through to RLM
 
-    # ---- RLM path (DeepSeek-R1, reasoning) ----
+    # ---- RLM path (DeepSeek-R1, full reasoning — only philosophical) ----
     max_tokens = max(int(caller_n * RLM_TOKEN_MULTIPLIER), RLM_TOKEN_MIN)
     temperature = req.temperature if req.temperature is not None else 0.6
 
-    LOG.info(f"🔄 INFERENZ: deepseek-r1 (max_tokens={max_tokens}, temp={temperature})")
+    LOG.info(f"🔄 INFERENZ: deepseek-r1-rlm (max_tokens={max_tokens}, temp={temperature})")
 
     try:
         answer, reasoning = _rlm_chat_completion(
@@ -623,14 +665,12 @@ def route_stream(req: RouteRequest):
     if model_choice == "llama":
         max_tokens = caller_n
         temperature = req.temperature if req.temperature is not None else 0.7
-        model_name = "qwen2.5-3b"
-        timeout = CHAT_LLM_HTTP_TIMEOUT_SEC
         LOG.info(f"🔄 STREAM [qwen2.5-3b]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
 
         def generate_llama():
             try:
                 for token in _chat_llm_completion_stream(
-                    text, system, max_tokens, timeout, temperature
+                    text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature
                 ):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                 yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
@@ -642,11 +682,40 @@ def route_stream(req: RouteRequest):
 
         return StreamingResponse(generate_llama(), media_type="text/event-stream")
 
-    # RLM path
+    if model_choice == "llm":
+        # LLM path — GPU fast, no token multiplier
+        max_tokens = max(caller_n, 256)
+        temperature = req.temperature if req.temperature is not None else 0.65
+        LOG.info(f"🔄 STREAM [llama-8b]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
+
+        def generate_llm():
+            try:
+                for token in _rlm_chat_completion_stream(
+                    text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature
+                ):
+                    yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'llama-8b'})}\n\n"
+            except Exception as e:
+                LOG.warning(f"LLM stream failed ({e}), falling back to Micro-LLM")
+                try:
+                    for token in _chat_llm_completion_stream(
+                        text, system, caller_n, CHAT_LLM_HTTP_TIMEOUT_SEC, 0.7
+                    ):
+                        yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                    yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
+                except Exception as e2:
+                    LOG.error(f"All stream models failed: {e2}")
+                    yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'none'})}\n\n"
+            finally:
+                LOG.info(f"✅ STREAM DONE [llama-8b]")
+
+        return StreamingResponse(generate_llm(), media_type="text/event-stream")
+
+    # RLM path — full reasoning multiplier (philosophical only)
     max_tokens = max(int(caller_n * RLM_TOKEN_MULTIPLIER), RLM_TOKEN_MIN)
     temperature = req.temperature if req.temperature is not None else 0.6
 
-    LOG.info(f"🔄 STREAM [deepseek-r1]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
+    LOG.info(f"🔄 STREAM [deepseek-r1-rlm]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
 
     def generate_rlm():
         try:

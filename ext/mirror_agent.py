@@ -98,7 +98,7 @@ MAX_TURNS = 10
 MAX_DURATION_MINUTES = 10
 TURN_DELAY_MIN = 20
 TURN_DELAY_MAX = 40
-RESPONSE_TIMEOUT = 45  # Reduced from 120s — shorter blocking window for user-return abort
+RESPONSE_TIMEOUT = 90  # RLM needs 55-75s (DeepSeek-R1 <think> + answer)
 PID_FILE = RUNTIME_DIR / "mirror_agent.pid"
 
 # ---------------------------------------------------------------------------

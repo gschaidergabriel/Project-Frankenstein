@@ -18,6 +18,10 @@ import os
 import socket
 import subprocess
 import time
+
+# Clean environment for subprocess calls — strip NOTIFY_SOCKET to prevent
+# child processes from leaking sd_notify messages to systemd
+_CLEAN_ENV = {k: v for k, v in os.environ.items() if k != "NOTIFY_SOCKET"}
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -137,7 +141,7 @@ def get_service_state(service_name: str) -> str:
     try:
         result = subprocess.run(
             ["systemctl", "--user", "is-active", service_name],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, env=_CLEAN_ENV,
         )
         return result.stdout.strip() or "unknown"
     except Exception:
@@ -174,7 +178,7 @@ def get_service_pid(service_name: str) -> Optional[int]:
     try:
         result = subprocess.run(
             ["systemctl", "--user", "show", "-p", "MainPID", "--value", service_name],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, env=_CLEAN_ENV,
         )
         pid = int(result.stdout.strip())
         return pid if pid > 0 else None

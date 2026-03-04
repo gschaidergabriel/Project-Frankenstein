@@ -98,7 +98,7 @@ MAX_TURNS = 12
 MAX_DURATION_MINUTES = 15
 TURN_DELAY_MIN = 30
 TURN_DELAY_MAX = 60
-RESPONSE_TIMEOUT = 45  # Reduced from 120s — shorter blocking window for user-return abort
+RESPONSE_TIMEOUT = 90  # RLM needs 55-75s (DeepSeek-R1 <think> + answer)
 PID_FILE = RUNTIME_DIR / "therapist_agent.pid"
 
 # ---------------------------------------------------------------------------

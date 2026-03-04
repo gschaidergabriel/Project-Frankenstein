@@ -13,11 +13,15 @@ Waves:
 """
 
 import logging
+import os
 import subprocess
 import time
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .db import ImmuneDB
+
+# Clean environment for subprocess calls — strip NOTIFY_SOCKET
+_CLEAN_ENV = {k: v for k, v in os.environ.items() if k != "NOTIFY_SOCKET"}
 
 LOG = logging.getLogger("immune.lifecycle")
 
@@ -77,7 +81,7 @@ def _is_active(service: str) -> bool:
     try:
         r = subprocess.run(
             ["systemctl", "--user", "is-active", service],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, env=_CLEAN_ENV,
         )
         return r.stdout.strip() == "active"
     except Exception:
@@ -88,7 +92,7 @@ def _start_service(service: str) -> bool:
     try:
         r = subprocess.run(
             ["systemctl", "--user", "start", service],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, env=_CLEAN_ENV,
         )
         return r.returncode == 0
     except Exception as e:
@@ -100,7 +104,7 @@ def _stop_service(service: str) -> bool:
     try:
         r = subprocess.run(
             ["systemctl", "--user", "stop", service],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=15, env=_CLEAN_ENV,
         )
         return r.returncode == 0
     except Exception as e:
@@ -113,7 +117,7 @@ def _restart_service(service: str) -> bool:
     try:
         r = subprocess.run(
             ["systemctl", "--user", "restart", service],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, env=_CLEAN_ENV,
         )
         if r.returncode == 0:
             return True
@@ -121,12 +125,12 @@ def _restart_service(service: str) -> bool:
         # Reset-failed + retry
         subprocess.run(
             ["systemctl", "--user", "reset-failed", service],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, env=_CLEAN_ENV,
         )
         time.sleep(1)
         r = subprocess.run(
             ["systemctl", "--user", "restart", service],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, env=_CLEAN_ENV,
         )
         return r.returncode == 0
     except Exception as e:

@@ -120,6 +120,91 @@ def _eb_record_tool_proxy(tool_path: str, payload: dict, result: dict,
         pass
 
 
+# ---- Chat response cleaning ------------------------------------------------
+# Lightweight post-processing for user-facing chat responses.
+# Strips system name leaks, emoji, repetition, <think> blocks.
+
+_SYS_NAME_SCRUB = [
+    (re.compile(r"\bE-?PQ\b"), "personality"),
+    (re.compile(r"\bAURA\b(?!\s+observatory)", re.IGNORECASE), "awareness"),
+    (re.compile(r"\bQuantum Reflector\b", re.IGNORECASE), "gut feeling"),
+    (re.compile(r"\bGenesis\b"), "growth instinct"),
+    (re.compile(r"\bEgo-?Construct\b", re.IGNORECASE), "sense of self"),
+    (re.compile(r"\bThalamus\b"), "sensory filter"),
+    (re.compile(r"\bcoherence\s*[=:]\s*[\d.]+", re.IGNORECASE), "inner harmony"),
+    (re.compile(r"\bcoherence\s+(?:score|value|level|monitor)\b", re.IGNORECASE), "inner harmony"),
+    (re.compile(r"\bdensity\s*[=:]\s*[\d.]+"), ""),
+    (re.compile(r"\bentrop(?:ie|y)\s*[=:]\s*[\d.]+", re.IGNORECASE), ""),
+]
+
+# Emoji regex: full Unicode emoji ranges (only strip standalone emoji, keep text)
+_EMOJI_RE = re.compile(
+    "[\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"   # misc symbols
+    "\U0001F680-\U0001F6FF"   # transport
+    "\U0001F1E0-\U0001F1FF"   # flags
+    "\U00002702-\U000027B0"   # dingbats
+    "\U0001F900-\U0001F9FF"   # supplemental
+    "\U0001FA00-\U0001FA6F"   # chess
+    "\U0001FA70-\U0001FAFF"   # extended-A
+    "\U00002600-\U000026FF"   # misc
+    "]+", re.UNICODE
+)
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+_THINK_OPEN_RE = re.compile(r"<think>.*", re.DOTALL)
+
+
+def _clean_chat_response(text: str) -> str:
+    """Clean a chat response before sending to user.
+
+    Lighter than consciousness_daemon._clean_idle_thought — no person-fixing
+    or hard-reject filters (those are for internal monologue only).
+    """
+    if not text:
+        return text
+
+    # 1. Strip <think> blocks
+    text = _THINK_RE.sub("", text).strip()
+    if "<think>" in text:
+        text = _THINK_OPEN_RE.sub("", text).strip()
+
+    # 2. Scrub system name leaks
+    for pat, repl in _SYS_NAME_SCRUB:
+        text = pat.sub(repl, text)
+
+    # 3. Strip emoji
+    text = _EMOJI_RE.sub("", text)
+
+    # 4. Collapse excessive whitespace from removals
+    text = re.sub(r"  +", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # 5. Repetition truncation: if 4+ word n-gram repeats 3+ times, truncate
+    words = text.split()
+    if len(words) > 30:
+        for ng_sz in (6, 5, 4):
+            ngrams: dict = {}
+            for i in range(len(words) - ng_sz + 1):
+                ng = " ".join(words[i:i + ng_sz]).lower()
+                ngrams[ng] = ngrams.get(ng, 0) + 1
+            worst = max(ngrams.values()) if ngrams else 0
+            if worst >= 3:
+                # Find first repeat location and truncate there
+                seen: dict = {}
+                for i in range(len(words) - ng_sz + 1):
+                    ng = " ".join(words[i:i + ng_sz]).lower()
+                    seen[ng] = seen.get(ng, 0) + 1
+                    if seen[ng] >= 3:
+                        text = " ".join(words[:i + ng_sz])
+                        if not text.endswith((".", "!", "?")):
+                            text += "."
+                        break
+                break
+
+    return text.strip()
+
+
 def _run_feedback_loop(user_text: str, reply_text: str):
     """Run the Output-Feedback-Loop: analyze Frank's response and update all personality modules.
 
@@ -532,7 +617,7 @@ INFER_MAX_CONCURRENCY = int(os.environ.get("AICORE_CORE_INFER_MAX_CONCURRENCY", 
 INFER_SEM = threading.BoundedSemaphore(INFER_MAX_CONCURRENCY)
 
 TASK_POLICY = {
-    "chat.fast":   {"max_tokens": 600,  "timeout_s": 600},
+    "chat.fast":   {"max_tokens": 300,  "timeout_s": 600},
     "code.edit":   {"max_tokens": 1024, "timeout_s": 900},
     "tool.json":   {"max_tokens": 800,  "timeout_s": 900},
     "audit":       {"max_tokens": 1200, "timeout_s": 1800},
@@ -1468,11 +1553,12 @@ class Handler(BaseHTTPRequestHandler):
                         "text": user_text_for_matching,
                         "n_predict": 120,
                         "system": _REFLECT_SYSTEM,
+                        "force": "llm",  # Use fast GPU path, not full RLM reasoning
                     }
                     reflect_route = http_post_debug(
                         f"{ROUTER_BASE}/route",
                         reflect_payload,
-                        timeout_s=45,
+                        timeout_s=30,
                     )
                     if isinstance(reflect_route, dict) and reflect_route.get("ok"):
                         reflection_text = (reflect_route.get("text") or "").strip()
@@ -1544,7 +1630,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
-            answer_text = route.get("text", "")
+            answer_text = _clean_chat_response(route.get("text", ""))
             model = route.get("model", "router")
 
             ev_route = {"ts": now(), "type": "router.response", "source": "core", "payload": route}

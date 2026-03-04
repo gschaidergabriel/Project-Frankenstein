@@ -298,6 +298,18 @@ class ServiceTracker:
 # Service management functions
 # ============================================================================
 
+def is_service_installed(service_name: str) -> bool:
+    """Check if a systemd user service unit file exists."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show", service_name, "-p", "LoadState"],
+            capture_output=True, text=True, timeout=10
+        )
+        return "not-found" not in result.stdout
+    except Exception:
+        return True  # Assume installed on error
+
+
 def get_service_state(service_name: str) -> str:
     """Get systemd user service state: 'active', 'inactive', 'failed', 'activating', or 'unknown'."""
     try:
@@ -442,10 +454,16 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Initialize trackers
+    # Initialize trackers — only for services that are actually installed
+    _installed = {name for name in MONITORED_SERVICES if is_service_installed(name)}
+    _skipped = set(MONITORED_SERVICES) - _installed
+    if _skipped:
+        LOG.info(f"Skipping {len(_skipped)} uninstalled services: {', '.join(sorted(_skipped))}")
+
     trackers = {
         name: ServiceTracker(name, config)
         for name, config in MONITORED_SERVICES.items()
+        if name in _installed
     }
 
     _shutdown_active = False  # True while in full shutdown state

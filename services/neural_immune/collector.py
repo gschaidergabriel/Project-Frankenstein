@@ -136,6 +136,18 @@ WINDOW_SIZE = 8  # 8 timesteps = 2 min at 15s intervals
 
 # ── Low-Level Health Checks ───────────────────────────────────────
 
+def is_service_installed(service_name: str) -> bool:
+    """Check if a systemd user service unit file exists (not-found = not installed)."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show", service_name, "-p", "LoadState"],
+            capture_output=True, text=True, timeout=10, env=_CLEAN_ENV,
+        )
+        return "not-found" not in result.stdout
+    except Exception:
+        return True  # Assume installed on error
+
+
 def get_service_state(service_name: str) -> str:
     """Get systemd user service state (portable: any Linux with systemd)."""
     try:

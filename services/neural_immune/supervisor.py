@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-from .collector import HealthCollector, SERVICE_REGISTRY, get_service_state
+from .collector import HealthCollector, SERVICE_REGISTRY, get_service_state, is_service_installed
 from .circuit_breaker import CircuitBreaker, CircuitState
 from .db import ImmuneDB
 from .lifecycle import LifecycleManager
@@ -69,9 +69,20 @@ class ImmuneSystem:
         self.lifecycle = LifecycleManager(self.db)
         self.trainer = ImmuneTrainer(self.models, self.db)
 
-        # Circuit breakers (one per service)
+        # Detect which services are actually installed
+        self._installed_services = {
+            name for name in SERVICE_REGISTRY if is_service_installed(name)
+        }
+        _skipped = set(SERVICE_REGISTRY) - self._installed_services
+        if _skipped:
+            LOG.info("Skipping %d uninstalled services: %s",
+                     len(_skipped), ", ".join(sorted(_skipped)))
+
+        # Circuit breakers (one per installed service)
         self.breakers: Dict[str, CircuitBreaker] = {}
         for name, info in SERVICE_REGISTRY.items():
+            if name not in self._installed_services:
+                continue
             self.breakers[name] = CircuitBreaker(
                 name, self.db, base_delay=info.get("delay", 3.0)
             )
@@ -161,6 +172,9 @@ class ImmuneSystem:
         overall_healthy = True
 
         for name, info in SERVICE_REGISTRY.items():
+            if name not in self._installed_services:
+                continue
+
             state = get_service_state(name)
             breaker = self.breakers[name]
 

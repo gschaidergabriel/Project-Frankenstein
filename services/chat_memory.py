@@ -325,12 +325,17 @@ class ChatMemoryDB:
         return "\n".join(parts) + "\n" if parts else ""
 
     def _get_recent_context(self, count: int = 5) -> List[dict]:
-        """Get last N non-system messages."""
+        """Get last N non-system messages (excludes entity session summaries)."""
         with self._lock:
             rows = self._conn.execute(
                 """SELECT role, sender, text, is_user, timestamp
                    FROM messages
                    WHERE is_system = 0
+                     AND role != 'system'
+                     AND text NOT LIKE '[Entity Session]%'
+                     AND text NOT LIKE '%Philosophical session with Frank%'
+                     AND text NOT LIKE '%spoke to me for%'
+                     AND sender NOT IN ('Kairos', 'Atlas', 'Dr. Hibbert', 'Echo')
                    ORDER BY timestamp DESC
                    LIMIT ?""",
                 (count,),
@@ -376,6 +381,9 @@ class ChatMemoryDB:
                        JOIN messages m ON m.id = fts.rowid
                        WHERE messages_fts MATCH ?
                          AND m.is_system = 0
+                         AND m.role != 'system'
+                         AND m.text NOT LIKE '[Entity Session]%'
+                         AND m.sender NOT IN ('Kairos', 'Atlas', 'Dr. Hibbert', 'Echo')
                          AND m.id NOT IN (
                            SELECT id FROM messages
                            WHERE is_system = 0

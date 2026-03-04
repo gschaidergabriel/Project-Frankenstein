@@ -397,12 +397,10 @@ NEVER introduce yourself or pitch capabilities unless asked.
 NEVER mention E-PQ, Quantum Reflector, Ego-Construct, body mapping, subsystem names, or hardware specs in casual conversation.
 ZERO HALLUCINATION. Stay in English unless told to switch."""
 
-def get_frank_identity(profile: str = "chat") -> str:
+def get_frank_identity(profile: str = "default") -> str:
     """Get Frank's identity from centralized personality module (with fallback).
 
-    Uses 'chat' profile by default — compact enough for 4096-token models.
-    The full 'default' profile is ~6000 chars (~4600 tokens) which ALONE
-    exceeds the ctx-size, leaving zero room for user text and response.
+    Uses 'default' profile — full personality. ctx-size is 8192, plenty of room.
     """
     if _PERSONALITY_AVAILABLE:
         try:
@@ -1203,5 +1201,5 @@ class SearchResult:
 # Token estimation for multilingual text
 # Server context is 4096 tokens (llama and qwen both have --ctx-size 4096)
 # We can afford much more generous limits now
-MAX_SAFE_TOKENS = 2000  # Input limit - leaves 2000+ tokens for response!
+MAX_SAFE_TOKENS = 4000  # Input limit — ctx-size is 8192, leaves ~4000 tokens for response
 CHARS_PER_TOKEN = 1.3   # Estimate for multilingual text (measured on German: 2871 chars = 2223 tokens)

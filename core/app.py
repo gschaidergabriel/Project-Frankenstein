@@ -726,11 +726,10 @@ def _is_complex_query(text: str) -> bool:
 
 
 def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None,
-                       profile: str = "chat") -> str:
+                       profile: str = "default") -> str:
     """Get Frank's identity prompt from centralized personality module.
 
-    Default 'chat' profile: compact (~1500 chars) to fit 4096-token models.
-    The 'default' profile is ~6000 chars (~4600 tokens) — exceeds ctx-size alone.
+    Default 'default' profile: full personality. ctx-size is 8192, plenty of room.
     """
     if _PERSONALITY_AVAILABLE:
         try:
@@ -1558,7 +1557,7 @@ class Handler(BaseHTTPRequestHandler):
                 "deine fähigkeiten", "what are you capable", "was sind deine",
                 "help me with", "feature", "tell me about yourself",
             ]
-            _profile = "minimal" if any(cw in _user_low_pre for cw in _CAP_Q_WORDS) else "chat"
+            _profile = "minimal" if any(cw in _user_low_pre for cw in _CAP_Q_WORDS) else "default"
             identity = get_frank_identity(profile=_profile)
             # Pass identity as SYSTEM PROMPT (not in user text) so the Router
             # wraps it properly in ChatML/Instruct templates. Without this,
@@ -1633,9 +1632,9 @@ class Handler(BaseHTTPRequestHandler):
                         "n_predict": max_tokens,
                         "system": identity,
                         "temperature": 0.65,
-                        # User chat goes to Qwen2.5-3B (llama) — follows system prompt reliably.
-                        # DeepSeek-R1 (llm/rlm) overrides persona with its own RLHF identity.
-                        "force": payload.get("force", "llama"),
+                        # User chat goes to Llama 8B GPU (llm) — fast, full personality.
+                        # ctx-size increased to 8192 to fit full system prompt.
+                        "force": payload.get("force", "llm"),
                     }
 
                     router_timeout = min(max(10, timeout_s + 15), 540)

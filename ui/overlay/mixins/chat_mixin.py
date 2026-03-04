@@ -1111,7 +1111,7 @@ class ChatMixin:
 
                 res = _core_chat_stream(
                     text, max_tokens=max_tokens,
-                    force=force or "llama", on_token=_on_token,
+                    force=force or "llm", on_token=_on_token,
                 )
 
                 reply = (res.get("text") or "").strip() or "(empty)"
@@ -1280,7 +1280,7 @@ class ChatMixin:
 
         # ── BLOCKING PATH (voice, or streaming fallback) ──
         try:
-            res = _core_chat(text, max_tokens=max_tokens, timeout_s=timeout_s, task=task, force=force or "llama",
+            res = _core_chat(text, max_tokens=max_tokens, timeout_s=timeout_s, task=task, force=force or "llm",
                              no_reflect=True)  # Overlay handles reflection itself, prevent double-reflection in core
             LOG.debug(f"Core response: ok={res.get('ok')}, model={res.get('model')}, text_preview={str(res.get('text', ''))[:100]}")
         except Exception as e:

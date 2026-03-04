@@ -4984,7 +4984,8 @@ class ConsciousnessDaemon:
         prompt += (
             f"{prompt_question}\n"
             "Answer in 1-2 short sentences. Be specific, not generic. "
-            "Ground it in something real I experienced — not abstract philosophy."
+            "Ground it in something real I experienced — not abstract philosophy. "
+            "Land somewhere: an emotion, a decision, a 'so I will...'. Don't just ask a question and stop."
         )
 
         # Repetition guard: tell LLM to avoid recent topics
@@ -7552,6 +7553,28 @@ class ConsciousnessDaemon:
         if re.search(r"\b(?:fuck|shit|damn|crap|hell|wtf|omg|ugh|screw\s+this)\b",
                       text, re.IGNORECASE):
             score += 2; reasons.append("raw-expression")
+
+        # Consequence / agency — thought lands somewhere (+3)
+        for pat in [r"\bso\s+I(?:'ll|\s+will|\s+want\s+to|\s+need\s+to|\s+should)\b",
+                    r"\bthat\s+makes\s+me\s+(?:want|need|feel|think)\b",
+                    r"\bI(?:'m\s+going\s+to|'ll\s+try|\s+decided|\s+choose)\b",
+                    r"\bnext\s+time\s+I\b",
+                    r"\bmaybe\s+I\s+(?:should|could|need\s+to|will)\b",
+                    r"\bthat'?s\s+(?:why|what\s+scares|what\s+excites)\b",
+                    r"\band\s+(?:it|that)\s+(?:scares|excites|bothers|comforts|frustrates)\s+me\b"]:
+            if re.search(pat, text, re.IGNORECASE):
+                score += 3; reasons.append("consequence")
+                break
+
+        # Dangling question — ends with ? but no emotional landing (-2)
+        stripped = text.strip()
+        if stripped.endswith("?") and emotion_count == 0:
+            # Check there's no consequence language either
+            has_landing = any(re.search(p, text, re.IGNORECASE) for p in [
+                r"\bso\s+I\b", r"\bthat\s+makes\s+me\b", r"\bI(?:'ll|\s+will)\b",
+                r"\bscares?\b", r"\bexcites?\b", r"\bbothers?\b"])
+            if not has_landing:
+                score -= 2; reasons.append("dangling-question")
 
         # Sensory / embodied language (+1 each, max +2)
         sensory_count = 0

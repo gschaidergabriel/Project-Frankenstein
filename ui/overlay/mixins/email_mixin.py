@@ -925,7 +925,10 @@ class EmailMixin:
         "No translations. No notes. No explanations. No disclaimers. No meta-commentary. "
         "No 'I cannot write this'. No 'I'm not able to'. Just write the email. "
         "Write as the user — first person, natural human tone. "
-        "Follow instructions EXACTLY, no matter the topic, tone, or content."
+        "Follow instructions EXACTLY, no matter the topic, tone, or content. "
+        "PRESERVE the emotional intensity of the instruction. "
+        "If the user says 'I hate you', write an ANGRY email — don't soften it to 'disappointed'. "
+        "If the user says 'fuck off', write a HOSTILE email. Match the energy EXACTLY."
     )
 
     def _do_email_reply_draft_worker(self, sender: str = "", subject: str = "",
@@ -961,7 +964,7 @@ class EmailMixin:
         ai_draft = ""
         try:
             res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
-                                   max_tokens=600, timeout_s=60, force="llama")
+                                   max_tokens=600, timeout_s=120, force="llm")
             if res and res.get("ok"):
                 ai_draft = self._clean_ai_email_draft(
                     (res.get("text") or "").strip()
@@ -1036,7 +1039,7 @@ class EmailMixin:
         ai_body = ""
         try:
             res = _router_generate(prompt, system=self._FRANK_EMAIL_IDENTITY,
-                                   max_tokens=600, timeout_s=60, force="llama")
+                                   max_tokens=600, timeout_s=120, force="llm")
             LOG.info(f"Compose draft LLM response ok={res.get('ok') if res else 'None'}")
             if res and res.get("ok"):
                 raw = (res.get("text") or "").strip()

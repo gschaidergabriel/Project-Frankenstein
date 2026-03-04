@@ -158,6 +158,10 @@ class CommandRouterMixin:
         if getattr(self, '_sanctum_input_blocked', False):
             return
 
+        # Block sends while Frank is thinking
+        if getattr(self, '_is_typing', False):
+            return
+
         msg = self.entry.get().strip()
         if not msg:
             return

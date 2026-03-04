@@ -81,11 +81,11 @@ STEPS = [
     {"id": "ingestd",  "name": "Python Venv (ingestd)", "desc": "Setting up ingestd venv (faster-whisper, ctranslate2)"},
     {"id": "llama",    "name": "Build llama.cpp",       "desc": "Compiling LLM inference engine from source"},
     {"id": "whisper",  "name": "Build whisper.cpp",     "desc": "Compiling speech-to-text engine from source"},
-    {"id": "dirs",     "name": "Data Directories",      "desc": "Creating directory tree, copying config templates"},
+    {"id": "dirs",     "name": "Data & Databases",       "desc": "Creating directory tree, seeding databases, copying config"},
     {"id": "ollama",   "name": "Ollama + Vision Models","desc": "Installing Ollama, pulling LLaVA and Moondream"},
     {"id": "models",   "name": "LLM Models (GGUF)",     "desc": "Downloading DeepSeek-R1 + Llama 3.1 + Qwen 2.5 3B (~13 GB)"},
     {"id": "voice",    "name": "Voice / TTS Setup",     "desc": "Piper (Thorsten DE) + Kokoro (am_fenrir EN) + espeak"},
-    {"id": "systemd",  "name": "Systemd Services",      "desc": "Installing and enabling 36 user services"},
+    {"id": "systemd",  "name": "Systemd Services",      "desc": "Installing and enabling 40+ user services"},
     {"id": "desktop",  "name": "Desktop Integration",   "desc": "Desktop entries, dock icons, autostart"},
     {"id": "start",    "name": "Start Services",        "desc": "Starting all services and the Frank overlay"},
 ]

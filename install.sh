@@ -318,6 +318,25 @@ if [ ! -f "$CONFIG_DIR/config.yaml" ] && [ -f "$SCRIPT_DIR/config.yaml.example" 
     cp "$SCRIPT_DIR/config.yaml.example" "$CONFIG_DIR/config.yaml"
     echo "  Copied config.yaml.example -> $CONFIG_DIR/config.yaml"
 fi
+
+# Seed databases (only if not already present — preserves existing data on updates)
+SEED_DIR="$SCRIPT_DIR/data/seed-db"
+DB_DIR="$DATA_DIR/db"
+mkdir -p "$DB_DIR"
+if [ -d "$SEED_DIR" ]; then
+    SEEDED=0
+    for db in "$SEED_DIR"/*.db "$SEED_DIR"/*.sqlite; do
+        [ -f "$db" ] || continue
+        target="$DB_DIR/$(basename "$db")"
+        if [ ! -f "$target" ]; then
+            cp "$db" "$target"
+            SEEDED=$((SEEDED + 1))
+        fi
+    done
+    echo "  Seeded $SEEDED new databases ($(ls "$SEED_DIR"/*.db "$SEED_DIR"/*.sqlite 2>/dev/null | wc -l) available)."
+else
+    echo "  No seed databases found."
+fi
 echo "  Done."
 
 # ============================================================================
@@ -1081,6 +1100,49 @@ Nice=10
 [Install]
 WantedBy=default.target"
 
+write_service "frank-immune.service" "\
+[Unit]
+Description=Frank Neural Immune System (self-learning service supervisor)
+After=default.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+WorkingDirectory=$SCRIPT_DIR
+Environment=PYTHONPATH=$SCRIPT_DIR
+ExecStart=$PYTHON_SYS -m services.neural_immune
+WatchdogSec=60
+Restart=always
+RestartSec=5
+StartLimitBurst=1000
+CPUQuota=5%
+MemoryMax=300M
+Nice=5
+
+[Install]
+WantedBy=default.target"
+
+# ── NeRD Physics Engine ──────────────────────────────────────────────────
+
+write_service "aicore-nerd-physics.service" "\
+[Unit]
+Description=AI Core NeRD Physics Engine (Body Simulation)
+After=aicore-core.service
+Wants=aicore-core.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_SYS -m services.nerd_physics.main
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=NERD_PHYSICS_PORT=8100
+Environment=NERD_USE_NEURAL=0
+
+[Install]
+WantedBy=default.target"
+
 # ── Tier 4: Entity oneshot services + timers (fallback, NOT enabled) ────────
 
 for entity_info in \
@@ -1245,9 +1307,13 @@ systemctl --user enable aicore-dream-watchdog-meta.service 2>/dev/null || true
 systemctl --user enable aura-headless.service 2>/dev/null || true
 systemctl --user enable aura-analyzer.service 2>/dev/null || true
 
-# Tier 4 — Watchdogs
+# Tier 4 — Watchdogs + Immune System
 systemctl --user enable frank-watchdog.service 2>/dev/null || true
 systemctl --user enable frank-sentinel.service 2>/dev/null || true
+systemctl --user enable frank-immune.service 2>/dev/null || true
+
+# Tier 4b — Body simulation
+systemctl --user enable aicore-nerd-physics.service 2>/dev/null || true
 
 # Tier 5 — Scheduled
 systemctl --user enable aicore-fas.timer 2>/dev/null || true
@@ -1300,6 +1366,19 @@ StartupNotify=true
 StartupWMClass=org.frank.writer
 DESKTOP
 
+# Frank WebUI .desktop
+cat > "$APPS_DIR/frank-webui.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Frank WebUI
+Comment=Frank AI Web Dashboard
+Exec=xdg-open http://localhost:8099
+Icon=$ICONS_DIR/256x256/apps/frank-overlay.png
+Terminal=false
+Type=Application
+Categories=Utility;Network;
+StartupNotify=false
+DESKTOP
+
 # Update icon cache
 gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
@@ -1316,26 +1395,59 @@ if command -v gsettings &>/dev/null; then
     gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48 2>/dev/null || true
     gsettings set org.gnome.shell.extensions.dash-to-dock icon-size-fixed true 2>/dev/null || true
 
-    # Pin Frank & Writer to dock
+    # Pin Frank, Writer & WebUI to dock
     CURRENT_FAVS=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "[]")
     NEEDS_UPDATE=false
 
-    if ! echo "$CURRENT_FAVS" | grep -q "frank-overlay.desktop"; then
-        CURRENT_FAVS=$(echo "$CURRENT_FAVS" | sed "s/]$/, 'frank-overlay.desktop']/; s/\[, /[/")
-        NEEDS_UPDATE=true
-    fi
-    if ! echo "$CURRENT_FAVS" | grep -q "frank-writer.desktop"; then
-        CURRENT_FAVS=$(echo "$CURRENT_FAVS" | sed "s/]$/, 'frank-writer.desktop']/; s/\[, /[/")
-        NEEDS_UPDATE=true
-    fi
+    for frank_app in frank-overlay.desktop frank-writer.desktop frank-webui.desktop; do
+        if ! echo "$CURRENT_FAVS" | grep -q "$frank_app"; then
+            CURRENT_FAVS=$(echo "$CURRENT_FAVS" | sed "s/]$/, '$frank_app']/; s/\[, /[/")
+            NEEDS_UPDATE=true
+        fi
+    done
 
     if $NEEDS_UPDATE; then
         gsettings set org.gnome.shell favorite-apps "$CURRENT_FAVS" 2>/dev/null && \
-            echo "  Pinned Frank & Writer to dock." || \
-            echo "  Note: Could not pin to dock."
+            echo "  Pinned Frank apps to GNOME dock." || \
+            echo "  Note: Could not pin to GNOME dock."
     else
-        echo "  Already pinned to dock."
+        echo "  Already pinned to GNOME dock."
     fi
+fi
+
+# ── KDE Plasma taskbar pinning ──
+if command -v kwriteconfig6 &>/dev/null || command -v kwriteconfig5 &>/dev/null; then
+    echo "  Configuring KDE Plasma taskbar..."
+    KWRITE=$(command -v kwriteconfig6 2>/dev/null || command -v kwriteconfig5)
+    for frank_app in frank-overlay frank-writer frank-webui; do
+        if [ -f "$APPS_DIR/${frank_app}.desktop" ]; then
+            # Create symlink in KDE's pin directory if not already pinned
+            KDE_PINS="$HOME/.local/share/plasma_favorites"
+            mkdir -p "$KDE_PINS"
+            if [ ! -f "$KDE_PINS/${frank_app}.desktop" ]; then
+                ln -sf "$APPS_DIR/${frank_app}.desktop" "$KDE_PINS/${frank_app}.desktop" 2>/dev/null || true
+            fi
+        fi
+    done
+    echo "  KDE Plasma pins configured."
+fi
+
+# ── XFCE panel pinning ──
+if command -v xfconf-query &>/dev/null; then
+    echo "  Detected XFCE — desktop entries installed (manual panel pinning recommended)."
+fi
+
+# ── Cinnamon taskbar pinning ──
+if command -v gsettings &>/dev/null && gsettings list-schemas 2>/dev/null | grep -q "org.cinnamon"; then
+    echo "  Configuring Cinnamon panel..."
+    CINN_FAVS=$(gsettings get org.cinnamon favorite-apps 2>/dev/null || echo "[]")
+    for frank_app in frank-overlay.desktop frank-writer.desktop frank-webui.desktop; do
+        if ! echo "$CINN_FAVS" | grep -q "$frank_app"; then
+            CINN_FAVS=$(echo "$CINN_FAVS" | sed "s/]$/, '$frank_app']/; s/\[, /[/")
+        fi
+    done
+    gsettings set org.cinnamon favorite-apps "$CINN_FAVS" 2>/dev/null || true
+    echo "  Cinnamon panel pins configured."
 fi
 
 # Generate & set FRANK wallpaper (resolution-adaptive)
@@ -1465,9 +1577,13 @@ systemctl --user start aicore-dream-watchdog-meta.service 2>/dev/null || true
 systemctl --user start aura-headless.service 2>/dev/null || true
 systemctl --user start aura-analyzer.service 2>/dev/null || true
 
-# Watchdogs
+# Watchdogs + immune system
 systemctl --user start frank-watchdog.service 2>/dev/null || true
 systemctl --user start frank-sentinel.service 2>/dev/null || true
+systemctl --user start frank-immune.service 2>/dev/null || true
+
+# Body simulation
+systemctl --user start aicore-nerd-physics.service 2>/dev/null || true
 
 # Start the overlay via systemd
 systemctl --user start frank-overlay.service 2>/dev/null || true
@@ -1507,5 +1623,5 @@ echo "  Ports:"
 echo "    8088 Core | 8091 Router | 8096 Toolbox | 8093 Webd | 8094 Ingestd"
 echo "    8101 DeepSeek-R1 (RLM) | 8102 Llama-3.1 (Chat) | 8105 Qwen-3B (CPU)"
 echo "    8097 Quantum Reflector | 8098 AURA Headless | 8099 Web UI"
-echo "    8103 Whisper | 11434 Ollama (vision)"
+echo "    8100 NeRD Physics | 8103 Whisper | 11434 Ollama (vision)"
 echo

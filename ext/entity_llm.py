@@ -33,22 +33,22 @@ ENTITY_OPTIONS: dict[str, dict] = {
     "therapist": {
         # Dr. Hibbert: warm but precise, empathic listening
         "temperature": 0.55,
-        "n_predict": 1024,
+        "n_predict": 400,  # was 1024 — GPU at 5 tok/s, keep fast
     },
     "mirror": {
         # Kairos: philosophical depth, broad conceptual exploration
         "temperature": 0.7,
-        "n_predict": 1200,
+        "n_predict": 400,  # was 1200
     },
     "atlas": {
         # Atlas: technically precise, structured, analytical
         "temperature": 0.3,
-        "n_predict": 1200,
+        "n_predict": 400,  # was 1200
     },
     "muse": {
         # Echo: creative, free-flowing, surprising associations
         "temperature": 0.85,
-        "n_predict": 1400,
+        "n_predict": 400,  # was 1400
     },
 }
 
@@ -110,6 +110,7 @@ def _router_generate(
         "system": system,
         "n_predict": n_predict,
         "temperature": temperature,
+        "force": "llm",  # Use GPU fast path, skip reasoning multiplier
     }).encode()
     req = urllib.request.Request(
         ROUTER_URL, data=payload,

@@ -5,12 +5,15 @@ __pycache__/
 *.pyd
 *.egg-info/
 *.eggs/
-dist/
 build/
+
+# Dist (PyInstaller output) — keep the installer binary
+dist/*
+!dist/frank-installer
 venv/
 .venv/
 
-# Databases — contain user data, never commit
+# Databases — runtime files never committed
 database/
 *.db
 *.db-shm
@@ -19,6 +22,10 @@ database/
 *.db.backup
 *.sqlite
 *.sqlite3
+
+# Exception: seed databases for deployment
+!data/seed-db/*.db
+!data/seed-db/*.sqlite
 
 # Runtime state
 *.lock

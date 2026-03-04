@@ -482,7 +482,7 @@ def _ask_frank(message: str, session_id: str, prior_context: str = "") -> Option
     payload = {
         "text": text,
         "task": "chat.fast",
-        "max_tokens": 512,
+        "max_tokens": 300,  # GPU at 5 tok/s — keep fast
         "timeout_s": RESPONSE_TIMEOUT,
         "no_reflect": True,
         "session_id": session_id,

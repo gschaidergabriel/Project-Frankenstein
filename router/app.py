@@ -571,9 +571,9 @@ def route(req: RouteRequest) -> RouteResponse:
 
     if model_choice == "llm":
         # ---- LLM path (Llama 8B GPU, fast — no token multiplier) ----
-        # DeepSeek-R1-Distill always thinks before answering.
-        # Need at least 512 so it can reason (~200 tok) AND produce answer (~300 tok).
-        max_tokens = max(caller_n, 512)  # Direct budget, no 2.5x multiplier
+        # DeepSeek-R1-Distill always thinks before answering (~200-400 tok reasoning).
+        # Need at least 600 so it can reason AND produce a complete answer.
+        max_tokens = max(caller_n, 600)  # Direct budget, no 2.5x multiplier
         temperature = req.temperature if req.temperature is not None else 0.65
         LOG.info(f"🔄 INFERENZ: llama-8b (max_tokens={max_tokens}, temp={temperature})")
 
@@ -689,7 +689,7 @@ def route_stream(req: RouteRequest):
 
     if model_choice == "llm":
         # LLM path — GPU fast, no token multiplier
-        max_tokens = max(caller_n, 512)
+        max_tokens = max(caller_n, 600)
         temperature = req.temperature if req.temperature is not None else 0.65
         LOG.info(f"🔄 STREAM [llama-8b]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
 

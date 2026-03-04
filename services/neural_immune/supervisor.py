@@ -322,11 +322,13 @@ class ImmuneSystem:
 
     def _check_restart_requests(self):
         """Process restart requests from Frank (restart_request.json protocol)."""
-        if not self._restart_request.exists():
+        try:
+            raw = self._restart_request.read_text()
+        except (FileNotFoundError, OSError):
             return
 
         try:
-            data = json.loads(self._restart_request.read_text())
+            data = json.loads(raw)
             self._restart_request.unlink(missing_ok=True)
 
             service = data.get("service")

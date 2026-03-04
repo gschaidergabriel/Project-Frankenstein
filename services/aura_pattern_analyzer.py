@@ -379,7 +379,9 @@ def fetch_grid() -> Optional[Snapshot]:
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read())
 
-        sz = data["size"]
+        sz = data.get("size")
+        if not sz or "grid_b64" not in data:
+            return None
         grid_bytes = base64.b64decode(data["grid_b64"])
         grid = np.frombuffer(grid_bytes, dtype=np.uint8).reshape((sz, sz))
 
@@ -427,7 +429,7 @@ def fetch_grid() -> Optional[Snapshot]:
 
         return Snapshot(
             ts=time.time(),
-            generation=data["generation"],
+            generation=data.get("generation", 0),
             grid=grid.copy(),
             zone_map=zone_map.copy(),
             mood=data.get("mood", 0.0),

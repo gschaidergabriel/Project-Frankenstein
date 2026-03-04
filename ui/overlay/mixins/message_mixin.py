@@ -299,6 +299,13 @@ class MessageMixin:
         self._typing_dots = 0
         self._typing_start_time = time.time()
 
+        # Lock input while thinking
+        if hasattr(self, 'entry') and hasattr(self.entry, 'text'):
+            try:
+                self.entry.text.configure(state="disabled")
+            except Exception:
+                pass
+
         # Create typing bubble
         self._typing_bubble = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
         self._typing_bubble.pack(fill="x", padx=10, pady=6)
@@ -404,6 +411,15 @@ class MessageMixin:
     def _hide_typing(self):
         """Hide typing indicator."""
         self._is_typing = False
+
+        # Unlock input
+        if hasattr(self, 'entry') and hasattr(self.entry, 'text'):
+            try:
+                self.entry.text.configure(state="normal")
+                self.entry.text.focus_set()
+            except Exception:
+                pass
+
         if hasattr(self, '_typing_bubble') and self._typing_bubble:
             try:
                 self._typing_bubble.destroy()

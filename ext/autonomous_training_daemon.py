@@ -66,7 +66,7 @@ GPU_PAUSE_THRESHOLD = 0.80
 
 # API Endpoints
 CORE_URL = "http://127.0.0.1:8088/chat"
-TOOLBOX_URL = "http://127.0.0.1:8089"
+TOOLBOX_URL = "http://127.0.0.1:8096"
 
 # Central path configuration
 try:

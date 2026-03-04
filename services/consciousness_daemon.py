@@ -2129,7 +2129,9 @@ class ConsciousnessDaemon:
         ).fetchall()
         if not rows:
             return ""
-        values = [r["mood_value"] for r in rows]
+        values = [r["mood_value"] for r in rows if r["mood_value"] is not None]
+        if not values:
+            return ""
         avg = sum(values) / len(values)
         trend = values[0] - values[-1] if len(values) > 1 else 0
         arrow = "↗" if trend > 0.1 else "↘" if trend < -0.1 else "→"
@@ -2198,6 +2200,7 @@ class ConsciousnessDaemon:
 
     def _get_epq_drift_summary(self) -> str:
         """Compact E-PQ vector summary with 7-day drift for idle thought injection."""
+        conn = None
         try:
             from config.paths import get_db
             we_db = get_db("world_experience")
@@ -2210,7 +2213,6 @@ class ConsciousnessDaemon:
                 "FROM personality_state ORDER BY id DESC LIMIT 1"
             ).fetchone()
             if not cur:
-                conn.close()
                 return ""
 
             old = conn.execute(
@@ -2220,7 +2222,6 @@ class ConsciousnessDaemon:
                 "WHERE timestamp <= datetime('now', '-7 days') "
                 "ORDER BY id DESC LIMIT 1"
             ).fetchone()
-            conn.close()
 
             names = ["precision", "risk", "empathy", "autonomy", "vigilance"]
             lines = [f"E-PQ (age {cur['age_days']}d, mood {cur['mood_buffer']:+.2f}):"]
@@ -2236,6 +2237,9 @@ class ConsciousnessDaemon:
         except Exception as e:
             LOG.debug("E-PQ drift summary failed: %s", e)
             return ""
+        finally:
+            if conn:
+                conn.close()
 
     def _get_aura_zone_summary(self) -> str:
         """Compact AURA zone stats for idle thought injection."""
@@ -5286,16 +5290,19 @@ class ConsciousnessDaemon:
             return False
 
         # Fetch oldest unprocessed report
+        conn = None
         try:
             conn = sqlite3.connect(str(self._aura_queue_db), timeout=3)
             row = conn.execute(
                 "SELECT id, level, report FROM reflection_queue "
                 "WHERE processed = 0 ORDER BY id ASC LIMIT 1"
             ).fetchone()
-            conn.close()
         except Exception as e:
             LOG.debug("AURA queue read failed: %s", e)
             return False
+        finally:
+            if conn:
+                conn.close()
 
         if not row:
             return False
@@ -5407,16 +5414,19 @@ class ConsciousnessDaemon:
                         pass
 
             # Mark as processed regardless of LLM success
+            _mark_conn = None
             try:
-                conn = sqlite3.connect(str(self._aura_queue_db), timeout=3)
-                conn.execute(
+                _mark_conn = sqlite3.connect(str(self._aura_queue_db), timeout=3)
+                _mark_conn.execute(
                     "UPDATE reflection_queue SET processed = 1 WHERE id = ?",
                     (report_id,),
                 )
-                conn.commit()
-                conn.close()
+                _mark_conn.commit()
             except Exception:
                 pass
+            finally:
+                if _mark_conn:
+                    _mark_conn.close()
 
             return True
 

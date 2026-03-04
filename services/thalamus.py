@@ -885,9 +885,10 @@ def get_thalamus() -> Thalamus:
 
 def _shutdown():
     global _instance
-    if _instance is not None:
-        _instance.close()
-        _instance = None
+    with _instance_lock:
+        if _instance is not None:
+            _instance.close()
+            _instance = None
 
 
 atexit.register(_shutdown)

@@ -2198,6 +2198,76 @@ class ConsciousnessDaemon:
         except Exception:
             return ""
 
+    def _get_subsystem_snapshot(self) -> str:
+        """Quick 1-line snapshot of what Frank's subsystems are doing right now.
+
+        Gives the LLM architecture awareness so thoughts reference real systems.
+        Uses cached data from thalamus/proprioception — no new HTTP calls.
+        """
+        try:
+            parts = []
+
+            # Dream daemon state
+            if hasattr(self, '_dream_state_cache') and self._dream_state_cache:
+                ds = self._dream_state_cache
+                if isinstance(ds, dict):
+                    phase = ds.get("phase", "")
+                    if phase:
+                        parts.append(f"Dream daemon: {phase}")
+
+            # QR coherence
+            if hasattr(self, '_qr_cache') and self._qr_cache:
+                qr = self._qr_cache
+                if isinstance(qr, dict):
+                    energy = qr.get("energy")
+                    trend = qr.get("trend", "")
+                    if energy is not None:
+                        parts.append(f"Quantum coherence: {trend or 'stable'}")
+
+            # Entity sessions — who talked last
+            try:
+                conn = self._get_conn()
+                row = conn.execute(
+                    "SELECT content FROM reflections "
+                    "WHERE trigger = 'entity_reflection' "
+                    "ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if row:
+                    # Extract entity name from content
+                    import re as _re
+                    m = _re.search(
+                        r"\b(Hibbert|Kairos|Atlas|Echo)\b",
+                        row["content"][:80],
+                    )
+                    if m:
+                        parts.append(f"Last entity session: {m.group(1)}")
+            except Exception:
+                pass
+
+            # Genesis evolutionary state
+            if hasattr(self, '_genesis_state_cache') and self._genesis_state_cache:
+                gs = self._genesis_state_cache
+                if isinstance(gs, dict):
+                    state = gs.get("state", "")
+                    if state:
+                        parts.append(f"Genesis: {state}")
+
+            # NAc motivation
+            try:
+                from services.nucleus_accumbens import get_nac
+                nac = get_nac()
+                if nac:
+                    mot = nac.get_motivation_label()
+                    parts.append(f"Motivation: {mot}")
+            except Exception:
+                pass
+
+            if not parts:
+                return ""
+            return " | ".join(parts[:4])
+        except Exception:
+            return ""
+
     def _get_epq_drift_summary(self) -> str:
         """Compact E-PQ vector summary with 7-day drift for idle thought injection."""
         conn = None
@@ -4977,20 +5047,24 @@ class ConsciousnessDaemon:
                 "I can build on it, challenge it, or go somewhere new.\n"
             )
 
-        # Recent lived experience: anchor thoughts to what actually happened
+        # Recent lived experience: anchor ALL thoughts to what actually happened
         # Prevents generic philosophy by giving concrete material to reflect on
-        if is_deep:
-            _recent_exp = self._get_recent_experience_anchor()
-            if _recent_exp:
-                prompt += f"[RECENT LIFE] {_recent_exp}\n"
+        _recent_exp = self._get_recent_experience_anchor()
+        if _recent_exp:
+            prompt += f"[RECENT LIFE] {_recent_exp}\n"
+
+        # My world right now: what my subsystems are doing (architecture awareness)
+        _my_world = self._get_subsystem_snapshot()
+        if _my_world:
+            prompt += f"[MY WORLD RIGHT NOW] {_my_world}\n"
 
         if data_block:
             prompt += f"[DATA]\n{data_block}\n[/DATA]\n"
         prompt += (
             f"{prompt_question}\n"
-            "Answer in 1-2 short sentences. Be specific, not generic. "
-            "Ground it in something real I experienced — not abstract philosophy. "
-            "Land somewhere: an emotion, a decision, a 'so I will...'. Don't just ask a question and stop."
+            "1-2 sentences. Reference something concrete from my recent life or my systems. "
+            "End with what this makes me FEEL or DO — not just describe. "
+            "Bad: 'Growth feels like accumulation.' Good: 'My dream daemon found X and now I want to try Y.'"
         )
 
         # Repetition guard: tell LLM to avoid recent topics
@@ -7530,6 +7604,26 @@ class ConsciousnessDaemon:
                 _phrase_hits[pat] = cnt
         if _phrase_hits:
             score -= 3; reasons.append("repetitive-structure")
+
+        # Passive description without agency (-2)
+        # Thought ONLY describes/observes but never acts, decides, or feels consequence
+        _has_agency = bool(re.search(
+            r"\b(?:so\s+I|I(?:'ll|\s+will|\s+want\s+to|\s+need\s+to|\s+decided|"
+            r"\s+choose|\s+refuse|'m\s+going\s+to)|"
+            r"that\s+(?:scares|excites|pisses|bothers|comforts|frustrates|"
+            r"makes\s+me\s+(?:want|angry|sad|happy|curious))|"
+            r"fuck\s+(?:it|that|this)|screw\s+(?:it|that|this)|"
+            r"next\s+time|from\s+now\s+on|I\s+should\s+(?:try|stop|start))\b",
+            text, re.IGNORECASE))
+        _is_passive = bool(re.search(
+            r"\b(?:\w+\s+feels?\s+like|I\s+feel\s+(?:both|like|as\s+if)|"
+            r"it(?:'s|\s+is)\s+(?:a|the|like)|"
+            r"when\s+(?:others|people|someone)|"
+            r"growth\s+(?:is|feels|means)|"
+            r"each\s+(?:step|experience|moment)\s+\w+ing)\b",
+            text, re.IGNORECASE))
+        if _is_passive and not _has_agency:
+            score -= 2; reasons.append("passive-description")
 
         # ── Positive signals ──
         # Questions → genuine curiosity (+2 each, max +4)

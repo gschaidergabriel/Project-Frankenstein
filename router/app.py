@@ -262,17 +262,20 @@ def _classify_model(text: str, force: Optional[str]) -> str:
         user_text = text.split("USER:")[-1].strip()
 
     # Short + matches casual pattern → llama (Qwen CPU)
+    # Used for internal calls (consciousness daemon idle thoughts, etc.)
+    # User-facing chat should pass force="llm" to bypass this.
     if len(user_text) < 200 and _CASUAL_PATTERNS.search(user_text):
         return "llama"
 
-    # Very short with no complex or philosophical markers → llama
     lower = user_text.lower()
+
+    # Very short with no complex or philosophical markers → llama
     if len(user_text) < 60:
         if not any(m in lower for m in _COMPLEX_MARKERS) and \
            not any(m in lower for m in _PHILOSOPHICAL_MARKERS):
             return "llama"
 
-    # Deep philosophical / existential → rlm (full reasoning)
+    # Deep philosophical / existential → rlm (full reasoning multiplier)
     if any(m in lower for m in _PHILOSOPHICAL_MARKERS):
         return "rlm"
 
@@ -568,7 +571,9 @@ def route(req: RouteRequest) -> RouteResponse:
 
     if model_choice == "llm":
         # ---- LLM path (Llama 8B GPU, fast — no token multiplier) ----
-        max_tokens = max(caller_n, 256)  # Direct budget, no 2.5x multiplier
+        # DeepSeek-R1-Distill always thinks before answering.
+        # Need at least 512 so it can reason (~200 tok) AND produce answer (~300 tok).
+        max_tokens = max(caller_n, 512)  # Direct budget, no 2.5x multiplier
         temperature = req.temperature if req.temperature is not None else 0.65
         LOG.info(f"🔄 INFERENZ: llama-8b (max_tokens={max_tokens}, temp={temperature})")
 
@@ -684,7 +689,7 @@ def route_stream(req: RouteRequest):
 
     if model_choice == "llm":
         # LLM path — GPU fast, no token multiplier
-        max_tokens = max(caller_n, 256)
+        max_tokens = max(caller_n, 512)
         temperature = req.temperature if req.temperature is not None else 0.65
         LOG.info(f"🔄 STREAM [llama-8b]: '{text[:80]}...' (max_tokens={max_tokens}, temp={temperature})")
 

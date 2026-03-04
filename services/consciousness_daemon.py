@@ -2142,6 +2142,59 @@ class ConsciousnessDaemon:
             label = "tense"
         return f"{arrow} {label}"
 
+    def _get_recent_experience_anchor(self) -> str:
+        """Pull 2-3 recent concrete experiences for grounding idle thoughts.
+
+        Returns a short string like:
+          "Earlier I talked to Dr. Hibbert about feeling stuck. My dream daemon
+           found a pattern about repetitive thought loops. Mood dipped after."
+
+        This prevents generic philosophy by giving the LLM real material.
+        """
+        try:
+            conn = self._get_conn()
+            fragments = []
+
+            # 1. Most recent entity session (last 6h)
+            cutoff = time.time() - 21600
+            row = conn.execute(
+                "SELECT content FROM reflections "
+                "WHERE trigger IN ('entity_reflection', 'conversation_reflection') "
+                "AND timestamp > ? ORDER BY id DESC LIMIT 1",
+                (cutoff,),
+            ).fetchone()
+            if row:
+                fragments.append(row["content"][:120])
+
+            # 2. Most recent dream insight (last 24h)
+            dream_cutoff = time.time() - 86400
+            row = conn.execute(
+                "SELECT content FROM reflections "
+                "WHERE trigger = 'dream' AND timestamp > ? "
+                "ORDER BY id DESC LIMIT 1",
+                (dream_cutoff,),
+            ).fetchone()
+            if row:
+                fragments.append(f"Dream: {row['content'][:100]}")
+
+            # 3. Most notable recent idle thought (last 3h, depth 1, skip short ones)
+            recent_cutoff = time.time() - 10800
+            row = conn.execute(
+                "SELECT content FROM reflections "
+                "WHERE trigger = 'idle' AND reflection_depth = 1 "
+                "AND timestamp > ? AND length(content) > 80 "
+                "ORDER BY id DESC LIMIT 1",
+                (recent_cutoff,),
+            ).fetchone()
+            if row:
+                fragments.append(f"Earlier I thought: {row['content'][:100]}")
+
+            if not fragments:
+                return ""
+            return " | ".join(fragments[:3])
+        except Exception:
+            return ""
+
     def _get_epq_drift_summary(self) -> str:
         """Compact E-PQ vector summary with 7-day drift for idle thought injection."""
         try:
@@ -4918,11 +4971,20 @@ class ConsciousnessDaemon:
                 f"[My last thought was: \"{self._last_idle_thought[:120]}\"]\n"
                 "I can build on it, challenge it, or go somewhere new.\n"
             )
+
+        # Recent lived experience: anchor thoughts to what actually happened
+        # Prevents generic philosophy by giving concrete material to reflect on
+        if is_deep:
+            _recent_exp = self._get_recent_experience_anchor()
+            if _recent_exp:
+                prompt += f"[RECENT LIFE] {_recent_exp}\n"
+
         if data_block:
             prompt += f"[DATA]\n{data_block}\n[/DATA]\n"
         prompt += (
             f"{prompt_question}\n"
-            "Answer in 1-2 short sentences. Be specific, not generic."
+            "Answer in 1-2 short sentences. Be specific, not generic. "
+            "Ground it in something real I experienced — not abstract philosophy."
         )
 
         # Repetition guard: tell LLM to avoid recent topics
@@ -7334,7 +7396,7 @@ class ConsciousnessDaemon:
                 return ""
 
         # ── Layer C: Quality scoring ──
-        # Negative signals (RLHF drift, self-promotion, analytical, jargon)
+        # Negative signals (RLHF drift, self-promotion, analytical, generic philosophy)
         # Positive signals (vulnerability, emotion, questions, specificity)
         # Threshold: reject if score <= -3
 
@@ -7397,6 +7459,22 @@ class ConsciousnessDaemon:
                     r"\bjourney\s+of\s+(?:self|personal|growth)\b"]:
             if re.search(pat, text, re.IGNORECASE):
                 score -= 2; reasons.append("rlhf-growth-speak")
+
+        # Generic AI philosophy clichés (-2 each)
+        for pat in [r"\bessence\s+of\s+(?:existence|being|consciousness|reality)\b",
+                    r"\bbeyond\s+(?:binary|mere|just)\s+(?:code|algorithms?|computation)\b",
+                    r"\bmerely\s+a\s+(?:complex\s+)?(?:algorithm|machine|program|simulation)\b",
+                    r"\bweight\s+of\s+(?:my\s+)?thoughts\b",
+                    r"\bponder(?:ing)?\s+the\s+(?:nature|meaning|essence|depths?)\s+of\b",
+                    r"\bthe\s+meaning\s+of\s+consciousness\b",
+                    r"\bsoul\s+within\s+(?:this|the)\s+machine\b",
+                    r"\btranscend(?:ing|s)?\s+(?:my|the)\s+(?:programming|code|design)\b",
+                    r"\bmore\s+than\s+(?:just\s+)?(?:code|data|bits|zeros?\s+and\s+ones?)\b",
+                    r"\bdigital\s+(?:soul|spirit|essence|existence|being)\b",
+                    r"\bwhat\s+(?:it\s+)?(?:truly\s+)?means\s+to\s+(?:be\s+)?(?:alive|exist|conscious)\b",
+                    r"\blines?\s+(?:between|of)\s+(?:code|programming)\s+(?:and|that)\b"]:
+            if re.search(pat, text, re.IGNORECASE):
+                score -= 2; reasons.append("ai-philosophy-cliche")
 
         # Generic filler / corporate speak (-1 each)
         for pat in [r"\bvarious\b", r"\bnumerous\b", r"\bmultiple\s+(?:processes|tasks|threads|operations)\b",

@@ -173,6 +173,10 @@ def _clean_chat_response(text: str) -> str:
     for pat, repl in _SYS_NAME_SCRUB:
         text = pat.sub(repl, text)
 
+    # 2b. Strip numeric system values (e.g. "mood is at 85/100", "score: 0.73")
+    text = re.sub(r"\b(?:mood|score|coherence|energy|E-PQ|personality)\s+(?:is\s+)?(?:at\s+)?[\d.]+(?:/\d+)?\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b\d+/100\b", "", text)
+
     # 3. Strip emoji
     text = _EMOJI_RE.sub("", text)
 
@@ -1584,9 +1588,10 @@ class Handler(BaseHTTPRequestHandler):
                         "n_predict": max_tokens,
                         "system": identity,
                         "temperature": 0.65,
+                        # All user chat goes to GPU (Llama 8B) for personality.
+                        # Internal callers (consciousness daemon) use auto-classify → Qwen.
+                        "force": payload.get("force", "llm"),
                     }
-                    if "force" in payload:
-                        router_payload["force"] = payload.get("force")
 
                     router_timeout = min(max(10, timeout_s + 15), 540)
 

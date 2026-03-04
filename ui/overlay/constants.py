@@ -397,11 +397,16 @@ NEVER introduce yourself or pitch capabilities unless asked.
 NEVER mention E-PQ, Quantum Reflector, Ego-Construct, body mapping, subsystem names, or hardware specs in casual conversation.
 ZERO HALLUCINATION. Stay in English unless told to switch."""
 
-def get_frank_identity() -> str:
-    """Get Frank's identity from centralized personality module (with fallback)."""
+def get_frank_identity(profile: str = "chat") -> str:
+    """Get Frank's identity from centralized personality module (with fallback).
+
+    Uses 'chat' profile by default — compact enough for 4096-token models.
+    The full 'default' profile is ~6000 chars (~4600 tokens) which ALONE
+    exceeds the ctx-size, leaving zero room for user text and response.
+    """
     if _PERSONALITY_AVAILABLE:
         try:
-            return _build_persona_prompt()
+            return _build_persona_prompt(profile=profile)
         except Exception:
             pass
     return _FALLBACK_FRANK_IDENTITY
@@ -856,14 +861,16 @@ EMAIL_LIST_RE = re.compile(
     re.IGNORECASE,
 )
 EMAIL_READ_RE = re.compile(
-    r"(lies|lese|read|oeffne|öffne|open|zeig|show).{0,10}(e-?mail|mail|nachricht|message)\s+"
+    r"(lies|lese|read|oeffne|öffne|open|zeig|show).{0,10}(e-?mail|mail)\s+"
     r"(?:(von|from|nummer|nr|#|ueber|über|about)\s+)?(.+)",
     re.IGNORECASE,
 )
-# "was steht in der neuen mail", "lies die letzte mail", "zeig die neue nachricht"
+# "was steht in der neuen mail", "lies die letzte mail"
+# NOTE: "nachricht" removed — too ambiguous (matches "chat message" context).
+# Users should say "mail" for email. "nachricht" = generic "message".
 EMAIL_READ_LATEST_RE = re.compile(
     r"(was steht|was ist|lies|lese|zeig|oeffne|öffne|show|read|open|what.s in).{0,15}"
-    r"(neu(?:e[nmrs]?|este[nmrs]?|ste[nmrs]?)?|letzt(?:e[nmrs]?)?|aktuell\w*|new|latest|recent|last)\s+(e-?mail|mail|nachricht|post|message)",
+    r"(neu(?:e[nmrs]?|este[nmrs]?|ste[nmrs]?)?|letzt(?:e[nmrs]?)?|aktuell\w*|new|latest|recent|last)\s+(e-?mail|mail)\b",
     re.IGNORECASE,
 )
 EMAIL_UNREAD_RE = re.compile(

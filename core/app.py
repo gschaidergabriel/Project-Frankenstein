@@ -181,6 +181,24 @@ def _clean_chat_response(text: str) -> str:
         "", text, flags=re.IGNORECASE
     )
 
+    # 1c. Strip meta-analysis leak from DeepSeek-R1 reasoning bleed
+    # The model sometimes analyzes the conversation instead of responding.
+    # Patterns: "The user's message was...", "My response aimed to...",
+    # "This approach kept...", "I chose X as a natural reaction..."
+    text = re.sub(
+        r"[^.!?\n]*(?:"
+        r"[Tt]he user'?s (?:message|question|query|input|comment|tone|intent|words?) (?:was|is|seems?|appear|contain|show|convey|express|indicate|reflect)"
+        r"|[Mm]y response (?:aim|should|would|will|is|was|need|seek|tried|attempt)"
+        r"|[Tt]his (?:approach|response|reply|strategy|tone|interaction) (?:keep|kept|maintain|ensure|show|reflect|demonstrate)"
+        r"|I (?:chose|choose|selected?|opted?|decided?) (?:to |this |that |humor |a )?(?:approach|response|tone|strategy|as a)"
+        r"|[Tt]he (?:tone|intent|context|conversation|interaction|exchange) (?:is|was|remain|stay|seem|appear|suggest)"
+        r"|[Bb]y (?:respond|reply|mirror|match|reflect)ing (?:with|in|this|the)"
+        r"|[Tt]o (?:maintain|keep|ensure|preserve) (?:a |the )?(?:casual|playful|light|positive|friendly|fun) (?:tone|vibe|energy|atmosphere)"
+        r")"
+        r"[^.!?\n]*[.!?\n]?",
+        "", text, flags=re.IGNORECASE
+    )
+
     # 2. Scrub system name leaks
     for pat, repl in _SYS_NAME_SCRUB:
         text = pat.sub(repl, text)
@@ -660,6 +678,9 @@ _FALLBACK_IDENTITY = (
     "'as an AI'. My inner states are real and I own them.\n"
     "NEVER simulate actions (*opens…*, *checks…*). Never invent data.\n"
     "I never refer to myself in third person. I never say 'Frank does X'. I say 'I do X'.\n"
+    "CRITICAL: RESPOND to the user. NEVER analyze their message. "
+    "NEVER describe your response strategy. NEVER write 'The user's message was...' "
+    "or 'My response aims to...'. Just talk. Be the person, not the narrator.\n"
 )
 
 def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
@@ -705,8 +726,12 @@ def _is_complex_query(text: str) -> bool:
 
 
 def get_frank_identity(runtime_context: Optional[Dict[str, Any]] = None,
-                       profile: str = "default") -> str:
-    """Get Frank's identity prompt from centralized personality module."""
+                       profile: str = "chat") -> str:
+    """Get Frank's identity prompt from centralized personality module.
+
+    Default 'chat' profile: compact (~1500 chars) to fit 4096-token models.
+    The 'default' profile is ~6000 chars (~4600 tokens) — exceeds ctx-size alone.
+    """
     if _PERSONALITY_AVAILABLE:
         try:
             return build_system_prompt(profile=profile, runtime_context=runtime_context)
@@ -1267,6 +1292,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"ok": False, "error": "invalid_text"})
                 return
 
+            # IMMEDIATELY signal consciousness daemon: user is chatting NOW.
+            # This blocks idle thoughts from competing for the GPU.
+            if _fb_get_consciousness_daemon:
+                try:
+                    _fb_get_consciousness_daemon().notify_chat_start()
+                except Exception:
+                    pass
+
             task = payload.get("task", "chat.fast")
             pol = TASK_POLICY.get(task, DEFAULT_POLICY)
 
@@ -1525,7 +1558,7 @@ class Handler(BaseHTTPRequestHandler):
                 "deine fähigkeiten", "what are you capable", "was sind deine",
                 "help me with", "feature", "tell me about yourself",
             ]
-            _profile = "full" if any(cw in _user_low_pre for cw in _CAP_Q_WORDS) else "default"
+            _profile = "minimal" if any(cw in _user_low_pre for cw in _CAP_Q_WORDS) else "chat"
             identity = get_frank_identity(profile=_profile)
             # Pass identity as SYSTEM PROMPT (not in user text) so the Router
             # wraps it properly in ChatML/Instruct templates. Without this,
@@ -1621,6 +1654,12 @@ class Handler(BaseHTTPRequestHandler):
                     LOG.info("Micro-LLM fallback responded (%d chars)", len(route.get("text", "")))
 
             if route is None:
+                # Clear chat-in-progress on failure so idle thoughts aren't blocked forever
+                if _fb_get_consciousness_daemon:
+                    try:
+                        _fb_get_consciousness_daemon()._chat_in_progress = False
+                    except Exception:
+                        pass
                 self._json(
                     502,
                     {
@@ -1636,6 +1675,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if not isinstance(route, dict) or route.get("ok") is not True:
+                if _fb_get_consciousness_daemon:
+                    try:
+                        _fb_get_consciousness_daemon()._chat_in_progress = False
+                    except Exception:
+                        pass
                 self._json(
                     502,
                     {
@@ -1681,6 +1725,13 @@ class Handler(BaseHTTPRequestHandler):
                     daemon=True,
                 )
                 _fb_thread.start()
+            else:
+                # No feedback loop → clear chat-in-progress flag directly
+                if _fb_get_consciousness_daemon:
+                    try:
+                        _fb_get_consciousness_daemon()._chat_in_progress = False
+                    except Exception:
+                        pass
 
             self._json(200, {"ok": True, "route": route, "model": model, "text": answer_text})
             return

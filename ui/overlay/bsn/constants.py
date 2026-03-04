@@ -117,7 +117,7 @@ def _detect_primary_monitor() -> dict:
 
                         name = parts[-1]  # Monitor name
 
-                        LOG.info(f"BSN: Primary monitor detected: {name} {width}x{height}+{x}+{y}")
+                        LOG.debug(f"BSN: Primary monitor detected: {name} {width}x{height}+{x}+{y}")
                         return {
                             "width": width,
                             "height": height,

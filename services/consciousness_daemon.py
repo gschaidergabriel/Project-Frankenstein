@@ -373,6 +373,7 @@ class ConsciousnessDaemon:
         # Runtime state
         self._current_workspace = WorkspaceSnapshot()
         self._last_chat_ts: float = time.time() - 600.0  # Assume idle at startup so AURA queue can process
+        self._chat_in_progress: bool = False  # Set True when /chat request arrives, False when response sent
         self._last_idle_think_ts: float = 0.0
         self._last_consolidation_ts: float = time.time()
         self._attention_focus: str = ""
@@ -1767,9 +1768,22 @@ class ConsciousnessDaemon:
             # Make predictions about next interaction
             self._make_predictions(user_msg)
 
+    def notify_chat_start(self):
+        """Signal that a user chat request has arrived.
+
+        Must be called at the START of /chat handling, BEFORE any LLM work.
+        Immediately resets the idle timer and blocks idle thoughts from
+        competing for the GPU while the chat response is being generated.
+        """
+        with self._lock:
+            self._last_chat_ts = time.time()
+            self._chat_in_progress = True
+        LOG.debug("Chat start notified — idle thoughts blocked")
+
     def record_response(self, user_msg: str, reply: str,
                         analysis: Dict[str, Any]):
         """Record Frank's own response for feedback processing."""
+        self._chat_in_progress = False
         self.record_chat(user_msg, reply, analysis)
 
     def get_relevant_memories(self, query: str, max_items: int = 3) -> str:
@@ -3360,6 +3374,16 @@ class ConsciousnessDaemon:
         """
         while self._running:
             try:
+                # === Chat-in-progress: absolute priority ===
+                # Safety: auto-clear after 120s to prevent permanent block on error
+                if self._chat_in_progress:
+                    if (time.time() - self._last_chat_ts) > 120.0:
+                        LOG.warning("chat_in_progress stuck >120s — auto-clearing")
+                        self._chat_in_progress = False
+                    else:
+                        time.sleep(5.0)  # Fast re-check — user is waiting
+                        continue
+
                 # === Silence Mode check (highest priority) ===
                 if self._silence_tick():
                     time.sleep(10.0)  # Slow tick during silence
@@ -7793,6 +7817,16 @@ class ConsciousnessDaemon:
         user_chat_idle_s = time.time() - self._last_chat_ts
         user_too_recent = (user_chat_idle_s < RLM_IDLE_GATE_S)
 
+        # Chat-in-progress: absolute block — user is waiting for a response right now
+        if self._chat_in_progress and not entity_active:
+            if use_main_rlm:
+                LOG.debug("RLM blocked — chat in progress")
+                return ""
+            try:
+                return self._micro_llm_call(text, max_tokens, system)
+            except Exception:
+                return ""
+
         # 25-min gate: block ALL RLM usage (including use_main_rlm) when user is active
         if user_too_recent and not entity_active:
             if use_main_rlm:
@@ -7807,15 +7841,15 @@ class ConsciousnessDaemon:
                          e, user_chat_idle_s)
                 return ""
 
-        # Try micro-LLM first (doesn't block GPU)
+        # Non-GPU path: micro-LLM only, NEVER fall through to GPU router.
+        # If the caller said use_main_rlm=False, they don't need the GPU.
+        # Falling through would block the GPU for idle thoughts when user chats.
         if not use_main_rlm:
             try:
                 return self._micro_llm_call(text, max_tokens, system)
             except Exception as e:
-                if entity_active:
-                    LOG.info("Micro-LLM failed (%s), entity active — skipping RLM", e)
-                    return ""
-                LOG.info("Micro-LLM failed (%s), falling back to router", e)
+                LOG.info("Micro-LLM failed (%s), use_main_rlm=False — skipping (no GPU fallback)", e)
+                return ""
 
         # RLM via router (user idle >= 25min or entity session active)
         payload = json.dumps({

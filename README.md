@@ -10,6 +10,8 @@
 > **Fully private. Fully yours.**
 
 > **Get started in one command:** Download [`frank-installer`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-installer), run `chmod +x frank-installer && ./frank-installer` — no Python required. Or clone the repo and run `python3 install_wizard.py`.
+>
+> **Already installed?** Download [`frank-updater`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-updater), run `chmod +x frank-updater && ./frank-updater --install` — adds a tray icon that auto-checks for updates every 6 hours.
 
 Built by one person with zero programming experience, using Claude as co-developer. 200k+ lines of code (160k Python, 40k JS/HTML/CSS, systemd, shell) in 2 months. Derived from [**The Generative Reality Framework**](papers/Generative_Reality_Framework.pdf). [Read the full story.](ABOUT.md)
 
@@ -108,12 +110,12 @@ python3 install_wizard.py
 
 The wizard provides a TUI with live progress, system detection, and interactive options. It wraps `install.sh` and guides you through every step.
 
-To build a standalone installer binary (no Python required on target):
+To build standalone binaries (no Python required on target):
 
 ```bash
 pip install pyinstaller
-pyinstaller install-wizard.spec
-# produces dist/frank-installer
+pyinstaller install-wizard.spec       # produces dist/frank-installer
+pyinstaller updater/frank-updater.spec  # produces dist/frank-updater
 ```
 
 ### Manual install
@@ -144,6 +146,33 @@ The installer will:
 10. Create desktop entries and dock icons
 
 Currently tested on Ubuntu 24.04+ with GNOME/X11. Other distributions may require manual fixes. Docker support is planned.
+
+### Updating
+
+Download [`frank-updater`](https://github.com/gschaidergabriel/Project-Frankenstein/releases/latest/download/frank-updater) — a standalone binary that keeps Frank up to date.
+
+```bash
+chmod +x frank-updater
+./frank-updater --install
+```
+
+This installs a system tray icon (green **[F]**) that silently checks for updates every 6 hours and sends a desktop notification when new commits are available. Click "Update Now" to open the TUI updater — it shows a changelog, asks for confirmation, then pulls changes and restarts only the affected services. Automatic rollback on failure.
+
+| Command | What it does |
+|---------|-------------|
+| `frank-updater` | Start tray icon (default) |
+| `frank-updater --update` | Run TUI updater directly |
+| `frank-updater --check` | Silent check (exit 0 = update available) |
+| `frank-updater --install` | Install tray icon + autostart + menu entry |
+| `frank-updater --uninstall` | Remove tray icon and autostart |
+
+To build the updater binary from source:
+
+```bash
+pip install pyinstaller
+pyinstaller updater/frank-updater.spec
+# produces dist/frank-updater
+```
 
 ### Start the system
 

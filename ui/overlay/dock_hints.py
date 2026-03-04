@@ -8,6 +8,7 @@ import ctypes
 import ctypes.util
 import os
 import subprocess
+import threading
 
 try:
     from overlay.constants import LOG
@@ -20,8 +21,46 @@ _ENV = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
 
 # ── Xlib ctypes interface (fast path) ───────────────────────────────
 
+# Xlib error handler type: int handler(Display*, XErrorEvent*)
+_XERROR_HANDLER = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+# Xlib IO error handler type: int handler(Display*)
+_XIOERROR_HANDLER = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+
+
+def _noop_error_handler(_display, _event):
+    """Suppress Xlib errors instead of crashing the process.
+
+    Default Xlib error handler calls exit(1). We replace it with a no-op
+    so protocol errors (stale window IDs, etc.) don't kill the overlay.
+    """
+    return 0
+
+
+def _io_error_handler(_display):
+    """Handle fatal X11 IO errors (connection lost).
+
+    XSetIOErrorHandler callback must NOT return (undefined behavior).
+    We log the error, then _exit to avoid SEGV from returning.
+    """
+    import sys
+    try:
+        LOG.error("FATAL: X11 IO error (display connection lost) — exiting")
+    except Exception:
+        pass
+    # os._exit bypasses Python cleanup which could trigger more X11 calls
+    os._exit(11)  # exit code 11 like SEGV for easy identification
+    return 0  # unreachable but required by signature
+
+
+_noop_handler_ref = _XERROR_HANDLER(_noop_error_handler)  # prevent GC
+_io_handler_ref = _XIOERROR_HANDLER(_io_error_handler)  # prevent GC
+
+
 class _XlibStrut:
-    """Direct Xlib strut setter — avoids subprocess overhead."""
+    """Direct Xlib strut setter — avoids subprocess overhead.
+
+    Thread-safe: a lock serializes all Xlib calls on this connection.
+    """
 
     _PropModeReplace = 0
 
@@ -31,6 +70,7 @@ class _XlibStrut:
         self._atom_strut_partial = 0
         self._atom_strut = 0
         self._atom_cardinal = 0
+        self._lock = threading.Lock()
         self._setup()
 
     def _setup(self):
@@ -50,8 +90,12 @@ class _XlibStrut:
                 ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
                 ctypes.c_void_p, ctypes.c_int,
             ]
-            lib.XFlush.restype = ctypes.c_int
-            lib.XFlush.argtypes = [ctypes.c_void_p]
+            lib.XSync.restype = ctypes.c_int
+            lib.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            lib.XSetErrorHandler.restype = ctypes.c_void_p
+            lib.XSetErrorHandler.argtypes = [_XERROR_HANDLER]
+            lib.XSetIOErrorHandler.restype = ctypes.c_void_p
+            lib.XSetIOErrorHandler.argtypes = [_XIOERROR_HANDLER]
             lib.XCloseDisplay.restype = ctypes.c_int
             lib.XCloseDisplay.argtypes = [ctypes.c_void_p]
 
@@ -59,6 +103,11 @@ class _XlibStrut:
             display = lib.XOpenDisplay(display_name)
             if not display:
                 return
+
+            # Install error handlers so Xlib errors don't SEGV/exit the process.
+            # These are GLOBAL (affect all Xlib connections including tkinter's).
+            lib.XSetErrorHandler(_noop_handler_ref)
+            lib.XSetIOErrorHandler(_io_handler_ref)
 
             self._lib = lib
             self._display = display
@@ -79,26 +128,30 @@ class _XlibStrut:
     def set_strut(self, wid: int, left: int, left_start_y: int, left_end_y: int) -> bool:
         if not self.available:
             return False
-        try:
-            data12 = (ctypes.c_long * 12)(
-                left, 0, 0, 0, left_start_y, left_end_y, 0, 0, 0, 0, 0, 0)
-            self._lib.XChangeProperty(
-                self._display, wid,
-                self._atom_strut_partial, self._atom_cardinal,
-                32, self._PropModeReplace,
-                ctypes.byref(data12), 12)
+        with self._lock:
+            try:
+                data12 = (ctypes.c_long * 12)(
+                    left, 0, 0, 0, left_start_y, left_end_y, 0, 0, 0, 0, 0, 0)
+                self._lib.XChangeProperty(
+                    self._display, wid,
+                    self._atom_strut_partial, self._atom_cardinal,
+                    32, self._PropModeReplace,
+                    ctypes.byref(data12), 12)
 
-            data4 = (ctypes.c_long * 4)(left, 0, 0, 0)
-            self._lib.XChangeProperty(
-                self._display, wid,
-                self._atom_strut, self._atom_cardinal,
-                32, self._PropModeReplace,
-                ctypes.byref(data4), 4)
+                data4 = (ctypes.c_long * 4)(left, 0, 0, 0)
+                self._lib.XChangeProperty(
+                    self._display, wid,
+                    self._atom_strut, self._atom_cardinal,
+                    32, self._PropModeReplace,
+                    ctypes.byref(data4), 4)
 
-            self._lib.XFlush(self._display)
-            return True
-        except Exception:
-            return False
+                # XSync (not XFlush): flushes output AND drains pending events.
+                # XFlush only flushes output, leaving incoming events unprocessed
+                # which can corrupt the connection state over time.
+                self._lib.XSync(self._display, 0)
+                return True
+            except Exception:
+                return False
 
     def clear_strut(self, wid: int) -> bool:
         return self.set_strut(wid, 0, 0, 0)

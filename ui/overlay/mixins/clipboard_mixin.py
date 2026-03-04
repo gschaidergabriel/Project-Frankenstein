@@ -30,7 +30,12 @@ class ClipboardMixin:
     # ── Polling (main thread via after()) ────────────────────────────
 
     def _clipboard_poll_timer(self):
-        """Poll clipboard for changes. Call once during init to start."""
+        """Poll clipboard for changes. Call once during init to start.
+
+        NOTE: clipboard_get() calls X11 selection at the C level.
+        A broken selection owner CAN cause SIGSEGV (status=11).
+        faulthandler is enabled at startup to diagnose if this is the crash source.
+        """
         try:
             current = self.clipboard_get()
             if current and current.strip():

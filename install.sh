@@ -13,7 +13,7 @@
 #   6.  Builds llama.cpp from source (LLM inference)
 #   7.  Builds whisper.cpp from source (speech-to-text)
 #   8.  Creates data directories
-#   9.  Vision pipeline (adaptive, no Ollama needed)
+#   9.  Installs Ollama and pulls vision models
 #   10. Downloads LLM models (GGUF): DeepSeek-R1 + Llama-3.1 + Qwen2.5-3B
 #   11. Sets up Voice / TTS (Piper German + Kokoro English + espeak)
 #   12. Installs all systemd user services (36 services)
@@ -344,11 +344,54 @@ fi
 echo "  Done."
 
 # ============================================================================
-# [9/14] Vision pipeline (adaptive, no Ollama needed)
+# [9/14] Install Ollama + pull vision models
 # ============================================================================
-echo "[9/14] Vision pipeline — using built-in adaptive vision (YOLO + OCR)..."
-echo "  Ollama is no longer required. Vision uses frank_adaptive_vision.py."
-echo "  Done."
+echo "[9/14] Installing Ollama (local vision inference)..."
+if command -v ollama &>/dev/null; then
+    echo "  Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown'))"
+else
+    if curl -fsSL https://ollama.com/install.sh | sh; then
+        echo "  Ollama installed."
+    else
+        echo "  WARNING: Ollama installation failed (network issue?). Vision features will be unavailable."
+        echo "  You can install manually later: curl -fsSL https://ollama.com/install.sh | sh"
+    fi
+fi
+
+# Configure Ollama for Vulkan if needed
+if [ "$GPU_BACKEND" = "vulkan" ]; then
+    OLLAMA_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
+    if [ ! -f "$OLLAMA_OVERRIDE_DIR/vulkan.conf" ] 2>/dev/null; then
+        if sudo mkdir -p "$OLLAMA_OVERRIDE_DIR" 2>/dev/null; then
+            echo -e "[Service]\nEnvironment=OLLAMA_VULKAN=1" | \
+                sudo tee "$OLLAMA_OVERRIDE_DIR/vulkan.conf" >/dev/null
+            sudo systemctl daemon-reload
+            echo "  Configured Ollama for Vulkan GPU."
+        fi
+    fi
+fi
+
+# Start Ollama
+sudo systemctl enable ollama 2>/dev/null || true
+sudo systemctl start ollama 2>/dev/null || true
+
+# Wait for Ollama
+OLLAMA_READY=false
+for i in $(seq 1 15); do
+    if curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+        OLLAMA_READY=true; break
+    fi
+    sleep 1
+done
+
+if ! $NO_MODELS && $OLLAMA_READY; then
+    echo "  Pulling LLaVA 7B (vision)..."
+    ollama pull llava:7b 2>/dev/null || echo "  Warning: Could not pull llava:7b"
+    echo "  Pulling Moondream (lightweight vision)..."
+    ollama pull moondream 2>/dev/null || echo "  Warning: Could not pull moondream"
+elif ! $OLLAMA_READY; then
+    echo "  WARNING: Ollama did not respond. Check: sudo systemctl status ollama"
+fi
 
 # ============================================================================
 # [10/14] Download LLM models (GGUF)

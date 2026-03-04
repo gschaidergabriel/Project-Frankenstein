@@ -346,16 +346,20 @@ echo "  Done."
 # ============================================================================
 # [9/14] Install Ollama + pull vision models
 # ============================================================================
+# Wrapped in set +e so Ollama/model failures never crash the installer
+(
+set +e
 echo "[9/14] Installing Ollama (local vision inference)..."
 if command -v ollama &>/dev/null; then
     echo "  Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown'))"
 else
-    if curl -fsSL https://ollama.com/install.sh | sh; then
-        echo "  Ollama installed."
-    else
+    curl -fsSL https://ollama.com/install.sh | sh
+    if [ $? -ne 0 ]; then
         echo "  WARNING: Ollama installation failed (network issue?). Vision features will be unavailable."
         echo "  You can install manually later: curl -fsSL https://ollama.com/install.sh | sh"
+        exit 0  # exit subshell, not the main script
     fi
+    echo "  Ollama installed."
 fi
 
 # Configure Ollama for Vulkan if needed
@@ -372,10 +376,10 @@ if [ "$GPU_BACKEND" = "vulkan" ]; then
 fi
 
 # Start Ollama
-sudo systemctl enable ollama 2>/dev/null || true
-sudo systemctl start ollama 2>/dev/null || true
+sudo systemctl enable ollama 2>/dev/null
+sudo systemctl start ollama 2>/dev/null
 
-# Wait for Ollama
+# Wait for Ollama to be ready
 OLLAMA_READY=false
 for i in $(seq 1 15); do
     if curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
@@ -384,14 +388,38 @@ for i in $(seq 1 15); do
     sleep 1
 done
 
-if ! $NO_MODELS && $OLLAMA_READY; then
-    echo "  Pulling LLaVA 7B (vision)..."
-    ollama pull llava:7b 2>/dev/null || echo "  Warning: Could not pull llava:7b"
-    echo "  Pulling Moondream (lightweight vision)..."
-    ollama pull moondream 2>/dev/null || echo "  Warning: Could not pull moondream"
-elif ! $OLLAMA_READY; then
+if ! $OLLAMA_READY; then
     echo "  WARNING: Ollama did not respond. Check: sudo systemctl status ollama"
+    exit 0
 fi
+
+if $NO_MODELS; then
+    echo "  Skipping model pulls (--no-models)."
+    exit 0
+fi
+
+# Helper: pull model only if not already present
+pull_if_missing() {
+    local MODEL_TAG="$1"
+    local MODEL_NAME="$2"
+    # Check if model is already downloaded
+    if ollama list 2>/dev/null | grep -q "^${MODEL_TAG}"; then
+        echo "  ${MODEL_NAME} already present — skipping pull."
+    else
+        echo "  Pulling ${MODEL_NAME}..."
+        if ollama pull "$MODEL_TAG" 2>/dev/null; then
+            echo "  ${MODEL_NAME} downloaded."
+        else
+            echo "  WARNING: Could not pull ${MODEL_NAME}. You can retry later: ollama pull ${MODEL_TAG}"
+        fi
+    fi
+}
+
+pull_if_missing "llava:7b"   "LLaVA 7B (vision)"
+pull_if_missing "moondream"  "Moondream (lightweight vision)"
+
+echo "  Done."
+) || true
 
 # ============================================================================
 # [10/14] Download LLM models (GGUF)

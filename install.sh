@@ -206,7 +206,13 @@ if [ ! -d "$VENV_DIR" ] || ! "$VENV_DIR/bin/python3" --version &>/dev/null; then
     python3 -m venv "$VENV_DIR"
 fi
 "$VENV_DIR/bin/pip" install --upgrade pip -q
-"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+# Install torch CPU-only unless NVIDIA GPU detected (saves ~1.5GB disk + download time)
+if [ "$GPU_BACKEND" = "cuda" ]; then
+    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+else
+    "$VENV_DIR/bin/pip" install torch --index-url https://download.pytorch.org/whl/cpu -q
+    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+fi
 echo "  Done. ($("$VENV_DIR/bin/python3" --version))"
 
 # ============================================================================

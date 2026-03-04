@@ -1602,7 +1602,7 @@ class Handler(BaseHTTPRequestHandler):
                         "text": user_text_for_matching,
                         "n_predict": 120,
                         "system": _REFLECT_SYSTEM,
-                        "force": "llm",  # Use fast GPU path, not full RLM reasoning
+                        "force": "llama",  # Qwen follows system prompt, DeepSeek breaks persona
                     }
                     reflect_route = http_post_debug(
                         f"{ROUTER_BASE}/route",
@@ -1633,9 +1633,9 @@ class Handler(BaseHTTPRequestHandler):
                         "n_predict": max_tokens,
                         "system": identity,
                         "temperature": 0.65,
-                        # All user chat goes to GPU (Llama 8B) for personality.
-                        # Internal callers (consciousness daemon) use auto-classify → Qwen.
-                        "force": payload.get("force", "llm"),
+                        # User chat goes to Qwen2.5-3B (llama) — follows system prompt reliably.
+                        # DeepSeek-R1 (llm/rlm) overrides persona with its own RLHF identity.
+                        "force": payload.get("force", "llama"),
                     }
 
                     router_timeout = min(max(10, timeout_s + 15), 540)

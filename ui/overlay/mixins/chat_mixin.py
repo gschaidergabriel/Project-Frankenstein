@@ -395,6 +395,15 @@ class ChatMixin:
             self._thinking_cancelled = False  # Reset cancel flag for voice requests
         self._ui_call(self._show_typing)
 
+        # IMMEDIATELY tell consciousness daemon: user is chatting NOW.
+        # The streaming path bypasses core/app.py, so we must signal here.
+        # Without this, idle thoughts keep using the GPU while user waits.
+        if _CONSCIOUSNESS_AVAILABLE:
+            try:
+                _consciousness_daemon().notify_chat_start()
+            except Exception:
+                pass
+
         # ── AMYGDALA — pre-conscious threat/emotion appraisal ──
         # Fires BEFORE any processing. <1ms. Shifts mood/vigilance immediately.
         _amygdala_result = None

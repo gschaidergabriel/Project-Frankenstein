@@ -97,6 +97,7 @@ SERVICE_MAP = {
     "router/":                ["aicore-router"],
     "ui/overlay/":            ["frank-overlay"],
     "ui/chat_overlay.py":     ["frank-overlay"],
+    "ui/webui/":              ["aicore-webui"],
     "services/consciousness": ["aicore-consciousness"],
     "services/dream_daemon":  ["aicore-dream"],
     "services/genesis/":      ["aicore-genesis"],

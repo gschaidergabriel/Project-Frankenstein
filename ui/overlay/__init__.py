@@ -33,6 +33,28 @@ def main():
     except Exception:
         pass  # stderr fallback is fine
 
-    from overlay.app import ChatOverlay
-    app = ChatOverlay()
-    app.mainloop()
+    try:
+        from overlay.app import ChatOverlay
+        app = ChatOverlay()
+        app.mainloop()
+    except Exception as exc:
+        import traceback
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"FRANK OVERLAY CRASH: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # Also write to crash log file for diagnosis
+        try:
+            from pathlib import Path as _CrashPath
+            _crash_dir = _CrashPath.home() / ".local" / "share" / "frank" / "logs"
+            _crash_dir.mkdir(parents=True, exist_ok=True)
+            with open(_crash_dir / "overlay_crash.log", "a") as f:
+                import datetime
+                f.write(f"\n{'='*60}\n")
+                f.write(f"CRASH at {datetime.datetime.now().isoformat()}\n")
+                f.write(f"{type(exc).__name__}: {exc}\n")
+                traceback.print_exc(file=f)
+                f.write(f"{'='*60}\n")
+        except Exception:
+            pass
+        sys.exit(1)

@@ -123,9 +123,9 @@ async def health():
             except Exception:
                 result[name] = False
 
-        # LLM: any of the GPU models (RLM or Chat-LLM) being up = ok
+        # LLM: any model being up = ok (GPU primary, CPU micro-LLM fallback)
         llm_up = False
-        for url in (LLM_RLM_URL, LLM_CHAT_URL):
+        for url in (LLM_RLM_URL, LLM_CHAT_URL, LLM_MICRO_URL):
             try:
                 r = await client.get(f"{url}/health")
                 if r.status_code == 200:
@@ -255,12 +255,17 @@ async def system_status():
 
 @app.get("/api/gpu")
 async def gpu_status():
-    """Read AMD GPU metrics from sysfs."""
+    """Read GPU metrics (AMD sysfs, NVIDIA nvidia-smi, or none)."""
     result = {}
     try:
         import glob
+        import subprocess
+
+        # Try AMD sysfs first
+        amd_found = False
         for path in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
             result["gpu_pct"] = int(Path(path).read_text().strip())
+            amd_found = True
             break
         for path in glob.glob("/sys/class/hwmon/*/name"):
             if Path(path).read_text().strip() == "amdgpu":
@@ -268,7 +273,26 @@ async def gpu_status():
                 temp_file = hwmon / "temp1_input"
                 if temp_file.exists():
                     result["gpu_temp"] = int(temp_file.read_text().strip()) // 1000
+                amd_found = True
                 break
+
+        # Fallback: NVIDIA via nvidia-smi
+        if not amd_found:
+            try:
+                r = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu",
+                     "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    parts = r.stdout.strip().split(",")
+                    if len(parts) >= 2:
+                        result["gpu_pct"] = int(parts[0].strip())
+                        result["gpu_temp"] = int(parts[1].strip())
+            except FileNotFoundError:
+                pass  # No nvidia-smi = no NVIDIA GPU
+            except Exception:
+                pass
     except Exception as e:
         LOG.debug("GPU read error: %s", e)
     return result
@@ -422,9 +446,9 @@ async def _status_poller():
                     except Exception:
                         status[name] = False
 
-                # LLM: any GPU model up = ok (model-swap: only 1 active)
+                # LLM: any model up = ok (GPU primary, CPU micro-LLM fallback)
                 llm_up = False
-                for url in (LLM_RLM_URL, LLM_CHAT_URL):
+                for url in (LLM_RLM_URL, LLM_CHAT_URL, LLM_MICRO_URL):
                     try:
                         r = await client.get(f"{url}/health")
                         if r.status_code == 200:
@@ -439,12 +463,12 @@ async def _status_poller():
                     r = await client.post(f"{TOOLBOX_URL}/sys/summary", json={})
                     if r.status_code == 200:
                         d = r.json()
-                        # CPU temp: k10temp (Tctl) = actual CPU package temp
+                        # CPU temp: k10temp (AMD) or coretemp (Intel)
                         temps = d.get("temps", {})
                         sensors = temps.get("sensors", [])
                         cpu_temp = 0
                         for s in sensors:
-                            if s.get("chip") == "k10temp":
+                            if s.get("chip") in ("k10temp", "coretemp"):
                                 cpu_temp = int(s.get("temp_c", 0))
                                 break
                         if not cpu_temp:

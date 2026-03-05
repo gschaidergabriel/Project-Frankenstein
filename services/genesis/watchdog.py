@@ -258,4 +258,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from config.logging_config import setup_file_logging
+    setup_file_logging("genesis_watchdog")
     main()

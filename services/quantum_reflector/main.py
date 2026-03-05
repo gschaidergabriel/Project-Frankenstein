@@ -52,6 +52,8 @@ logging.basicConfig(
         logging.FileHandler(str(LOG_DIR / "quantum_reflector.log"), encoding="utf-8"),
     ],
 )
+from config.logging_config import setup_file_logging
+setup_file_logging("quantum_reflector")
 LOG = logging.getLogger("quantum_reflector")
 
 # ============ IMPORTS (nach PATH setup) ============

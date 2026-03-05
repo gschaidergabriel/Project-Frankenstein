@@ -9589,6 +9589,8 @@ if __name__ == "__main__":
         format="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+    from config.logging_config import setup_file_logging
+    setup_file_logging("consciousness")
     LOG.info("Starting Consciousness Stream Daemon v1.0...")
 
     daemon = get_consciousness_daemon()

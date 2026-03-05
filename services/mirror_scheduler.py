@@ -52,6 +52,8 @@ logging.basicConfig(
         logging.StreamHandler(),
     ],
 )
+from config.logging_config import setup_file_logging
+setup_file_logging("mirror")
 LOG = logging.getLogger("mirror_scheduler")
 
 # Gate thresholds

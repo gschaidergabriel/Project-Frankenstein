@@ -1026,6 +1026,8 @@ class Handler(BaseHTTPRequestHandler):
         json_write(self, 404, {"ok": False, "error": "not_found"})
 
 def main():
+    from config.logging_config import setup_file_logging
+    setup_file_logging("webd")
     print(f"webd listening on http://{HOST}:{PORT}", flush=True)
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     httpd.daemon_threads = True

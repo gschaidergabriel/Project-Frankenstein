@@ -942,6 +942,8 @@ def main():
             logging.StreamHandler(),
         ]
     )
+    from config.logging_config import setup_file_logging
+    setup_file_logging("genesis")
 
     parser = argparse.ArgumentParser(description="SENTIENT GENESIS Daemon")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")

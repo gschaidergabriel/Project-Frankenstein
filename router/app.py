@@ -52,6 +52,11 @@ logging.basicConfig(
     format='[%(asctime)s] %(levelname)s: %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
+try:
+    from config.logging_config import setup_file_logging
+    setup_file_logging("router")
+except Exception:
+    pass
 LOG = logging.getLogger("router")
 
 # ---- config -----------------------------------------------------------------

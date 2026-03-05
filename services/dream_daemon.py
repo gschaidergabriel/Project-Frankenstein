@@ -1402,6 +1402,8 @@ if __name__ == "__main__":
         format="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+    from config.logging_config import setup_file_logging
+    setup_file_logging("dream")
 
     import argparse
     parser = argparse.ArgumentParser(description="DreamDaemon — Franks Traumphase")

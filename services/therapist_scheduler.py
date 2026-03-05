@@ -51,6 +51,8 @@ logging.basicConfig(
         logging.StreamHandler(),
     ],
 )
+from config.logging_config import setup_file_logging
+setup_file_logging("therapist")
 LOG = logging.getLogger("therapist_scheduler")
 
 # Gate thresholds

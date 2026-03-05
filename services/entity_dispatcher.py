@@ -599,6 +599,8 @@ def main():
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT,  _handle_signal)
 
+    from config.logging_config import setup_file_logging
+    setup_file_logging("entities")
     LOG.info("Entity Dispatcher starting (PID %d)...", os.getpid())
     LOG.info("Daily quotas: %s", DAILY_QUOTAS)
 

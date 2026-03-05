@@ -2506,6 +2506,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    from config.logging_config import setup_file_logging
+    setup_file_logging("toolboxd")
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"toolboxd listening on http://{HOST}:{PORT}")
     httpd.serve_forever()

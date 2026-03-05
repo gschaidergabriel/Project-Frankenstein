@@ -2679,6 +2679,8 @@ def main():
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
     )
+    from config.logging_config import setup_file_logging
+    setup_file_logging("aura_analyzer")
 
     if "--status" in sys.argv:
         analyzer = AuraPatternAnalyzer()

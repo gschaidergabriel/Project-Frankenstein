@@ -45,6 +45,8 @@ LOG.handlers.clear()
 file_handler = logging.FileHandler(LOG_FILE)
 file_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s'))
 LOG.addHandler(file_handler)
+from config.logging_config import setup_file_logging
+setup_file_logging("asrs")
 LOG.propagate = False
 
 # Paths

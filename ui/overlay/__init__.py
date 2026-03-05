@@ -19,6 +19,13 @@ def main():
         print("Kill existing instance first: pkill -f chat_overlay.py", file=sys.stderr)
         sys.exit(1)
 
+    # File logging for overlay (crash diagnosis)
+    try:
+        from config.logging_config import setup_file_logging
+        setup_file_logging("overlay")
+    except Exception:
+        pass
+
     # Enable faulthandler: dumps Python traceback to stderr on SIGSEGV/SIGFPE/SIGABRT.
     # This is critical for diagnosing C-level crashes in tkinter/Xlib.
     # Also write to a file so the traceback survives even if journald truncates.

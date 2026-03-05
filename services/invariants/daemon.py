@@ -546,6 +546,8 @@ def main():
             logging.StreamHandler(),
         ]
     )
+    from config.logging_config import setup_file_logging
+    setup_file_logging("invariants")
 
     parser = argparse.ArgumentParser(description="Invariants Daemon - Frank's Physics Engine")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")

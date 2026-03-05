@@ -17,6 +17,8 @@ import logging
 from typing import Optional, Dict, Any, Tuple
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+from config.logging_config import setup_file_logging
+setup_file_logging("core")
 LOG = logging.getLogger("aicore.core")
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -37,6 +37,8 @@ logging.basicConfig(
         logging.FileHandler(str(LOG_DIR / "nerd_physics.log")),
     ],
 )
+from config.logging_config import setup_file_logging
+setup_file_logging("nerd_physics")
 LOG = logging.getLogger("nerd_physics")
 
 # ---------------------------------------------------------------------------

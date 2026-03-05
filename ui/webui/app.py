@@ -548,4 +548,6 @@ async def startup():
 # ── Main ────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    from config.logging_config import setup_file_logging
+    setup_file_logging("webui")
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")

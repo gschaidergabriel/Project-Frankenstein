@@ -198,5 +198,7 @@ def main():
     httpd.serve_forever()
 
 if __name__ == "__main__":
+    from config.logging_config import setup_file_logging
+    setup_file_logging("modeld")
     main()
 

@@ -2078,12 +2078,19 @@ def _block_has_delta(ba: BlockAnalysis) -> bool:
     return has_delta
 
 
+_AURA_QUEUE_MAX_PENDING = 50   # Hard cap — drop new reports if backlog exceeds this
+_AURA_QUEUE_MAX_AGE_S = 21600  # 6 hours — older unprocessed reports are stale
+
+
 def queue_for_frank(report: str, level: str = "block"):
     """Queue a report for Frank to reflect on during idle.
 
     Reports are NOT sent directly — they wait in a DB queue until
     the consciousness daemon picks them up during idle thinking.
     This ensures Frank reflects calmly, not under time pressure.
+
+    Backlog protection: if >50 unprocessed reports are pending,
+    new reports are dropped to prevent queue flooding.
     """
     try:
         conn = sqlite3.connect(str(ANALYZER_DB), timeout=3)
@@ -2096,13 +2103,23 @@ def queue_for_frank(report: str, level: str = "block"):
                 processed INTEGER DEFAULT 0
             )
         """)
+        # Check backlog — drop if queue is already saturated
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM reflection_queue WHERE processed = 0"
+        ).fetchone()[0]
+        if pending >= _AURA_QUEUE_MAX_PENDING:
+            conn.close()
+            LOG.info("[L_%s] AURA queue full (%d pending >= %d) — dropping report",
+                     level, pending, _AURA_QUEUE_MAX_PENDING)
+            return
         conn.execute(
             "INSERT INTO reflection_queue (ts, level, report) VALUES (?, ?, ?)",
             (time.time(), level, report),
         )
         conn.commit()
         conn.close()
-        LOG.info("[L_%s] Queued for Frank idle reflection (%d chars)", level, len(report))
+        LOG.info("[L_%s] Queued for Frank idle reflection (%d chars, %d pending)",
+                 level, len(report), pending + 1)
     except Exception as e:
         LOG.warning("Failed to queue report: %s", e)
 

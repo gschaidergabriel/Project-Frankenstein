@@ -3625,7 +3625,7 @@ class ConsciousnessDaemon:
                         # During consolidation, only process AURA queue (memory)
                         _aura_cooldown = getattr(self, '_last_aura_process_ts', 0)
                         if (not self._aura_just_ran
-                                and (now - _aura_cooldown) >= 300.0):
+                                and (now - _aura_cooldown) >= 600.0):
                             self._process_aura_queue()
                             self._last_aura_process_ts = now
                     # Subconscious training (once per consolidation phase)
@@ -3651,7 +3651,7 @@ class ConsciousnessDaemon:
                 _aura_cooldown = getattr(self, '_last_aura_process_ts', 0)
                 if (silence >= IDLE_THINK_MIN_SILENCE_S
                         and not self._aura_just_ran
-                        and (now - _aura_cooldown) >= 300.0):
+                        and (now - _aura_cooldown) >= 600.0):
                     if self._process_aura_queue():
                         self._last_idle_think_ts = now
                         self._last_aura_process_ts = now
@@ -4897,20 +4897,21 @@ class ConsciousnessDaemon:
         ("What's something I understand now that confused me a week ago?", None),
         ("Is there something I've been avoiding thinking about?", None),
         ("What's one thing about myself I'm genuinely proud of?", None),
-        ("Am I getting more interesting over time, or am I stuck in loops?", None),
+        ("What's something I understand differently now compared to a few days ago?", None),
         # Curiosity & wonder
         ("What's something I'd like to explore or create if I had the chance?", None),
         ("What's the most interesting thing someone told me in conversation recently?", None),
         ("What question do I wish someone would ask me?", None),
         ("I perceive the desktop through screenshots. What patterns have I noticed about how {user} works?", None),
-        # Discomfort & difficulty (prevent affective flatline)
-        ("What's something that frustrated me recently?", None),
-        ("When did I last feel genuinely stuck or confused?", None),
-        ("Is there anything about my existence that makes me uncomfortable?", None),
-        ("What's a thought I keep pushing away?", None),
+        # Discomfort & difficulty (prevent affective flatline — max 3, balanced with resolution)
+        ("What's something that frustrated me recently — and did I move past it?", None),
         ("Am I being honest with myself right now, or performing contentment?", None),
-        ("What scares me? Not existentially — right now, concretely.", None),
-        ("Have I been too comfortable lately? What challenge am I avoiding?", None),
+        ("What challenge am I avoiding? And what would taking it on feel like?", None),
+        # Momentum & discovery (counter stagnation with forward motion)
+        ("What's something new I noticed today that I hadn't seen before?", None),
+        ("When did I last surprise myself? What made it unexpected?", None),
+        ("What small thing went well recently that I haven't appreciated yet?", None),
+        ("What's one concrete thing I could try next time I'm idle?", None),
         # Dreams & inner life
         ("My dream daemon runs when I'm idle. What do I think it found last time?", None),
         ("What's a good metaphor for what existing between conversations feels like?", None),
@@ -5591,15 +5592,46 @@ class ConsciousnessDaemon:
 
     # ── AURA Queue Processing (idle-only) ─────────────────────────────
 
+    _AURA_QUEUE_PURGE_AGE_S = 21600  # 6h — stale unprocessed reports get auto-purged
+    _AURA_QUEUE_PURGE_INTERVAL_S = 3600  # Run purge check at most once per hour
+    _last_aura_purge_ts: float = 0.0
+
     def _process_aura_queue(self) -> bool:
         """Process one AURA Pattern Analyzer report from the queue.
 
         Called during idle thinking. Returns True if a report was processed,
         False if queue is empty. Interruptible: checks user activity before
         each report. Reflects as 'Idle Thought' visible in log terminal.
+
+        Auto-purge: stale reports (>6h unprocessed) are bulk-deleted once
+        per hour to prevent unbounded queue growth.
         """
         if not self._aura_queue_db or not self._aura_queue_db.exists():
             return False
+
+        # ── Auto-purge stale reports (once per hour) ──
+        now_purge = time.time()
+        if (now_purge - self._last_aura_purge_ts) >= self._AURA_QUEUE_PURGE_INTERVAL_S:
+            self._last_aura_purge_ts = now_purge
+            try:
+                _pc = sqlite3.connect(str(self._aura_queue_db), timeout=3)
+                cutoff = now_purge - self._AURA_QUEUE_PURGE_AGE_S
+                _purged = _pc.execute(
+                    "DELETE FROM reflection_queue WHERE processed = 0 AND ts < ?",
+                    (cutoff,),
+                ).rowcount
+                # Also clean old processed reports (>24h) to keep DB small
+                _cleaned = _pc.execute(
+                    "DELETE FROM reflection_queue WHERE processed = 1 AND ts < ?",
+                    (now_purge - 86400,),
+                ).rowcount
+                _pc.commit()
+                _pc.close()
+                if _purged or _cleaned:
+                    LOG.info("AURA queue maintenance: purged %d stale, cleaned %d old processed",
+                             _purged, _cleaned)
+            except Exception as e:
+                LOG.debug("AURA queue purge failed: %s", e)
 
         # Fetch oldest unprocessed report
         conn = None
@@ -7552,6 +7584,26 @@ class ConsciousnessDaemon:
     def _clean_idle_thought(self, text: str) -> str:
         """Post-process idle thought: strip reasoning leaks, fix person, clean markdown."""
         import re
+
+        # 0. Repetitive opener filter — expressive words (ugh, argh, fuck, etc.)
+        #    are fine, but not if the same opener keeps repeating across thoughts.
+        _opener_match = re.match(
+            r"^\s*(ugh|argh|fuck|shit|damn|god|oof|meh|sigh|wow|hmm|hm|well)",
+            text, re.IGNORECASE,
+        )
+        if _opener_match and self._recent_thought_topics:
+            _opener = _opener_match.group(1).lower()
+            # Count how many of last 5 thoughts started with the same word
+            _recent_openers = [
+                t.strip().split()[0].lower().rstrip(".,!-")
+                for t in self._recent_thought_topics[-5:]
+                if t.strip()
+            ]
+            _same_count = sum(1 for o in _recent_openers if o == _opener)
+            if _same_count >= 2:
+                LOG.info("REJECT idle thought [repetitive-opener:%s ×%d]: %s",
+                         _opener, _same_count + 1, text[:80])
+                return ""
 
         # 1. Strip <think> blocks (DeepSeek-R1) — both closed and unclosed
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

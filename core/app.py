@@ -719,6 +719,47 @@ def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
     return None
 
 
+def _ollama_chat_call(user_text: str, system_text: str, max_tokens: int = 600,
+                      temperature: float = 0.65) -> Optional[Dict[str, Any]]:
+    """Last-resort fallback: call Ollama on localhost:11434 if available.
+    Tries llama3.1, llama3, phi3:mini, mistral in order."""
+    ollama_url = "http://127.0.0.1:11434/api/chat"
+    # Try models in preference order
+    for model in ("llama3.1:latest", "llama3:latest", "phi3:mini", "llava:7b", "mistral:latest"):
+        payload = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_text},
+                {"role": "user", "content": user_text},
+            ],
+            "stream": False,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature,
+            },
+        }).encode()
+        req = urllib.request.Request(
+            ollama_url, data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read().decode())
+                text = (data.get("message", {}).get("content") or "").strip()
+                if text:
+                    LOG.info("Ollama fallback succeeded (model=%s, %d chars)", model, len(text))
+                    return {"ok": True, "text": text, "model": f"ollama/{model}", "ts": time.time()}
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue  # Model not installed, try next
+            LOG.debug("Ollama model %s failed: %s", model, e)
+            continue
+        except Exception:
+            break  # Ollama not running at all
+    return None
+
+
 def _is_complex_query(text: str) -> bool:
     """Detect if a query needs the heavy RLM (DeepSeek R1) or can use the fast Chat-LLM."""
     # Long messages are likely complex
@@ -1659,6 +1700,11 @@ class Handler(BaseHTTPRequestHandler):
                 if route:
                     LOG.info("Micro-LLM fallback responded (%d chars)", len(route.get("text", "")))
 
+            # Last resort: Ollama fallback (if installed on this machine)
+            if route is None:
+                LOG.warning("All LLM backends failed, trying Ollama fallback")
+                route = _ollama_chat_call(grounded_text, identity, max_tokens=max_tokens)
+
             if route is None:
                 # Clear chat-in-progress on failure so idle thoughts aren't blocked forever
                 if _fb_get_consciousness_daemon:
@@ -1671,7 +1717,7 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "ok": False,
                         "error": "upstream_failed",
-                        "detail": "all LLM backends failed",
+                        "detail": "all LLM backends failed (router, micro-llm, ollama)",
                         "task": task,
                         "max_tokens": max_tokens,
                         "timeout_s": timeout_s,

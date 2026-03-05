@@ -123,7 +123,7 @@ async def health():
             except Exception:
                 result[name] = False
 
-        # LLM: any model being up = ok (GPU primary, CPU micro-LLM fallback)
+        # LLM: any model being up = ok (GPU, CPU micro-LLM, or Ollama)
         llm_up = False
         for url in (LLM_RLM_URL, LLM_CHAT_URL, LLM_MICRO_URL):
             try:
@@ -131,6 +131,16 @@ async def health():
                 if r.status_code == 200:
                     llm_up = True
                     break
+            except Exception:
+                pass
+        # Ollama fallback check
+        if not llm_up:
+            try:
+                r = await client.get("http://127.0.0.1:11434/api/tags")
+                if r.status_code == 200:
+                    models = r.json().get("models", [])
+                    if models:
+                        llm_up = True
             except Exception:
                 pass
         result["llm"] = llm_up
@@ -446,7 +456,7 @@ async def _status_poller():
                     except Exception:
                         status[name] = False
 
-                # LLM: any model up = ok (GPU primary, CPU micro-LLM fallback)
+                # LLM: any model up = ok (GPU, CPU micro-LLM, or Ollama)
                 llm_up = False
                 for url in (LLM_RLM_URL, LLM_CHAT_URL, LLM_MICRO_URL):
                     try:
@@ -454,6 +464,13 @@ async def _status_poller():
                         if r.status_code == 200:
                             llm_up = True
                             break
+                    except Exception:
+                        pass
+                if not llm_up:
+                    try:
+                        r = await client.get("http://127.0.0.1:11434/api/tags")
+                        if r.status_code == 200 and r.json().get("models"):
+                            llm_up = True
                     except Exception:
                         pass
                 status["llm"] = llm_up

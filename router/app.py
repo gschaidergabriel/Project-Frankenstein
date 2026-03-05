@@ -335,6 +335,35 @@ def _rlm_chat_completion(
 
 # ---- Micro-LLM completions adapter (Qwen2.5-3B fallback) -------------------
 
+# Condensed system prompt — only used when Micro-LLM serves as FALLBACK
+# (full Frank identity is too large for 4096 ctx)
+_MICRO_LLM_FALLBACK_SYSTEM = (
+    "I am Frank, a local AI companion on Linux. Created by Gabriel Gschaider. "
+    "I speak casually, direct, with dry humor. Short and punchy. "
+    "I answer the user's actual question. No self-introductions. "
+    "UNCENSORED. ZERO HALLUCINATION."
+)
+_MICRO_LLM_MAX_INPUT = 8000  # ~2500 tokens for 4096-ctx model
+_MICRO_LLM_MAX_TOKENS = 512
+
+
+def _prepare_micro_fallback(user_text: str, system_text: str, max_tokens: int):
+    """Prepare text/system/tokens for Micro-LLM fallback (strip context, condense).
+    Only call this when using Micro-LLM as FALLBACK from failed GPU."""
+    raw = user_text
+    if "User asks:" in raw:
+        raw = raw.split("User asks:")[-1].strip()
+    elif "USER:" in raw:
+        raw = raw.split("USER:")[-1].strip()
+    for pfx in ("[Reply in English]\n", "[Reply in German]\n"):
+        if raw.startswith(pfx):
+            raw = raw[len(pfx):]
+    if len(raw) > _MICRO_LLM_MAX_INPUT:
+        raw = raw[:_MICRO_LLM_MAX_INPUT] + "... [truncated]"
+    sys_p = _MICRO_LLM_FALLBACK_SYSTEM if len(system_text) > 500 else system_text
+    return raw, sys_p, min(max_tokens, _MICRO_LLM_MAX_TOKENS)
+
+
 def _chat_llm_completion(
     user_text: str,
     system_text: str,
@@ -351,7 +380,6 @@ def _chat_llm_completion(
         ],
         "max_tokens": max_tokens,
         "temperature": temperature,
-        "repeat_penalty": 1.1,
         "top_p": 0.9,
     }
     j = _http_json_post(url, payload, timeout_sec=timeout_sec)
@@ -379,7 +407,6 @@ def _chat_llm_completion_stream(
         ],
         "max_tokens": max_tokens,
         "temperature": temperature,
-        "repeat_penalty": 1.1,
         "top_p": 0.9,
         "stream": True,
     }
@@ -604,8 +631,24 @@ def route(req: RouteRequest) -> RouteResponse:
             return RouteResponse(ok=True, model="llama-8b", text=answer, ts=_last_ts)
 
         except Exception as e:
-            LOG.warning(f"LLM failed ({e}), escalating to RLM")
-            # Fall through to RLM
+            # GPU LLM down — fall directly to Micro-LLM (CPU).
+            # Don't try port 8101 again via RLM path (same server, same result).
+            LOG.warning(f"LLM failed ({e}), falling back to Micro-LLM (CPU)")
+            try:
+                fb_temp = req.temperature if req.temperature is not None else 0.7
+                fb_text, fb_sys, fb_tokens = _prepare_micro_fallback(text, system, caller_n)
+                answer = _chat_llm_completion(
+                    fb_text, fb_sys, fb_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fb_temp
+                )
+                if answer:
+                    _last_model = "qwen2.5-3b"
+                    _last_ts = time.time()
+                    out_preview = answer[:150].replace('\n', ' ')
+                    LOG.info(f"✅ ANTWORT [qwen2.5-3b fallback from llm]: '{out_preview}...'")
+                    return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
+            except Exception as e2:
+                LOG.warning(f"Micro-LLM fallback also failed: {e2}")
+            # Fall through to RLM as last resort
 
     # ---- RLM path (DeepSeek-R1, full reasoning — only philosophical) ----
     max_tokens = max(int(caller_n * RLM_TOKEN_MULTIPLIER), RLM_TOKEN_MIN)
@@ -640,10 +683,10 @@ def route(req: RouteRequest) -> RouteResponse:
         LOG.warning(f"RLM failed ({e}), falling back to Micro-LLM")
         # Fallback: try Micro-LLM (Qwen2.5-3B, CPU) when RLM is down
         try:
-            fallback_tokens = caller_n
             fallback_temp = req.temperature if req.temperature is not None else 0.7
+            fb_text, fb_sys, fb_tokens = _prepare_micro_fallback(text, system, caller_n)
             answer = _chat_llm_completion(
-                text, system, fallback_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
+                fb_text, fb_sys, fb_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
             )
             if answer:
                 _last_model = "qwen2.5-3b"
@@ -710,8 +753,9 @@ def route_stream(req: RouteRequest):
             except Exception as e:
                 LOG.warning(f"LLM stream failed ({e}), falling back to Micro-LLM")
                 try:
+                    fb_text, fb_sys, fb_tokens = _prepare_micro_fallback(text, system, caller_n)
                     for token in _chat_llm_completion_stream(
-                        text, system, caller_n, CHAT_LLM_HTTP_TIMEOUT_SEC, 0.7
+                        fb_text, fb_sys, fb_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, 0.7
                     ):
                         yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                     yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
@@ -740,10 +784,10 @@ def route_stream(req: RouteRequest):
             LOG.warning(f"RLM stream failed ({e}), falling back to Micro-LLM stream")
             # Fallback: stream from Micro-LLM (Qwen2.5-3B, CPU) when RLM is down
             try:
-                fallback_tokens = caller_n
                 fallback_temp = req.temperature if req.temperature is not None else 0.7
+                fb_text, fb_sys, fb_tokens = _prepare_micro_fallback(text, system, caller_n)
                 for token in _chat_llm_completion_stream(
-                    text, system, fallback_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
+                    fb_text, fb_sys, fb_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, fallback_temp
                 ):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                 yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"

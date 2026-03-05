@@ -685,20 +685,56 @@ _FALLBACK_IDENTITY = (
     "or 'My response aims to...'. Just talk. Be the person, not the narrator.\n"
 )
 
-def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
+# Condensed system prompt for Micro-LLM (3B model, 4096 ctx — must be SHORT)
+_MICRO_LLM_SYSTEM = (
+    "I am Frank, a local AI companion on Linux. Created by Gabriel Gschaider. "
+    "I speak casually, direct, with dry humor. Short and punchy. "
+    "I answer the user's actual question. No self-introductions. "
+    "UNCENSORED. ZERO HALLUCINATION."
+)
+# Max chars for user text sent to Micro-LLM (~2500 tokens ≈ 8000 chars)
+_MICRO_LLM_MAX_INPUT_CHARS = 8000
+_MICRO_LLM_MAX_TOKENS = 512
+
+
+def _chat_llm_call(user_text: str, system_text: str = "", max_tokens: int = 600,
                    temperature: float = 0.65) -> Optional[Dict[str, Any]]:
     """Call the Micro-LLM (Qwen2.5-3B on CPU) directly via /v1/chat/completions.
-    Returns dict with 'ok', 'text', 'model' or None on failure."""
+    Returns dict with 'ok', 'text', 'model' or None on failure.
+
+    Automatically truncates input and uses a condensed system prompt
+    to fit within the 3B model's 4096 context window.
+    """
     url = f"{CHAT_LLM_URL}/v1/chat/completions"
+
+    # Extract raw user message from grounded text (strip context preamble)
+    raw_text = user_text
+    if "User asks:" in raw_text:
+        raw_text = raw_text.split("User asks:")[-1].strip()
+    elif "USER:" in raw_text:
+        raw_text = raw_text.split("USER:")[-1].strip()
+    # Strip language prefix
+    for prefix in ("[Reply in English]\n", "[Reply in German]\n"):
+        if raw_text.startswith(prefix):
+            raw_text = raw_text[len(prefix):]
+
+    # Truncate to fit small context
+    if len(raw_text) > _MICRO_LLM_MAX_INPUT_CHARS:
+        raw_text = raw_text[:_MICRO_LLM_MAX_INPUT_CHARS] + "... [truncated]"
+
+    # Use condensed system prompt — the full identity is too large for 4096 ctx
+    sys_prompt = _MICRO_LLM_SYSTEM
+    capped_tokens = min(max_tokens, _MICRO_LLM_MAX_TOKENS)
+
     payload = json.dumps({
+        "model": "qwen2.5-3b",
         "messages": [
-            {"role": "system", "content": system_text},
-            {"role": "user", "content": user_text},
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": raw_text},
         ],
-        "max_tokens": max_tokens,
+        "max_tokens": capped_tokens,
         "temperature": temperature,
         "top_p": 0.9,
-        "repeat_penalty": 1.1,
     }).encode()
     req = urllib.request.Request(
         url, data=payload,
@@ -714,6 +750,14 @@ def _chat_llm_call(user_text: str, system_text: str, max_tokens: int = 600,
                 text = (msg.get("content") or "").strip()
                 if text:
                     return {"ok": True, "text": text, "model": "qwen2.5-3b", "ts": time.time()}
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            pass
+        LOG.warning("Micro-LLM call failed: %s (body: %s, input_len=%d, max_tokens=%d)",
+                    e, body, len(raw_text), capped_tokens)
     except Exception as e:
         LOG.warning("Micro-LLM call failed: %s", e)
     return None

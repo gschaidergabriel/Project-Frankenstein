@@ -44,6 +44,14 @@ console = Console(highlight=False)
 # ── Paths ────────────────────────────────────────────────────────────────────
 DEFAULT_REPO = Path.home() / "aicore" / "opt" / "aicore"
 STATE_DIR = Path.home() / ".local" / "share" / "frank" / "updater"
+OPT_DIR = DEFAULT_REPO.parent
+AICORE_ROOT = OPT_DIR.parent
+DATA_DIR = Path(os.environ.get("AICORE_DATA", str(Path.home() / ".local" / "share" / "frank")))
+MODELS_DIR = Path(os.environ.get("AICORE_MODELS_DIR", str(AICORE_ROOT / "var" / "lib" / "aicore" / "models")))
+VOICES_DIR = DATA_DIR / "voices"
+KOKORO_DIR = DATA_DIR / "kokoro"
+LLAMA_DIR = OPT_DIR / "llama.cpp"
+WHISPER_DIR = OPT_DIR / "whisper.cpp"
 
 # ── ASCII Art Logo ───────────────────────────────────────────────────────────
 FRANK_TITLE = """
@@ -130,6 +138,226 @@ HEALTH_CHECKS = {
 }
 
 
+# ── Model & Binary Registry ───────────────────────────────────────────────────
+# Each entry: (id, name, filename, directory, url, min_bytes, category,
+#              test_port, service_name, ollama_tag)
+# category: gguf | whisper | voice | ollama
+
+MODEL_REGISTRY = [
+    # GGUF LLM models
+    ("deepseek_r1",
+     "DeepSeek-R1 8B (Q6_K) — RLM",
+     "DeepSeek-R1-Distill-Llama-8B-Abliterated.i1-Q6_K.gguf",
+     MODELS_DIR,
+     "https://huggingface.co/mradermacher/DeepSeek-R1-Distill-Llama-8B-abliterated-i1-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Abliterated.i1-Q6_K.gguf",
+     6_000_000_000, "gguf", 8101, "aicore-llama3-gpu", None),
+
+    ("llama3_chat",
+     "Llama 3.1 8B (Q4_K_M) — Chat (router-managed)",
+     "Meta-Llama-3.1-8B-Instruct-abliterated-Q4_K_M.gguf",
+     MODELS_DIR,
+     "https://huggingface.co/mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated-GGUF/resolve/main/meta-llama-3.1-8b-instruct-abliterated.Q4_K_M.gguf",
+     4_500_000_000, "gguf", None, None, None),
+
+    ("qwen_micro",
+     "Qwen 2.5 3B (Q4_K_M) — Micro LLM",
+     "Qwen2.5-3B-Instruct-abliterated.Q4_K_M.gguf",
+     MODELS_DIR,
+     "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+     1_800_000_000, "gguf", 8105, "aicore-micro-llm", None),
+
+    # Whisper
+    ("whisper_medium",
+     "Whisper Medium — STT",
+     "ggml-medium.bin",
+     WHISPER_DIR / "models",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+     1_400_000_000, "whisper", 8103, "aicore-whisper-gpu", None),
+
+    # Voice / TTS
+    ("piper_thorsten",
+     "Piper Thorsten (DE) — TTS",
+     "de_DE-thorsten-high.onnx",
+     VOICES_DIR,
+     "https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/high/de_DE-thorsten-high.onnx?download=true",
+     100_000_000, "voice", None, None, None),
+
+    ("piper_thorsten_cfg",
+     "Piper Thorsten Config",
+     "de_DE-thorsten-high.onnx.json",
+     VOICES_DIR,
+     "https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/high/de_DE-thorsten-high.onnx.json?download=true",
+     1_000, "voice", None, None, None),
+
+    ("kokoro_model",
+     "Kokoro TTS (EN)",
+     "kokoro-v1.0.onnx",
+     KOKORO_DIR,
+     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+     200_000_000, "voice", None, None, None),
+
+    ("kokoro_voices",
+     "Kokoro Voice Embeddings",
+     "voices-v1.0.bin",
+     KOKORO_DIR,
+     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+     20_000_000, "voice", None, None, None),
+
+    # Ollama vision models
+    ("ollama_llava",
+     "LLaVA 7B (Ollama) — Vision",
+     "", Path("/dev/null"), "", 0, "ollama", None, None, "llava:7b"),
+
+    ("ollama_moondream",
+     "Moondream (Ollama) — Vision",
+     "", Path("/dev/null"), "", 0, "ollama", None, None, "moondream"),
+]
+
+BINARY_CHECKS = [
+    ("llama_server",  "llama-server",  LLAMA_DIR / "build" / "bin" / "llama-server"),
+    ("whisper_server", "whisper-server", WHISPER_DIR / "build" / "bin" / "whisper-server"),
+    ("piper",         "piper",         Path.home() / ".local" / "bin" / "piper"),
+    ("ollama",        "ollama",        Path("/usr/local/bin/ollama")),
+]
+
+
+# ── Model check / repair helpers ─────────────────────────────────────────────
+
+def _fmt_size(n: int) -> str:
+    if n >= 1_000_000_000: return f"{n / 1_000_000_000:.1f} GB"
+    if n >= 1_000_000: return f"{n / 1_000_000:.0f} MB"
+    if n >= 1_000: return f"{n / 1_000:.0f} KB"
+    return f"{n} B"
+
+
+def _check_model(entry: tuple) -> dict:
+    """Check a single model entry. Returns status dict."""
+    mid, name, filename, directory, url, min_bytes, category, port, svc, ollama_tag = entry
+    result = {"id": mid, "name": name, "category": category, "status": "ok",
+              "file_ok": False, "file_size": 0, "health_ok": False,
+              "service_running": False, "url": url, "entry": entry}
+
+    if category == "ollama":
+        ok2, out, _ = _run(["ollama", "list"], timeout=10)
+        tag_base = (ollama_tag or "").split(":")[0]
+        result["file_ok"] = ok2 and any(tag_base in line for line in out.splitlines())
+        result["status"] = "ok" if result["file_ok"] else "missing"
+        return result
+
+    fpath = directory / filename
+    if fpath.exists():
+        result["file_size"] = fpath.stat().st_size
+        result["file_ok"] = result["file_size"] >= min_bytes
+    else:
+        result["file_ok"] = False
+
+    # Service status
+    if svc:
+        ok2, state, _ = _run(["systemctl", "--user", "is-active", f"{svc}.service"], timeout=5)
+        result["service_running"] = ok2 and state == "active"
+
+    # Health endpoint
+    if port:
+        try:
+            import urllib.request
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/health", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                result["health_ok"] = resp.status == 200
+        except Exception:
+            result["health_ok"] = False
+
+    # Determine status
+    if not fpath.exists():
+        result["status"] = "missing"
+    elif not result["file_ok"]:
+        result["status"] = "corrupt"
+    elif port and not result["health_ok"]:
+        result["status"] = "service_down"
+    else:
+        result["status"] = "ok"
+
+    return result
+
+
+def _check_binary(entry: tuple) -> dict:
+    bid, name, path = entry
+    exists = path.exists() and os.access(path, os.X_OK)
+    if not exists:
+        ok2, _, _ = _run(["which", path.name], timeout=5)
+        exists = ok2
+    return {"id": bid, "name": name, "path": str(path), "status": "ok" if exists else "missing"}
+
+
+def _download_model(entry: tuple) -> bool:
+    """Download a model file with wget. Returns True on success."""
+    mid, name, filename, directory, url, min_bytes, category, *_ = entry
+    fpath = directory / filename
+    tmp = fpath.with_suffix(fpath.suffix + ".tmp")
+    directory.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"      [{MATRIX_DIM}]Downloading {name}...[/]", highlight=False)
+    try:
+        r = subprocess.run(
+            ["wget", "-q", "--show-progress", "--tries=3", "--timeout=120",
+             "-O", str(tmp), url],
+            timeout=3600,
+        )
+        if r.returncode != 0:
+            tmp.unlink(missing_ok=True)
+            return False
+        if tmp.stat().st_size < min_bytes:
+            console.print(f"      [#FF4444]File too small ({_fmt_size(tmp.stat().st_size)} < {_fmt_size(min_bytes)})[/]", highlight=False)
+            tmp.unlink(missing_ok=True)
+            return False
+        fpath.unlink(missing_ok=True)
+        tmp.rename(fpath)
+        return True
+    except Exception as e:
+        console.print(f"      [#FF4444]Download error: {e}[/]", highlight=False)
+        tmp.unlink(missing_ok=True)
+        return False
+
+
+def _pull_ollama(tag: str) -> bool:
+    """Pull an Ollama model. Returns True on success."""
+    # Ensure Ollama is running
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3)
+    except Exception:
+        console.print(f"      [{MATRIX_DIM}]Starting Ollama...[/]", highlight=False)
+        subprocess.run(["sudo", "systemctl", "start", "ollama"], timeout=15,
+                       capture_output=True)
+        time.sleep(3)
+
+    console.print(f"      [{MATRIX_DIM}]Pulling {tag}...[/]", highlight=False)
+    try:
+        r = subprocess.run(["ollama", "pull", tag], timeout=3600)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _test_inference(port: int) -> bool:
+    """Send a tiny completion to verify LLM actually works."""
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "model": "test",
+            "messages": [{"role": "user", "content": "Say OK"}],
+            "max_tokens": 5, "temperature": 0,
+        }).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return len(content) > 0
+    except Exception:
+        return False
+
+
 def _run(cmd: list, timeout: int = 30, cwd: str = None) -> tuple:
     """Run a command, return (success, stdout, stderr)."""
     try:
@@ -182,6 +410,7 @@ class FrankUpdater:
         ("service_files", "Service Files",     "Reloading systemd if needed"),
         ("start",       "Start Services",      "Restarting affected services"),
         ("health",      "Health Check",        "Verifying services are running"),
+        ("models",      "Model Verification",  "Checking LLM models are loaded and responding"),
     ]
 
     def __init__(self, repo_path: Path = None, auto_confirm: bool = False):
@@ -531,6 +760,126 @@ class FrankUpdater:
         self._print_step(sid, "done" if all_ok else "done", "All services verified" if all_ok else "Some services need attention")
         return True
 
+    # ── Step 11: Model Verification & Auto-Repair ─────────────────────
+    def step_models(self) -> bool:
+        sid = "models"
+        self._print_step(sid, "running")
+
+        # Check all binaries
+        bin_results = [_check_binary(b) for b in BINARY_CHECKS]
+        # Check all models
+        model_results = [_check_model(m) for m in MODEL_REGISTRY]
+
+        # Display binary status
+        console.print(f"\n    [{MATRIX_CYAN}]Binaries[/]", highlight=False)
+        for b in bin_results:
+            icon = f"[{MATRIX_GREEN}]●[/]" if b["status"] == "ok" else "[#FF4444]●[/]"
+            console.print(f"    {icon}  [{MATRIX_DIM}]{b['name']}: {b['status']}[/]", highlight=False)
+
+        # Display model status grouped by category
+        categories = [("gguf", "LLM Models"), ("whisper", "Speech-to-Text"),
+                      ("voice", "Voice / TTS"), ("ollama", "Ollama Vision")]
+        for cat, label in categories:
+            entries = [m for m in model_results if m["category"] == cat]
+            if not entries:
+                continue
+            console.print(f"\n    [{MATRIX_CYAN}]{label}[/]", highlight=False)
+            for m in entries:
+                if m["status"] == "ok":
+                    icon = f"[{MATRIX_GREEN}]●[/]"
+                elif m["status"] in ("missing", "corrupt"):
+                    icon = "[#FF4444]●[/]"
+                else:
+                    icon = "[#FFAA00]●[/]"
+                extra = ""
+                if m["file_size"] > 0:
+                    extra += f" ({_fmt_size(m['file_size'])})"
+                if m.get("service_running"):
+                    extra += f" [{MATRIX_GREEN}]running[/]"
+                if m.get("health_ok"):
+                    extra += f" [{MATRIX_GREEN}]healthy[/]"
+                console.print(f"    {icon}  [{MATRIX_DIM}]{m['name']}: {m['status']}{extra}[/]", highlight=False)
+
+        # Find broken models that need repair
+        broken = [m for m in model_results if m["status"] in ("missing", "corrupt")]
+        missing_bins = [b for b in bin_results if b["status"] == "missing"]
+
+        if missing_bins:
+            console.print(f"\n    [#FFAA00]Missing binaries (need manual build via install.sh):[/]", highlight=False)
+            for b in missing_bins:
+                console.print(f"      - {b['name']} ({b['path']})", highlight=False)
+
+        if not broken:
+            # All models present — run inference tests on healthy LLM services
+            console.print(f"\n    [{MATRIX_CYAN}]Inference Tests[/]", highlight=False)
+            for m in model_results:
+                port = m["entry"][7]  # test_port
+                cat = m["category"]
+                if port and m.get("health_ok"):
+                    if cat in ("gguf",):
+                        # LLM: full inference test
+                        ok = _test_inference(port)
+                        icon = f"[{MATRIX_GREEN}]●[/]" if ok else "[#FFAA00]●[/]"
+                        status = "inference OK" if ok else "health OK, inference failed"
+                    else:
+                        # Whisper etc: health check is sufficient
+                        icon = f"[{MATRIX_GREEN}]●[/]"
+                        status = "health OK"
+                    console.print(f"    {icon}  [{MATRIX_DIM}]{m['name']}: {status}[/]", highlight=False)
+
+            total = len(model_results) + len(bin_results)
+            ok_count = sum(1 for m in model_results if m["status"] == "ok") + \
+                       sum(1 for b in bin_results if b["status"] == "ok")
+            console.print()
+            self._print_step(sid, "done", f"{ok_count}/{total} components OK")
+            return True
+
+        # Auto-repair: download missing/corrupt models
+        console.print(f"\n    [bold #FFAA00]{len(broken)} model(s) need repair:[/]", highlight=False)
+        for m in broken:
+            console.print(f"      - {m['name']} ({m['status']})", highlight=False)
+
+        if not self.auto_confirm:
+            console.print()
+            r = console.input(f"    [bold {MATRIX_BRIGHT}]Download missing models? [Y/n]: [/]").strip().lower()
+            if r == "n":
+                self._print_step(sid, "done", f"{len(broken)} models skipped")
+                return True
+
+        fixed = 0
+        for m in broken:
+            entry = m["entry"]
+            cat = m["category"]
+            if cat == "ollama":
+                ollama_tag = entry[9]
+                ok = _pull_ollama(ollama_tag)
+            else:
+                ok = _download_model(entry)
+
+            if ok:
+                fixed += 1
+                console.print(f"      [{MATRIX_GREEN}]OK[/]: {m['name']}", highlight=False)
+            else:
+                console.print(f"      [#FF4444]FAILED[/]: {m['name']}", highlight=False)
+
+        # Re-check after repair
+        if fixed > 0:
+            console.print(f"\n    [{MATRIX_DIM}]Re-checking...[/]", highlight=False)
+            model_results = [_check_model(m) for m in MODEL_REGISTRY]
+            still_broken = [m for m in model_results if m["status"] in ("missing", "corrupt")]
+            ok_count = sum(1 for m in model_results if m["status"] == "ok") + \
+                       sum(1 for b in bin_results if b["status"] == "ok")
+            total = len(model_results) + len(bin_results)
+
+            if still_broken:
+                self._print_step(sid, "done", f"{ok_count}/{total} OK, {len(still_broken)} still broken")
+            else:
+                self._print_step(sid, "done", f"Repaired {fixed} model(s), {ok_count}/{total} OK")
+        else:
+            self._print_step(sid, "error", "Downloads failed")
+
+        return True
+
     # ── Rollback ──────────────────────────────────────────────────────────
     def rollback(self):
         """Rollback to saved SHA and restart all stopped services."""
@@ -584,12 +933,13 @@ class FrankUpdater:
             # Step 2: Fetch
             result = self.step_fetch()
             if not result and self.local_sha == self.remote_sha:
-                # Up to date — not an error
+                # Up to date — still check models
                 console.print()
                 console.print(Align.center(
                     f"[bold {MATRIX_GREEN}]System is already up to date ({self.local_sha})[/]"
                 ))
                 console.print()
+                self.step_models()
                 return True
             elif not result:
                 return False
@@ -624,6 +974,9 @@ class FrankUpdater:
 
             # Step 10: Health check
             self.step_health_check()
+
+            # Step 11: Model verification & auto-repair
+            self.step_models()
 
             # Success banner
             console.print()
@@ -704,6 +1057,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="F.R.A.N.K. Update System")
     parser.add_argument("--check", action="store_true", help="Silent update check (exit 0=available, 1=up-to-date)")
+    parser.add_argument("--models", action="store_true", help="Only check/repair models (skip git update)")
     parser.add_argument("--yes", "-y", action="store_true", help="Auto-confirm (no prompts)")
     parser.add_argument("--repo", type=str, help="Path to aicore repo (default: ~/aicore/opt/aicore)")
     args = parser.parse_args()
@@ -721,6 +1075,24 @@ def main():
         else:
             print(f"Up to date: {result.get('local', '?')}")
             sys.exit(1)
+
+    if args.models:
+        # Standalone model check/repair — no git update
+        updater = FrankUpdater(repo_path=repo, auto_confirm=args.yes)
+        import shutil
+        width = shutil.get_terminal_size().columns
+        console.clear()
+        console.print()
+        console.print(Align.center(FRANK_TITLE), highlight=False)
+        console.print(Align.center(f"[bold {MATRIX_CYAN}]AI CORE SYSTEM[/]  [dim {MATRIX_DIM}]— Model Verification —[/]"), highlight=False)
+        console.print()
+        console.print(f"  [{MATRIX_DIM}]{'━' * (width - 4)}[/]")
+        console.print()
+        updater.step_models()
+        console.print()
+        if not args.yes:
+            console.input(f"  [{MATRIX_DIM}]Press Enter to close...[/]")
+        sys.exit(0)
 
     updater = FrankUpdater(repo_path=repo, auto_confirm=args.yes)
     success = updater.run()

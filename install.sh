@@ -21,7 +21,12 @@
 #   14. Starts all services
 # ============================================================================
 
-set -euo pipefail
+set -uo pipefail
+
+# --- Suppress interactive prompts (needrestart, dpkg config, etc.) ---
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
 
 # --- Parse arguments ---
 NO_MODELS=false
@@ -117,10 +122,17 @@ fi
 # [2/14] System dependencies
 # ============================================================================
 echo "[2/14] Installing system dependencies..."
-sudo apt-get update -qq
+
+# Ensure needrestart doesn't block apt with interactive prompts
+sudo mkdir -p /etc/needrestart/conf.d 2>/dev/null || true
+echo '$nrconf{restart} = "a";' | sudo tee /etc/needrestart/conf.d/frank-auto.conf >/dev/null 2>&1 || true
+
+echo "  Updating package lists..."
+sudo -E apt-get update -q || echo "  WARNING: apt update had issues, continuing..."
 
 # Core system packages
-sudo apt-get install -y -qq \
+echo "  Installing core packages..."
+sudo -E apt-get install -y -q \
     python3 python3-venv python3-pip python3-tk python3-dev \
     build-essential cmake pkg-config meson \
     xdotool wmctrl x11-utils x11-xserver-utils xprintidle \
@@ -131,26 +143,29 @@ sudo apt-get install -y -qq \
     libnotify-bin \
     libgirepository1.0-dev gir1.2-appindicator3-0.1 \
     libdbus-1-dev libglib2.0-dev \
-    2>/dev/null
+    || echo "  WARNING: Some core packages may not have installed."
 
 # GTK / GObject (for Writer + tray icon)
-sudo apt-get install -y -qq \
+echo "  Installing GTK/GObject packages..."
+sudo -E apt-get install -y -q \
     python3-gi python3-gi-cairo \
     gir1.2-gtk-4.0 gir1.2-gtksourceview-5 gir1.2-libadwaita-1 \
     libcairo2-dev \
-    2>/dev/null || echo "  Note: Some GTK4 packages may not be available on your distro."
+    || echo "  Note: Some GTK4 packages may not be available on your distro."
 
 # Audio / Voice
-sudo apt-get install -y -qq \
+echo "  Installing audio packages..."
+sudo -E apt-get install -y -q \
     espeak libsndfile1-dev libsndfile1 \
-    2>/dev/null
+    || true
 
 # QR code scanning (pyzbar C backend) + screenshots
-sudo apt-get install -y -qq \
+echo "  Installing scanner packages..."
+sudo -E apt-get install -y -q \
     libzbar0 maim \
-    2>/dev/null
+    || true
 
-echo "  Done."
+echo "  System packages done."
 
 # ============================================================================
 # [3/14] GPU detection
@@ -173,13 +188,13 @@ else
         CMAKE_GPU_FLAG="-DGGML_VULKAN=ON"
         GPU_NAME=$(lspci -d 1002: 2>/dev/null | grep -i "VGA\|Display" | sed 's/.*: //')
         echo "  AMD GPU detected: $GPU_NAME (Vulkan)"
-        sudo apt-get install -y -qq libvulkan1 mesa-vulkan-drivers vulkan-tools 2>/dev/null || true
+        sudo -E apt-get install -y -q libvulkan1 mesa-vulkan-drivers vulkan-tools || true
     elif lspci -d 8086: 2>/dev/null | grep -qi "VGA\|Display"; then
         GPU_BACKEND="vulkan"
         CMAKE_GPU_FLAG="-DGGML_VULKAN=ON"
         GPU_NAME=$(lspci -d 8086: 2>/dev/null | grep -i "VGA\|Display" | sed 's/.*: //')
         echo "  Intel GPU detected: $GPU_NAME (Vulkan)"
-        sudo apt-get install -y -qq libvulkan1 mesa-vulkan-drivers vulkan-tools 2>/dev/null || true
+        sudo -E apt-get install -y -q libvulkan1 mesa-vulkan-drivers vulkan-tools || true
     else
         echo "  No GPU detected, using CPU-only mode"
     fi
@@ -205,13 +220,16 @@ if [ ! -d "$VENV_DIR" ] || ! "$VENV_DIR/bin/python3" --version &>/dev/null; then
     rm -rf "$VENV_DIR"
     python3 -m venv "$VENV_DIR"
 fi
-"$VENV_DIR/bin/pip" install --upgrade pip -q
+"$VENV_DIR/bin/pip" install --upgrade pip -q 2>&1 | tail -2
+echo "  Installing Python packages (this may take a few minutes)..."
 # Install torch CPU-only unless NVIDIA GPU detected (saves ~1.5GB disk + download time)
 if [ "$GPU_BACKEND" = "cuda" ]; then
-    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | grep -E "(Installing|Successfully|ERROR|Requirement)" | tail -20
 else
-    "$VENV_DIR/bin/pip" install torch --index-url https://download.pytorch.org/whl/cpu -q
-    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+    echo "  Installing PyTorch (CPU)..."
+    "$VENV_DIR/bin/pip" install torch --index-url https://download.pytorch.org/whl/cpu 2>&1 | grep -E "(Installing|Successfully|Downloading|ERROR)" | tail -5
+    echo "  Installing requirements..."
+    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | grep -E "(Installing|Successfully|ERROR|Requirement)" | tail -20
 fi
 echo "  Done. ($("$VENV_DIR/bin/python3" --version))"
 
@@ -223,11 +241,12 @@ if [ ! -d "$VENV_INGESTD" ] || ! "$VENV_INGESTD/bin/python3" --version &>/dev/nu
     rm -rf "$VENV_INGESTD"
     python3 -m venv "$VENV_INGESTD"
 fi
-"$VENV_INGESTD/bin/pip" install --upgrade pip -q
-"$VENV_INGESTD/bin/pip" install -q \
+"$VENV_INGESTD/bin/pip" install --upgrade pip -q 2>&1 | tail -2
+echo "  Installing ingestd packages..."
+"$VENV_INGESTD/bin/pip" install \
     faster-whisper uvicorn fastapi httpx Pillow lxml \
     coloredlogs annotated-doc numpy scipy \
-    python-multipart pypdf python-docx
+    python-multipart pypdf python-docx 2>&1 | grep -E "(Installing|Successfully|ERROR)" | tail -10
 echo "  Done."
 
 # ============================================================================
@@ -241,7 +260,9 @@ else
         git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
     fi
     cd "$LLAMA_DIR"
-    cmake -B build $CMAKE_GPU_FLAG -DCMAKE_BUILD_TYPE=Release 2>/dev/null
+    echo "  Configuring..."
+    cmake -B build $CMAKE_GPU_FLAG -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -10
+    echo "  Compiling ($(nproc) threads)..."
     cmake --build build --config Release -j"$(nproc)" 2>&1 | tail -5
     cd "$SCRIPT_DIR"
 
@@ -263,7 +284,9 @@ else
         git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git "$WHISPER_DIR"
     fi
     cd "$WHISPER_DIR"
-    cmake -B build $CMAKE_GPU_FLAG -DCMAKE_BUILD_TYPE=Release 2>/dev/null
+    echo "  Configuring..."
+    cmake -B build $CMAKE_GPU_FLAG -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -10
+    echo "  Compiling ($(nproc) threads)..."
     cmake --build build --config Release -j"$(nproc)" 2>&1 | tail -5
     cd "$SCRIPT_DIR"
 
@@ -315,7 +338,7 @@ try:
     print('  Directory tree created via config.paths.')
 except Exception as e:
     print(f'  Note: ensure_dirs() skipped ({e}). Basic dirs created.')
-" 2>/dev/null
+" 2>&1 || echo "  Note: ensure_dirs() failed, basic dirs already created."
 
 # Copy example config
 if [ ! -f "$CONFIG_DIR/config.yaml" ] && [ -f "$SCRIPT_DIR/config.yaml.example" ]; then
@@ -353,7 +376,7 @@ echo "[9/14] Installing Ollama (local vision inference)..."
 if command -v ollama &>/dev/null; then
     echo "  Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown'))"
 else
-    curl -fsSL https://ollama.com/install.sh | sh
+    curl -fsSL https://ollama.com/install.sh | sudo -E sh
     if [ $? -ne 0 ]; then
         echo "  WARNING: Ollama installation failed (network issue?). Vision features will be unavailable."
         echo "  You can install manually later: curl -fsSL https://ollama.com/install.sh | sh"

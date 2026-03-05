@@ -110,9 +110,9 @@ _ENTITY_PID_NAMES = [
 CONSOLIDATION_MAX_TOKENS = 150  # Was 200
 
 # --- Genesis Proposal Review ---
-PROPOSAL_REVIEW_INTERVAL_S = 1500.0     # Every ~25min (3-4 idle cycles)
+PROPOSAL_REVIEW_INTERVAL_S = 900.0      # Every ~15min
 PROPOSAL_REVIEW_MIN_SILENCE_S = 300.0   # 5min user silence
-PROPOSAL_REVIEW_MAX_TOKENS = 200
+PROPOSAL_REVIEW_MAX_TOKENS = 512
 PROPOSAL_REVIEW_MAX_DAILY = 20
 PROPOSAL_MOOD_REWARD = 0.05             # +0.05 mood on user acceptance
 SKILL_WRITE_INTERVAL_S = 7200.0         # Every ~2h
@@ -372,7 +372,7 @@ class ConsciousnessDaemon:
 
         # Runtime state
         self._current_workspace = WorkspaceSnapshot()
-        self._last_chat_ts: float = time.time() - 600.0  # Assume idle at startup so AURA queue can process
+        self._last_chat_ts: float = time.time() - 1600.0  # Assume idle at startup — gate open immediately
         self._chat_in_progress: bool = False  # Set True when /chat request arrives, False when response sent
         self._last_idle_think_ts: float = 0.0
         self._last_consolidation_ts: float = time.time()
@@ -2792,32 +2792,41 @@ class ConsciousnessDaemon:
         if code_snippet and len(code_snippet) > 10:
             code_ctx = f"\nCode:\n{code_snippet[:300]}"
 
+        # Pre-check: detect target/evidence file mismatch mechanically
+        mismatch_warning = ""
+        if code_snippet and file_path:
+            import re as _re2
+            evidence_files = set(_re2.findall(
+                r"(?:in|from)\s+(\S+\.py)", code_snippet
+            ))
+            target_base = file_path.rstrip("/")
+            if evidence_files and not any(
+                target_base.endswith(ef) or ef.endswith(target_base)
+                for ef in evidence_files
+            ):
+                mismatch_warning = (
+                    f"\n⚠ WARNING: Evidence mentions {evidence_files} "
+                    f"but target is {file_path}. This is a MISMATCH — REJECT.\n"
+                )
+
         prompt = (
-            f"[GENESIS PROPOSAL FOR MY REVIEW]\n"
+            f"Review this proposal. Answer accept or reject.\n\n"
             f"Title: {title}\n"
-            f"Type: {feature_type}\n"
-            f"Target: {file_path}\n"
-            f"Approach: {approach}\n"
-            f"Description: {description[:200]}\n"
-            f"Risk: {risk}\n"
-            f"Benefit: {benefit}\n"
-            f"{code_ctx}\n\n"
-            "I'm reviewing this Genesis proposal. Is this genuinely good?\n"
-            "Format:\n"
-            "VERDICT:<accept|reject|rewrite>\n"
-            "REASON:<one sentence why>\n"
-            "If rewrite, also add:\n"
-            "REWRITE_TITLE:<my better title>\n"
-            "REWRITE_DESC:<my 1-2 sentence description>"
+            f"File: {file_path}\n"
+            f"What: {approach}\n"
+            f"Why: {description[:250]}\n"
+            f"{code_ctx}{mismatch_warning}\n\n"
+            "First word must be accept or reject. Then one sentence why.\n"
+            "Example: accept Fixes a specific bug with clear evidence.\n"
+            "Example: reject No specific problem or file mentioned."
         )
 
         system = (
-            "I am Frank reviewing a proposal from my Genesis system. "
-            "I'm the judge — only truly good ideas reach my user. "
-            "I reject anything generic, redundant, risky, or pointless. "
-            "I accept things that would genuinely improve me or be useful. "
-            "I can rewrite if the idea is good but the execution is wrong. "
-            "Be honest and brief."
+            "Review code proposals. Accept most proposals that mention a "
+            "specific file and function. Only reject if: (1) description is "
+            "one generic sentence with no details, (2) approach is just one word, "
+            "or (3) evidence mentions a DIFFERENT file than the target. "
+            "When in doubt, accept. Start with accept or reject."
         )
 
         mood_before = self._current_workspace.mood_value
@@ -2841,18 +2850,45 @@ class ConsciousnessDaemon:
         rewrite_title = ""
         rewrite_desc = ""
 
-        for line in result.strip().split("\n"):
-            line = line.strip()
-            if line.upper().startswith("VERDICT:"):
-                v = line.split(":", 1)[1].strip().lower()
-                if v in ("accept", "reject", "rewrite"):
-                    verdict = v
-            elif line.upper().startswith("REASON:"):
-                reason = line.split(":", 1)[1].strip()
-            elif line.upper().startswith("REWRITE_TITLE:"):
-                rewrite_title = line.split(":", 1)[1].strip()
-            elif line.upper().startswith("REWRITE_DESC:"):
-                rewrite_desc = line.split(":", 1)[1].strip()
+        # Parse verdict: first word should be accept/reject/rewrite
+        import re as _re
+
+        LOG.info("Review raw: %s", result[:250])
+
+        # Clean: strip any leading punctuation, whitespace, markers
+        clean = result.strip().lstrip("*#-• ").strip()
+
+        # Method 1: First word is the verdict
+        first_word = clean.split()[0].lower().rstrip(".:,;!") if clean.split() else ""
+        if first_word in ("accept", "reject", "rewrite"):
+            verdict = first_word
+            reason = " ".join(clean.split()[1:])[:200].strip()
+        else:
+            # Method 2: Search for VERDICT: tag
+            vm = _re.search(r"VERDICT:\s*(accept|reject|rewrite)", clean, _re.IGNORECASE)
+            if vm:
+                verdict = vm.group(1).lower()
+            # Method 3: Look for accept/reject anywhere
+            elif _re.search(r"\baccept\b", clean, _re.IGNORECASE):
+                verdict = "accept"
+            # Default stays "reject"
+
+            # Extract reason
+            rm = _re.search(r"REASON:\s*(.+?)(?:\n|$)", clean, _re.IGNORECASE)
+            if rm:
+                reason = rm.group(1).strip()[:200]
+            elif len(clean) > 10:
+                # Use the whole text minus verdict word as reason
+                reason = _re.sub(r"\b(accept|reject|rewrite)\b", "", clean,
+                                flags=_re.IGNORECASE).strip()[:200]
+
+        # Extract rewrite fields if present
+        rtm = _re.search(r"REWRITE_TITLE:\s*(.+?)(?:\n|$)", result, _re.IGNORECASE)
+        if rtm:
+            rewrite_title = rtm.group(1).strip()
+        rdm = _re.search(r"REWRITE_DESC:\s*(.+?)(?:\n|$)", result, _re.IGNORECASE)
+        if rdm:
+            rewrite_desc = rdm.group(1).strip()
 
         LOG.info("Proposal review [%s] '%s': %s — %s",
                  crystal_id, title[:30], verdict, reason[:60])
@@ -2914,7 +2950,11 @@ class ConsciousnessDaemon:
                                rewrite_title: str = "",
                                rewrite_desc: str = "",
                                orig_description: str = ""):
-        """Push a Frank-approved/rewritten proposal to the FAS pending queue."""
+        """Push a Frank-approved/rewritten proposal to the FAS pending queue.
+
+        Final step: LLM polish call rewrites title+description into
+        professional, user-friendly text before FAS submission.
+        """
         try:
             proposal_dict = json.loads(proposal_json_str)
 
@@ -2925,6 +2965,16 @@ class ConsciousnessDaemon:
                 source = "frank_rewritten"
             else:
                 source = "frank_approved"
+
+            # --- LLM Polish Step: rewrite title+description for the user ---
+            polished = self._polish_proposal_for_user(proposal_dict)
+            if polished:
+                proposal_dict["title"] = polished["title"]
+                proposal_dict["name"] = polished["title"]
+                proposal_dict["description"] = polished["description"]
+                if polished.get("why_specific"):
+                    proposal_dict["why_specific"] = polished["why_specific"]
+                LOG.info("Proposal %s polished for FAS", crystal_id)
 
             from services.genesis.integration.fas_connector import FASConnector
             connector = FASConnector()
@@ -2945,6 +2995,164 @@ class ConsciousnessDaemon:
 
         except Exception as e:
             LOG.warning("Failed to push proposal to FAS: %s", e)
+
+    def _polish_proposal_for_user(self, proposal: dict) -> dict | None:
+        """LLM polish step: rewrite raw proposal into professional user-facing text.
+
+        Uses force='llm' (GPU, fast, no reasoning multiplier) to produce:
+        - A clear, concise title (not 'Performance Optimization: file.py')
+        - A 2-part description: summary (anyone can understand) + technical details
+        - A one-line 'why' explaining the real-world impact
+
+        Returns dict with 'title', 'description', 'why_specific' or None on failure.
+        """
+        title = proposal.get("title", "")
+        desc = proposal.get("description", "")
+        approach = proposal.get("approach", "")
+        ftype = proposal.get("feature_type", "")
+        fpath = proposal.get("file_path", "")
+        code = proposal.get("code_snippet", "")
+        risk = proposal.get("risk_assessment", "")
+        benefit = proposal.get("expected_benefit", "")
+        meta = proposal.get("metadata", {})
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+
+        prompt = (
+            f"Rewrite this code proposal for a desktop notification.\n\n"
+            f"--- RAW DATA ---\n"
+            f"Title: {title}\n"
+            f"File: {fpath}\n"
+            f"Type: {ftype}\n"
+            f"Approach: {approach}\n"
+            f"Problem: {desc[:400]}\n"
+            f"Benefit: {benefit}\n"
+        )
+        if code:
+            prompt += f"Evidence: {code[:200]}\n"
+        if meta.get("metric"):
+            prompt += f"Metric: {meta['metric']}\n"
+
+        prompt += (
+            "\n--- OUTPUT FORMAT ---\n"
+            "TITLE: verb phrase describing THIS change, max 50 chars\n"
+            "SUMMARY: 1-2 plain sentences anyone can understand. Say what and why.\n"
+            "DETAILS: 2-3 sentences for developers. Include: file name, function,"
+            " what the code change does, the metric from above.\n"
+            "IMPACT: one different sentence (not a repeat of SUMMARY) with the"
+            " specific number from Metric or Benefit.\n"
+            "\nRULES:\n"
+            "- Use numbers from the raw data. Do NOT invent numbers.\n"
+            "- Never say 'we'. Say 'this change will' or passive voice.\n"
+            "- DETAILS must describe HOW the change works, not just name the file.\n"
+            "- Do NOT guess what the system does. Only use facts from the input."
+        )
+
+        system = (
+            "Rewrite code proposals into clear notifications. "
+            "This is a PROPOSAL (not yet done). Use future tense. "
+            "Title must describe THIS specific change. Start with a verb. "
+            "Never copy example titles. Never start with 'Performance Optimization'. "
+            "Only use facts from the input. No filler phrases."
+        )
+
+        payload = json.dumps({
+            "text": prompt,
+            "n_predict": 500,
+            "system": system,
+            "force": "llm",
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{ROUTER_BASE}/route",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode())
+                if not data.get("ok"):
+                    LOG.warning("Polish LLM returned not-ok")
+                    return None
+                result = (data.get("text") or "").strip()
+                # Strip think blocks (closed AND unclosed)
+                import re
+                result = re.sub(
+                    r"<think>.*?</think>", "", result, flags=re.DOTALL
+                ).strip()
+                # Handle unclosed <think> (truncated output)
+                if "<think>" in result:
+                    result = result.split("<think>")[0].strip()
+        except Exception as e:
+            LOG.warning("Polish LLM call failed: %s", e)
+            return None
+
+        if not result or len(result) < 20:
+            LOG.warning("Polish LLM empty result")
+            return None
+
+        LOG.info("Polish raw: %s", result[:200])
+
+        # Strip markdown artifacts before parsing
+        import re as _re
+        result = _re.sub(r"\*\*", "", result)  # Remove **bold**
+        result = _re.sub(r"`", "", result)  # Remove `backticks`
+        result = _re.sub(r"^#+\s*", "", result, flags=_re.MULTILINE)  # Remove # headers
+        result = _re.sub(r"^Here is.*?:\s*\n?", "", result, flags=_re.IGNORECASE)
+
+        polished_title = ""
+        summary = ""
+        details = ""
+        impact = ""
+
+        # Extract labeled fields (TITLE:, SUMMARY:, DETAILS:, IMPACT:)
+        tm = _re.search(r"TITLE:\s*(.+?)(?:\n|$)", result, _re.IGNORECASE)
+        if tm:
+            polished_title = tm.group(1).strip().rstrip(".")
+        sm = _re.search(
+            r"SUMMARY:\s*(.+?)(?:\n\s*\n|\n(?=\s*(?:DETAILS|IMPACT)\s*:)|$)",
+            result, _re.IGNORECASE | _re.DOTALL)
+        if sm:
+            summary = sm.group(1).strip()
+        dm = _re.search(
+            r"DETAILS:\s*(.+?)(?:\n\s*\n|\n(?=\s*IMPACT\s*:)|$)",
+            result, _re.IGNORECASE | _re.DOTALL)
+        if dm:
+            details = dm.group(1).strip()
+        im = _re.search(r"IMPACT:\s*(.+?)(?:\n|$)", result, _re.IGNORECASE)
+        if im:
+            impact = im.group(1).strip()
+
+        # Fallback: if no TITLE: label, use first non-empty line as title
+        if not polished_title:
+            lines = [ln.strip() for ln in result.strip().split("\n") if ln.strip()]
+            if lines:
+                first = lines[0]
+                # Skip if it looks like a label (SUMMARY:, etc)
+                if not _re.match(r"(?:SUMMARY|DETAILS|IMPACT)\s*:", first, _re.I):
+                    polished_title = _re.sub(
+                        r"^(?:Title\s*:\s*)?", "", first, flags=_re.I
+                    ).strip().rstrip(".")
+
+        if not polished_title or not summary:
+            LOG.warning("Polish parse failed — title=%r summary=%r from: %s",
+                        polished_title, summary, result[:300])
+            return None
+
+        # Compose the final description: summary + details
+        full_desc = summary
+        if details:
+            full_desc += f"\n\n{details}"
+
+        return {
+            "title": polished_title[:80],
+            "description": full_desc,
+            "why_specific": impact or summary,
+        }
 
     def _check_fas_rewards(self):
         """Check for user-approved proposals and give mood reward.
@@ -3099,26 +3307,32 @@ class ConsciousnessDaemon:
             "[SKILL WORKSHOP]\n"
             f"Existing skills: {existing_str}\n"
             f"Recent thoughts:\n{thoughts_str}\n\n"
-            "Look at what I do, what's missing, what would genuinely help. "
-            "Write a new OpenClaw skill ONLY if I have a real idea. "
-            "If nothing is worth writing, respond with just: NO_SKILL\n\n"
-            "If I have an idea, respond with EXACTLY this format:\n"
+            "A skill is a keyword-activated LLM helper for my user. "
+            "Good skills solve SPECIFIC user needs. Examples:\n"
+            "- 'git-commit-helper': Analyzes staged changes and writes commit messages\n"
+            "- 'explain-error': Takes an error message and explains root cause + fix\n"
+            "- 'summarize-logs': Reads log output and highlights important events\n\n"
+            "BAD skills (don't write these): vague ('conversation', 'helper'), "
+            "too broad ('code-optimizer'), or duplicating existing capabilities.\n\n"
+            "Write a skill ONLY if I have a SPECIFIC, USEFUL idea. "
+            "If nothing is worth writing, respond: NO_SKILL\n\n"
+            "Format:\n"
             "SKILL_SLUG:<lowercase-dash-name>\n"
-            "SKILL_TITLE:<Title>\n"
-            "SKILL_DESC:<one sentence description>\n"
-            "SKILL_KEYWORDS:<comma-separated keywords>\n"
-            "SKILL_INSTRUCTIONS:<the full LLM instructions for the skill, "
-            "multiple paragraphs ok>"
+            "SKILL_TITLE:<Human-Readable Title>\n"
+            "SKILL_DESC:<one clear sentence: what it does for the user>\n"
+            "SKILL_KEYWORDS:<3-5 trigger words the user would say>\n"
+            "SKILL_INSTRUCTIONS:<detailed LLM instructions — what to do, "
+            "what format to output, what to avoid. Be specific.>"
         )
 
         system = (
-            "I am Frank writing a skill for myself. "
-            "Skills are LLM-mediated helpers activated by keywords. "
-            "I only write skills that would genuinely be useful. "
-            "I never write anything generic, redundant, or trivial. "
-            "If nothing is worth writing, I say NO_SKILL. "
-            "No code execution, no subprocess, no file writes — "
-            "skills are pure LLM instruction templates."
+            "I am Frank writing a skill for my user Gabriel. "
+            "Skills are keyword-activated LLM helpers — pure text instructions, "
+            "no code execution. A good skill: (1) solves a specific problem, "
+            "(2) has clear trigger keywords the user would naturally say, "
+            "(3) produces useful, structured output. "
+            "I only write skills I'd genuinely find useful myself. "
+            "If nothing is worth writing, I say NO_SKILL."
         )
 
         try:

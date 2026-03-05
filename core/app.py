@@ -1552,12 +1552,17 @@ class Handler(BaseHTTPRequestHandler):
             # Use "default" profile for chat — less system-description text
             # means the model responds naturally instead of listing capabilities.
             # "full" profile only needed for capability queries.
-            _CAP_Q_WORDS = [
+            _ARCH_Q_WORDS = [
                 "was kannst du", "what can you do", "your capabilities",
                 "deine fähigkeiten", "what are you capable", "was sind deine",
-                "help me with", "feature", "tell me about yourself",
+                "help me with", "tell me about yourself",
+                "your architecture", "deine architektur", "your services",
+                "deine services", "your rooms", "deine räume",
+                "your body", "dein körper", "how do you work",
+                "wie funktionierst du", "your system", "dein system",
+                "your ports", "your llm", "your modules",
             ]
-            _profile = "minimal" if any(cw in _user_low_pre for cw in _CAP_Q_WORDS) else "default"
+            _profile = "full" if any(cw in _user_low_pre for cw in _ARCH_Q_WORDS) else "default"
             identity = get_frank_identity(profile=_profile)
             # Pass identity as SYSTEM PROMPT (not in user text) so the Router
             # wraps it properly in ChatML/Instruct templates. Without this,
@@ -1574,7 +1579,7 @@ class Handler(BaseHTTPRequestHandler):
                 _core_response_lang = "de"
             elif re.search(r"switch\s+(back\s+)?(to\s+)?english|speak\s+english|auf\s+englisch", user_text_for_matching, re.I):
                 _core_response_lang = "en"
-            _lang_prefix = "[Reply in English]\n" if _core_response_lang == "en" else ""
+            _lang_prefix = "[Reply in English]\n" if _core_response_lang == "en" else "[Reply in German]\n"
 
             if ctx_block:
                 grounded_text = _lang_prefix + ctx_block + "\n\nUser asks: " + text

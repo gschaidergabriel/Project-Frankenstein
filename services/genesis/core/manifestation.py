@@ -504,13 +504,39 @@ class ManifestationGate:
         else:
             meta = getattr(genome, "metadata", {})
             detail = meta.get("detail", "")
-            if detail:
-                crystal.description = (
-                    f"{crystal.approach}: {genome.target} — {detail}"
-                )
+            check = meta.get("check", "")
+            metric = meta.get("metric", "")
+            evidence = meta.get("evidence", "")
+
+            # Build a human-readable description
+            desc_parts = []
+            if check:
+                check_descriptions = {
+                    "long_function": f"Function in {genome.target} is too long ({metric})",
+                    "bare_except": f"Bare except clause in {genome.target} hides errors",
+                    "deep_nesting": f"Deeply nested code in {genome.target} is hard to maintain",
+                    "todo_fixme": f"TODO/FIXME found in {genome.target}: {detail}",
+                    "complex_function": f"Complex function in {genome.target} ({metric})",
+                }
+                desc_parts.append(check_descriptions.get(
+                    check, f"Code issue '{check}' in {genome.target}"
+                ))
+            elif detail:
+                desc_parts.append(detail)
+
+            if crystal.approach and crystal.approach != genome.approach:
+                desc_parts.append(f"Proposed fix: {crystal.approach}")
+            elif genome.approach:
+                desc_parts.append(f"Approach: {genome.approach}")
+
+            if evidence and evidence not in str(desc_parts):
+                desc_parts.append(evidence[:150])
+
+            if desc_parts:
+                crystal.description = ". ".join(desc_parts)
             else:
                 crystal.description = (
-                    f"Emergent idea for improving '{genome.target}' "
+                    f"Improvement for '{genome.target}' "
                     f"via {crystal.approach.lower()}. "
                     f"Origin: {genome.origin}."
                 )

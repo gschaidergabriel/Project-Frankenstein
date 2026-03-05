@@ -241,6 +241,7 @@ class SpatialState:
         self._db_path = db_path
         self._mood_fn = mood_fn  # callable returning float 0-1
         self._total_transitions: int = 0
+        self._current_activity: str = ""
 
         # Load persisted state
         self._ensure_table()

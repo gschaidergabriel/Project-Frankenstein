@@ -94,19 +94,29 @@ class IdeaGenome:
         return new_genome
 
     def crossover(self, other: "IdeaGenome") -> "IdeaGenome":
-        """Create offspring by combining two genomes."""
+        """Create offspring by combining two genomes.
+
+        IMPORTANT: target and metadata must come from the SAME parent
+        to avoid metric/target mismatches in proposals.
+        """
+        # Pick one parent as the "dominant" source for target+metadata
+        if random.random() < 0.5:
+            dominant, recessive = self, other
+        else:
+            dominant, recessive = other, self
+
         child = IdeaGenome(
             idea_type=random.choice([self.idea_type, other.idea_type]),
-            target=random.choice([self.target, other.target]),
+            target=dominant.target,           # target from dominant
             approach=random.choice([self.approach, other.approach]),
             origin="fusion",
-            feature_id=self.feature_id or other.feature_id,
+            feature_id=dominant.feature_id or recessive.feature_id,
             traits={
                 trait: random.choice([self.traits.get(trait, 0.5),
                                      other.traits.get(trait, 0.5)])
                 for trait in set(self.traits) | set(other.traits)
             },
-            metadata={**self.metadata, **other.metadata},
+            metadata=dict(dominant.metadata),  # metadata from same parent as target
             mutations=0,
         )
         return child

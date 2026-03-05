@@ -20,8 +20,8 @@ _NOTIFICATION_POLL_MS = 15_000  # 15 seconds
 
 # Categories routed to the Log Panel instead of main chat
 _LOG_PANEL_CATEGORIES = frozenset({
-    "consciousness", "dream", "entity",
-    "therapist", "mirror", "atlas", "muse",
+    "consciousness", "dream",
+    "wellness", "philosophy", "art_studio", "architecture",
 })
 
 
@@ -70,14 +70,13 @@ class NotificationMixin:
                     "system_health": "\u26A0\uFE0F", # warning sign
                     "morning_briefing": "\u2600\uFE0F",  # sun
                     "download": "\U0001F4E5",        # inbox tray
-                    "therapist": "\U0001F49A",       # green heart (Dr. Hibbert)
-                    "mirror": "\u2694\uFE0F",         # crossed swords (Kairos)
-                    "atlas": "\U0001F9ED",            # compass (Atlas)
-                    "muse": "\U0001F3A8",             # palette (Echo)
+                    "wellness": "\U0001F33F",         # herb (Wellness Room)
+                    "philosophy": "\U0001F3DB",       # classical building (Philosophy Atrium)
+                    "art_studio": "\U0001F58C",       # paintbrush (Art Studio)
+                    "architecture": "\U0001F9E9",     # puzzle piece (Architecture Bay)
                     "autonomous": "\u2699\uFE0F",     # gear (autonomous action)
                     "consciousness": "\U0001F9E0",    # brain (consciousness)
                     "dream": "\U0001F4AD",            # thought bubble (dream)
-                    "entity": "\U0001F464",            # silhouette (entity session)
                     "genesis": "\U0001F9EC",           # DNA (genesis)
                 }
                 icon = icon_map.get(category, "\U0001F514")  # default: bell

@@ -44,15 +44,15 @@ from overlay.aura.events import EventManager
 LOG = logging.getLogger("frank_overlay")
 
 # Zone name → display info
-_ZONE_NAMES = ["epq", "mood", "reflexion", "entities", "ego", "quantum", "titan", "hardware"]
+_ZONE_NAMES = ["epq", "mood", "reflexion", "rooms", "ego", "quantum", "titan", "hardware"]
 _ZONE_DISPLAY = {
     "epq": "Personality", "mood": "Mood", "reflexion": "Thoughts",
-    "entities": "Entities", "ego": "Ego", "quantum": "Coherence",
+    "rooms": "Rooms", "ego": "Ego", "quantum": "Coherence",
     "titan": "Memory", "hardware": "Hardware",
 }
 _ZONE_HEX = {
     "epq": "#00B3FF", "mood": "#FF8000", "reflexion": "#00FF4D",
-    "entities": "#FF00CC", "ego": "#FFD900", "quantum": "#00FFFF",
+    "rooms": "#FF00CC", "ego": "#FFD900", "quantum": "#00FFFF",
     "titan": "#B34DFF", "hardware": "#FF331A",
 }
 
@@ -104,7 +104,7 @@ class AuraVisualizerMixin:
             "mood_buffer": 0.5,
             "coherence": 0.5,
             "reflections": [],
-            "entities": [],
+            "rooms": [],
             "ego_state": {},
             "quantum_coherence": 0.5,
             "cpu_temp": 50.0,
@@ -117,7 +117,7 @@ class AuraVisualizerMixin:
             "disk_percent": 0.0,
             "uptime_s": 0.0,
             "reflection_count": 0,
-            "active_entity": None,
+            "active_room": None,
             "online": True,
         }
         self._aura_state_lock = threading.Lock()
@@ -753,7 +753,7 @@ class AuraVisualizerMixin:
             ("epq",       "EPQ",      "#00B3FF"),
             ("mood",      "Mood",     "#FF8000"),
             ("reflexion", "Thoughts", "#00FF4D"),
-            ("entities",  "Entities", "#FF00CC"),
+            ("rooms",     "Rooms",    "#FF00CC"),
             ("ego",       "Ego",      "#FFD900"),
             ("quantum",   "Quantum",  "#00FFFF"),
             ("titan",     "Memory",   "#B34DFF"),
@@ -968,7 +968,7 @@ class AuraVisualizerMixin:
             # Find dominant zone type from quantum color
             zone_colors_arr = {
                 "epq": (0.0, 0.7, 1.0), "mood": (1.0, 0.5, 0.0),
-                "reflexion": (0.0, 1.0, 0.3), "entities": (1.0, 0.0, 0.8),
+                "reflexion": (0.0, 1.0, 0.3), "rooms": (1.0, 0.0, 0.8),
                 "ego": (1.0, 0.85, 0.0), "quantum": (0.0, 1.0, 1.0),
                 "titan": (0.7, 0.3, 1.0), "hardware": (1.0, 0.2, 0.1),
             }
@@ -1122,7 +1122,7 @@ class AuraVisualizerMixin:
             lines = ["Personality trait vectors."]
             for k, v in vecs.items():
                 lines.append(f"  {_labels.get(k, k[:3].upper()):3s}{v:+.2f} {_bar(abs(v))}")
-            lines.append("[-1..+1] via entities/dreams")
+            lines.append("[-1..+1] via rooms/dreams")
             return lines
 
         elif zone == "mood":
@@ -1176,32 +1176,31 @@ class AuraVisualizerMixin:
             lines.append("New thoughts spawn cells")
             return lines
 
-        elif zone == "entities":
-            ents = s.get("entities", [])
-            lines = ["Internal dialogue partners."]
-            if ents:
+        elif zone == "rooms":
+            rooms = s.get("rooms", [])
+            lines = ["Solo activity rooms."]
+            if rooms:
                 import time as _time
                 now = _time.time()
                 total_today = 0
-                for e in ents[:4]:
+                for e in rooms[:4]:
                     name = e.get("name", "?")
                     active = e.get("is_in_session", False)
                     sess = e.get("sessions_today", 0)
-                    quota = e.get("quota", 1)
+                    quota = e.get("quota", 2)
                     total_today += sess
                     m = "\u25cf" if active else "\u25cb"
                     st = "IN SESSION" if active else f"{sess}/{quota}"
                     lines.append(f"  {m} {name:<14s} {st}")
                 lines.append("")
                 lines.append(f"  Sessions today: {total_today}")
-                # Show last session info
-                active_ents = [e for e in ents if e.get("is_in_session")]
-                if active_ents:
-                    ae = active_ents[0]
-                    if ae.get("last_turns"):
-                        lines.append(f"  Turns: {ae['last_turns']}")
+                active_rooms = [e for e in rooms if e.get("is_in_session")]
+                if active_rooms:
+                    ar = active_rooms[0]
+                    if ar.get("last_turns"):
+                        lines.append(f"  Turns: {ar['last_turns']}")
                 else:
-                    recent = sorted(ents, key=lambda x: x.get("last_ts", 0), reverse=True)
+                    recent = sorted(rooms, key=lambda x: x.get("last_ts", 0), reverse=True)
                     if recent and recent[0].get("last_ts", 0) > 0:
                         r = recent[0]
                         ago = now - r["last_ts"]
@@ -1212,9 +1211,6 @@ class AuraVisualizerMixin:
                         else:
                             ago_s = f"{int(ago/3600)}h ago"
                         lines.append(f"  Last: {r['name']} {ago_s}")
-                        if r.get("last_topic"):
-                            topic = r["last_topic"][:28]
-                            lines.append(f"  Topic: {topic}")
             else:
                 lines.append("  Waiting for data...")
             lines.append("Sessions inject cells here")
@@ -1644,24 +1640,24 @@ class AuraVisualizerMixin:
             new_state["reflection_count"] = meta.get("thought_count", 0)
             new_state["online"] = True
 
-            # Entity info from headless
+            # Room info from headless
             ei = meta.get("entity_info", {})
             if ei:
-                entities = []
-                for ename in ("therapist", "mirror", "atlas", "muse"):
-                    edata = ei.get(ename, {})
-                    if edata:
-                        entities.append({
-                            "name": edata.get("display_name", ename),
-                            "key": ename,
-                            "is_in_session": edata.get("in_session", False),
-                            "sessions_today": edata.get("sessions_today", 0),
-                            "quota": edata.get("quota", 1),
-                            "last_topic": edata.get("last_topic", ""),
-                            "last_turns": edata.get("last_turns", 0),
-                            "last_ts": edata.get("last_ts", 0),
+                rooms = []
+                for rname in ("wellness", "philosophy", "art_studio", "architecture"):
+                    rdata = ei.get(rname, {})
+                    if rdata:
+                        rooms.append({
+                            "name": rdata.get("display_name", rname),
+                            "key": rname,
+                            "is_in_session": rdata.get("in_session", False),
+                            "sessions_today": rdata.get("sessions_today", 0),
+                            "quota": rdata.get("quota", 2),
+                            "last_topic": rdata.get("last_topic", ""),
+                            "last_turns": rdata.get("last_turns", 0),
+                            "last_ts": rdata.get("last_ts", 0),
                         })
-                new_state["entities"] = entities
+                new_state["rooms"] = rooms
 
             # Still fetch reflections from DB (headless doesn't cache content)
             try:
@@ -1780,20 +1776,20 @@ class AuraVisualizerMixin:
         with self._aura_state_lock:
             old_mood = self._aura_state.get("mood_buffer", 0.5)
             old_refl_count = self._aura_state.get("reflection_count", 0)
-            old_entity = self._aura_state.get("active_entity")
+            old_room = self._aura_state.get("active_room")
             self._aura_state.update(new_state)
             new_mood = self._aura_state.get("mood_buffer", 0.5)
             new_refl_count = self._aura_state.get("reflection_count", 0)
-            new_entity = self._aura_state.get("active_entity")
+            new_room = self._aura_state.get("active_room")
 
         if abs(new_mood - old_mood) > 0.05:
             self._aura_events.trigger_mood_shift(new_mood - old_mood)
         if new_refl_count > old_refl_count:
             self._aura_events.trigger_reflexion("")
             self._aura_push_notification("\U0001f9e0 New reflection", "#00FF4D")
-        if new_entity and new_entity != old_entity:
+        if new_room and new_room != old_room:
             self._aura_events.trigger_entity_session()
-            name = new_entity.get("name", "Entity") if isinstance(new_entity, dict) else str(new_entity)
+            name = new_room.get("name", "Room") if isinstance(new_room, dict) else str(new_room)
             self._aura_push_notification(f"\u26a1 {name} session started", "#FF00CC")
 
         # Check for significant state changes → notifications

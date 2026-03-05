@@ -1,10 +1,10 @@
 """Intent Queue — captures and surfaces Frank's inner resolutions.
 
-Frank's idle thoughts often express intentions: "I'd tell Echo...",
-"I should explore...", "I must become...".  These are extracted via regex
+Frank's idle thoughts often express intentions: "I want to explore...",
+"I should research...", "I must become...".  These are extracted via regex
 (no LLM), queued in consciousness.db, and surfaced at the right moment:
 
-- entity_message  → frank_observations before next entity session
+- room_intent     → room session context (wellness, philosophy, art, architecture)
 - research        → idle-thought prompt hint
 - self_task       → idle-thought prompt hint
 - reflection      → idle-thought prompt hint
@@ -27,19 +27,22 @@ from typing import Dict, List, Optional
 LOG = logging.getLogger("intent_queue")
 
 # ---------------------------------------------------------------------------
-# Entity name resolution  (display name → dispatcher key)
+# Room name resolution  (mention → room key)
 # ---------------------------------------------------------------------------
 
-ENTITY_NAMES: Dict[str, str] = {
-    "echo": "muse",
-    "muse": "muse",
-    "kairos": "mirror",
-    "mirror": "mirror",
-    "atlas": "atlas",
-    "dr. hibbert": "therapist",
-    "hibbert": "therapist",
-    "therapist": "therapist",
+ROOM_NAMES: Dict[str, str] = {
+    "wellness": "wellness",
+    "wellness room": "wellness",
+    "philosophy": "philosophy",
+    "philosophy atrium": "philosophy",
+    "art studio": "art_studio",
+    "art": "art_studio",
+    "architecture": "architecture",
+    "architecture bay": "architecture",
 }
+
+# Backwards compat
+ENTITY_NAMES = ROOM_NAMES
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -50,36 +53,33 @@ DEDUP_WINDOW_S = 24 * 3600          # 24 h
 MIN_INTENT_LEN = 10                 # Minimum extracted text length
 
 # ---------------------------------------------------------------------------
-# Regex patterns — ordered by priority (entity > research > reflection >
+# Regex patterns — ordered by priority (room_intent > research > reflection >
 # self_task > user_message).  One match per category per text.
 # ---------------------------------------------------------------------------
 
 _INTENT_PATTERNS: Dict[str, List[re.Pattern]] = {
-    "entity_message": [
-        # EN: "I'd tell Echo: ...", "I want to ask Atlas ...", "I should share with Kairos ..."
+    "room_intent": [
+        # EN: "In the Wellness Room I want to ...", "Next time in the Art Studio ..."
         re.compile(
-            r"(?:I(?:'d| would| want to| should| will| need to| must)\s+"
-            r"(?:tell|ask|say to|share with|talk to|mention to|discuss with)\s+"
-            r"(\w+))"
-            r"[:\s,.—–-]+(.{10,300})",
+            r"(?:in\s+(?:the\s+)?(?:Wellness|Philosophy|Art|Architecture)"
+            r"(?:\s+(?:Room|Atrium|Studio|Bay))?)"
+            r".{0,30}?"
+            r"(?:I\s+(?:want\s+to|should|will|need\s+to|must))\s+"
+            r"(.{10,300})",
             re.IGNORECASE,
         ),
-        # EN: "Next time ... tell/ask {entity} ..."
+        # EN: "Next time in my solo session ..."
         re.compile(
-            r"(?:next\s+time|nächstes\s+mal|beim\s+nächsten)"
+            r"(?:next\s+(?:time|session)|nächstes\s+mal)"
             r".{0,60}?"
-            r"(?:tell|ask|say\s+to|sagen|fragen)\s+(\w+)"
-            r"[:\s,.—–-]+(.{10,300})",
-            re.IGNORECASE,
-        ),
-        # DE: "{Entity} werde/möchte/sollte/muss ich sagen/fragen/erzählen ..."
-        re.compile(
-            r"(\w+)\s+(?:werde ich|möchte ich|sollte ich|muss ich)\s+"
-            r"(?:sagen|fragen|erzählen|mitteilen)"
-            r"[:\s,.—–-]+(.{10,300})",
+            r"(?:in\s+(?:the\s+)?(?:Wellness|Philosophy|Art|Architecture)|solo\s+session)"
+            r".{0,30}?"
+            r"(.{10,300})",
             re.IGNORECASE,
         ),
     ],
+    # Keep old category name as alias for DB backwards compat
+    "entity_message": [],
     "research": [
         # EN: "I should/must/need to explore/study/investigate ..."
         re.compile(

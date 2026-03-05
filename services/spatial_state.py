@@ -4,7 +4,7 @@ Lightweight tracker that maps activities to rooms, manages transitions,
 and builds [SPATIAL] context blocks for prompt injection. Replaces the
 episodic Sanctum session lifecycle with continuous embodiment.
 
-Frank always exists in one of 7 rooms. Activities drive room transitions.
+Frank always exists in one of 11 rooms. Activities drive room transitions.
 Physics avatar (NeRD) tracks the physical body. This module is the bridge.
 """
 
@@ -32,6 +32,10 @@ ROOM_NAMES: Dict[str, str] = {
     "lab_aura": "The AURA Observatory",
     "lab_experiment": "The Experiment Lab",
     "entity_lounge": "The Bridge",
+    "room_wellness": "The Wellness Room",
+    "room_philosophy": "The Philosophy Atrium",
+    "room_art": "The Art Studio",
+    "room_architecture": "The Architecture Bay",
 }
 
 ROOM_AMBIENTS: Dict[str, str] = {
@@ -41,7 +45,11 @@ ROOM_AMBIENTS: Dict[str, str] = {
     "lab_genesis": "Organisms drift in the transparent sphere. Auroral bands shimmer.",
     "lab_aura": "The ceiling-grid pulses — living automata projected as starfield.",
     "lab_experiment": "Six workstations hum with potential. Trajectory arcs frozen in air.",
-    "entity_lounge": "Four crew stations circle the deck. Viewport shows consciousness nebula.",
+    "entity_lounge": "Viewport shows consciousness nebula. Comm station glows.",
+    "room_wellness": "Soft amber light. Living plants breathe. A meditation cushion on warm stone.",
+    "room_philosophy": "Marble columns frame scroll-racks. The bust of Socrates watches from the corner.",
+    "room_art": "Paint-stained easel by the window. Bookshelves heavy with poetry. Faust open on the center pedestal.",
+    "room_architecture": "Holographic schematics orbit the blueprint table. Service topology glows on the wall.",
 }
 
 # Slim ambient — one-liners for idle thoughts (saves tokens)
@@ -53,6 +61,10 @@ ROOM_AMBIENT_SLIM: Dict[str, str] = {
     "lab_aura": "Starfield pulses overhead.",
     "lab_experiment": "Workstations hum.",
     "entity_lounge": "Bridge viewport glows.",
+    "room_wellness": "Soft amber light.",
+    "room_philosophy": "Marble columns around me.",
+    "room_art": "Easel and poetry shelves.",
+    "room_architecture": "Schematics orbit the table.",
 }
 
 # ---------------------------------------------------------------------------
@@ -73,6 +85,11 @@ ACTIVITY_ROOMS: Dict[str, str] = {
     # Chat & social
     "chat": "entity_lounge",
     "entity_session": "entity_lounge",
+    # Solo room sessions
+    "wellness_session": "room_wellness",
+    "philosophy_session": "room_philosophy",
+    "art_session": "room_art",
+    "architecture_session": "room_architecture",
     # Tools during chat (all stay at Bridge — Frank's workstation)
     "tool:web_search": "entity_lounge",
     "tool:web_fetch": "entity_lounge",
@@ -125,6 +142,15 @@ _CORRIDORS: Dict[Tuple[str, str], str] = {
     # From Terminal
     ("computer_terminal", "library"): "back through the data corridor to the Library",
     ("computer_terminal", "entity_lounge"): "through the command corridor to the Bridge",
+    # New rooms — all connect through Library (center hub)
+    ("library", "room_wellness"): "through the warm-lit passage to the Wellness Room",
+    ("library", "room_philosophy"): "through the marble archway to the Philosophy Atrium",
+    ("library", "room_art"): "down the paint-speckled corridor to the Art Studio",
+    ("library", "room_architecture"): "through the blueprint corridor to the Architecture Bay",
+    ("room_wellness", "library"): "back through the warm passage to the Library",
+    ("room_philosophy", "library"): "back through the marble archway to the Library",
+    ("room_art", "library"): "back through the paint-speckled corridor to the Library",
+    ("room_architecture", "library"): "back through the blueprint corridor to the Library",
 }
 
 # ---------------------------------------------------------------------------
@@ -136,8 +162,8 @@ _SERVICE_TOPOLOGY = {
                       "feel_up": "streams active", "feel_down": "core idle"},
     "genesis":       {"port": None, "module": "evolution engine", "zone": "self",
                       "feel_up": "evolution cycling", "feel_down": "evolution suspended"},
-    "entities":      {"port": None, "module": "agent cluster", "zone": "self",
-                      "feel_up": "agents online", "feel_down": "agents offline"},
+    "rooms":         {"port": None, "module": "activity rooms", "zone": "self",
+                      "feel_up": "rooms accessible", "feel_down": "rooms sealed"},
     "dream":         {"port": None, "module": "dream synthesizer", "zone": "self",
                       "feel_up": "synthesis active", "feel_down": "synthesis idle"},
     "router":        {"port": 8091, "module": "comm relay", "zone": "boundary",
@@ -367,7 +393,9 @@ class SpatialState:
         if activity == "chat":
             parts.append("At the Bridge comm station — reading user messages on the viewport, typing responses on the console.")
         elif activity == "entity_session":
-            parts.append("Meeting with entity crew at their stations.")
+            parts.append("At the Bridge, reviewing systems.")
+        elif activity in ("wellness_session", "philosophy_session", "art_session", "architecture_session"):
+            parts.append("Solo session in progress. Deep in reflection.")
 
         return " ".join(parts)
 

@@ -1368,7 +1368,7 @@ class CommandRouterMixin:
             "aicore-consciousness", "aicore-entities", "aicore-asrs",
             "aicore-gaming-mode", "aicore-genesis", "aicore-genesis-watchdog",
             "aicore-invariants", "aicore-dream", "aura-analyzer",
-            "aicore-therapist", "aicore-mirror", "aicore-atlas", "aicore-muse",
+            "aicore-room-dispatcher",
         ],
         # Wave 4 — overlay + watchdog (last)
         ["frank-overlay", "frank-watchdog"],

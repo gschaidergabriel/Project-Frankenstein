@@ -77,7 +77,7 @@ ZONE_BOUNDS: Dict[str, Tuple[int, int, int, int]] = {
     "epq":      (0,   0,   64,  128),   # top-left
     "mood":     (64,  0,   128, 128),   # top-center-left
     "thoughts": (128, 0,   192, 128),   # top-center-right
-    "entities": (192, 0,   256, 128),   # top-right
+    "rooms":    (192, 0,   256, 128),   # top-right
     "ego":      (0,   128, 64,  256),   # bottom-left
     "quantum":  (64,  128, 128, 256),   # bottom-center-left
     "memory":   (128, 128, 192, 256),   # bottom-center-right
@@ -87,7 +87,7 @@ ZONE_BOUNDS: Dict[str, Tuple[int, int, int, int]] = {
 # Zone display labels (dynamic, updated from state)
 ZONE_LABELS = {
     "epq": "processing", "mood": "emotional", "thoughts": "flowing",
-    "entities": "idle", "ego": "anchored", "quantum": "nominal",
+    "rooms": "idle", "ego": "anchored", "quantum": "nominal",
     "memory": "consolidating", "hw": "nominal",
 }
 
@@ -348,7 +348,7 @@ class AuraHeadless:
     """
 
     # Zone name → type index
-    ZONE_IDS = {"epq": 0, "mood": 1, "thoughts": 2, "entities": 3,
+    ZONE_IDS = {"epq": 0, "mood": 1, "thoughts": 2, "rooms": 3,
                 "ego": 4, "quantum": 5, "memory": 6, "hw": 7}
 
     def __init__(self, size: int = GRID_SIZE):
@@ -372,8 +372,8 @@ class AuraHeadless:
         self.epq_vectors: Dict[str, float] = {}
         self.energy_level = 0.5
         self.thought_count = 0
-        self.entity_active = ""
-        self.entity_info: Dict[str, Dict] = {}  # Rich entity data for overlay
+        self.entity_active = ""  # Active room key (API compat name)
+        self.entity_info: Dict[str, Dict] = {}  # Room session data for overlay
 
         self._lock = threading.Lock()
         self._last_seed_time = 0.0
@@ -501,8 +501,8 @@ class AuraHeadless:
         self._seed_zone("mood", abs(self.mood) * 0.8 + 0.1)
         thought_activity = min(self.thought_count / 10.0, 1.0)
         self._seed_zone("thoughts", thought_activity * 0.6 + 0.05)
-        entity_activity = 0.6 if self.entity_active else 0.05
-        self._seed_zone("entities", entity_activity)
+        room_activity = 0.6 if self.entity_active else 0.05
+        self._seed_zone("rooms", room_activity)
         self._seed_zone("ego", self.energy_level * 0.5 + 0.1)
         self._seed_zone("quantum", self.coherence * 0.6 + 0.1)
         self._seed_zone("memory", 0.15 + abs(self.mood) * 0.2)
@@ -797,62 +797,60 @@ class AuraHeadless:
         )
         self.thought_count = int(val) if val else 0
 
-    _ENTITY_NAMES = {
-        "therapist": "Dr. Hibbert",
-        "mirror": "Kairos",
-        "atlas": "Atlas",
-        "muse": "Echo",
+    _ROOM_NAMES = {
+        "wellness": "Wellness Room",
+        "philosophy": "Philosophy Atrium",
+        "art_studio": "Art Studio",
+        "architecture": "Architecture Bay",
     }
-    _ENTITY_QUOTAS = {
-        "therapist": 3,
-        "mirror": 1,
-        "atlas": 1,
-        "muse": 1,
+    _ROOM_QUOTAS = {
+        "wellness": 3,
+        "philosophy": 2,
+        "art_studio": 2,
+        "architecture": 2,
     }
 
     def _fetch_entities(self):
-        """Fetch rich entity data for overlay info panel."""
-        import datetime
+        """Fetch room session data for overlay info panel."""
+        import json as _json
         now = time.time()
-        today_start = datetime.datetime.now().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ).timestamp()
         active = ""
         info: Dict[str, Dict] = {}
 
-        for name in ("therapist", "mirror", "atlas", "muse"):
-            # Sessions today (column is start_time, not timestamp)
-            rows = _read_db_rows(
-                name,
-                "SELECT start_time, turns, primary_topic, outcome, end_time "
-                "FROM sessions WHERE start_time > ? "
-                "ORDER BY start_time DESC",
-                (today_start,),
-            )
-            sessions_today = len(rows)
-            last_ts = 0.0
-            last_topic = ""
-            last_turns = 0
-            in_session = False
-            if rows:
-                last_ts = float(rows[0][0]) if rows[0][0] else 0.0
-                last_turns = int(rows[0][1]) if rows[0][1] else 0
-                last_topic = str(rows[0][2] or "")
-                latest_end = rows[0][4]  # end_time
-                # Session active if end_time is None or very recent
-                if latest_end is None or (now - last_ts) < 300:
-                    in_session = True
+        # Check PID file for active room session
+        _pid_file = Path(f"/run/user/{os.getuid()}/frank/room_session.pid")
+        room_session_active = False
+        if _pid_file.exists():
+            try:
+                pid = int(_pid_file.read_text().strip())
+                os.kill(pid, 0)
+                room_session_active = True
+            except (ValueError, ProcessLookupError, PermissionError):
+                pass
+
+        # Load quotas for today's session counts
+        _quota_file = Path(f"/run/user/{os.getuid()}/frank/room_quotas.json")
+        quotas = {}
+        if _quota_file.exists():
+            try:
+                quotas = _json.loads(_quota_file.read_text())
+            except Exception:
+                pass
+
+        for name, display in self._ROOM_NAMES.items():
+            sessions_today = quotas.get(name, 0)
+            in_session = room_session_active  # simplified — one room at a time
             if in_session and not active:
                 active = name
 
             info[name] = {
-                "display_name": self._ENTITY_NAMES[name],
-                "in_session": in_session,
+                "display_name": display,
+                "in_session": in_session if name == active else False,
                 "sessions_today": sessions_today,
-                "quota": self._ENTITY_QUOTAS[name],
-                "last_ts": last_ts,
-                "last_topic": last_topic[:40],
-                "last_turns": last_turns,
+                "quota": self._ROOM_QUOTAS[name],
+                "last_ts": 0.0,
+                "last_topic": "",
+                "last_turns": 0,
             }
 
         self.entity_active = active
@@ -886,7 +884,7 @@ class AuraHeadless:
             "dominant_type_b64": base64.b64encode(dominant.tobytes()).decode("ascii"),
             "density_b64": base64.b64encode(density_u8.tobytes()).decode("ascii"),
             "fine_size": FINE_SIZE,
-            "zone_names": {0: "epq", 1: "mood", 2: "thoughts", 3: "entities",
+            "zone_names": {0: "epq", 1: "mood", 2: "thoughts", 3: "rooms",
                            4: "ego", 5: "quantum", 6: "memory", 7: "hw"},
             "mood": self.mood,
             "coherence": self.coherence,
@@ -1038,7 +1036,7 @@ class AuraHeadless:
         """Interaction strings for output."""
         pairs = [
             ("epq", "mood"), ("thoughts", "quantum"), ("mood", "ego"),
-            ("ego", "memory"), ("thoughts", "entities"), ("hw", "quantum"),
+            ("ego", "memory"), ("thoughts", "rooms"), ("hw", "quantum"),
         ]
         results = []
         for a, b in pairs:
@@ -1129,7 +1127,7 @@ class AuraHeadless:
             lines.append(f"  CPU temp: {self.hw_temp}\u00b0C")
             lines.append(f"  E-PQ vectors: {json.dumps({k: round(v, 2) for k, v in self.epq_vectors.items()})}")
             lines.append(f"  Energy: {self.energy_level:.2f}")
-            lines.append(f"  Active entity: {self.entity_active or 'none'}")
+            lines.append(f"  Active room: {self.entity_active or 'none'}")
             lines.append(f"  Thoughts (1h): {self.thought_count}")
             # History trend (last 50 gens total alive)
             if len(self.history) >= 10:

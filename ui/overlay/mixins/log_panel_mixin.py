@@ -23,8 +23,8 @@ _LOG_FILE = AICORE_DATA / "log_panel.json"
 _MAX_PERSISTENT = 30
 
 LOG_CATEGORIES = frozenset({
-    "consciousness", "dream", "entity",
-    "therapist", "mirror", "atlas", "muse",
+    "consciousness", "dream",
+    "wellness", "philosophy", "art_studio", "architecture",
 })
 
 _LOG_PANEL_WIDTH = 340
@@ -35,21 +35,19 @@ _MAX_LOG_ENTRIES = 200
 _LOG_ICONS: Dict[str, str] = {
     "consciousness": "\U0001F9E0",
     "dream":         "\U0001F4AD",
-    "entity":        "\U0001F464",
-    "therapist":     "\U0001F49A",
-    "mirror":        "\u2694\uFE0F",
-    "atlas":         "\U0001F9ED",
-    "muse":          "\U0001F3A8",
+    "wellness":      "\U0001F33F",
+    "philosophy":    "\U0001F3DB",
+    "art_studio":    "\U0001F58C",
+    "architecture":  "\U0001F9E9",
 }
 
 _CAT_SHORT: Dict[str, str] = {
     "consciousness": "CSCN",
     "dream":         "DREM",
-    "entity":        "ENTY",
-    "therapist":     "THRP",
-    "mirror":        "MIRR",
-    "atlas":         "ATLS",
-    "muse":          "MUSE",
+    "wellness":      "WELL",
+    "philosophy":    "PHIL",
+    "art_studio":    "ART ",
+    "architecture":  "ARCH",
 }
 
 # Button styling
@@ -73,16 +71,15 @@ _CRT_FONT_TINY = ("Courier", 4)
 # Typewriter speed (ms per character)
 _TYPEWRITER_MS = 18
 
-# Entity accent colours (CRT-compatible neon tones)
-_ENTITY_COLORS: Dict[str, str] = {
-    "entity":    "#FFD700",   # Gold
-    "therapist": "#00CCA3",   # Teal (Dr. Hibbert)
-    "mirror":    "#FF9933",   # Amber (Kairos)
-    "atlas":     "#33CCFF",   # Cyan
-    "muse":      "#CC66FF",   # Violet (Echo)
-    "dream":     "#6699FF",   # Soft blue
+# Room accent colours (CRT-compatible neon tones)
+_ACCENT_COLORS: Dict[str, str] = {
+    "wellness":     "#FF6B9D",   # Rose
+    "philosophy":   "#C8A2FF",   # Lavender
+    "art_studio":   "#FFB347",   # Warm amber
+    "architecture": "#4ECDC4",   # Teal-cyan
+    "dream":        "#6699FF",   # Soft blue
 }
-_ACCENT_CATS = frozenset(_ENTITY_COLORS)
+_ACCENT_CATS = frozenset(_ACCENT_COLORS)
 
 
 class LogPanelMixin:
@@ -317,7 +314,7 @@ class LogPanelMixin:
         txt.tag_configure("cursor_blink", foreground=_CRT_FG, font=_CRT_FONT)
 
         # Entity / dream accent tags
-        for cat, color in _ENTITY_COLORS.items():
+        for cat, color in _ACCENT_COLORS.items():
             txt.tag_configure(f"hdr_{cat}", foreground=color, font=_CRT_FONT_SM)
             txt.tag_configure(f"msg_{cat}", foreground=color, font=_CRT_FONT)
             txt.tag_configure(f"accent_{cat}", foreground=color, font=("Courier", 9, "bold"))

@@ -335,7 +335,7 @@ class ChatMemoryDB:
                      AND text NOT LIKE '[Entity Session]%'
                      AND text NOT LIKE '%Philosophical session with Frank%'
                      AND text NOT LIKE '%spoke to me for%'
-                     AND sender NOT IN ('Kairos', 'Atlas', 'Dr. Hibbert', 'Echo')
+                     AND sender NOT IN ('Kairos', 'Atlas', 'Dr. Hibbert', 'Echo', 'Wellness Room', 'Philosophy Atrium', 'Art Studio', 'Architecture Bay')
                    ORDER BY timestamp DESC
                    LIMIT ?""",
                 (count,),

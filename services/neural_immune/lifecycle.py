@@ -45,7 +45,7 @@ RESTART_WAVES = [
         "aicore-consciousness", "aicore-entities", "aicore-asrs",
         "aicore-gaming-mode", "aicore-genesis", "aicore-genesis-watchdog",
         "aicore-invariants", "aicore-dream", "aura-analyzer",
-        "aicore-therapist", "aicore-mirror", "aicore-atlas", "aicore-muse",
+        "aicore-room-dispatcher",
     ],
     # Wave 4 — overlay (last)
     ["frank-overlay"],
@@ -72,7 +72,7 @@ FULL_SHUTDOWN_SERVICES = [
     "aicore-whisper-gpu", "aicore-ingestd", "aicore-webd",
     "aicore-webui", "aicore-toolboxd", "aicore-micro-llm",
     "aicore-core", "aicore-router",
-    "aicore-therapist", "aicore-mirror", "aicore-atlas", "aicore-muse",
+    "aicore-room-dispatcher",
     "aicore-llama3-gpu", "frank-overlay", "frank-sentinel",
 ]
 

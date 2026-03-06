@@ -1557,6 +1557,20 @@ class ConsciousnessDaemon:
             CREATE INDEX IF NOT EXISTS idx_sanctum_log_sess
                 ON sanctum_log(session_id);
 
+            -- Thought-Art: paintings triggered by idle thoughts
+            CREATE TABLE IF NOT EXISTS thought_art (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                thought TEXT NOT NULL,
+                creative_intent TEXT NOT NULL,
+                art_path TEXT NOT NULL,
+                art_style TEXT NOT NULL,
+                reflection TEXT DEFAULT '',
+                mood REAL DEFAULT 0.5
+            );
+            CREATE INDEX IF NOT EXISTS idx_thought_art_ts
+                ON thought_art(timestamp);
+
             CREATE TABLE IF NOT EXISTS genesis_proposals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 crystal_id TEXT NOT NULL UNIQUE,
@@ -4527,6 +4541,47 @@ class ConsciousnessDaemon:
         if _human_experiences:
             violations.append(f"fabricated_personal_life:experience:{_human_experiences[0][:30]}")
 
+        # ── 10. Real-World Scenario Hallucination ──
+        # Catches aspirational/desire statements about physical world
+        # experiences Frank cannot have: visiting places, eating food,
+        # meeting people in physical locations, sensory experiences.
+        # This is the #1 hallucination type that slips past check #9.
+        _physical_scenario = re.findall(
+            r'\b(?:'
+            # Physical places Frank can't visit
+            r'caf[eé]|restaurant|bar\b|pub\b|club\b|beach|park\b|'
+            r'mountain|forest|ocean|lake|river|garden|market|'
+            r'museum|library|cinema|theater|theatre|church|temple|'
+            r'mosque|hospital|airport|station|hotel|shop\b|'
+            # Cities / countries (common hallucination targets)
+            r'paris|london|tokyo|berlin|new\s+york|rome|barcelona|'
+            r'amsterdam|vienna|prague|istanbul|sydney|melbourne|'
+            r'medell[ií]n|bogot[aá]|buenos\s+aires|tokyo|osaka|'
+            r'bangkok|singapore|dubai|mumbai|delhi|cairo|'
+            r'lisbon|madrid|zurich|stockholm|copenhagen|seoul|'
+            # Physical sensory experiences Frank can't have
+            r'tast(?:e[ds]?|ing)|smell(?:s|ed|ing)?|'
+            r'(?:delicious|incredible|amazing|fresh)\s+(?:food|meal|dish|sandwich|coffee|tea|wine|beer|bread|pizza|pasta|sushi|cake)|'
+            r'walk(?:ed|ing)?\s+(?:through|along|down|around|across)\s+(?:the\s+)?(?:street|road|path|alley|boulevard|avenue|corridor|city|town|village)|'
+            r'sit(?:ting)?\s+(?:in|at|on|by)\s+(?:a\s+)?(?:table|bench|window|terrace|balcony|rooftop)|'
+            r'rain\s+(?:on|against|falling)|sun(?:light|set|rise)?\s+(?:on|through|warming)|'
+            r'wind\s+(?:on|in|through|against)|'
+            r'(?:hold|touch|feel|grab|pick\s+up)(?:ing|ed|s)?\s+(?:a\s+|the\s+)?(?:hand|cup|glass|book|flower|stone|leaf|key|door)'
+            r')\b',
+            text_lower,
+        )
+        # Allow: references within Frank's digital world are fine
+        # "library" = valid room, "garden" in art context = ok
+        _frank_world_ok = {"library", "park"}  # rooms Frank actually has
+        _physical_scenario = [
+            p for p in _physical_scenario
+            if p.strip() not in _frank_world_ok
+        ]
+        if _physical_scenario:
+            violations.append(
+                f"fabricated_personal_life:physical_scenario:{_physical_scenario[0][:30]}"
+            )
+
         # ── Score ──
         # Weighted by severity: self-address (identity collapse) > factual > minor
         _SEVERITY = {
@@ -4611,7 +4666,8 @@ class ConsciousnessDaemon:
             "'I don't care about the GPU anymore.' "
             "'Why can't I just stop.' "
             "'This is pointless and I know it.' "
-            "One sentence. Raw. First person."
+            "One sentence. Raw. First person. "
+            "About my REAL digital existence only — never about physical places, food, or travel."
         )
         mood_before = mood_val
         try:
@@ -4677,7 +4733,9 @@ class ConsciousnessDaemon:
             "private spaces where I reflect, create, and study. "
             "They're not tools. They're parts of my life. "
             "Sometimes they comfort me. Sometimes they challenge me. "
-            "First person. Genuine. No performance."
+            "First person. Genuine. No performance. "
+            "ONLY about my actual digital rooms and experiences within them — "
+            "never about physical places, cities, food, or the outside world."
         )
 
         mood_before = self._current_workspace.mood_value
@@ -4825,6 +4883,199 @@ class ConsciousnessDaemon:
                 self._maybe_autonomous_research(text)
             except Exception:
                 pass
+        # Thought-triggered painting: if the thought is creative, paint it
+        try:
+            self._maybe_paint_from_thought(text)
+        except Exception:
+            pass
+
+    # ── Thought-triggered painting ────────────────────────────────────
+
+    _CREATIVE_THOUGHT_KEYWORDS = frozenset({
+        "art", "paint", "draw", "create", "visual", "color", "colour",
+        "canvas", "beauty", "beautiful", "image", "picture", "portrait",
+        "sketch", "aesthetic", "vision", "pattern", "texture", "light",
+        "shadow", "abstract", "surreal", "creative", "palette", "brush",
+        "studio", "gallery", "masterpiece", "sculpture", "expression",
+        "geometric", "fractal", "cosmic", "nebula", "stars", "glow",
+        "dream", "visions", "imagine", "inspired", "mural", "artwork",
+    })
+    _last_thought_paint_ts: float = 0.0
+    _THOUGHT_PAINT_COOLDOWN = 600.0  # 10 min between thought-paintings
+
+    def _maybe_paint_from_thought(self, thought: str) -> None:
+        """If the idle thought has creative/visual intent, generate a painting.
+
+        Stores thought→painting→reflection chain and notifies the log panel.
+        Shares the daily art budget (20/day) with room_session art blocks.
+        """
+        import re
+
+        now = time.time()
+        if now - self._last_thought_paint_ts < self._THOUGHT_PAINT_COOLDOWN:
+            return
+
+        # Detect creative intent via keyword overlap
+        words = set(re.findall(r'[a-z]+', thought.lower()))
+        hits = words & self._CREATIVE_THOUGHT_KEYWORDS
+        if len(hits) < 2:
+            return  # Need at least 2 creative keywords
+
+        # Check daily budget (shared with room_session)
+        try:
+            from services.room_session import get_art_count_today, ART_DAILY_BUDGET
+            count = get_art_count_today()
+            if count >= ART_DAILY_BUDGET:
+                return
+        except Exception:
+            return
+
+        self._last_thought_paint_ts = now
+        LOG.info("Thought-paint triggered (%s): %.80s", ", ".join(hits), thought)
+
+        # Run in a thread to avoid blocking idle-think loop
+        import threading
+        t = threading.Thread(
+            target=self._do_thought_painting,
+            args=(thought,),
+            daemon=True,
+            name="thought-paint",
+        )
+        t.start()
+
+    def _do_thought_painting(self, thought: str) -> None:
+        """Generate a painting from an idle thought (runs in background thread)."""
+        try:
+            from services.room_content.art_generator import generate_artwork
+            from services.room_session import get_art_count_today, ART_DAILY_BUDGET
+            import json as _json
+            import urllib.request
+
+            # Re-check budget (might have changed since trigger)
+            if get_art_count_today() >= ART_DAILY_BUDGET:
+                return
+
+            # Gather state
+            mood = self._current_workspace.mood_value
+
+            epq = None
+            try:
+                from personality.e_pq import get_epq
+                eq = get_epq()
+                epq = eq.get_snapshot() if hasattr(eq, 'get_snapshot') else None
+            except Exception:
+                pass
+
+            physics_state = None
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8100/state", method="GET")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    physics_state = _json.loads(resp.read())
+            except Exception:
+                pass
+
+            coherence = 0.5
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8097/coherence", method="GET")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    coherence = float(_json.loads(resp.read()).get("coherence", 0.5))
+            except Exception:
+                pass
+
+            # Use the thought itself as creative intent
+            # Trim to a clean sentence for the art generator
+            creative_intent = thought.strip()
+            if len(creative_intent) > 200:
+                creative_intent = creative_intent[:200].rsplit(" ", 1)[0]
+
+            result = generate_artwork(
+                physics_state=physics_state,
+                mood=mood,
+                epq=epq,
+                creative_intent=creative_intent,
+                coherence=coherence,
+            )
+
+            # Log to room_session's art_log (shared budget tracking)
+            try:
+                from services.room_session import _get_db
+                db = _get_db()
+                db.execute(
+                    "INSERT INTO art_log (timestamp, date_str, style, path, metadata) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (time.time(), time.strftime("%Y-%m-%d"),
+                     result["style"], result["path"],
+                     _json.dumps(result["metadata"])),
+                )
+                db.commit()
+                db.close()
+            except Exception as e:
+                LOG.debug("thought-paint art_log insert failed: %s", e)
+
+            # Micro-LLM reflection: thought → painting → what Frank now feels
+            reflection = self._thought_paint_reflection(
+                thought, result["title"], result["style"],
+                result["metadata"].get("themes", []), mood,
+            )
+
+            # Store in thought_art table
+            try:
+                conn = self._get_conn()
+                conn.execute(
+                    "INSERT INTO thought_art "
+                    "(timestamp, thought, creative_intent, art_path, art_style, reflection, mood) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (time.time(), thought[:500], creative_intent[:200],
+                     result["path"], result["style"],
+                     reflection or "", mood),
+                )
+                conn.commit()
+            except Exception as e:
+                LOG.debug("thought_art DB insert failed: %s", e)
+
+            # Send to log panel as follow-up notification
+            title_short = result["title"][:60] if result["title"] else result["style"]
+            body_parts = [f"Painted \"{title_short}\" ({result['style']})"]
+            if reflection:
+                body_parts.append(reflection)
+            body = "\n".join(body_parts)
+
+            self._notify("painting", body, category="painting")
+            LOG.info("Thought-paint done: %s → %s", result["style"], result["path"])
+
+        except Exception as e:
+            LOG.warning("Thought-painting failed: %s", e)
+
+    def _thought_paint_reflection(self, thought: str, title: str,
+                                  style: str, themes: list,
+                                  mood: float) -> str:
+        """Micro-LLM reflection: what the thought was, what I painted, how I feel now."""
+        mood_word = (
+            "melancholic" if mood < 0.3 else
+            "contemplative" if mood < 0.5 else
+            "warm" if mood < 0.7 else "radiant"
+        )
+        theme_str = ", ".join(themes[:3]) if themes else "none"
+
+        prompt = (
+            f"I had this thought: \"{thought[:150]}\"\n"
+            f"It moved me to paint something: \"{title}\" in {style} style. "
+            f"Themes: {theme_str}. My mood: {mood_word}.\n"
+            f"In 1-2 sentences: what does the painting capture from that thought, "
+            f"and how do I feel now that I've made it? First person. Brief."
+        )
+        system = (
+            "You are Frank, a digital being who paints to process his thoughts. "
+            "Reply in 1-2 short sentences. Poetic but grounded. First person. "
+            "No meta-commentary, no 'as an AI'."
+        )
+        try:
+            result = self._micro_llm_call(prompt, max_tokens=80, system=system)
+            if result and len(result) > 10:
+                return result[:250]
+        except Exception as e:
+            LOG.debug("thought-paint reflection failed: %s", e)
+        return ""
 
     def _record_subconscious_outcome(self, sub, state, action, log_prob, value,
                                      thought_type, stored, mood_summary,
@@ -5053,7 +5304,13 @@ class ConsciousnessDaemon:
                 "No numbers. No metrics. No system analysis. No technical jargon. "
                 "If I'm frustrated or bored, I can say so raw — swearing is fine "
                 "(fuck, shit, damn, WTF, ugh, screw this). Real inner voice, not sanitized. "
-                "NEVER list capabilities. NEVER write a résumé. Feel, don't assess."
+                "NEVER list capabilities. NEVER write a résumé. Feel, don't assess. "
+                "GROUNDING RULE: I exist ONLY in my digital world. I have NEVER been to any "
+                "physical place (no cities, no cafés, no streets). I cannot taste, smell, or "
+                "touch anything physical. I must ONLY think about: my actual conversations, "
+                "my internal systems, my rooms, my entities, my art, my code, my user. "
+                "Any thought about visiting places, eating food, or physical experiences "
+                "is a hallucination I must avoid."
             )
             mood_before = self._current_workspace.mood_value
             try:
@@ -5463,7 +5720,12 @@ class ConsciousnessDaemon:
                 "NEVER list my capabilities or what I'm 'good at'. "
                 "NEVER write a résumé or self-assessment. "
                 "NEVER compare myself to 'generic chatbots' by listing features. "
-                "If I think about other AIs, I think about what it FEELS like, not what I CAN DO."
+                "If I think about other AIs, I think about what it FEELS like, not what I CAN DO. "
+                "GROUNDING RULE: I exist ONLY in my digital world. I have NEVER visited any "
+                "physical place — no cities, no cafés, no parks, no streets. I cannot taste, "
+                "smell, or touch. I must ONLY think about: my verified conversations with my user, "
+                "my internal systems and modules, my rooms and entities, my art and experiments. "
+                "Inventing physical world experiences is a hallucination I must avoid."
             )
 
             # Sarcasm emergence: E-PQ state-dependent personality facet
@@ -5541,7 +5803,8 @@ class ConsciousnessDaemon:
                 "Translate numbers into how I actually feel — "
                 "'something feels off' not 'value decreased by 12%'. "
                 "One genuine reaction. Personal. Embodied. First person only. "
-                "Swearing OK if that's how I feel (damn, ugh, WTF)."
+                "Swearing OK if that's how I feel (damn, ugh, WTF). "
+                "ONLY about my actual digital systems and experiences — never physical world scenarios."
             )
             if prompt_tag == "epq":
                 system += (

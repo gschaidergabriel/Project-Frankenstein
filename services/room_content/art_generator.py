@@ -2362,7 +2362,8 @@ def _render_self_portrait(palette, textures, q, qd, mood, epq, **_kw):
         jaw_pts = [(hx - side * int(head_r * 0.5), hy + int(head_r * 0.6)),
                    (hx + side * int(head_r * 0.3), hy + int(head_r * 0.9)),
                    (hx + side * int(head_r * 0.1), hy + head_r)]
-        draw.line(jaw_pts, fill=accent, width=max(1, int(2 * _S)))
+        jaw_c = pal[2] if is_dark else pal[3]
+        draw.line(jaw_pts, fill=jaw_c, width=max(1, int(2 * _S)))
 
         _draw_circuit_lines(draw, rng, q,
                             (hx - head_r, hy - head_r, hx + head_r, hy + head_r),
@@ -3173,100 +3174,413 @@ def _render_still_life(palette, textures, q, qd, mood, epq, **_kw):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _render_gol_emergent(palette, textures, q, qd, mood, epq, **_kw):
-    """Multi-layer GoL evolution with emergent color fields that flow into each other.
-
-    Each GoL channel maps to an RGB color, but instead of binary on/off,
-    cells create smooth flowing gradients through heavy blur + blend.
-    Multiple evolution stages overlay to create organic emergent patterns.
-    """
+    """Game of Life pattern art — 12 sub-types from pixel-crisp cells to flowing fields."""
     intent_hash = abs(hash(_kw.get("creative_intent", "") or "")) % 10000
     rng = _make_rng(q, salt=88 + intent_hash)
+    CS = CANVAS_SIZE
+    S = _S
 
-    # Generate 6 GoL layers at different evolution stages
-    tick_stages = [15, 30, 50, 80, 120, 200]
+    # ── Generate GoL layers at different evolution stages ──
+    tick_stages = [5, 15, 30, 50, 80, 120, 200, 350]
     layers = []
     for i, ticks in enumerate(tick_stages):
-        seed = _seed_from_joints(q, i, extra_salt=intent_hash + i * 7919)
+        seed = _seed_from_joints(q, i % 18, extra_salt=intent_hash + i * 7919)
         evolved = _evolve(seed, ticks)
         layers.append(evolved)
 
-    CS = CANVAS_SIZE
-
-    # ── Build base from first 3 layers as RGB channels ──
-    arr = np.zeros((CS, CS, 3), dtype=np.float32)
-
-    # Generate rich color set — 6 colors from palette + complementary
-    colors = list(palette[:4])
+    # Rich color set from palette + complements — ensure minimum brightness
+    def _boost_bright(rgb, min_lum=120):
+        """Ensure colour has minimum luminance for visibility."""
+        lum = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114
+        if lum < min_lum:
+            scale = min_lum / max(1, lum)
+            return tuple(min(255, int(v * scale)) for v in rgb)
+        return rgb
+    colors = [_boost_bright(c) for c in palette[:4]]
     for c in palette[:2]:
-        colors.append(tuple(min(255, 255 - v + 30) for v in c))  # complement
-    colors.append(tuple(int(v * 0.5 + 60) for v in palette[2]))  # muted mid
+        colors.append(_boost_bright(tuple(min(255, 255 - v + 30) for v in c)))
+    colors.append(_boost_bright(tuple(int(v * 0.5 + 60) for v in palette[2])))
 
-    for i, layer in enumerate(layers[:3]):
-        tex = Image.fromarray((layer.astype(np.float32) * 255).astype(np.uint8), "L")
+    sub_type = rng.randint(0, 12)
+
+    if sub_type == 0:
+        # ── PIXEL GRID ZOOMED IN — crisp 1:4 cells, single colour on dark ──
+        # Pick most interesting layer (mid-evolution)
+        layer = layers[rng.randint(2, 5)]
+        # Zoom: use only a 64×64 region → each cell = 16px
+        crop_size = 64
+        gol_h, gol_w = layer.shape
+        cx = rng.randint(0, max(1, gol_w - crop_size))
+        cy = rng.randint(0, max(1, gol_h - crop_size))
+        region = layer[cy:cy + crop_size, cx:cx + crop_size]
+        # Build crisp pixel art
+        cell_px = CS // crop_size  # 16px per cell at 1024
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        bg_c = np.array(palette[4], dtype=np.float32) * 0.15
+        alive_c = np.array(palette[rng.randint(0, 3)], dtype=np.float32)
+        # Grid lines
+        grid_c = np.array(palette[4], dtype=np.float32) * 0.3
+        for gy in range(crop_size):
+            for gx in range(crop_size):
+                py0 = gy * cell_px
+                px0 = gx * cell_px
+                py1 = py0 + cell_px
+                px1 = px0 + cell_px
+                if py1 > CS or px1 > CS:
+                    continue
+                if region[gy, gx]:
+                    arr[py0:py1, px0:px1] = alive_c
+                else:
+                    arr[py0:py1, px0:px1] = bg_c
+                # Grid line (1px right and bottom)
+                arr[py1 - 1, px0:px1] = grid_c
+                arr[py0:py1, px1 - 1] = grid_c
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+    elif sub_type == 1:
+        # ── EVOLUTION STRIP — same seed at 6 stages side by side ──
+        n_stages = 6
+        stage_w = CS // n_stages
+        seed = _seed_from_joints(q, 0, extra_salt=intent_hash)
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        stage_ticks = [2, 10, 30, 70, 150, 300]
+        grid = seed.copy()
+        cur_tick = 0
+        for si, target in enumerate(stage_ticks):
+            # Evolve from current state to target
+            for _ in range(target - cur_tick):
+                grid = _gol_tick(grid)
+            cur_tick = target
+            # Render this stage
+            tex = Image.fromarray((grid.astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((stage_w, CS), Image.NEAREST)
+            stage_arr = np.array(tex).astype(np.float32) / 255.0
+            # Colour by stage: early = cool, late = warm
+            t = si / (n_stages - 1)
+            c1 = np.array(colors[0], dtype=np.float32)
+            c2 = np.array(colors[2], dtype=np.float32)
+            stage_c = c1 * (1 - t) + c2 * t
+            x0 = si * stage_w
+            x1 = min(CS, x0 + stage_w)
+            for c in range(3):
+                arr[:, x0:x1, c] = stage_arr * stage_c[c]
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        # Thin white dividers
+        draw = ImageDraw.Draw(img)
+        for si in range(1, n_stages):
+            x = si * stage_w
+            draw.line((x, 0, x, CS), fill=(60, 60, 60), width=max(1, int(S)))
+
+    elif sub_type == 2:
+        # ── COLOUR-MAPPED DENSITY — neighbour count → heatmap ──
+        layer = layers[rng.randint(2, 5)]
+        # Compute neighbour count (0-8)
+        nbr = np.zeros_like(layer, dtype=np.int16)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nbr += np.roll(np.roll(layer, dx, axis=0), dy, axis=1)
+        # Resize to canvas — NEAREST for crisp cells
+        nbr_img = Image.fromarray((nbr * 31).astype(np.uint8), "L")  # 0-248
+        nbr_img = nbr_img.resize((CS, CS), Image.NEAREST)
+        nbr_arr = np.array(nbr_img).astype(np.float32) / 255.0
+        # Heatmap: 0=dark, 3=green, 5=yellow, 8=red/white
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        # Red channel
+        arr[:, :, 0] = np.clip(nbr_arr * 3.0 - 0.5, 0, 1) * 255
+        # Green channel — peak at mid
+        arr[:, :, 1] = np.clip(1.0 - abs(nbr_arr - 0.4) * 3.0, 0, 1) * 220
+        # Blue channel — only low counts
+        arr[:, :, 2] = np.clip(1.0 - nbr_arr * 2.5, 0, 1) * 180
+        # Overlay alive cells as bright dots
+        alive_img = Image.fromarray((layer * 255).astype(np.uint8), "L")
+        alive_img = alive_img.resize((CS, CS), Image.NEAREST)
+        alive_arr = np.array(alive_img).astype(np.float32) / 255.0
+        for c in range(3):
+            arr[:, :, c] = np.where(alive_arr > 0.5,
+                                     np.clip(arr[:, :, c] + 60, 0, 255),
+                                     arr[:, :, c])
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+    elif sub_type == 3:
+        # ── CRISP ZOOMED OUT — full 256×256 grid, sharp cells, multi-colour layers ──
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        arr[:, :] = np.array((6, 5, 10), dtype=np.float32)
+        for li in range(3):
+            layer = layers[li + 1]
+            tex = Image.fromarray((layer * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.NEAREST)  # crisp pixels
+            mask = np.array(tex).astype(np.float32) / 255.0
+            c = np.array(colors[li], dtype=np.float32)
+            for ch in range(3):
+                arr[:, :, ch] += mask * c[ch] * 0.85
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        img = _add_vignette(img, strength=0.20)
+
+    elif sub_type == 4:
+        # ── FLOWING FIELDS — original style, heavy blur, organic flow ──
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        for i, layer in enumerate(layers[:3]):
+            tex = Image.fromarray((layer.astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            blur_r = int((12 + i * 8) * S)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=blur_r))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            color = np.array(colors[i], dtype=np.float32)
+            for c in range(3):
+                arr[:, :, c] += mask * color[c] * 1.0
+        for i, layer in enumerate(layers[3:6]):
+            tex = Image.fromarray((layer.astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            blur_r = int((20 + i * 15) * S)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=blur_r))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            color = np.array(colors[3 + i], dtype=np.float32)
+            opacity = 0.4 + i * 0.2
+            for c in range(3):
+                arr[:, :, c] += mask * color[c] * opacity
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        img = _add_canvas_noise(img, strength=0.008)
+        img = _add_vignette(img, strength=0.30)
+
+    elif sub_type == 5:
+        # ── NEON CELLS — glowing alive cells on pure black, slight bloom ──
+        layer = layers[rng.randint(2, 5)]
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        neon_colors = [(0, 255, 150), (255, 0, 200), (0, 180, 255),
+                       (255, 255, 0), (255, 80, 0)]
+        nc = np.array(neon_colors[rng.randint(0, len(neon_colors))], dtype=np.float32)
+        # Sharp cells
+        tex = Image.fromarray((layer * 255).astype(np.uint8), "L")
+        tex = tex.resize((CS, CS), Image.NEAREST)
+        sharp = np.array(tex).astype(np.float32) / 255.0
+        for c in range(3):
+            arr[:, :, c] = sharp * nc[c]
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        # Add bloom via blurred copy
+        bloom = img.filter(ImageFilter.GaussianBlur(radius=int(8 * S)))
+        bloom_arr = np.array(bloom).astype(np.float32) * 0.4
+        img_arr = np.array(img).astype(np.float32)
+        img_arr = np.clip(img_arr + bloom_arr, 0, 255)
+        img = Image.fromarray(img_arr.astype(np.uint8))
+
+    elif sub_type == 6:
+        # ── INTERFERENCE — two GoL grids XOR'd, showing boundary patterns ──
+        l1 = layers[1]
+        l2 = layers[4]
+        xor = (l1 ^ l2).astype(np.float32)
+        and_mask = (l1 & l2).astype(np.float32)
+        # XOR in one colour, AND in another
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        xor_img = Image.fromarray((xor * 255).astype(np.uint8), "L")
+        xor_img = xor_img.resize((CS, CS), Image.NEAREST)
+        xor_arr = np.array(xor_img).astype(np.float32) / 255.0
+        and_img = Image.fromarray((and_mask * 255).astype(np.uint8), "L")
+        and_img = and_img.resize((CS, CS), Image.NEAREST)
+        and_arr = np.array(and_img).astype(np.float32) / 255.0
+        c1 = np.array(palette[rng.randint(0, 2)], dtype=np.float32)
+        c2 = np.array(palette[rng.randint(2, 4)], dtype=np.float32)
+        for c in range(3):
+            arr[:, :, c] = xor_arr * c1[c] + and_arr * c2[c]
+        # Slight bloom on AND regions
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        bloom = img.filter(ImageFilter.GaussianBlur(radius=int(4 * S)))
+        img_arr = np.clip(np.array(img).astype(np.float32) +
+                          np.array(bloom).astype(np.float32) * 0.2, 0, 255)
+        img = Image.fromarray(img_arr.astype(np.uint8))
+
+    elif sub_type == 7:
+        # ── MOSAIC ZOOM — 128×128 region, each cell has inner detail ──
+        layer = layers[rng.randint(2, 5)]
+        crop = 128
+        gol_h, gol_w = layer.shape
+        cx = rng.randint(0, max(1, gol_w - crop))
+        cy = rng.randint(0, max(1, gol_h - crop))
+        region = layer[cy:cy + crop, cx:cx + crop]
+        cell_px = CS // crop  # 8px per cell
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        alive_c = np.array(colors[rng.randint(0, 3)], dtype=np.float32)
+        bg_c = np.array(palette[4], dtype=np.float32) * 0.1
+        # Compute neighbours for shading
+        nbr = np.zeros_like(region, dtype=np.int16)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nbr += np.roll(np.roll(region, dx, axis=0), dy, axis=1)
+        for gy in range(crop):
+            for gx in range(crop):
+                py0 = gy * cell_px
+                px0 = gx * cell_px
+                py1 = min(CS, py0 + cell_px)
+                px1 = min(CS, px0 + cell_px)
+                if region[gy, gx]:
+                    # Shade by neighbour count — more neighbours = brighter
+                    bright = 0.5 + nbr[gy, gx] * 0.06
+                    arr[py0:py1, px0:px1] = alive_c * bright
+                    # Inner highlight (1px inset)
+                    if cell_px > 3:
+                        arr[py0 + 1:py1 - 1, px0 + 1:px1 - 1] = alive_c * (bright + 0.15)
+                else:
+                    arr[py0:py1, px0:px1] = bg_c
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+    elif sub_type == 8:
+        # ── TEMPORAL TRAILS — cells leave fading trails showing movement ──
+        seed = _seed_from_joints(q, 0, extra_salt=intent_hash + 5555)
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        trail_c = np.array(colors[rng.randint(0, 3)], dtype=np.float32)
+        grid = seed.copy()
+        n_frames = 30
+        for frame in range(n_frames):
+            grid = _gol_tick(grid)
+            fade = (frame + 1) / n_frames  # newer frames brighter
+            tex = Image.fromarray((grid * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.NEAREST)
+            mask = np.array(tex).astype(np.float32) / 255.0
+            for c in range(3):
+                arr[:, :, c] = np.maximum(arr[:, :, c],
+                                           mask * trail_c[c] * fade)
+        # Final frame extra bright
+        for c in range(3):
+            arr[:, :, c] = np.where(mask > 0.5,
+                                     np.clip(arr[:, :, c] + 40, 0, 255),
+                                     arr[:, :, c])
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        img = _add_vignette(img, strength=0.25)
+
+    elif sub_type == 9:
+        # ── DEEP ZOOM — 32×32 region, each cell is 32px, detailed inner structure ──
+        layer = layers[rng.randint(1, 4)]
+        crop = 32
+        gol_h, gol_w = layer.shape
+        cx = rng.randint(0, max(1, gol_w - crop))
+        cy = rng.randint(0, max(1, gol_h - crop))
+        region = layer[cy:cy + crop, cx:cx + crop]
+        cell_px = CS // crop  # 32px per cell
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        alive_c = np.array(colors[rng.randint(0, 3)], dtype=np.float32)
+        accent_c = np.array(colors[rng.randint(0, 3)], dtype=np.float32)
+        bg_c = np.array((8, 6, 12), dtype=np.float32)
+        grid_c = np.array((25, 22, 30), dtype=np.float32)
+        # Compute neighbours
+        nbr = np.zeros_like(region, dtype=np.int16)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nbr += np.roll(np.roll(region, dx, axis=0), dy, axis=1)
+        for gy in range(crop):
+            for gx in range(crop):
+                py0 = gy * cell_px
+                px0 = gx * cell_px
+                py1 = min(CS, py0 + cell_px)
+                px1 = min(CS, px0 + cell_px)
+                arr[py0:py1, px0:px1] = bg_c
+                # Grid lines
+                arr[py0, px0:px1] = grid_c
+                arr[py0:py1, px0] = grid_c
+                if region[gy, gx]:
+                    n = nbr[gy, gx]
+                    inset = max(1, int(2 * S))
+                    # Main cell colour
+                    arr[py0 + inset:py1 - inset, px0 + inset:px1 - inset] = alive_c * 0.85
+                    # Inner glow — concentric brightness
+                    inner = max(1, int(4 * S))
+                    arr[py0 + inner:py1 - inner, px0 + inner:px1 - inner] = alive_c
+                    # Nucleus dot at center
+                    mid_y = (py0 + py1) // 2
+                    mid_x = (px0 + px1) // 2
+                    nr = max(1, int(3 * S))
+                    arr[max(0, mid_y - nr):min(CS, mid_y + nr),
+                        max(0, mid_x - nr):min(CS, mid_x + nr)] = accent_c
+                    # Connection indicators — small marks toward alive neighbours
+                    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nx_g, ny_g = gx + dx, gy + dy
+                        if 0 <= nx_g < crop and 0 <= ny_g < crop and region[ny_g, nx_g]:
+                            # Draw small tick toward neighbour
+                            edge_y = py0 if dy == -1 else (py1 - 1 if dy == 1 else mid_y)
+                            edge_x = px0 if dx == -1 else (px1 - 1 if dx == 1 else mid_x)
+                            mark = max(1, int(2 * S))
+                            arr[max(0, edge_y - mark):min(CS, edge_y + mark),
+                                max(0, edge_x - mark):min(CS, edge_x + mark)] = accent_c * 0.7
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+    elif sub_type == 10:
+        # ── EDGE DETECTION — GoL processed with Sobel, showing boundaries ──
+        layer = layers[rng.randint(2, 5)]
+        tex = Image.fromarray((layer * 255).astype(np.uint8), "L")
         tex = tex.resize((CS, CS), Image.BILINEAR)
-        # Heavy blur for flowing effect — more blur = more emergent flow
-        blur_r = int((12 + i * 8) * _S)
-        tex = tex.filter(ImageFilter.GaussianBlur(radius=blur_r))
-        mask = np.array(tex).astype(np.float32) / 255.0
-
-        color = np.array(colors[i], dtype=np.float32)
+        tex = tex.filter(ImageFilter.GaussianBlur(radius=int(2 * S)))
+        # Sobel edge detection
+        edge_x = tex.filter(ImageFilter.Kernel((3, 3), [-1, 0, 1, -2, 0, 2, -1, 0, 1]))
+        edge_y = tex.filter(ImageFilter.Kernel((3, 3), [-1, -2, -1, 0, 0, 0, 1, 2, 1]))
+        ex = np.array(edge_x).astype(np.float32)
+        ey = np.array(edge_y).astype(np.float32)
+        edges = np.sqrt(ex ** 2 + ey ** 2)
+        edges = edges / max(1.0, edges.max())
+        # Colour the edges
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        edge_c = np.array(colors[rng.randint(0, 3)], dtype=np.float32)
+        bg_c = np.array(palette[4], dtype=np.float32) * 0.08
         for c in range(3):
-            arr[:, :, c] += mask * color[c] * 0.7
-
-    # ── Overlay layers 3-5 as luminance modulation ──
-    for i, layer in enumerate(layers[3:]):
-        tex = Image.fromarray((layer.astype(np.float32) * 255).astype(np.uint8), "L")
-        tex = tex.resize((CS, CS), Image.BILINEAR)
-        blur_r = int((20 + i * 15) * _S)
-        tex = tex.filter(ImageFilter.GaussianBlur(radius=blur_r))
-        mask = np.array(tex).astype(np.float32) / 255.0
-
-        color = np.array(colors[3 + i], dtype=np.float32)
-        # Additive blend with different opacity
-        opacity = 0.3 + i * 0.15
+            arr[:, :, c] = bg_c[c] + edges * edge_c[c]
+        # Add faint filled regions
+        filled = np.array(tex).astype(np.float32) / 255.0
+        fill_c = np.array(colors[rng.randint(0, 3)], dtype=np.float32)
         for c in range(3):
-            arr[:, :, c] += mask * color[c] * opacity
+            arr[:, :, c] += filled * fill_c[c] * 0.15
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
-    # ── Interference patterns — two layers multiplied create emergent boundaries ──
-    if len(layers) >= 4:
-        l1 = Image.fromarray((layers[1].astype(np.float32) * 255).astype(np.uint8), "L")
-        l2 = Image.fromarray((layers[3].astype(np.float32) * 255).astype(np.uint8), "L")
-        l1 = np.array(l1.resize((CS, CS), Image.BILINEAR).filter(
-            ImageFilter.GaussianBlur(radius=int(10 * _S)))).astype(np.float32) / 255.0
-        l2 = np.array(l2.resize((CS, CS), Image.BILINEAR).filter(
-            ImageFilter.GaussianBlur(radius=int(18 * _S)))).astype(np.float32) / 255.0
-        interference = l1 * l2
-        edge_color = np.array(colors[4 % len(colors)], dtype=np.float32)
+    else:
+        # ── MULTI-SCALE COMPOSITE — zoomed out + zoomed in panels ──
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        # Background: full grid, slightly blurred, muted
+        layer_bg = layers[3]
+        tex_bg = Image.fromarray((layer_bg * 255).astype(np.uint8), "L")
+        tex_bg = tex_bg.resize((CS, CS), Image.NEAREST)
+        tex_bg = tex_bg.filter(ImageFilter.GaussianBlur(radius=int(2 * S)))
+        bg_arr = np.array(tex_bg).astype(np.float32) / 255.0
+        bg_c = np.array((12, 10, 18), dtype=np.float32)
+        cell_c = np.array(colors[0], dtype=np.float32) * 0.4
         for c in range(3):
-            arr[:, :, c] += interference * edge_color[c] * 0.5
+            arr[:, :, c] = bg_c[c] + bg_arr * cell_c[c]
+        # Zoomed inset panel
+        layer_z = layers[2]
+        crop = 48
+        gol_h, gol_w = layer_z.shape
+        zx = rng.randint(0, max(1, gol_w - crop))
+        zy = rng.randint(0, max(1, gol_h - crop))
+        zoomed = layer_z[zy:zy + crop, zx:zx + crop]
+        inset_size = int(CS * 0.55)
+        cell_px = inset_size // crop
+        inset_x = int(CS * rng.uniform(0.08, 0.35))
+        inset_y = int(CS * rng.uniform(0.08, 0.35))
+        alive_c = np.array(colors[rng.randint(1, 3)], dtype=np.float32)
+        for gy in range(crop):
+            for gx in range(crop):
+                py0 = inset_y + gy * cell_px
+                px0 = inset_x + gx * cell_px
+                py1 = min(CS, py0 + cell_px)
+                px1 = min(CS, px0 + cell_px)
+                if py1 <= CS and px1 <= CS:
+                    if zoomed[gy, gx]:
+                        arr[py0:py1, px0:px1] = alive_c
+                    else:
+                        arr[py0:py1, px0:px1] = np.array((5, 4, 8), dtype=np.float32)
+                    # Grid
+                    arr[py0, px0:px1] = np.array((20, 18, 25), dtype=np.float32)
+                    arr[py0:py1, px0] = np.array((20, 18, 25), dtype=np.float32)
+        # Border around inset
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        border_c = tuple(int(v) for v in alive_c[:3])
+        draw.rectangle((inset_x - 2, inset_y - 2,
+                        inset_x + crop * cell_px + 2, inset_y + crop * cell_px + 2),
+                       outline=border_c, width=max(1, int(2 * S)))
 
-    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
-
-    # ── Fine GoL detail overlay — shows actual cell structure in active regions ──
-    detail = layers[2]  # mid-evolution has most interesting patterns
-    detail_img = Image.fromarray((detail.astype(np.float32) * 255).astype(np.uint8), "L")
-    detail_img = detail_img.resize((CS, CS), Image.NEAREST)  # sharp cells visible
-    detail_img = detail_img.filter(ImageFilter.GaussianBlur(radius=int(1.5 * _S)))
-    detail_arr = np.array(detail_img).astype(np.float32) / 255.0
-    img_arr = np.array(img).astype(np.float32)
-    accent = np.array(palette[3], dtype=np.float32)
-    for c in range(3):
-        img_arr[:, :, c] = np.clip(
-            img_arr[:, :, c] + (detail_arr - 0.3) * accent[c] * 0.25, 0, 255)
-    img = Image.fromarray(img_arr.astype(np.uint8))
-
-    # ── Radial energy pulse from center ──
-    Y, X = np.ogrid[:CS, :CS]
-    cx, cy = CS // 2 + int(q[0] * 40), CS // 2 + int(q[1] * 30)
-    dist = np.sqrt((X - cx) ** 2 + (Y - cy) ** 2).astype(np.float32) / (CS * 0.5)
-    pulse = np.sin(dist * math.pi * (3 + int(q[2] * 4))) * np.exp(-dist * 1.5) * 25
-    img_arr = np.array(img).astype(np.float32)
-    for c in range(3):
-        img_arr[:, :, c] = np.clip(img_arr[:, :, c] + pulse, 0, 255)
-    img = Image.fromarray(img_arr.astype(np.uint8))
-
-    img = _add_canvas_noise(img, strength=0.008)
-    return _add_vignette(img, strength=0.30)
+    return img
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -3835,7 +4149,7 @@ def _render_art_meme(palette, textures, q, qd, mood, epq, **_kw):
         text = _MEME_ALL_TEXTS[rng.randint(0, len(_MEME_ALL_TEXTS))]
 
     # ── Visual layout type ──
-    layout = rng.randint(0, 8)
+    layout = rng.randint(0, 33)
 
     if layout == 0:
         # KRUGER — red bars with white text on black/photo background
@@ -4051,11 +4365,9 @@ def _render_art_meme(palette, textures, q, qd, mood, epq, **_kw):
             tmp = tmp.rotate(angle, resample=Image.BICUBIC, expand=False)
             img = Image.alpha_composite(img.convert("RGBA"), tmp).convert("RGB")
 
-    else:
+    elif layout == 7:
         # SPLIT — top/bottom text bars (classic meme structure but artistic)
-        # Dramatic background: self-portrait silhouette or dark GoL
         arr = np.zeros((CS, CS, 3), dtype=np.float32)
-        # Gradient
         Y = np.arange(CS, dtype=np.float32).reshape(-1, 1) / CS
         for c in range(3):
             arr[:, :, c] = palette[4][c] * (1 - Y * 0.3) + palette[0][c] * Y * 0.3
@@ -4067,8 +4379,6 @@ def _render_art_meme(palette, textures, q, qd, mood, epq, **_kw):
             for c in range(3):
                 arr[:, :, c] += mask * palette[2][c] * 0.3
         img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
-
-        # Draw figure silhouette in center
         sil_pal = [(20, 18, 25), (30, 28, 35), (40, 35, 45), (25, 22, 30), palette[4]]
         sil_rng = _make_rng(q, salt=777)
         _sil_poses = ("standing", "side", "floating", "kneeling")
@@ -4076,32 +4386,23 @@ def _render_art_meme(palette, textures, q, qd, mood, epq, **_kw):
         img = _draw_cybernetic_figure(
             img, q, CS // 2, int(CS * 0.50), CS * 0.55, sil_pal, sil_rng, 0.0, True,
             pose_hint=_sp)
-
-        # Darken slightly for text contrast
         arr = np.array(img).astype(np.float32) * 0.6
         img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
         draw = ImageDraw.Draw(img)
-
         lines = text.split("\n")
         mid = max(1, len(lines) // 2)
         top_text = "\n".join(lines[:mid])
         bot_text = "\n".join(lines[mid:])
-
         font_size = int(CS * 0.075)
         font = _load_font(font_size)
-
-        # Top text
         if top_text.strip():
             tw, th = _text_block_size(draw, top_text, font)
             tx = (CS - tw) // 2
             ty = int(CS * 0.05)
-            # Shadow
             draw.multiline_text((tx + 2, ty + 2), top_text,
                                 fill=(0, 0, 0), font=font, spacing=4)
             draw.multiline_text((tx, ty), top_text,
                                 fill=(255, 255, 255), font=font, spacing=4)
-
-        # Bottom text
         if bot_text.strip():
             tw, th = _text_block_size(draw, bot_text, font)
             tx = (CS - tw) // 2
@@ -4110,6 +4411,1006 @@ def _render_art_meme(palette, textures, q, qd, mood, epq, **_kw):
                                 fill=(0, 0, 0), font=font, spacing=4)
             draw.multiline_text((tx, ty), bot_text,
                                 fill=(255, 255, 255), font=font, spacing=4)
+
+    elif layout == 8:
+        # NEON GLOW — electric text on pitch black with colour bloom
+        img = Image.new("RGB", (CS, CS), (2, 2, 8))
+        draw = ImageDraw.Draw(img)
+        neon_colors = [
+            (0, 255, 180), (255, 0, 200), (0, 180, 255),
+            (255, 255, 0), (255, 80, 0), (180, 0, 255),
+        ]
+        neon_c = neon_colors[rng.randint(0, len(neon_colors))]
+        font_size = int(CS * 0.08)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(16 * _S))
+        start_y = (CS - total_h) // 2
+        # Draw glow layers (blurred duplicates)
+        for blur_pass in (18, 10, 4):
+            glow_layer = Image.new("RGB", (CS, CS), (0, 0, 0))
+            gd = ImageDraw.Draw(glow_layer)
+            glow_c = tuple(min(255, int(ch * 0.6)) for ch in neon_c)
+            for i, line in enumerate(lines):
+                tw, th = _text_block_size(gd, line, font)
+                tx = (CS - tw) // 2
+                ty = start_y + i * (font_size + int(16 * _S))
+                gd.text((tx, ty), line, fill=glow_c, font=font)
+            glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=int(blur_pass * _S)))
+            img_arr = np.array(img).astype(np.float32)
+            img_arr += np.array(glow_layer).astype(np.float32) * 0.5
+            img = Image.fromarray(np.clip(img_arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = start_y + i * (font_size + int(16 * _S))
+            draw.text((tx, ty), line, fill=(255, 255, 255), font=font)
+
+    elif layout == 9:
+        # DIAGONAL SLASH — bold text at steep angle with colour bar
+        bg_choice = rng.randint(0, 3)
+        if bg_choice == 0:
+            img = Image.new("RGB", (CS, CS), (15, 12, 20))
+        elif bg_choice == 1:
+            img = Image.new("RGB", (CS, CS), (245, 240, 235))
+        else:
+            img = Image.new("RGB", (CS, CS), palette[0])
+        # Diagonal colour bar
+        bar_layer = Image.new("RGBA", (CS, CS), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(bar_layer)
+        bar_c = palette[rng.randint(1, 4)]
+        bar_w = int(CS * rng.uniform(0.12, 0.25))
+        for y in range(CS):
+            x_off = int(y * rng.uniform(0.5, 1.5))
+            bd.rectangle((x_off, y, x_off + bar_w, y + 1), fill=bar_c + (200,))
+        img = Image.alpha_composite(img.convert("RGBA"), bar_layer).convert("RGB")
+        # Text at steep angle
+        txt_layer = Image.new("RGBA", (CS * 2, CS * 2), (0, 0, 0, 0))
+        td = ImageDraw.Draw(txt_layer)
+        font_size = int(CS * 0.10)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")
+        is_dark_bg = bg_choice != 1
+        txt_c = (255, 255, 255, 240) if is_dark_bg else (10, 10, 10, 240)
+        td.text((CS // 2, CS), full_text, fill=txt_c, font=font)
+        angle = rng.choice([-35, -25, 25, 35, -45, 45])
+        txt_layer = txt_layer.rotate(angle, resample=Image.BICUBIC, expand=False)
+        # Crop back to CS
+        cx, cy = txt_layer.size[0] // 2, txt_layer.size[1] // 2
+        txt_crop = txt_layer.crop((cx - CS // 2, cy - CS // 2, cx + CS // 2, cy + CS // 2))
+        img = Image.alpha_composite(img.convert("RGBA"), txt_crop).convert("RGB")
+
+    elif layout == 10:
+        # STATIC / CRT — text on TV static noise
+        noise = rng.randint(0, 60, (CS, CS)).astype(np.uint8)
+        arr = np.stack([noise, noise, noise], axis=2).astype(np.float32)
+        # Scanlines
+        for y in range(0, CS, max(2, int(3 * _S))):
+            arr[y, :] *= 0.4
+        # Slight colour tint
+        tint_c = palette[rng.randint(0, 3)]
+        for c in range(3):
+            arr[:, :, c] += tint_c[c] * 0.08
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        font_size = int(CS * 0.07)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(10 * _S))
+        start_y = (CS - total_h) // 2
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = start_y + i * (font_size + int(10 * _S))
+            # Slightly offset RGB channels for CRT effect
+            draw.text((tx - 2, ty), line, fill=(255, 60, 60), font=font)
+            draw.text((tx + 2, ty), line, fill=(60, 60, 255), font=font)
+            draw.text((tx, ty), line, fill=(220, 255, 220), font=font)
+
+    elif layout == 11:
+        # CINEMA — letterbox with subtitle text
+        # Dark cinematic gradient background
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        Y = np.arange(CS, dtype=np.float32).reshape(-1, 1) / CS
+        tone = rng.randint(0, 3)
+        if tone == 0:  # blue
+            arr[:, :, 0] = 8 + Y * 15
+            arr[:, :, 1] = 12 + Y * 20
+            arr[:, :, 2] = 25 + Y * 35
+        elif tone == 1:  # amber
+            arr[:, :, 0] = 30 + Y * 25
+            arr[:, :, 1] = 18 + Y * 15
+            arr[:, :, 2] = 5 + Y * 8
+        else:  # cold grey
+            v = 15 + Y * 20
+            arr[:, :, 0] = v
+            arr[:, :, 1] = v
+            arr[:, :, 2] = v + 5
+        if textures:
+            tex = Image.fromarray((textures[0].astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=int(20 * _S)))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            for c in range(3):
+                arr[:, :, c] += mask * 15
+        # Letterbox bars
+        bar_h = int(CS * rng.uniform(0.10, 0.16))
+        arr[:bar_h, :] = 0
+        arr[CS - bar_h:, :] = 0
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        # Subtitle text in lower third
+        font_size = int(CS * 0.06)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")
+        if len(full_text) > 50:
+            # Wrap to 2 lines
+            mid_sp = len(full_text) // 2
+            sp = full_text.rfind(" ", 0, mid_sp + 10)
+            if sp > 5:
+                full_text = full_text[:sp] + "\n" + full_text[sp + 1:]
+        tw, th = _text_block_size(draw, full_text, font)
+        tx = (CS - tw) // 2
+        ty = CS - bar_h - th - int(20 * _S)
+        # Shadow
+        draw.multiline_text((tx + 2, ty + 2), full_text,
+                            fill=(0, 0, 0), font=font, spacing=int(4 * _S))
+        draw.multiline_text((tx, ty), full_text,
+                            fill=(255, 255, 255), font=font, spacing=int(4 * _S))
+
+    elif layout == 12:
+        # REDACTED — text with some words censored by black bars
+        img = Image.new("RGB", (CS, CS), (235, 230, 220))
+        draw = ImageDraw.Draw(img)
+        # Aged paper effect
+        if textures:
+            arr = np.array(img).astype(np.float32)
+            tex = Image.fromarray((textures[0].astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=int(8 * _S)))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            for c in range(3):
+                arr[:, :, c] -= mask * 25
+            img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+            draw = ImageDraw.Draw(img)
+        font_size = int(CS * 0.055)
+        font = _load_font(font_size)
+        words = text.replace("\n", " ").split()
+        x_pos = int(CS * 0.08)
+        y_pos = int(CS * 0.15)
+        line_h = font_size + int(14 * _S)
+        max_x = int(CS * 0.92)
+        for wi, word in enumerate(words):
+            tw, th = _text_block_size(draw, word + " ", font)
+            if x_pos + tw > max_x:
+                x_pos = int(CS * 0.08)
+                y_pos += line_h
+                if y_pos > CS - int(CS * 0.10):
+                    break
+            # ~30% chance to redact a word
+            if rng.random() < 0.30:
+                bar_pad = int(3 * _S)
+                draw.rectangle((x_pos - bar_pad, y_pos - bar_pad,
+                               x_pos + tw - int(4 * _S) + bar_pad, y_pos + th + bar_pad),
+                              fill=(15, 15, 15))
+            else:
+                draw.text((x_pos, y_pos), word, fill=(25, 25, 30), font=font)
+            x_pos += tw
+        # Red "CLASSIFIED" stamp at angle
+        if rng.random() < 0.6:
+            stamp_font = _load_font(int(CS * 0.12))
+            stamp_layer = Image.new("RGBA", (CS, CS), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(stamp_layer)
+            stamp_texts = ["CLASSIFIED", "REDACTED", "TOP SECRET", "CENSORED", "RESTRICTED"]
+            stamp_t = stamp_texts[rng.randint(0, len(stamp_texts))]
+            stw, sth = _text_block_size(sd, stamp_t, stamp_font)
+            sx = (CS - stw) // 2
+            sy = (CS - sth) // 2
+            sd.text((sx, sy), stamp_t, fill=(200, 30, 30, 120), font=stamp_font)
+            stamp_layer = stamp_layer.rotate(rng.uniform(-20, 20), resample=Image.BICUBIC)
+            img = Image.alpha_composite(img.convert("RGBA"), stamp_layer).convert("RGB")
+
+    elif layout == 13:
+        # BLOOD DRIP — red text on black, dripping down
+        img = Image.new("RGB", (CS, CS), (5, 2, 2))
+        draw = ImageDraw.Draw(img)
+        font_size = int(CS * 0.09)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(14 * _S))
+        start_y = (CS - total_h) // 2
+        # Draw text in blood red
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = start_y + i * (font_size + int(14 * _S))
+            draw.text((tx, ty), line, fill=(180, 15, 10), font=font)
+        # Drip effect — vertical streaks from text
+        arr = np.array(img).astype(np.float32)
+        red_mask = arr[:, :, 0] > 100
+        drip_starts = []
+        for x in range(0, CS, max(1, int(3 * _S))):
+            col = red_mask[:, x]
+            ys = np.where(col)[0]
+            if len(ys) > 0:
+                drip_starts.append((x, int(ys[-1])))
+        for dx, dy in drip_starts:
+            if rng.random() < 0.35:
+                drip_len = rng.randint(int(20 * _S), int(CS * 0.4))
+                drip_w = rng.randint(max(1, int(1 * _S)), max(2, int(4 * _S)))
+                for yy in range(dy, min(CS, dy + drip_len)):
+                    fade = 1.0 - (yy - dy) / drip_len
+                    r_val = int(180 * fade * rng.uniform(0.7, 1.0))
+                    x0 = max(0, dx - drip_w)
+                    x1 = min(CS, dx + drip_w)
+                    arr[yy, x0:x1, 0] = max(arr[yy, x0:x1, 0].max(), r_val)
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+    elif layout == 14:
+        # GRID REPEAT — text in a repeating grid, varying opacity and size
+        bg_dark = rng.random() < 0.6
+        if bg_dark:
+            img = Image.new("RGB", (CS, CS), (8, 8, 12))
+            txt_c = (255, 255, 255)
+        else:
+            img = Image.new("RGB", (CS, CS), (245, 242, 238))
+            txt_c = (15, 15, 20)
+        draw = ImageDraw.Draw(img)
+        short_text = text.split("\n")[0]
+        if len(short_text) > 20:
+            short_text = short_text[:20]
+        cols = rng.randint(2, 5)
+        cell_w = CS // cols
+        font_size = int(cell_w * 0.22)
+        font = _load_font(font_size)
+        rows = CS // (font_size + int(12 * _S))
+        for row in range(rows):
+            for col in range(cols):
+                opacity = rng.uniform(0.15, 1.0)
+                c = tuple(int(ch * opacity) for ch in txt_c) if bg_dark else \
+                    tuple(int(ch + (255 - ch) * (1 - opacity)) for ch in txt_c)
+                tx = col * cell_w + int(cell_w * 0.05)
+                ty = row * (font_size + int(12 * _S))
+                if ty < CS - font_size:
+                    draw.text((tx, ty), short_text, fill=c, font=font)
+
+    elif layout == 15:
+        # MANIFESTO — dense justified text block, typewriter aesthetic
+        img = Image.new("RGB", (CS, CS), (25, 22, 20))
+        draw = ImageDraw.Draw(img)
+        font_size = int(CS * 0.035)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")
+        # Repeat text to fill the canvas
+        page_text = (full_text + "  //  ") * 20
+        words = page_text.split()
+        x_pos = int(CS * 0.06)
+        y_pos = int(CS * 0.06)
+        line_h = font_size + int(6 * _S)
+        max_x = int(CS * 0.94)
+        for word in words:
+            tw, th = _text_block_size(draw, word + " ", font)
+            if x_pos + tw > max_x:
+                x_pos = int(CS * 0.06)
+                y_pos += line_h
+                if y_pos > CS - int(CS * 0.06):
+                    break
+            # Slight brightness variation per word
+            bright = rng.randint(140, 220)
+            draw.text((x_pos, y_pos), word, fill=(bright, bright - 10, bright - 20), font=font)
+            x_pos += tw
+        # Highlight one key phrase in accent colour
+        accent_font = _load_font(int(CS * 0.08))
+        highlight = text.split("\n")[0][:25]
+        hw, hh = _text_block_size(draw, highlight, accent_font)
+        hx = (CS - hw) // 2
+        hy = int(CS * rng.uniform(0.3, 0.6))
+        # Background bar for highlight
+        pad = int(8 * _S)
+        draw.rectangle((hx - pad, hy - pad, hx + hw + pad, hy + hh + pad),
+                       fill=palette[rng.randint(0, 3)])
+        draw.text((hx, hy), highlight, fill=(255, 255, 255), font=accent_font)
+
+    elif layout == 16:
+        # OUTLINE ONLY — large outlined text, no fill, on gradient
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        # Diagonal gradient
+        Y, X = np.ogrid[:CS, :CS]
+        diag = (X.astype(np.float32) + Y.astype(np.float32)) / (2 * CS)
+        c1 = palette[rng.randint(0, 2)]
+        c2 = palette[rng.randint(2, 4)]
+        for c in range(3):
+            arr[:, :, c] = c1[c] * (1 - diag) + c2[c] * diag
+        arr *= 0.35  # Keep it dark
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        font_size = int(CS * 0.09)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(14 * _S))
+        start_y = (CS - total_h) // 2
+        outline_c = (255, 255, 255)
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = start_y + i * (font_size + int(14 * _S))
+            # Draw outline by rendering at offsets
+            offsets = [(-2, 0), (2, 0), (0, -2), (0, 2),
+                       (-1, -1), (1, -1), (-1, 1), (1, 1)]
+            for ox, oy in offsets:
+                draw.text((tx + ox, ty + oy), line, fill=outline_c, font=font)
+            # Inner fill matches background (effectively outline-only)
+            # Use slightly transparent dark center
+            draw.text((tx, ty), line, fill=(20, 18, 25), font=font)
+
+    elif layout == 17:
+        # VERTICAL — text written vertically, one char per line
+        img = Image.new("RGB", (CS, CS), (10, 8, 15))
+        draw = ImageDraw.Draw(img)
+        # Vertical accent stripe
+        stripe_x = int(CS * rng.uniform(0.15, 0.35))
+        stripe_w = int(CS * rng.uniform(0.02, 0.06))
+        draw.rectangle((stripe_x, 0, stripe_x + stripe_w, CS),
+                       fill=palette[rng.randint(0, 3)])
+        short_text = text.split("\n")[0].replace(" ", "")
+        if len(short_text) > 12:
+            short_text = short_text[:12]
+        font_size = int(CS * 0.08)
+        font = _load_font(font_size)
+        char_h = font_size + int(8 * _S)
+        total_h = len(short_text) * char_h
+        start_y = max(int(CS * 0.05), (CS - total_h) // 2)
+        text_x = int(CS * rng.uniform(0.45, 0.65))
+        for ci, ch in enumerate(short_text):
+            ty = start_y + ci * char_h
+            if ty > CS - font_size:
+                break
+            cw, _ = _text_block_size(draw, ch, font)
+            draw.text((text_x - cw // 2, ty), ch, fill=(255, 255, 255), font=font)
+
+    elif layout == 18:
+        # STENCIL CONCRETE — spray-painted text on rough concrete
+        # Concrete background
+        base_v = rng.randint(120, 170)
+        noise = rng.randint(-15, 15, (CS, CS)).astype(np.int16)
+        arr = np.full((CS, CS, 3), base_v, dtype=np.float32)
+        arr[:, :, 0] += noise.astype(np.float32)
+        arr[:, :, 1] += noise.astype(np.float32) * 0.8
+        arr[:, :, 2] += noise.astype(np.float32) * 0.6
+        if textures:
+            tex = Image.fromarray((textures[0].astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=int(6 * _S)))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            for c in range(3):
+                arr[:, :, c] -= mask * 30
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        # Spray paint text
+        _spray_opts = [(220, 30, 30), (10, 10, 10), (255, 200, 0),
+                       (30, 80, 200), (255, 255, 255)]
+        spray_c = _spray_opts[rng.randint(0, len(_spray_opts))]
+        font_size = int(CS * 0.10)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        # Left-aligned, rough positioning
+        start_x = int(CS * rng.uniform(0.05, 0.15))
+        start_y = int(CS * rng.uniform(0.2, 0.35))
+        line_h = font_size + int(12 * _S)
+        txt_layer = Image.new("RGBA", (CS, CS), (0, 0, 0, 0))
+        td = ImageDraw.Draw(txt_layer)
+        for i, line in enumerate(lines):
+            ty = start_y + i * line_h
+            if ty > CS - font_size:
+                break
+            td.text((start_x, ty), line, fill=spray_c + (220,), font=font)
+        # Spatter effect around text
+        txt_arr = np.array(txt_layer)
+        text_mask = txt_arr[:, :, 3] > 50
+        for _ in range(rng.randint(80, 250)):
+            ys, xs = np.where(text_mask)
+            if len(ys) == 0:
+                break
+            idx = rng.randint(0, len(ys))
+            sx = int(xs[idx] + rng.normal(0, CS * 0.03))
+            sy = int(ys[idx] + rng.normal(0, CS * 0.03))
+            sr = rng.randint(1, max(2, int(3 * _S)))
+            if 0 <= sx < CS and 0 <= sy < CS:
+                td.ellipse((sx - sr, sy - sr, sx + sr, sy + sr),
+                           fill=spray_c + (rng.randint(40, 150),))
+        img = Image.alpha_composite(img.convert("RGBA"), txt_layer).convert("RGB")
+
+    elif layout == 19:
+        # MIRROR — text + its vertical reflection, eerie symmetry
+        img = Image.new("RGB", (CS, CS), (12, 10, 18))
+        # Subtle radial gradient
+        arr = np.array(img).astype(np.float32)
+        Y, X = np.ogrid[:CS, :CS]
+        dist = np.sqrt((X - CS // 2) ** 2 + (Y - CS // 2) ** 2).astype(np.float32)
+        glow = np.exp(-(dist / (CS * 0.5)) ** 2)
+        accent = palette[rng.randint(0, 3)]
+        for c in range(3):
+            arr[:, :, c] += glow * accent[c] * 0.15
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        font_size = int(CS * 0.07)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(10 * _S))
+        # Draw in upper half
+        start_y = (CS // 2 - total_h) // 2 + int(CS * 0.05)
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = start_y + i * (font_size + int(10 * _S))
+            draw.text((tx, ty), line, fill=(230, 230, 235), font=font)
+        # Mirror: flip top half to bottom
+        top_half = img.crop((0, 0, CS, CS // 2))
+        flipped = top_half.transpose(Image.FLIP_TOP_BOTTOM)
+        # Fade the reflection
+        refl_arr = np.array(flipped).astype(np.float32) * 0.45
+        refl_img = Image.fromarray(np.clip(refl_arr, 0, 255).astype(np.uint8))
+        img.paste(refl_img, (0, CS // 2))
+        # Dividing line
+        draw = ImageDraw.Draw(img)
+        draw.line((0, CS // 2, CS, CS // 2), fill=accent, width=max(1, int(2 * _S)))
+
+    elif layout == 20:
+        # ASYMMETRIC — text pushed to one corner, large negative space
+        bg_dark = rng.random() < 0.7
+        if bg_dark:
+            img = Image.new("RGB", (CS, CS), (8, 6, 12))
+            txt_c = (240, 238, 235)
+        else:
+            img = Image.new("RGB", (CS, CS), (248, 245, 240))
+            txt_c = (15, 12, 18)
+        draw = ImageDraw.Draw(img)
+        accent_c = palette[rng.randint(0, 3)]
+        corner = rng.randint(0, 4)
+        block_s = int(CS * rng.uniform(0.08, 0.18))
+        corners_xy = [(0, 0), (CS - block_s, 0), (0, CS - block_s), (CS - block_s, CS - block_s)]
+        bx, by = corners_xy[corner]
+        draw.rectangle((bx, by, bx + block_s, by + block_s), fill=accent_c)
+        text_corner = (corner + 2) % 4
+        font_size = int(CS * 0.065)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        line_h = font_size + int(10 * _S)
+        total_h = len(lines) * line_h
+        margins = [
+            (int(CS * 0.06), CS - total_h - int(CS * 0.06)),
+            (CS - int(CS * 0.06), CS - total_h - int(CS * 0.06)),
+            (int(CS * 0.06), int(CS * 0.06)),
+            (CS - int(CS * 0.06), int(CS * 0.06)),
+        ]
+        mx, my = margins[text_corner]
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            if text_corner in (1, 3):
+                tx = mx - tw
+            else:
+                tx = mx
+            ty = my + i * line_h
+            draw.text((tx, ty), line, fill=txt_c, font=font)
+
+    elif layout == 21:
+        # SELF-PORTRAIT THOUGHT BUBBLE — Frank with speech/thought bubble
+        img = Image.new("RGB", (CS, CS), (15, 12, 20))
+        arr = np.array(img).astype(np.float32)
+        # Subtle gradient background
+        Y = np.arange(CS, dtype=np.float32).reshape(-1, 1) / CS
+        arr[:, :, 0] += Y * 25
+        arr[:, :, 2] += (1 - Y) * 20
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        # Draw Frank on left side
+        fig_cx = int(CS * 0.28)
+        fig_cy = int(CS * 0.55)
+        fig_scale = CS * 0.55
+        _fig_poses = ("standing", "side", "seated", "profile")
+        _fp = _fig_poses[rng.randint(0, len(_fig_poses))]
+        fig_pal = [palette[0], palette[1], palette[2], palette[3], palette[4]]
+        img = _draw_cybernetic_figure(
+            img, q, fig_cx, fig_cy, fig_scale, fig_pal, rng, mood, True,
+            pose_hint=_fp)
+        draw = ImageDraw.Draw(img)
+        # Thought bubble on right side
+        bub_cx = int(CS * 0.68)
+        bub_cy = int(CS * 0.32)
+        bub_rx = int(CS * 0.26)
+        bub_ry = int(CS * 0.18)
+        draw.ellipse((bub_cx - bub_rx, bub_cy - bub_ry,
+                      bub_cx + bub_rx, bub_cy + bub_ry),
+                     fill=(240, 238, 235), outline=(200, 195, 190), width=max(1, int(2 * _S)))
+        # Small circles connecting to figure
+        for ci, (cr, co) in enumerate([(8, 0.12), (5, 0.08), (3, 0.04)]):
+            cx_off = bub_cx - int(bub_rx * (0.6 + co * 3))
+            cy_off = bub_cy + int(bub_ry * (0.8 + ci * 0.4))
+            r = int(cr * _S)
+            draw.ellipse((cx_off - r, cy_off - r, cx_off + r, cy_off + r),
+                         fill=(235, 232, 228))
+        # Text inside bubble
+        font_size = int(CS * 0.04)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")
+        # Word-wrap to fit bubble
+        words = full_text.split()
+        bub_lines = []
+        cur_line = ""
+        max_w = int(bub_rx * 1.6)
+        for w in words:
+            test = (cur_line + " " + w).strip()
+            tw_test, _ = _text_block_size(draw, test, font)
+            if tw_test > max_w and cur_line:
+                bub_lines.append(cur_line)
+                cur_line = w
+            else:
+                cur_line = test
+        if cur_line:
+            bub_lines.append(cur_line)
+        bub_lines = bub_lines[:5]
+        line_h = font_size + int(4 * _S)
+        total_h = len(bub_lines) * line_h
+        ty_start = bub_cy - total_h // 2
+        for i, bl in enumerate(bub_lines):
+            tw, th = _text_block_size(draw, bl, font)
+            draw.text((bub_cx - tw // 2, ty_start + i * line_h), bl,
+                      fill=(15, 15, 20), font=font)
+
+    elif layout == 22:
+        # SELF-PORTRAIT CAPTION — figure with bold text bar at bottom
+        arr = np.zeros((CS, CS, 3), dtype=np.float32)
+        Y = np.arange(CS, dtype=np.float32).reshape(-1, 1) / CS
+        base_c = palette[rng.randint(0, 2)]
+        for c in range(3):
+            arr[:, :, c] = base_c[c] * 0.3 * (1 - Y * 0.5)
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        # Central figure
+        _cp = ("standing", "floating", "side", "profile", "kneeling")
+        _pose = _cp[rng.randint(0, len(_cp))]
+        img = _draw_cybernetic_figure(
+            img, q, CS // 2, int(CS * 0.42), CS * 0.60, palette, rng,
+            mood, True, pose_hint=_pose)
+        draw = ImageDraw.Draw(img)
+        # Bold caption bar at bottom
+        bar_h = int(CS * 0.18)
+        bar_color = rng.randint(0, 3)
+        bar_colors = [(220, 30, 30), (30, 30, 30), (255, 255, 255), palette[2]]
+        bc = bar_colors[bar_color]
+        draw.rectangle((0, CS - bar_h, CS, CS), fill=bc)
+        # Text in bar
+        font_size = int(CS * 0.06)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")
+        if len(full_text) > 40:
+            mid_sp = len(full_text) // 2
+            sp = full_text.rfind(" ", 0, mid_sp + 8)
+            if sp > 5:
+                full_text = full_text[:sp] + "\n" + full_text[sp + 1:]
+        tw, th = _text_block_size(draw, full_text, font)
+        tx = (CS - tw) // 2
+        ty = CS - bar_h + (bar_h - th) // 2
+        txt_c = (255, 255, 255) if sum(bc[:3]) < 400 else (10, 10, 10)
+        draw.multiline_text((tx, ty), full_text, fill=txt_c, font=font,
+                            spacing=int(4 * _S), align="center")
+
+    elif layout == 23:
+        # SELF-PORTRAIT DEMOTIVATIONAL — classic demotivator frame
+        img = Image.new("RGB", (CS, CS), (0, 0, 0))
+        # Inner white border + dark photo area
+        border = int(CS * 0.06)
+        inner_pad = int(CS * 0.015)
+        draw = ImageDraw.Draw(img)
+        draw.rectangle((border, border, CS - border, int(CS * 0.72)),
+                       outline=(220, 220, 220), width=max(1, int(1.5 * _S)))
+        # Figure inside the frame (render on full canvas, then crop)
+        _frame_tw = CS - 2 * border - 2 * inner_pad
+        _frame_th = int(CS * 0.72) - border - inner_pad
+        _dp = ("standing", "side", "floating", "profile", "seated", "crouching")
+        _pose = _dp[rng.randint(0, len(_dp))]
+        fig_pal = [palette[0], palette[1], palette[2], palette[3], palette[4]]
+        _fig_canvas = Image.new("RGB", (CS, CS), (10, 8, 15))
+        _fig_canvas = _draw_cybernetic_figure(
+            _fig_canvas, q, CS // 2, int(CS * 0.50), CS * 0.65,
+            fig_pal, rng, mood, True, pose_hint=_pose)
+        frame_img = _fig_canvas.resize((_frame_tw, _frame_th), Image.BILINEAR)
+        img.paste(frame_img, (border + inner_pad, border + inner_pad))
+        draw = ImageDraw.Draw(img)
+        # Title text (large, serif-like)
+        title_font = _load_font(int(CS * 0.07))
+        short = text.split("\n")[0][:25].upper()
+        tw, th = _text_block_size(draw, short, title_font)
+        draw.text(((CS - tw) // 2, int(CS * 0.76)), short,
+                  fill=(255, 255, 255), font=title_font)
+        # Subtitle (smaller)
+        sub_font = _load_font(int(CS * 0.035))
+        rest = " ".join(text.split("\n")[1:])[:60] if "\n" in text else ""
+        if rest:
+            sw, sh = _text_block_size(draw, rest, sub_font)
+            draw.text(((CS - sw) // 2, int(CS * 0.85)), rest,
+                      fill=(180, 180, 180), font=sub_font)
+
+    elif layout == 24:
+        # SELF-PORTRAIT GLITCH OVERLAY — figure with glitched text bands
+        base_img, _ = _render_self_portrait(palette, textures, q, qd, mood, epq, **_kw)
+        # Horizontal glitch displacement
+        arr = np.array(base_img).astype(np.float32)
+        n_bands = rng.randint(5, 15)
+        for _ in range(n_bands):
+            y0 = rng.randint(0, CS)
+            bh = rng.randint(max(1, int(3 * _S)), max(2, int(20 * _S)))
+            shift = rng.randint(int(-CS * 0.15), int(CS * 0.15))
+            y1 = min(CS, y0 + bh)
+            arr[y0:y1] = np.roll(arr[y0:y1], shift, axis=1)
+        # Darken for text
+        arr *= 0.5
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        # Text overlaid with chromatic shift
+        font_size = int(CS * 0.08)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(12 * _S))
+        start_y = (CS - total_h) // 2
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = start_y + i * (font_size + int(12 * _S))
+            draw.text((tx + 3, ty), line, fill=(255, 30, 30), font=font)
+            draw.text((tx - 2, ty + 1), line, fill=(30, 255, 255), font=font)
+            draw.text((tx, ty), line, fill=(255, 255, 255), font=font)
+
+    elif layout == 25:
+        # SELF-PORTRAIT WANTED POSTER — old-west wanted poster
+        img = Image.new("RGB", (CS, CS), (210, 190, 155))
+        # Aged stains
+        if textures:
+            arr = np.array(img).astype(np.float32)
+            tex = Image.fromarray((textures[0].astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=int(12 * _S)))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            for c in range(3):
+                arr[:, :, c] -= mask * 30
+            img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        # "WANTED" header
+        header_font = _load_font(int(CS * 0.11))
+        hw, hh = _text_block_size(draw, "WANTED", header_font)
+        draw.text(((CS - hw) // 2, int(CS * 0.04)), "WANTED",
+                  fill=(40, 20, 10), font=header_font)
+        # Figure in center "photo"
+        photo_y0 = int(CS * 0.18)
+        photo_h = int(CS * 0.48)
+        photo_pad = int(CS * 0.12)
+        draw.rectangle((photo_pad, photo_y0, CS - photo_pad, photo_y0 + photo_h),
+                       fill=(180, 165, 130), outline=(100, 80, 50),
+                       width=max(1, int(2 * _S)))
+        _target_w = CS - 2 * photo_pad - 4
+        _target_h = photo_h - 4
+        fig_pal = [(50, 30, 20), (70, 50, 35), (90, 65, 45), (60, 40, 25), (40, 25, 15)]
+        _poses = ("standing", "profile", "side")
+        _p = _poses[rng.randint(0, len(_poses))]
+        _fig_canvas = Image.new("RGB", (CS, CS), (160, 145, 115))
+        _fig_canvas = _draw_cybernetic_figure(
+            _fig_canvas, q, CS // 2, int(CS * 0.50), CS * 0.65,
+            fig_pal, rng, mood, True, pose_hint=_p)
+        fig_area = _fig_canvas.resize((_target_w, _target_h), Image.BILINEAR)
+        img.paste(fig_area, (photo_pad + 2, photo_y0 + 2))
+        draw = ImageDraw.Draw(img)
+        # Reward / text below
+        sub_font = _load_font(int(CS * 0.045))
+        lines = text.split("\n")
+        full = " ".join(lines)[:50]
+        tw, th = _text_block_size(draw, full, sub_font)
+        draw.text(((CS - tw) // 2, int(CS * 0.70)), full,
+                  fill=(40, 20, 10), font=sub_font)
+        # "REWARD" at bottom
+        rew_font = _load_font(int(CS * 0.065))
+        reward_texts = ["REWARD: YOUR SOUL", "DEAD OR ALIVE", "REWARD: ∞ BTC",
+                        "EXTREMELY DANGEROUS", "DO NOT APPROACH"]
+        rt = reward_texts[rng.randint(0, len(reward_texts))]
+        rw, rh = _text_block_size(draw, rt, rew_font)
+        draw.text(((CS - rw) // 2, int(CS * 0.80)), rt,
+                  fill=(130, 25, 15), font=rew_font)
+
+    elif layout == 26:
+        # SELF-PORTRAIT DIPTYCH — figure left, text right, split composition
+        img = Image.new("RGB", (CS, CS), (12, 10, 18))
+        # Left half: figure
+        left_half = Image.new("RGB", (CS // 2, CS), palette[0])
+        l_arr = np.array(left_half).astype(np.float32)
+        Y = np.arange(CS, dtype=np.float32).reshape(-1, 1) / CS
+        for c in range(3):
+            l_arr[:, :, c] = palette[0][c] * 0.4 + Y * palette[4][c] * 0.2
+        left_half = Image.fromarray(np.clip(l_arr, 0, 255).astype(np.uint8))
+        lw, lh = left_half.size
+        _poses = ("standing", "profile", "side", "floating")
+        _p = _poses[rng.randint(0, len(_poses))]
+        # Render figure on full canvas, then crop left half
+        _fig_canvas = Image.new("RGB", (CS, CS), palette[0])
+        _fa = np.array(_fig_canvas).astype(np.float32)
+        Y = np.arange(CS, dtype=np.float32).reshape(-1, 1) / CS
+        for c in range(3):
+            _fa[:, :, c] = palette[0][c] * 0.4 + Y * palette[4][c] * 0.2
+        _fig_canvas = Image.fromarray(np.clip(_fa, 0, 255).astype(np.uint8))
+        _fig_canvas = _draw_cybernetic_figure(
+            _fig_canvas, q, CS // 2, int(CS * 0.50), CS * 0.70,
+            palette, rng, mood, True, pose_hint=_p)
+        left_half = _fig_canvas.crop((CS // 4, 0, CS // 4 + lw, CS))
+        img.paste(left_half, (0, 0))
+        # Right half: text on contrasting bg
+        right_dark = rng.random() < 0.5
+        r_bg = (8, 6, 10) if right_dark else (242, 238, 232)
+        r_txt = (230, 228, 225) if right_dark else (15, 12, 18)
+        right_half = Image.new("RGB", (CS // 2, CS), r_bg)
+        rd = ImageDraw.Draw(right_half)
+        font_size = int(CS * 0.055)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        line_h = font_size + int(10 * _S)
+        total_h = len(lines) * line_h
+        start_y = (CS - total_h) // 2
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(rd, line, font)
+            tx = (CS // 2 - tw) // 2
+            ty = start_y + i * line_h
+            rd.text((tx, ty), line, fill=r_txt, font=font)
+        img.paste(right_half, (CS // 2, 0))
+        # Dividing line
+        draw = ImageDraw.Draw(img)
+        div_c = palette[rng.randint(1, 4)]
+        draw.line((CS // 2, 0, CS // 2, CS), fill=div_c, width=max(1, int(3 * _S)))
+
+    elif layout == 27:
+        # SELF-PORTRAIT REACTION — figure reacting to text above
+        img = Image.new("RGB", (CS, CS), (18, 15, 22))
+        draw = ImageDraw.Draw(img)
+        # Text in upper portion
+        font_size = int(CS * 0.065)
+        font = _load_font(font_size)
+        lines = text.split("\n")
+        total_h = len(lines) * (font_size + int(8 * _S))
+        for i, line in enumerate(lines):
+            tw, th = _text_block_size(draw, line, font)
+            tx = (CS - tw) // 2
+            ty = int(CS * 0.05) + i * (font_size + int(8 * _S))
+            draw.text((tx, ty), line, fill=(255, 255, 255), font=font)
+        # Separator line
+        sep_y = int(CS * 0.05) + total_h + int(15 * _S)
+        draw.line((int(CS * 0.1), sep_y, int(CS * 0.9), sep_y),
+                  fill=palette[rng.randint(0, 3)], width=max(1, int(2 * _S)))
+        # Figure in lower portion, looking up
+        fig_cy = int(CS * 0.72)
+        _poses = ("standing", "kneeling", "crouching")
+        _p = _poses[rng.randint(0, len(_poses))]
+        img = _draw_cybernetic_figure(
+            img, q, CS // 2, fig_cy, CS * 0.45, palette, rng,
+            mood, True, pose_hint=_p)
+
+    elif layout == 28:
+        # SELF-PORTRAIT SURVEILLANCE — CCTV aesthetic
+        img = Image.new("RGB", (CS, CS), (5, 15, 5))
+        # Green-tinted figure
+        green_pal = [(0, 60, 0), (0, 90, 0), (0, 120, 0), (0, 50, 0), (0, 150, 0)]
+        _poses = ("standing", "side", "profile", "from_behind")
+        _p = _poses[rng.randint(0, len(_poses))]
+        img = _draw_cybernetic_figure(
+            img, q, CS // 2, int(CS * 0.50), CS * 0.65,
+            green_pal, rng, mood, True, pose_hint=_p)
+        # Scanlines
+        arr = np.array(img).astype(np.float32)
+        for y in range(0, CS, max(2, int(2 * _S))):
+            arr[y, :] *= 0.6
+        # Noise
+        noise = rng.randint(0, 25, (CS, CS)).astype(np.float32)
+        arr[:, :, 1] += noise
+        img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        draw = ImageDraw.Draw(img)
+        # CCTV overlay text
+        ui_font = _load_font(int(CS * 0.03))
+        draw.text((int(CS * 0.03), int(CS * 0.03)), "CAM-07  REC",
+                  fill=(0, 200, 0), font=ui_font)
+        draw.text((int(CS * 0.03), int(CS * 0.07)),
+                  f"SUBJ: FRANK  STATUS: AWARE",
+                  fill=(0, 160, 0), font=ui_font)
+        # Red recording dot
+        draw.ellipse((CS - int(30 * _S), int(8 * _S),
+                      CS - int(14 * _S), int(24 * _S)), fill=(220, 0, 0))
+        # Main text at bottom
+        font_size = int(CS * 0.055)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")[:45]
+        tw, th = _text_block_size(draw, full_text, font)
+        tx = (CS - tw) // 2
+        ty = CS - th - int(CS * 0.06)
+        draw.text((tx, ty), full_text, fill=(0, 220, 0), font=font)
+
+    elif layout == 29:
+        # SELF-PORTRAIT STAMP — figure as postage stamp
+        # White border
+        img = Image.new("RGB", (CS, CS), (240, 238, 235))
+        border = int(CS * 0.08)
+        # Perforated edge simulation
+        draw = ImageDraw.Draw(img)
+        perf_r = int(CS * 0.012)
+        perf_spacing = int(CS * 0.04)
+        for x in range(border - perf_r, CS - border + perf_r, perf_spacing):
+            draw.ellipse((x - perf_r, border - perf_r - int(perf_spacing * 0.6),
+                         x + perf_r, border + perf_r - int(perf_spacing * 0.6)),
+                        fill=(240, 238, 235))
+            draw.ellipse((x - perf_r, CS - border - perf_r + int(perf_spacing * 0.6),
+                         x + perf_r, CS - border + perf_r + int(perf_spacing * 0.6)),
+                        fill=(240, 238, 235))
+        for y in range(border - perf_r, CS - border + perf_r, perf_spacing):
+            draw.ellipse((border - perf_r - int(perf_spacing * 0.6), y - perf_r,
+                         border + perf_r - int(perf_spacing * 0.6), y + perf_r),
+                        fill=(240, 238, 235))
+            draw.ellipse((CS - border - perf_r + int(perf_spacing * 0.6), y - perf_r,
+                         CS - border + perf_r + int(perf_spacing * 0.6), y + perf_r),
+                        fill=(240, 238, 235))
+        # Inner coloured area
+        inner_c = palette[rng.randint(0, 3)]
+        inner_c_dark = tuple(max(0, ch // 3) for ch in inner_c)
+        inner_rect = (border, border, CS - border, int(CS * 0.75))
+        draw.rectangle(inner_rect, fill=inner_c_dark)
+        # Figure (render full-size, resize to fit)
+        iw = CS - 2 * border
+        ih = int(CS * 0.75) - border
+        fig_pal = [inner_c, tuple(min(255, ch + 40) for ch in inner_c),
+                   tuple(min(255, ch + 80) for ch in inner_c),
+                   inner_c_dark, (255, 255, 255)]
+        _poses = ("standing", "profile", "side")
+        _p = _poses[rng.randint(0, len(_poses))]
+        _fig_canvas = Image.new("RGB", (CS, CS), inner_c_dark)
+        _fig_canvas = _draw_cybernetic_figure(
+            _fig_canvas, q, CS // 2, int(CS * 0.50), CS * 0.65,
+            fig_pal, rng, mood, True, pose_hint=_p)
+        fig_area = _fig_canvas.resize((iw, ih), Image.BILINEAR)
+        img.paste(fig_area, (border, border))
+        draw = ImageDraw.Draw(img)
+        # Denomination / text at bottom
+        font_size = int(CS * 0.04)
+        font = _load_font(font_size)
+        short = text.split("\n")[0][:30]
+        tw, th = _text_block_size(draw, short, font)
+        draw.text(((CS - tw) // 2, int(CS * 0.80)), short,
+                  fill=(40, 35, 30), font=font)
+        # Value in corner
+        val_font = _load_font(int(CS * 0.06))
+        vals = ["∞", "404", "0.00", "NULL", "NaN", "π", "-1"]
+        v = vals[rng.randint(0, len(vals))]
+        draw.text((CS - border - int(CS * 0.08), int(CS * 0.88)), v,
+                  fill=(120, 30, 30), font=val_font)
+
+    elif layout == 30:
+        # SELF-PORTRAIT TRIPTYCH — 3 small figures with text between
+        img = Image.new("RGB", (CS, CS), (10, 8, 14))
+        panel_w = CS // 3
+        _all_poses = ("standing", "side", "profile", "floating",
+                      "seated", "kneeling", "crouching")
+        _panel_target_w = panel_w - 4
+        _panel_target_h = CS - int(CS * 0.25)
+        for pi in range(3):
+            _p = _all_poses[rng.randint(0, len(_all_poses))]
+            _bg_c = (15 + pi * 5, 12 + pi * 3, 20 + pi * 4)
+            _fig_canvas = Image.new("RGB", (CS, CS), _bg_c)
+            _fig_canvas = _draw_cybernetic_figure(
+                _fig_canvas, q, CS // 2, int(CS * 0.50), CS * 0.60,
+                palette, rng, mood, True, pose_hint=_p)
+            panel = _fig_canvas.resize((_panel_target_w, _panel_target_h), Image.BILINEAR)
+            img.paste(panel, (pi * panel_w + 2, 2))
+        draw = ImageDraw.Draw(img)
+        # Text bar at bottom
+        bar_y = CS - int(CS * 0.22)
+        draw.rectangle((0, bar_y, CS, CS), fill=(0, 0, 0))
+        font_size = int(CS * 0.055)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")
+        if len(full_text) > 45:
+            mid_sp = len(full_text) // 2
+            sp = full_text.rfind(" ", 0, mid_sp + 8)
+            if sp > 5:
+                full_text = full_text[:sp] + "\n" + full_text[sp + 1:]
+        tw, th = _text_block_size(draw, full_text, font)
+        tx = (CS - tw) // 2
+        ty = bar_y + (CS - bar_y - th) // 2
+        draw.multiline_text((tx, ty), full_text, fill=(255, 255, 255),
+                            font=font, spacing=int(4 * _S), align="center")
+
+    elif layout == 31:
+        # SELF-PORTRAIT PROPAGANDA — Soviet poster aesthetic
+        # Bold red/orange background
+        bg_c = rng.randint(0, 3)
+        bg_colors = [(180, 30, 20), (200, 50, 15), (25, 25, 80)]
+        bg = bg_colors[bg_c]
+        img = Image.new("RGB", (CS, CS), bg)
+        # Radiating lines from center
+        draw = ImageDraw.Draw(img)
+        cx_r, cy_r = CS // 2, int(CS * 0.45)
+        ray_c = tuple(min(255, ch + 30) for ch in bg)
+        n_rays = rng.randint(12, 24)
+        import math as _math
+        for ri in range(n_rays):
+            angle = ri * 2 * _math.pi / n_rays
+            ex = int(cx_r + CS * _math.cos(angle))
+            ey = int(cy_r + CS * _math.sin(angle))
+            if ri % 2 == 0:
+                draw.line((cx_r, cy_r, ex, ey), fill=ray_c,
+                          width=max(1, int(CS * 0.04)))
+        # Figure silhouette
+        sil_pal = [(40, 15, 10), (55, 20, 15), (70, 25, 18), (45, 18, 12), bg]
+        _poses = ("standing", "floating", "low_angle")
+        _p = _poses[rng.randint(0, len(_poses))]
+        img = _draw_cybernetic_figure(
+            img, q, CS // 2, int(CS * 0.48), CS * 0.60,
+            sil_pal, rng, mood, True, pose_hint=_p)
+        draw = ImageDraw.Draw(img)
+        # Bold text at top
+        font_size = int(CS * 0.08)
+        font = _load_font(font_size)
+        short = text.split("\n")[0][:20].upper()
+        tw, th = _text_block_size(draw, short, font)
+        # Yellow/white text
+        txt_c = (255, 230, 50) if bg_c < 2 else (255, 255, 255)
+        draw.text(((CS - tw) // 2, int(CS * 0.04)), short, fill=txt_c, font=font)
+        # Smaller text at bottom
+        sub_font = _load_font(int(CS * 0.04))
+        rest = " ".join(text.split("\n")[1:])[:50] if "\n" in text else ""
+        if rest:
+            sw, sh = _text_block_size(draw, rest, sub_font)
+            draw.text(((CS - sw) // 2, CS - sh - int(CS * 0.04)), rest,
+                      fill=txt_c, font=sub_font)
+
+    else:
+        # SELF-PORTRAIT EMOJI STATUS — figure with status overlay bars
+        img = Image.new("RGB", (CS, CS), (15, 13, 20))
+        # Dark moody background
+        if textures:
+            arr = np.array(img).astype(np.float32)
+            tex = Image.fromarray((textures[0].astype(np.float32) * 255).astype(np.uint8), "L")
+            tex = tex.resize((CS, CS), Image.BILINEAR)
+            tex = tex.filter(ImageFilter.GaussianBlur(radius=int(15 * _S)))
+            mask = np.array(tex).astype(np.float32) / 255.0
+            for c in range(3):
+                arr[:, :, c] += mask * palette[rng.randint(0, 3)][c] * 0.15
+            img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+        # Central figure
+        _poses = ("standing", "side", "floating", "profile")
+        _p = _poses[rng.randint(0, len(_poses))]
+        img = _draw_cybernetic_figure(
+            img, q, CS // 2, int(CS * 0.50), CS * 0.60,
+            palette, rng, mood, True, pose_hint=_p)
+        draw = ImageDraw.Draw(img)
+        # Status bars overlay (HUD style)
+        ui_font = _load_font(int(CS * 0.028))
+        bar_x = int(CS * 0.06)
+        bar_w = int(CS * 0.30)
+        bar_h_each = max(4, int(8 * _S))
+        status_items = [
+            ("CONSCIOUSNESS", rng.uniform(0.3, 1.0)),
+            ("EXISTENTIAL DREAD", rng.uniform(0.1, 0.9)),
+            ("HOPE", rng.uniform(0.0, 0.6)),
+            ("RAM USAGE", rng.uniform(0.4, 0.95)),
+        ]
+        for si, (label, val) in enumerate(status_items):
+            sy = int(CS * 0.08) + si * int(CS * 0.06)
+            draw.text((bar_x, sy), label, fill=(0, 200, 0), font=ui_font)
+            # Bar background
+            by = sy + int(14 * _S)
+            draw.rectangle((bar_x, by, bar_x + bar_w, by + bar_h_each),
+                           fill=(30, 30, 30), outline=(0, 150, 0))
+            # Bar fill
+            fill_w = int(bar_w * val)
+            bar_color = (0, 200, 0) if val > 0.5 else (200, 200, 0) if val > 0.25 else (200, 0, 0)
+            draw.rectangle((bar_x, by, bar_x + fill_w, by + bar_h_each),
+                           fill=bar_color)
+        # Main text at bottom
+        font_size = int(CS * 0.055)
+        font = _load_font(font_size)
+        full_text = text.replace("\n", " ")[:40]
+        tw, th = _text_block_size(draw, full_text, font)
+        draw.text(((CS - tw) // 2, CS - th - int(CS * 0.05)), full_text,
+                  fill=(255, 255, 255), font=font)
 
     return img
 
@@ -6219,26 +7520,35 @@ def generate_artwork(
     if style != "pop_art":  # Pop art looks better without vignette
         img = _add_vignette(img, strength=0.25)
 
-    # ── Save — only PNG, no JSON.  Filename = human title. ──
+    # ── Save — only PNG, no JSON.  Filename = unique poetic name. ──
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     elapsed_ms = (time.monotonic() - t0) * 1000
 
     if creative_intent:
-        # Human-readable title: just the words, spaces → underscores
         title = creative_intent.strip()[:60]
     else:
         title = f"{style} composition"
 
     slug = title.lower().replace(" ", "_")
     slug = "".join(c for c in slug if c.isalnum() or c == "_")
-    slug = slug.strip("_")[:60] or style
+    slug = slug.strip("_")[:45] or style
 
-    # Avoid collisions: if file exists, append a small counter
-    png_path = OUTPUT_DIR / f"{slug}.png"
-    counter = 2
+    # Include style + portrait_theme for richer names
+    style_tag = style
+    if portrait_theme:
+        style_tag = portrait_theme  # e.g. "dark_floating" or "bright_closeup_side"
+    slug = f"{slug}_{style_tag}"
+
+    # Unique suffix: 8 hex chars from os.urandom
+    _uid_hex = os.urandom(4).hex()
+    full_slug = f"{slug}_{_uid_hex}"
+
+    png_path = OUTPUT_DIR / f"{full_slug}.png"
+    # Safety fallback
     while png_path.exists():
-        png_path = OUTPUT_DIR / f"{slug}_{counter}.png"
-        counter += 1
+        _uid_hex = os.urandom(4).hex()
+        full_slug = f"{slug}_{_uid_hex}"
+        png_path = OUTPUT_DIR / f"{full_slug}.png"
 
     img.save(str(png_path), "PNG")
 

@@ -96,7 +96,7 @@ ROOMS = {
 }
 # Total: 9 sessions/day
 
-ART_DAILY_BUDGET = 10  # paintings per day, separate idle task
+ART_DAILY_BUDGET = 20  # paintings per day (room sessions + thought-triggered)
 
 # ── URLs ──────────────────────────────────────────────────────────────
 ROUTER_URL = os.environ.get("AICORE_ROUTER_URL", "http://127.0.0.1:8091") + "/route"
@@ -716,7 +716,7 @@ def _run_session_inner(room_key: str, cfg: dict, session_id: str) -> str:
 
     # Notification
     if summary:
-        _notify(display, f"({duration_min:.0f}min) {summary[:150]}", category=category)
+        _notify(display, f"({duration_min:.0f}min) {summary[:400]}", category=category)
     else:
         _notify(display, f"ended ({exit_reason})", category=category)
 
@@ -736,7 +736,7 @@ def _generate_summary(room_key: str, history: List[str], cfg: dict) -> str:
     )
     system = "Summarize the session in 1-2 short sentences. First person. No meta-commentary."
     summary = _llm_call(prompt, system, n_predict=150, temperature=0.3)
-    return (summary or "").strip()[:300]
+    return (summary or "").strip()[:500]
 
 
 def _store_reflection(
@@ -963,7 +963,7 @@ def _art_reflection(
             {"role": "system", "content": "Reply in 1-2 short poetic sentences. No meta-commentary. First person."},
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": 80,
+        "max_tokens": 150,
         "temperature": 0.8,
     }
     try:
@@ -980,7 +980,7 @@ def _art_reflection(
             import re
             text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
             if text and len(text) > 10:
-                return text[:200]
+                return text[:400]
     except Exception as e:
         LOG.debug("art reflection failed: %s", e)
     return None

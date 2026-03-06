@@ -5100,9 +5100,19 @@ class ConsciousnessDaemon:
 
         # Legacy fallback: random prompt selection (cold start / error)
         if thought_type is None:
-            from services.subconscious import (
-                THOUGHT_CATEGORIES, CATEGORY_PROMPT_RANGES, CATEGORY_TO_IDX,
-            )
+            try:
+                from services.subconscious import (
+                    THOUGHT_CATEGORIES, CATEGORY_PROMPT_RANGES, CATEGORY_TO_IDX,
+                )
+            except ImportError:
+                # torch not available — use inline constants
+                THOUGHT_CATEGORIES = [
+                    "conv_reflection", "entity_reflection", "identity", "feelings",
+                    "relationships", "growth", "curiosity", "discomfort", "dreams",
+                    "epq", "aura", "daily", "raw_expression", "hypothesis_review",
+                ]
+                CATEGORY_PROMPT_RANGES = {c: (0, 1) for c in THOUGHT_CATEGORIES}
+                CATEGORY_TO_IDX = {c: i for i, c in enumerate(THOUGHT_CATEGORIES)}
             # Weighted random matching old distribution (mostly regular prompts)
             _weights = [0.02, 0.01, 0.12, 0.12, 0.12, 0.12, 0.12,
                         0.10, 0.08, 0.05, 0.05, 0.05, 0.02, 0.02]

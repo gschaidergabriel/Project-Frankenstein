@@ -1365,10 +1365,9 @@ class CommandRouterMixin:
         ["aicore-core"],
         # Wave 3 — daemons depending on core+router (all parallel)
         [
-            "aicore-consciousness", "aicore-entities", "aicore-asrs",
+            "aicore-consciousness", "aicore-rooms", "aicore-asrs",
             "aicore-gaming-mode", "aicore-genesis", "aicore-genesis-watchdog",
             "aicore-invariants", "aicore-dream", "aura-analyzer",
-            "aicore-room-dispatcher",
         ],
         # Wave 4 — overlay + watchdog (last)
         ["frank-overlay", "frank-watchdog"],

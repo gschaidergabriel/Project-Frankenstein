@@ -163,6 +163,9 @@ class PhysicsEngine:
         self.collect_training_data: bool = False
         self._training_buffer: List[Tuple[np.ndarray, np.ndarray]] = []
 
+        # Companion tracking (e.g. Pip robot)
+        self._companions: Dict[str, Dict] = {}  # name -> {room, description, active, ...}
+
         # Neural dynamics (NeRD-style MLP replacement)
         self._use_neural = use_neural
         self._neural_engine = None
@@ -262,6 +265,23 @@ class PhysicsEngine:
             data = self._training_buffer
             self._training_buffer = []
             return data
+
+    def set_companion(self, name: str, data: Dict) -> None:
+        with self._lock:
+            if data.get("active", True):
+                self._companions[name] = data
+                LOG.info("Companion registered: %s in %s",
+                         name, data.get("room", "?"))
+            else:
+                self._companions.pop(name, None)
+                LOG.info("Companion deregistered: %s", name)
+
+    def get_companions(self, room: Optional[str] = None) -> Dict[str, Dict]:
+        with self._lock:
+            if room is None:
+                return dict(self._companions)
+            return {k: v for k, v in self._companions.items()
+                    if v.get("room") == room}
 
     # -------------------------------------------------------------------
     # Simulation step (called from background thread)

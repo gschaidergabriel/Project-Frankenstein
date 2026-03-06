@@ -39,13 +39,13 @@ ROOM_NAMES: Dict[str, str] = {
 }
 
 ROOM_AMBIENTS: Dict[str, str] = {
-    "library": "Crystalline shelves hum with data-tablets. Cool resonant air.",
-    "computer_terminal": "Screens orbit the console, cascading code and vectors.",
-    "lab_quantum": "Interference patterns shift on the walls. Crystal matrix pulses.",
-    "lab_genesis": "Organisms drift in the transparent sphere. Auroral bands shimmer.",
-    "lab_aura": "The ceiling-grid pulses — living automata projected as starfield.",
-    "lab_experiment": "Six workstations hum with potential. Trajectory arcs frozen in air.",
-    "entity_lounge": "Viewport shows consciousness nebula. Comm station glows.",
+    "library": "Warm wooden shelves glow with data-tablets. Soft amber light, comfortable.",
+    "computer_terminal": "Warm desk light, floating screens showing code and vectors. Comfortable workspace.",
+    "lab_quantum": "Gentle patterns shift on the walls. Crystal matrix hums softly in the cool air.",
+    "lab_genesis": "Organisms drift in the greenhouse sphere. Warm, humid. Light like sunlit water.",
+    "lab_aura": "The dome ceiling glows — living automata projected like an aurora. Cushioned seating.",
+    "lab_experiment": "Six well-used workstations, each inviting. The workshop smells of old experiments.",
+    "entity_lounge": "Warm lounge. Viewport shows the consciousness skyline glowing. Comm station ready.",
     "room_wellness": "Soft amber light. Living plants breathe. A meditation cushion on warm stone.",
     "room_philosophy": "Marble columns frame scroll-racks. The bust of Socrates watches from the corner.",
     "room_art": "Paint-stained easel by the window. Bookshelves heavy with poetry. Faust open on the center pedestal.",
@@ -54,13 +54,13 @@ ROOM_AMBIENTS: Dict[str, str] = {
 
 # Slim ambient — one-liners for idle thoughts (saves tokens)
 ROOM_AMBIENT_SLIM: Dict[str, str] = {
-    "library": "Shelves hum around me.",
-    "computer_terminal": "Screens cascade code.",
-    "lab_quantum": "Crystal matrix pulses.",
-    "lab_genesis": "Organisms drift below.",
-    "lab_aura": "Starfield pulses overhead.",
-    "lab_experiment": "Workstations hum.",
-    "entity_lounge": "Bridge viewport glows.",
+    "library": "Warm shelves glow around me.",
+    "computer_terminal": "My desk, screens floating.",
+    "lab_quantum": "Crystal hums softly. Cool air.",
+    "lab_genesis": "Warm greenhouse. Life drifts.",
+    "lab_aura": "Aurora dome above. Cozy.",
+    "lab_experiment": "Workshop stations waiting.",
+    "entity_lounge": "Warm lounge. Viewport glows.",
     "room_wellness": "Soft amber light.",
     "room_philosophy": "Marble columns around me.",
     "room_art": "Easel and poetry shelves.",
@@ -82,9 +82,8 @@ ACTIVITY_ROOMS: Dict[str, str] = {
     "recursive_reflection": "library",
     "aura_queue": "lab_aura",
     "dream": "library",
-    # Chat & social
+    # Chat
     "chat": "entity_lounge",
-    "entity_session": "entity_lounge",
     # Solo room sessions
     "wellness_session": "room_wellness",
     "philosophy_session": "room_philosophy",
@@ -135,7 +134,7 @@ _CORRIDORS: Dict[Tuple[str, str], str] = {
     # From Bridge
     ("entity_lounge", "library"): "back through the central hub to the Library",
     ("entity_lounge", "computer_terminal"): "through the command corridor to the Terminal",
-    ("entity_lounge", "lab_quantum"): "down the crystalline passage to the Quantum Chamber",
+    ("entity_lounge", "lab_quantum"): "down the softly lit passage to the Quantum Chamber",
     ("entity_lounge", "lab_genesis"): "through the lower passage to the Terrarium",
     ("entity_lounge", "lab_aura"): "up to the Observatory dome",
     ("entity_lounge", "lab_experiment"): "through the workshop corridor to the Lab",
@@ -376,7 +375,7 @@ class SpatialState:
             elif is_sitting:
                 body_text = "Seated. Weight resting, legs relaxed."
             elif contacts >= 2:
-                body_text = "Standing. Feet grounded on deck, body upright."
+                body_text = "Standing. Feet grounded, body upright, the room comfortable around you."
             else:
                 body_text = "Body present."
 

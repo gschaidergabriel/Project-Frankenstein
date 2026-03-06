@@ -8,9 +8,9 @@ Quotas:
   philosophy:   2 sessions/day
   art_studio:   2 sessions/day
   architecture: 2 sessions/day
-  art_block:    5 paintings/day (separate, CPU-only)
+  art_block:   10 paintings/day (separate, CPU-only)
   ─────────────────────────────────
-  Total:        9 LLM sessions + 5 paintings per day
+  Total:        9 LLM sessions + 10 paintings per day
 """
 
 from __future__ import annotations
@@ -396,7 +396,8 @@ def main():
         elif eligible:
             # Art blocks: interleave with room sessions
             # Run art block if: art eligible AND (no rooms eligible OR ~30% chance)
-            if art_eligible and (not eligible or (len(eligible) > 0 and time.time() % 10 < 3)):
+            import random as _rng
+            if art_eligible and (not eligible or (len(eligible) > 0 and _rng.random() < 0.3)):
                 # Run art block
                 LOG.info("running art block (%d done today)",
                          quotas["completed"].get("art_block", 0))

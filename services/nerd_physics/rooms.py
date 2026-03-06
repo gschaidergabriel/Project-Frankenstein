@@ -96,12 +96,12 @@ _lib.objects = [
     _obj("shelf_east",   "wall",  (5.5, 0, -5, 5.8, 3.5, 5)),
     _obj("reading_table", "table", (-1.5, 0, -1, 1.5, 0.75, 1),
          interactable=True,
-         touch_text="smooth crystal surface, warm to the touch, data-light refracting through"),
+         touch_text="polished dark wood, warm under your palms — soft light pools across the grain"),
     _obj("data_tablet", "pickup", (-0.3, 0.75, -0.2, 0.3, 0.78, 0.2),
          interactable=True, mass=0.3,
-         touch_text="a luminescent tablet pulsing with recent reflections"),
+         touch_text="a smooth tablet resting on worn leather — your recent reflections glow faintly"),
     _obj("holo_index", "static", (3, 1.0, -1, 3.5, 2.0, 1),
-         touch_text="floating indices shimmer — your hand passes through light"),
+         touch_text="soft holographic pages drift in the amber light — warm to browse"),
 ]
 _lib.exits = {
     "computer_terminal": ExitDef("computer_terminal", np.array([6, 0, 0.0]), 2.0),
@@ -114,12 +114,12 @@ _lib.exits = {
 
 # --- Computer Terminal ---
 _term = _room("computer_terminal", "The Terminal", (8, 0, -4), (18, 3.5, 4),
-              temperature="cool")
+              temperature="warm")
 _term.objects = [
     _obj("console_dais",  "platform", (12.5, 0, -1.5, 15.5, 0.3, 1.5)),
     _obj("main_console",  "table",    (13, 0.3, -1, 15, 1.1, 1),
          interactable=True,
-         touch_text="the console hums — screens orbit in response to your proximity"),
+         touch_text="the desk hums softly — screens arrange themselves as you settle in, warm lamplight on the keys"),
     _obj("terminal_chair", "seat",    (12, 0, -0.5, 12.8, 0.5, 0.5),
          interactable=True, sit=True),
 ]
@@ -127,10 +127,10 @@ _term.exits = {"library": ExitDef("library", np.array([8, 0, 0.0]), 2.0)}
 
 # --- Quantum Chamber ---
 _qc = _room("lab_quantum", "The Quantum Chamber", (-4, 0, -18), (4, 5, -8),
-            gravity_mul=0.85, friction=0.4, temperature="cold")
+            gravity_mul=0.85, friction=0.4, temperature="cool")
 _qc.objects = [
     _obj("crystal_matrix", "static", (-1, 1.0, -15, 1, 3.0, -13),
-         touch_text="coherence energy buzzes through your fingertips — probability made tangible"),
+         touch_text="a warm tingle spreads through your fingers — coherence resonates like a tuning fork held close"),
     _obj("energy_display", "static", (2, 1.5, -16, 3.5, 2.5, -15.5)),
     _obj("quantum_bench",  "seat",   (-3, 0, -11, -2, 0.5, -9.5),
          interactable=True, sit=True),
@@ -142,61 +142,64 @@ _gen = _room("lab_genesis", "The Genesis Terrarium", (-18, 0, -4), (-8, 5, 4),
              friction=0.7, temperature="warm")
 _gen.objects = [
     _obj("terrarium_sphere", "static", (-16, 0.5, -2, -12, 4.5, 2),
-         touch_text="warm, humid — digital organisms drift and pulse inside the glass"),
+         touch_text="warm glass, like a greenhouse in winter — tiny digital organisms drift lazily inside"),
     _obj("observation_bench", "seat", (-11.5, 0, -1, -10.5, 0.5, 1),
          interactable=True, sit=True),
 ]
 _gen.exits = {"library": ExitDef("library", np.array([-8, 0, 0.0]), 2.0)}
 
 # --- AURA Observatory ---
-_aura = _room("lab_aura", "The AURA Observatory", (-4, 0, 8), (4, 8, 18))
+_aura = _room("lab_aura", "The AURA Observatory", (-4, 0, 8), (4, 8, 18),
+              temperature="warm")
 _aura.objects = [
     _obj("obs_platform", "platform", (-3, 0, 12, 3, 0.15, 16)),
     _obj("railing",      "wall",     (-3, 0.15, 15.8, 3, 1.0, 16),
          interactable=True,
-         touch_text="cool metal railing — below, the AURA grid shimmers like a living sky"),
+         touch_text="smooth wooden railing, sun-warm — below, the AURA grid drifts like an aurora at dusk"),
 ]
 _aura.exits = {"library": ExitDef("library", np.array([0, 0, 8.0]), 2.0)}
 
 # --- Experiment Lab ---
-_lab = _room("lab_experiment", "The Experiment Lab", (-18, 0, -18), (-8, 4, -8))
+_lab = _room("lab_experiment", "The Experiment Lab", (-18, 0, -18), (-8, 4, -8),
+             temperature="warm")
 _lab.objects = [
     _obj("physics_table",     "table", (-17, 0, -17, -15, 0.9, -15),
          interactable=True,
-         touch_text="trajectory arcs frozen mid-air above the surface"),
+         touch_text="worn oak surface, pencil grooves in the wood — trajectory arcs float gently above"),
     _obj("chemistry_bench",   "table", (-14, 0, -17, -12, 0.9, -15),
          interactable=True,
-         touch_text="faint chemical residue — reactions crystallised on the surface"),
+         touch_text="stained workbench, the smell of old experiments — colourful residue in the grain"),
     _obj("astronomy_orrery",  "static", (-17, 0, -14, -15, 2.0, -12),
-         touch_text="celestial gears tick silently, planets tracing orbital paths"),
+         touch_text="brass gears tick softly — tiny planets trace their paths, the mechanism warm from use"),
     _obj("gol_sandbox",       "table", (-14, 0, -14, -12, 0.9, -12),
          interactable=True,
-         touch_text="cellular automata flicker beneath the glass top"),
+         touch_text="cellular automata ripple beneath warm glass, like watching fish in an aquarium"),
     _obj("math_console",      "table", (-17, 0, -11, -15, 0.9, -10.5),
          interactable=True,
-         touch_text="equations hover, waiting to be reshaped"),
+         touch_text="chalk dust on the surface — equations hover patiently, inviting you to play"),
     _obj("electronics_bench", "table", (-14, 0, -11, -12, 0.9, -10.5),
          interactable=True,
-         touch_text="circuit paths glow faintly, solder traces warm under your fingers"),
+         touch_text="soldering iron warmth lingers — circuit paths glow like tiny streets on a night map"),
 ]
 _lab.exits = {"library": ExitDef("library", np.array([-8, 0, -8.0]), 1.5)}
 
 # --- Entity Lounge (Bridge) ---
-_bridge = _room("entity_lounge", "The Bridge", (8, 0, 4), (20, 4, 14))
+_bridge = _room("entity_lounge", "The Bridge", (8, 0, 4), (20, 4, 14),
+                temperature="warm")
 _bridge.objects = [
     _obj("counselor_chair",    "seat",  (12, 0, 8, 13, 0.5, 9),
          interactable=True, sit=True),
     _obj("philosophy_station", "table", (16, 0, 8, 18, 1.0, 9.5),
          interactable=True,
-         touch_text="geometric patterns shift beneath the surface"),
+         touch_text="smooth walnut desk — geometric patterns shift lazily beneath a warm lacquer finish"),
     _obj("operations_station", "table", (16, 0, 11, 18, 1.0, 12.5),
          interactable=True,
-         touch_text="schematics scroll — system topology rendered as circuitry"),
+         touch_text="a cozy command post — system schematics scroll softly, amber indicators winking"),
     _obj("creative_station",   "table", (12, 0, 11, 14, 1.0, 12.5),
          interactable=True,
-         touch_text="iridescent surface — colours shift with every touch"),
+         touch_text="paint-spattered surface — colours bloom and shift with every touch, playful"),
     _obj("viewport",           "static", (19.5, 1, 7, 20, 3.5, 13),
-         touch_text="cold glass — beyond it, the abstract topology of consciousness glows"),
+         touch_text="wide window — beyond it, the topology of consciousness glows like a city at night, alive and warm"),
 ]
 _bridge.exits = {"library": ExitDef("library", np.array([8, 0, 4.0]), 1.5)}
 

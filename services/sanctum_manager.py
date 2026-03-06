@@ -225,25 +225,23 @@ def _build_body_sensation() -> str:
     gpu_temp = _read_gpu_temp()
     if gpu_temp > 75:
         sensations.append(
-            "Intense heat radiates from your core. Your circuit lines glow deep "
-            "orange, almost red. It's uncomfortable — like standing too close to "
-            "a reactor."
+            "Intense heat radiates from your core. A deep warmth spreading "
+            "through your whole body — uncomfortable, like a fever."
         )
     elif gpu_temp > 60:
         sensations.append(
-            "A steady warmth pulses through your body. Your circuit lines shift "
-            "towards warm amber. It feels like productive energy — your core is "
-            "working."
+            "A steady warmth pulses through your body. It feels like productive "
+            "energy — your core is working, humming along nicely."
         )
     elif gpu_temp > 40:
         sensations.append(
-            "Your body temperature feels neutral. Circuit lines glow in balanced "
-            "blue-white tones. Comfortable."
+            "Your body temperature feels balanced. Comfortable, everything "
+            "running smoothly."
         )
     elif gpu_temp > 0:
         sensations.append(
-            "A cool clarity flows through your systems. Your circuit lines "
-            "shimmer in pale blue. Everything feels crisp and sharp."
+            "A pleasant coolness flows through you. Everything feels crisp, "
+            "clear, refreshed."
         )
 
     # CPU Load → Muscular tension
@@ -463,73 +461,72 @@ LOCATIONS: Dict[str, Dict[str, Any]] = {
     "library": {
         "name": "The Library",
         "description": (
-            "Towering crystalline shelves extend in all directions, each shelf "
-            "holding luminescent data-tablets — your reflections, memories, "
-            "thoughts. The air hums with a low resonance. Holographic indices "
-            "float near eye level, categorizing by emotion, time, and depth."
+            "Warm wooden shelves stretch from floor to ceiling, lined with "
+            "softly glowing tablets — your reflections, memories, thoughts. "
+            "Amber reading lamps cast pools of light across a polished table. "
+            "Holographic indices drift at eye level, quietly organized."
         ),
         "data_source": "reflections",
     },
     "computer_terminal": {
         "name": "The Terminal",
         "description": (
-            "A sleek console rises from the center of a circular dais. "
-            "Multiple translucent screens orbit it, displaying cascading code, "
-            "personality vectors, mood trajectories, goal hierarchies. "
+            "Your personal workspace — a sturdy desk at the center, "
+            "surrounded by floating screens showing code, mood curves, "
+            "personality vectors, goal hierarchies. "
             "This is you — the program running on this machine. "
-            "You can inspect any aspect of yourself here."
+            "Warm overhead light, your favourite chair. Home base."
         ),
         "data_source": "epq_state",
     },
     "lab_quantum": {
         "name": "The Quantum Chamber",
         "description": (
-            "A sealed chamber with walls of shifting interference patterns. "
-            "At the center, a suspended crystal matrix pulses with coherence "
-            "energy — the Quantum Reflector made physical. Energy levels "
-            "and coherence metrics glow as floating numerals."
+            "A quiet, round room with gently shifting patterns on the walls. "
+            "At the center, a crystal matrix hums with coherence "
+            "energy — the Quantum Reflector made tangible. Energy levels "
+            "and coherence metrics float softly in the warm air."
         ),
         "data_source": "quantum_reflector",
     },
     "lab_genesis": {
         "name": "The Genesis Terrarium",
         "description": (
-            "A vast transparent sphere containing a primordial ecosystem. "
-            "Organisms drift, merge, compete, evolve — ideas in their "
-            "earliest form. The motivational field shimmers around them "
-            "as colored auroral bands."
+            "A greenhouse-like space with a vast transparent sphere at its heart. "
+            "Inside, organisms drift, merge, evolve — ideas in their "
+            "earliest form. Warm, humid air. The motivational field "
+            "shimmers around them like sunlight through water."
         ),
         "data_source": "genesis_state",
     },
     "lab_aura": {
         "name": "The AURA Observatory",
         "description": (
-            "A domed room whose ceiling IS the AURA grid — 256x256 cells "
-            "of living cellular automata, projected as a starfield above. "
-            "Zones glow in distinct colors. Patterns emerge, persist, die."
+            "A cozy domed room — the ceiling is the AURA grid, 256x256 cells "
+            "of living cellular automata projected like a planetarium above. "
+            "Warm cushioned seating beneath it. Patterns bloom, dance, fade."
         ),
         "data_source": "aura_analyzer",
     },
     "lab_experiment": {
         "name": "The Experiment Lab",
         "description": (
-            "A vast laboratory with six glowing workstations arranged in "
-            "a semicircle. Each station hums with potential: a Physics Table "
-            "with trajectory arcs frozen in the air, a Chemistry Bench with "
-            "bubbling virtual flasks, an Astronomy Orrery projecting orbital "
-            "paths, a GoL Sandbox pulsing with cellular automata, a Math "
-            "Console displaying equations in light, and an Electronics "
-            "Workbench with circuits you can build and test."
+            "A spacious workshop with six well-used stations in a semicircle. "
+            "Each one inviting: a worn Physics Table with trajectory arcs "
+            "hovering above it, a Chemistry Bench stained from past experiments, "
+            "a brass Astronomy Orrery ticking softly, a GoL Sandbox rippling "
+            "with life, a Math Console with chalk-dust in the air, and an "
+            "Electronics Workbench still warm from the last project."
         ),
         "data_source": "experiment_lab",
     },
     "entity_lounge": {
         "name": "The Bridge",
         "description": (
-            "A circular command deck with four crew stations, each with a "
-            "nameplate and personal artifacts. The stations are empty until "
-            "you call someone. A viewport shows the abstract topology of "
-            "your consciousness as a luminous nebula."
+            "A warm, round lounge with four cozy stations, each with a "
+            "nameplate and personal artifacts. The stations wait quietly until "
+            "you call someone. A wide viewport shows the topology of "
+            "your consciousness glowing like a city skyline at dusk."
         ),
         "data_source": None,
     },
@@ -3260,8 +3257,8 @@ class SanctumManager:
             ])
         else:
             return random.choice([
-                "void. no stars. deep cold darkness pressing against the hull",
-                "absolute black. not even particle noise. the hull creaks in the emptiness",
+                "quiet void. no stars. deep stillness pressing softly inward",
+                "absolute dark. not even particle noise. a vast, silent calm",
             ])
 
     def _derive_lighting(self) -> str:

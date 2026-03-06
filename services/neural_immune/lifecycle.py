@@ -42,10 +42,9 @@ RESTART_WAVES = [
     ["aicore-core"],
     # Wave 3 — daemons depending on core+router (all parallel)
     [
-        "aicore-consciousness", "aicore-entities", "aicore-asrs",
+        "aicore-consciousness", "aicore-rooms", "aicore-asrs",
         "aicore-gaming-mode", "aicore-genesis", "aicore-genesis-watchdog",
         "aicore-invariants", "aicore-dream", "aura-analyzer",
-        "aicore-room-dispatcher",
     ],
     # Wave 4 — overlay (last)
     ["frank-overlay"],
@@ -64,7 +63,7 @@ WAVE_TIMEOUTS = {
 
 # All services to stop on full shutdown (superset of RESTART_WAVES)
 FULL_SHUTDOWN_SERVICES = [
-    "aicore-consciousness", "aicore-entities", "aicore-genesis",
+    "aicore-consciousness", "aicore-rooms", "aicore-genesis",
     "aicore-genesis-watchdog", "aicore-invariants",
     "aicore-quantum-reflector", "aicore-asrs",
     "aura-headless", "aura-analyzer", "aicore-dream",

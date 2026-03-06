@@ -25,6 +25,7 @@ _MAX_PERSISTENT = 30
 LOG_CATEGORIES = frozenset({
     "consciousness", "dream",
     "wellness", "philosophy", "art_studio", "architecture",
+    "painting",
 })
 
 _LOG_PANEL_WIDTH = 340
@@ -39,6 +40,7 @@ _LOG_ICONS: Dict[str, str] = {
     "philosophy":    "\U0001F3DB",
     "art_studio":    "\U0001F58C",
     "architecture":  "\U0001F9E9",
+    "painting":      "\U0001F3A8",
 }
 
 _CAT_SHORT: Dict[str, str] = {
@@ -48,6 +50,7 @@ _CAT_SHORT: Dict[str, str] = {
     "philosophy":    "PHIL",
     "art_studio":    "ART ",
     "architecture":  "ARCH",
+    "painting":      "\u2726\u2726\u2726\u2726",
 }
 
 # Button styling
@@ -78,6 +81,7 @@ _ACCENT_COLORS: Dict[str, str] = {
     "art_studio":   "#FFB347",   # Warm amber
     "architecture": "#4ECDC4",   # Teal-cyan
     "dream":        "#6699FF",   # Soft blue
+    "painting":     "#FF2D9B",   # Neon pink — striking artistic accent
 }
 _ACCENT_CATS = frozenset(_ACCENT_COLORS)
 
@@ -319,6 +323,17 @@ class LogPanelMixin:
             txt.tag_configure(f"msg_{cat}", foreground=color, font=_CRT_FONT)
             txt.tag_configure(f"accent_{cat}", foreground=color, font=("Courier", 9, "bold"))
 
+        # Painting — neon pink, dedicated tags for distinct look
+        txt.tag_configure("painting_frame", foreground="#FF2D9B",
+                          font=("Courier", 8, "bold"), spacing1=4)
+        txt.tag_configure("painting_label", foreground="#FF5CB8",
+                          font=("Courier", 10, "bold"), spacing1=2)
+        txt.tag_configure("painting_ts", foreground="#CC2080",
+                          font=("Courier", 7))
+        txt.tag_configure("painting_body", foreground="#FF85C8",
+                          font=("Courier", 9), lmargin1=16, lmargin2=16,
+                          spacing1=2, spacing3=2)
+
         self._log_text = txt
 
         # Render existing entries (instant, no typewriter for history)
@@ -350,7 +365,16 @@ class LogPanelMixin:
         msg = entry.get("text", "")
         category = entry.get("category", "")
 
-        if category in _ACCENT_CATS:
+        if category == "painting":
+            # Neon pink painting notification — visually striking
+            rule = " \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+            txt.insert("end", f"{rule}\n", "painting_frame")
+            txt.insert("end", f"  \U0001F3A8  PAINTED\n", "painting_label")
+            txt.insert("end", f"  {ts}\n", "painting_ts")
+            txt.insert("end", "\n", "separator")
+            txt.insert("end", f"{msg}\n", "painting_body")
+            txt.insert("end", f"{rule}\n", "painting_frame")
+        elif category in _ACCENT_CATS:
             hdr_tag = f"hdr_{category}"
             msg_tag = f"msg_{category}"
             txt.insert("end", "\u258c ", f"accent_{category}")
@@ -380,11 +404,19 @@ class LogPanelMixin:
         msg = entry.get("text", "")
         category = entry.get("category", "")
 
-        is_entity = category in _ACCENT_CATS
-        msg_tag = f"msg_{category}" if is_entity else "message"
+        is_accent = category in _ACCENT_CATS
+        is_painting = category == "painting"
+        msg_tag = f"msg_{category}" if is_accent else "message"
 
         # Header appears instantly
-        if is_entity:
+        if is_painting:
+            rule = " \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+            txt.insert("end", f"{rule}\n", "painting_frame")
+            txt.insert("end", f"  \U0001F3A8  PAINTED\n", "painting_label")
+            txt.insert("end", f"  {ts}\n", "painting_ts")
+            txt.insert("end", "\n", "separator")
+            msg_tag = "painting_body"
+        elif is_accent:
             txt.insert("end", "\u258c ", f"accent_{category}")
             txt.insert("end", f"{ts} [{cat}] {icon}\n", f"hdr_{category}")
         else:
@@ -394,6 +426,7 @@ class LogPanelMixin:
 
         # Message types character by character
         self._log_typing_active = True
+        self._log_typing_category = category
         self._log_typewriter_step(msg, 0, msg_tag)
 
     def _log_typewriter_step(self, msg: str, idx: int, msg_tag: str = "message"):
@@ -426,6 +459,11 @@ class LogPanelMixin:
             else:
                 # Done typing message
                 self._log_text.insert("end", "\n", msg_tag)
+                # Painting entries get a neon pink bottom rule
+                _tw_cat = getattr(self, "_log_typing_category", "")
+                if _tw_cat == "painting":
+                    rule = " \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+                    self._log_text.insert("end", f"{rule}\n", "painting_frame")
                 self._log_text.insert("end", "\u2500" * 24 + "\n", "separator")
                 self._log_apply_scanlines()
                 self._log_text.configure(state="disabled")

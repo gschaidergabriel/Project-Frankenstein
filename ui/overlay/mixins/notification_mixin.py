@@ -22,6 +22,7 @@ _NOTIFICATION_POLL_MS = 15_000  # 15 seconds
 _LOG_PANEL_CATEGORIES = frozenset({
     "consciousness", "dream",
     "wellness", "philosophy", "art_studio", "architecture",
+    "painting",
 })
 
 
@@ -78,6 +79,7 @@ class NotificationMixin:
                     "consciousness": "\U0001F9E0",    # brain (consciousness)
                     "dream": "\U0001F4AD",            # thought bubble (dream)
                     "genesis": "\U0001F9EC",           # DNA (genesis)
+                    "painting": "\U0001F3A8",          # palette (painting)
                 }
                 icon = icon_map.get(category, "\U0001F514")  # default: bell
 

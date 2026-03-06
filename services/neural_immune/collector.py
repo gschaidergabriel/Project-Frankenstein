@@ -85,7 +85,7 @@ SERVICE_REGISTRY: Dict[str, Dict[str, Any]] = {
     "aicore-consciousness":     {"port": None, "health": None, "critical": True,
                                  "delay": 2, "cooldown": 30, "max_restarts": 10,
                                  "reset_after": 600, "tier": 3},
-    "aicore-entities":          {"port": None, "health": None, "critical": True,
+    "aicore-rooms":             {"port": None, "health": None, "critical": True,
                                  "delay": 2, "cooldown": 30, "max_restarts": 15,
                                  "reset_after": 600, "tier": 3},
     "aicore-asrs":              {"port": None, "health": None, "critical": True,

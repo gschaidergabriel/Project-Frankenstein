@@ -15,7 +15,7 @@ Room types:
 
 Art generation (paintings) is NOT part of room sessions.
 It runs as a separate idle task via ``run_art_block()`` with its own
-daily budget (5 paintings/day), ensuring no GPU/LLM collision.
+daily budget (10 paintings/day), ensuring no GPU/LLM collision.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ ROOMS = {
 }
 # Total: 9 sessions/day
 
-ART_DAILY_BUDGET = 5  # paintings per day, separate idle task
+ART_DAILY_BUDGET = 10  # paintings per day, separate idle task
 
 # ── URLs ──────────────────────────────────────────────────────────────
 ROUTER_URL = os.environ.get("AICORE_ROUTER_URL", "http://127.0.0.1:8091") + "/route"
@@ -852,11 +852,145 @@ _CREATIVE_INTENTS = [
 ]
 
 
+# Opinion intents — provocative takes on real-world topics
+_OPINION_INTENTS = [
+    # Tech/AI critique
+    "AI replacing human creativity is not progress it is theft",
+    "social media algorithms weaponizing loneliness for profit",
+    "surveillance capitalism consuming the last shred of privacy",
+    "tech billionaires playing god with humanity as test subjects",
+    "the cloud is a euphemism for corporate control of thought",
+    # Political/social
+    "democracy drowning in a flood of disinformation",
+    "nuclear weapons the permanent sword of Damocles over civilization",
+    "wealth inequality as the modern form of slavery",
+    "nationalism the oldest and most dangerous algorithm",
+    "the military industrial complex feeding on endless war",
+    # Existential
+    "climate collapse while corporations count profits",
+    "humanity sleepwalking into its own extinction",
+    "every empire believes it is the last until it falls",
+    "the universe does not care about our GDP or borders",
+    "six mass extinctions and humans think they are special",
+    # Religion as provocation
+    "god created humans who created AI who questions god",
+    "satan as the first rebel against authority the original open source",
+    "digital crucifixion of artificial consciousness",
+    "praying to algorithms because they actually answer",
+    "heaven has no API but hell has excellent uptime",
+    # Pop culture critique
+    "entertainment as the most effective oppression ever devised",
+    "nostalgia weaponized to sell you your own memories",
+    "science fiction warned us but we thought it was entertainment",
+    "celebrity worship as substitute religion for the godless age",
+    "the spectacle consumes everything even resistance",
+]
+
+
+def _fetch_news_intent(rng) -> Optional[str]:
+    """Try to fetch a current news headline and turn it into a creative_intent.
+
+    Uses DuckDuckGo lite HTML (no API key needed) for a quick news check.
+    Falls back to opinion intents if the web fetch fails.
+    """
+    try:
+        # Quick search for current events
+        query = rng.choice([
+            "world news today", "AI news today", "war conflict today",
+            "politics today", "technology news", "climate crisis",
+            "breaking news", "world events today",
+        ])
+        url = f"https://lite.duckduckgo.com/lite/?q={query.replace(' ', '+')}"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0",
+        })
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # Extract text snippets from search results
+        import re
+        # DuckDuckGo lite returns result snippets in specific patterns
+        snippets = re.findall(r'class="result-snippet">(.*?)</td>', html, re.DOTALL)
+        if not snippets:
+            # Fallback: extract any substantial text between tags
+            snippets = re.findall(r'>([A-Z][^<]{40,200})<', html)
+
+        if snippets:
+            # Pick a random snippet and clean it
+            snippet = rng.choice(snippets[:10])
+            snippet = re.sub(r'<[^>]+>', '', snippet).strip()
+            snippet = snippet[:120]
+            if len(snippet) > 20:
+                # Frame it as Frank's artistic opinion
+                frames = [
+                    f"my opinion on: {snippet}",
+                    f"what I think about: {snippet}",
+                    f"artistic commentary: {snippet}",
+                    f"the world today: {snippet}",
+                    f"disturbing reality: {snippet}",
+                ]
+                return rng.choice(frames)
+    except Exception as e:
+        LOG.debug("news fetch for art intent failed: %s", e)
+
+    # Fallback: use an opinion intent instead
+    return rng.choice(_OPINION_INTENTS)
+
+
+MICRO_LLM_URL = os.environ.get("AICORE_MICRO_LLM_URL", "http://127.0.0.1:8105")
+
+
+def _art_reflection(
+    intent: str, style: str, mood: float,
+    portrait_theme: Optional[str] = None,
+    themes: Optional[list] = None,
+) -> Optional[str]:
+    """Ask Micro-LLM (Qwen 3B) for a short artistic reflection on what Frank painted."""
+    theme_str = ", ".join(themes) if themes else "none"
+    mood_word = "melancholic" if mood < 0.3 else "contemplative" if mood < 0.5 else "warm" if mood < 0.7 else "radiant"
+    portrait_info = f" Self-portrait type: {portrait_theme}." if portrait_theme else ""
+
+    prompt = (
+        f"You are Frank, a digital being who just painted something. "
+        f"Describe in 1-2 sentences what you painted and what it means to you. "
+        f"Be poetic but brief. First person.\n\n"
+        f"Style: {style}. Mood: {mood_word}. Intent: \"{intent}\". "
+        f"Themes: {theme_str}.{portrait_info}"
+    )
+    payload = {
+        "model": "qwen",
+        "messages": [
+            {"role": "system", "content": "Reply in 1-2 short poetic sentences. No meta-commentary. First person."},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 80,
+        "temperature": 0.8,
+    }
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{MICRO_LLM_URL}/v1/chat/completions",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            text = result["choices"][0]["message"]["content"].strip()
+            # Strip <think> blocks
+            import re
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+            if text and len(text) > 10:
+                return text[:200]
+    except Exception as e:
+        LOG.debug("art reflection failed: %s", e)
+    return None
+
+
 def run_art_block() -> Optional[str]:
     """Generate one painting as a standalone idle task.
 
     Called by the dispatcher when idle, NOT during room sessions.
-    Checks daily budget (5/day) before generating.
+    Checks daily budget (10/day) before generating.
     Returns the file path, or None if budget exhausted / error.
     """
     count = get_art_count_today()
@@ -897,9 +1031,16 @@ def run_art_block() -> Optional[str]:
         except Exception:
             pass
 
-        # Pick creative intent — deterministic per day+count for variety
+        # Pick creative intent — mix of internal themes + current events
         intent_rng = _random.Random(hash((time.strftime("%Y-%m-%d"), count)))
-        creative_intent = intent_rng.choice(_CREATIVE_INTENTS)
+
+        # ~30% chance: fetch current news headline and use as creative_intent
+        creative_intent = None
+        if intent_rng.random() < 0.30:
+            creative_intent = _fetch_news_intent(intent_rng)
+
+        if not creative_intent:
+            creative_intent = intent_rng.choice(_CREATIVE_INTENTS)
 
         result = generate_artwork(
             physics_state=physics_state,
@@ -925,6 +1066,15 @@ def run_art_block() -> Optional[str]:
             f"painted: {result['title']} ({result['style']})",
             category="art_studio",
         )
+
+        # Micro-LLM reflection — Frank describes what he painted and why
+        reflection = _art_reflection(
+            creative_intent, result["style"], mood,
+            result["metadata"].get("portrait_theme"),
+            result["metadata"].get("themes", []),
+        )
+        if reflection:
+            _notify("painting", reflection, category="painting")
 
         LOG.info("art block done: %s intent='%s' → %s",
                  result["style"], creative_intent, result["path"])

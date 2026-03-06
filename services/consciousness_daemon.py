@@ -4491,10 +4491,47 @@ class ConsciousnessDaemon:
                 violations.append(f"self_address_confusion:{phrase[:30]}")
                 break
 
+        # ── 9. Fabricated Personal Life ──
+        # Frank is an AI — he cannot have friends, family, jobs,
+        # promotions, romantic relationships, or physical experiences
+        # outside his digital world. Catches LLM confabulation of
+        # human social experiences.
+        _human_relations = re.findall(
+            r'\b(?:my|i)\s+'
+            r'(?:best\s+friend|close\s+friend|friend\'?s?|'
+            r'sister|brother|mother|father|parent|family|'
+            r'wife|husband|partner|girlfriend|boyfriend|'
+            r'son|daughter|child|children|kids|'
+            r'colleague|coworker|boss|manager|'
+            r'neighbor|neighbour|uncle|aunt|cousin|grandparent)\b',
+            text_lower,
+        )
+        _human_experiences = re.findall(
+            r'\b(?:my\s+(?:promotion|job|career|salary|wedding|birthday\s+party|'
+            r'vacation|holiday|trip\s+to|house|apartment|car|phone|school|'
+            r'university|college|graduation|childhood|hometown)|'
+            r'i\s+(?:got\s+(?:promoted|hired|fired|married|divorced)|'
+            r'went\s+(?:to\s+(?:school|work|the\s+(?:store|mall|gym|doctor|hospital)))|'
+            r'graduated|applied\s+for|commute|drive\s+to|cook(?:ed)?|ate|slept|'
+            r'woke\s+up|showered|dressed)|'
+            r'(?:at|in)\s+(?:my\s+)?(?:workplace|office|home|house|apartment))\b',
+            text_lower,
+        )
+        # Filter: "my user" / "my creator" are valid Frank concepts
+        _human_relations = [
+            r for r in _human_relations
+            if not any(ok in r for ok in ("my user", "my creator", "my companion"))
+        ]
+        if _human_relations:
+            violations.append(f"fabricated_personal_life:relation:{_human_relations[0][:30]}")
+        if _human_experiences:
+            violations.append(f"fabricated_personal_life:experience:{_human_experiences[0][:30]}")
+
         # ── Score ──
         # Weighted by severity: self-address (identity collapse) > factual > minor
         _SEVERITY = {
             "self_address": 0.9,
+            "fabricated_personal_life": 0.7,
             "false_memory": 0.4,
             "phantom_service_down": 0.35,
             "phantom_service_up": 0.35,
@@ -5142,35 +5179,70 @@ class ConsciousnessDaemon:
 
         # ── Route to category-specific handler ─────────────────────
         # Some categories have dedicated handlers; the rest use prompt selection.
+        # FIX: All handlers now pass through the hallucination filter.
 
+        _dedicated_handler = None
         if thought_type == "conversation_reflection":
-            stored = self._do_conversation_reflection()
-            self._record_subconscious_outcome(
-                sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary, mask=sub_mask)
-            return
-
-        if thought_type == "entity_reflection":
-            stored = self._do_entity_reflection()
-            self._record_subconscious_outcome(
-                sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary, mask=sub_mask)
-            return
-
-        if thought_type == "hypothesis_review":
-            stored = self._do_hypothesis_review()
-            self._record_subconscious_outcome(
-                sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary, mask=sub_mask)
-            return
-
-        if thought_type == "raw_expression":
+            _dedicated_handler = self._do_conversation_reflection
+        elif thought_type == "entity_reflection":
+            _dedicated_handler = self._do_entity_reflection
+        elif thought_type == "hypothesis_review":
+            _dedicated_handler = self._do_hypothesis_review
+        elif thought_type == "raw_expression":
             LOG.info("RAW EXPRESSION MODE (subconscious): rumination=%.2f mood=%.2f",
                      self._rumination_score, self._current_workspace.mood_value)
-            stored = self._do_raw_expression(mood_summary, focus)
+            _dedicated_handler = lambda: self._do_raw_expression(mood_summary, focus)
+
+        if _dedicated_handler is not None:
+            _last_thought_before = self._last_idle_thought
+            stored = _dedicated_handler()
+
+            # ── Hallucination filter for dedicated handlers ──
+            # The handler stored the thought already; retroactively validate
+            # and delete if hallucinated.
+            if stored and self._last_idle_thought and self._last_idle_thought != _last_thought_before:
+                _ctx = self._validate_thought_context(thought_type)
+                _val = self._validate_thought_output(
+                    self._last_idle_thought, _ctx)
+                if not _val["valid"]:
+                    _h_score = _val["hallucination_score"]
+                    _viols = _val["violations"]
+                    LOG.warning(
+                        "HALLUCINATION in %s (score=%.2f): %s | %s",
+                        thought_type, _h_score,
+                        ", ".join(_viols),
+                        self._last_idle_thought[:80],
+                    )
+                    if sub:
+                        for v in _viols:
+                            sub.log_hallucination(
+                                thought_type, v, _h_score,
+                                suppressed=(_h_score >= 0.6))
+                    if _h_score >= 0.6:
+                        LOG.info("Suppressing hallucinated %s (score=%.2f)",
+                                 thought_type, _h_score)
+                        # Delete the already-stored reflection
+                        try:
+                            self._delete_last_reflection(
+                                self._last_idle_thought)
+                        except Exception as e:
+                            LOG.debug("Could not delete reflection: %s", e)
+                        stored = False
+
+            _h_score_out = 0.0
+            _h_viols_out = 0
+            try:
+                if not stored and _val:
+                    _h_score_out = _val.get("hallucination_score", 0.0)
+                    _h_viols_out = len(_val.get("violations", []))
+            except (NameError, UnboundLocalError):
+                pass
             self._record_subconscious_outcome(
                 sub, sub_state, sub_action, sub_log_prob, sub_value,
-                thought_type, stored, mood_summary, mask=sub_mask)
+                thought_type, stored, mood_summary,
+                hallucination_score=_h_score_out,
+                hallucination_violations=_h_viols_out,
+                mask=sub_mask)
             return
 
         # ── Prompt-based categories ────────────────────────────────
@@ -8270,6 +8342,33 @@ class ConsciousnessDaemon:
                 iq.extract_and_queue(content, trigger=trigger)
         except Exception:
             pass
+
+    def _delete_last_reflection(self, content: str) -> None:
+        """Delete a hallucinated reflection retroactively.
+
+        Called when a dedicated handler stored a thought that later
+        failed the hallucination filter.
+        """
+        try:
+            conn = self._get_conn()
+            # Delete from ring buffer (most recent match)
+            conn.execute(
+                "DELETE FROM reflections WHERE id = "
+                "(SELECT id FROM reflections WHERE content = ? "
+                " ORDER BY id DESC LIMIT 1)",
+                (content,),
+            )
+            # Also remove from archive so hallucination doesn't persist
+            conn.execute(
+                "DELETE FROM reflections_archive WHERE id = "
+                "(SELECT id FROM reflections_archive WHERE content = ? "
+                " ORDER BY id DESC LIMIT 1)",
+                (content,),
+            )
+            conn.commit()
+            LOG.info("Deleted hallucinated reflection: %s", content[:60])
+        except Exception as e:
+            LOG.warning("Failed to delete hallucinated reflection: %s", e)
 
     # ── Prediction Engine (Active Inference Light) ────────────────────
 

@@ -75,6 +75,8 @@ class PhysicsHandler(BaseHTTPRequestHandler):
             self._handle_set_coherence()
         elif path == "/neural":
             self._handle_toggle_neural()
+        elif path == "/companion":
+            self._handle_companion()
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -120,13 +122,15 @@ class PhysicsHandler(BaseHTTPRequestHandler):
 
     def _handle_sensation(self, mood: float) -> None:
         state = self.engine.get_state()
-        block = build_body_physics_block(state, mood)
+        companions = self.engine.get_companions(state.current_room)
+        block = build_body_physics_block(state, mood, companions=companions)
         self._send_json({
             "block": block,
             "room": state.current_room,
             "is_walking": state.is_walking,
             "is_sitting": state.is_sitting,
             "num_contacts": len(state.contacts),
+            "companions": list(companions.keys()),
         })
 
     def _handle_metrics(self) -> None:
@@ -224,6 +228,18 @@ class PhysicsHandler(BaseHTTPRequestHandler):
                 result["divergence_count"] = ne._divergence_count
                 result["max_divergence"] = ne._max_divergence
         self._send_json(result)
+
+    def _handle_companion(self) -> None:
+        body = self._read_body()
+        if body is None:
+            return
+        name = body.get("name", "")
+        if not name:
+            self._send_json({"error": "name required"}, 400)
+            return
+        self.engine.set_companion(name, body)
+        self._send_json({"ok": True, "name": name,
+                          "active": body.get("active", True)})
 
     def _handle_toggle_neural(self) -> None:
         body = self._read_body() or {}

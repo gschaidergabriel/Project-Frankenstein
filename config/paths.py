@@ -105,6 +105,7 @@ DB_PATHS = {
     "nucleus_accumbens": DB_DIR / "nucleus_accumbens.db",
     "immune_system": DB_DIR / "immune_system.db",
     "sft_stabilizer": DB_DIR / "sft_stabilizer.db",
+    "pip_agent": DB_DIR / "pip_agent.db",
 }
 
 # Model files (neural networks)

@@ -140,14 +140,6 @@ MONITORED_SERVICES = {
         "reset_after": 300,
         "description": "Web Search Daemon (DuckDuckGo + Tor)",
     },
-    "aicore-entities": {
-        "critical": True,
-        "restart_delay": 2,
-        "max_restarts": 15,
-        "cooldown": 30,
-        "reset_after": 600,
-        "description": "Entity Session Dispatcher",
-    },
     "aicore-desktopd": {
         "critical": True,
         "restart_delay": 2,
@@ -208,7 +200,6 @@ except NameError:
 # All services to stop on full shutdown (LLMs handled by llm-guard)
 FULL_SHUTDOWN_SERVICES = [
     "aicore-consciousness",
-    "aicore-entities",
     "aicore-genesis",
     "aicore-genesis-watchdog",
     "aicore-invariants",

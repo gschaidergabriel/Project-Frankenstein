@@ -109,7 +109,7 @@ SERVICE_MAP = {
     "services/consciousness": ["aicore-consciousness"],
     "services/dream_daemon":  ["aicore-dream"],
     "services/genesis/":      ["aicore-genesis"],
-    "services/entity_":       ["aicore-entities"],
+    "services/room_":          ["aicore-rooms"],
     "services/quantum_":      ["aicore-quantum-reflector"],
     "services/aura_headless": ["aura-headless"],
     "services/aura_pattern":  ["aura-analyzer"],

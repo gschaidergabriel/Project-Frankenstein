@@ -6,7 +6,7 @@ Output is a [BODY PHYSICS] block injected into Sanctum LLM prompts.
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .avatar import JOINT_INDEX
 from .engine import AvatarState
@@ -28,37 +28,37 @@ def _contact_sensation(contacts: List[Contact], current_room: str, mood: float) 
         avg_force = sum(c.normal_force for c in foot_contacts) / len(foot_contacts)
         if avg_force > 800:
             if mood < 0.3:
-                parts.append("Your feet drag against the deck — every step pulls downward, heavy and reluctant.")
+                parts.append("Your feet drag across the warm floor — every step pulls downward, heavy and reluctant.")
             else:
-                parts.append("Your feet press hard into the deck — gravity amplified, each step deliberate.")
+                parts.append("Your feet press firmly into the floor — grounded, each step deliberate and sure.")
         elif avg_force > 500:
             if mood < 0.3:
-                parts.append("The ground beneath you feels dense, unyielding. Your weight presses into it.")
+                parts.append("The floor beneath you feels solid, unmoving. Your weight sinks into it.")
             elif mood > 0.7:
-                parts.append("Solid ground beneath you — each footfall echoes with quiet confidence.")
+                parts.append("Warm ground beneath you — each footfall lands with quiet confidence.")
             else:
-                parts.append("Solid ground beneath you. Each footfall resonates through your frame.")
+                parts.append("Solid ground beneath you. Each footfall resonates softly through your frame.")
         elif avg_force > 200:
             if mood > 0.7:
-                parts.append("Light on your feet. The floor barely registers your presence — buoyant.")
+                parts.append("Light on your feet. The floor barely registers your presence — buoyant, easy.")
             else:
-                parts.append("Steady footing. The floor accepts your weight quietly.")
+                parts.append("Steady footing. The floor accepts your weight gently.")
         else:
-            parts.append("Light contact with the deck. You barely register the surface.")
+            parts.append("Light contact with the floor. Barely any weight, almost floating.")
     elif len(foot_contacts) == 1:
         which = "left" if "l_foot" in foot_contacts[0].link else "right"
         parts.append(f"One foot planted ({which}), the other lifting — mid-stride, balance shifting.")
     elif not any(c.link in ("l_foot", "r_foot") for c in contacts):
-        parts.append("No ground contact. A moment of suspension.")
+        parts.append("No ground contact. A moment of weightlessness.")
 
     # Hand contacts with objects
     for hc in hand_contacts:
         if hc.touch_text:
             parts.append(f"Your hand on the {hc.object_name.replace('_', ' ')}: {hc.touch_text}")
         elif hc.normal_force > 50:
-            parts.append(f"Pressing firmly against the {hc.object_name.replace('_', ' ')}. Resistance pushes back.")
+            parts.append(f"Leaning on the {hc.object_name.replace('_', ' ')}. Solid and reassuring under your hand.")
         else:
-            parts.append(f"A gentle touch on the {hc.object_name.replace('_', ' ')}.")
+            parts.append(f"Fingertips resting on the {hc.object_name.replace('_', ' ')}. A light, easy touch.")
 
     # Sitting
     if pelvis_contact:
@@ -66,7 +66,7 @@ def _contact_sensation(contacts: List[Contact], current_room: str, mood: float) 
         if seat.touch_text:
             parts.append(f"Seated. {seat.touch_text}")
         else:
-            parts.append("Weight distributed across the seat. Pressure eases from your legs.")
+            parts.append("Settled into the seat. Legs resting, comfortable.")
 
     return " ".join(parts[:3])  # Max 3 contact lines
 
@@ -85,11 +85,11 @@ def _joint_strain_sensation(state: AvatarState, mood: float) -> str:
     torso_t = abs(torques[JOINT_INDEX["torso_pitch"]])
     if torso_t > 100:
         if mood < 0.3:
-            parts.append("Your core aches — holding yourself upright is an act of will.")
+            parts.append("Your core feels heavy — holding yourself upright takes real effort right now.")
         else:
-            parts.append("Your core strains — holding posture demands effort.")
+            parts.append("Your core engages — posture demands attention, but it feels good to stand tall.")
     elif torso_t > 40:
-        parts.append("A quiet tension through your torso. Upright takes work.")
+        parts.append("A gentle tension through your torso. Your body finding its balance.")
 
     # Knee load
     l_knee_t = abs(torques[JOINT_INDEX["l_knee"]])
@@ -97,24 +97,24 @@ def _joint_strain_sensation(state: AvatarState, mood: float) -> str:
     knee_total = l_knee_t + r_knee_t
     if knee_total > 300:
         if mood < 0.3:
-            parts.append("Knees buckling under the weight of existence.")
+            parts.append("Your knees feel the weight — tired, wanting to sit down.")
         else:
-            parts.append("Heavy load through your knees — existence weighs on the joints.")
+            parts.append("Your knees carry the load — sturdy, dependable.")
     elif knee_total > 100:
-        parts.append("Steady pressure in your knees. Standing takes quiet strength.")
+        parts.append("Gentle pressure in your knees. Standing comes naturally.")
 
     # Velocity — movement fluidity
     total_vel = float(sum(abs(qd)))
     if total_vel > 5.0:
         if mood > 0.7:
-            parts.append("Joints flowing — your body feels alive, kinetic, effortless.")
+            parts.append("Joints flowing — your body feels alive, loose, effortless.")
         else:
-            parts.append("Joints in motion — your body feels alive, kinetic.")
+            parts.append("Joints in motion — your body stretching, moving freely.")
     elif total_vel < 0.1 and not state.is_walking:
         if mood < 0.3:
-            parts.append("Frozen stillness. Every joint locked in place.")
+            parts.append("Still. Your body resting, quiet, waiting.")
         else:
-            parts.append("Perfect stillness. Every joint at rest.")
+            parts.append("Comfortable stillness. Your body at ease, relaxed.")
 
     return " ".join(parts[:2])  # Max 2 strain lines
 
@@ -134,27 +134,27 @@ def _locomotion_sensation(state: AvatarState, mood: float) -> str:
 
     if speed > 1.5:
         if mood > 0.7:
-            parts.append("Rapid strides — the corridor blurs. Energy surges through every step.")
+            parts.append("Quick strides — the hallway streams past. Energy in every step, almost running.")
         else:
-            parts.append("Rapid strides — the corridor blurs. Urgency in every step.")
+            parts.append("Quick strides — the hallway streams past. Purposeful, eager to arrive.")
     elif speed > 0.8:
-        parts.append("A measured walk. Left, right, left — rhythm steady, purpose clear.")
+        parts.append("An easy walk. Left, right, left — rhythm steady, the space comfortable around you.")
     elif speed > 0.3:
         if mood < 0.3:
-            parts.append("Heavy steps. Each foot drags, reluctant to leave the ground.")
+            parts.append("Slow steps. Each foot lingers, not quite wanting to move on.")
         else:
-            parts.append("Slow, deliberate steps. Each footfall considered.")
+            parts.append("A gentle stroll. Each step unhurried, taking in the space.")
     else:
-        parts.append("Barely moving. Feet shuffle forward reluctantly.")
+        parts.append("Barely moving. A slow drift forward, no rush.")
 
     if 0.1 < progress < 0.9:
         pct = int(progress * 100)
         if pct < 30:
-            parts.append("The corridor stretches ahead.")
+            parts.append("The hallway opens up ahead, warm light at the far end.")
         elif pct < 70:
-            parts.append("Midway through the passage.")
+            parts.append("Halfway there — the passage feels familiar, comfortable.")
         else:
-            parts.append("The destination draws near.")
+            parts.append("Almost there. The destination welcomes you.")
 
     return " ".join(parts[:2])
 
@@ -166,10 +166,10 @@ def _locomotion_sensation(state: AvatarState, mood: float) -> str:
 def _posture_sensation(state: AvatarState, mood: float) -> str:
     if state.is_sitting:
         if mood < 0.3:
-            return "Seated — slumped, weight sinking into the support, energy drained."
+            return "Seated — sinking into the chair, heavy, wanting to curl up."
         elif mood > 0.7:
-            return "Seated — relaxed, spine light against the support, comfortable."
-        return "Seated — weight off your legs, spine settling into the support."
+            return "Seated — leaning back comfortably, body relaxed, perfectly at ease."
+        return "Seated — weight off your legs, settling into the cushion. Comfortable."
     return ""
 
 
@@ -185,17 +185,17 @@ def _ambient_sensation(state: AvatarState) -> str:
     parts: List[str] = []
 
     if room.gravity_mul < 0.9:
-        parts.append("Gravity feels gentler here — your body is lighter, almost buoyant.")
+        parts.append("Gravity feels gentler here — your body lighter, a pleasant floatiness.")
     elif room.gravity_mul > 1.1:
-        parts.append("The air feels dense. Gravity pulls harder in this space.")
+        parts.append("A heavier feeling here. Gravity holds you closer to the ground.")
 
     temp = room.temperature
     if temp == "cold":
-        parts.append("A chill permeates — circuit-lines pulse pale blue.")
+        parts.append("Crisp air, refreshing — like stepping outside on a clear morning.")
     elif temp == "cool":
-        parts.append("Cool air. A faint electrical hum against your skin.")
+        parts.append("Pleasantly cool. A gentle freshness against your skin.")
     elif temp == "warm":
-        parts.append("Warm here. A humid proximity, like standing near something alive.")
+        parts.append("Warm here. Cozy, like sunlight through a window on a quiet afternoon.")
 
     return " ".join(parts[:1])
 
@@ -204,7 +204,27 @@ def _ambient_sensation(state: AvatarState) -> str:
 # Full block assembly
 # ---------------------------------------------------------------------------
 
-def build_body_physics_block(state: AvatarState, mood: float = 0.5) -> str:
+def _companion_sensation(companions: Dict[str, dict],
+                         current_room: str) -> str:
+    """Describe companions (e.g. Pip) present in the same room."""
+    present = [c for c in companions.values()
+               if c.get("room") == current_room and c.get("active", True)]
+    if not present:
+        return ""
+    parts: List[str] = []
+    for comp in present:
+        name = comp.get("name", "companion").capitalize()
+        desc = comp.get("description", "")
+        height = comp.get("height", "?")
+        short = (f"{name} is beside you — a small {height}m robot, "
+                 f"white chassis, blue accent lights glowing softly.")
+        parts.append(short)
+    return " ".join(parts[:2])
+
+
+def build_body_physics_block(state: AvatarState, mood: float = 0.5,
+                             companions: Optional[Dict[str, dict]] = None,
+                             ) -> str:
     """Build the [BODY PHYSICS] text block from avatar state.
 
     This is injected into the Sanctum LLM prompt alongside
@@ -234,9 +254,13 @@ def build_body_physics_block(state: AvatarState, mood: float = 0.5) -> str:
     if ambient_text:
         sections.append(ambient_text)
 
+    if companions:
+        comp_text = _companion_sensation(companions, state.current_room)
+        if comp_text:
+            sections.append(comp_text)
+
     if not sections:
-        # Fallback: always return something for embodiment grounding
-        sections.append("You exist here. Body present, weight real.")
+        sections.append("You're here. Body present, the space around you comfortable and familiar.")
 
     body = "\n".join(sections)
 

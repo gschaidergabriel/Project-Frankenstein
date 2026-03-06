@@ -763,13 +763,44 @@ def _chat_llm_call(user_text: str, system_text: str = "", max_tokens: int = 600,
     return None
 
 
+def _ollama_discover_models() -> list:
+    """Discover available Ollama models via /api/tags."""
+    try:
+        req = urllib.request.Request("http://127.0.0.1:11434/api/tags")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
 def _ollama_chat_call(user_text: str, system_text: str, max_tokens: int = 600,
                       temperature: float = 0.65) -> Optional[Dict[str, Any]]:
     """Last-resort fallback: call Ollama on localhost:11434 if available.
-    Tries llama3.1, llama3, phi3:mini, mistral in order."""
+    Auto-discovers installed models, prefers Qwen for CPU efficiency."""
     ollama_url = "http://127.0.0.1:11434/api/chat"
-    # Try models in preference order
-    for model in ("llama3.1:latest", "llama3:latest", "phi3:mini", "llava:7b", "mistral:latest"):
+
+    # Auto-discover available models
+    available = _ollama_discover_models()
+    if not available:
+        return None
+
+    # Preference order: Qwen first (fast on CPU), then general models
+    prefs = ["qwen2.5:3b", "qwen2.5:7b", "llama3.1:8b", "llama3.1",
+             "deepseek-r1", "llama3", "phi3:mini", "mistral"]
+
+    # Build ordered model list: preferred first, then any remaining
+    models_to_try = []
+    for pref in prefs:
+        for avail in available:
+            if avail.startswith(pref.split(":")[0]) and avail not in models_to_try:
+                models_to_try.append(avail)
+    # Add any remaining models not yet in list
+    for avail in available:
+        if avail not in models_to_try:
+            models_to_try.append(avail)
+
+    for model in models_to_try:
         payload = json.dumps({
             "model": model,
             "messages": [
@@ -795,8 +826,6 @@ def _ollama_chat_call(user_text: str, system_text: str, max_tokens: int = 600,
                     LOG.info("Ollama fallback succeeded (model=%s, %d chars)", model, len(text))
                     return {"ok": True, "text": text, "model": f"ollama/{model}", "ts": time.time()}
         except urllib.error.HTTPError as e:
-            if e.code == 404:
-                continue  # Model not installed, try next
             LOG.debug("Ollama model %s failed: %s", model, e)
             continue
         except Exception:

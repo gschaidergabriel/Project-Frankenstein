@@ -70,6 +70,9 @@ RLM_URL = os.environ.get("AICORE_RLM_URL", "http://127.0.0.1:8101")
 # Micro-LLM endpoint (Qwen2.5-3B-Instruct-abliterated on llama-server, CPU)
 CHAT_LLM_URL = os.environ.get("AICORE_CHAT_LLM_URL", "http://127.0.0.1:8105")
 
+# Ollama endpoint (fallback when llama-server backends are unavailable)
+OLLAMA_URL = os.environ.get("AICORE_OLLAMA_URL", "http://127.0.0.1:11434")
+
 # Default token limit (caller's requested answer length)
 DEFAULT_N_PREDICT = int(os.environ.get("AICORE_N_PREDICT", "2048"))
 
@@ -494,6 +497,109 @@ def _rlm_chat_completion_stream(
             except json.JSONDecodeError:
                 continue
 
+# ---- Ollama fallback --------------------------------------------------------
+
+_ollama_models_cache: list = []
+_ollama_cache_ts: float = 0.0
+
+def _discover_ollama_models() -> list:
+    """Discover available Ollama models (cached for 60s)."""
+    global _ollama_models_cache, _ollama_cache_ts
+    if time.time() - _ollama_cache_ts < 60.0 and _ollama_models_cache:
+        return _ollama_models_cache
+    try:
+        req = urllib.request.Request(f"{OLLAMA_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            models = [m["name"] for m in data.get("models", [])]
+            _ollama_models_cache = models
+            _ollama_cache_ts = time.time()
+            return models
+    except Exception:
+        return _ollama_models_cache  # Return stale cache on error
+
+
+def _pick_ollama_model(tier: str) -> Optional[str]:
+    """Pick the best Ollama model for the given tier (rlm/llm/llama).
+    Returns model name or None if no suitable model found.
+    For CPU-only setups: prefers Qwen (small, fast) for casual,
+    and whatever is available for reasoning."""
+    available = _discover_ollama_models()
+    if not available:
+        return None
+
+    # Preference order per tier
+    # Ollama uses "name:tag" format (e.g. "qwen2.5:3b", "deepseek-r1:latest")
+    if tier == "rlm":
+        # Deep reasoning — prefer large/reasoning models
+        prefs = ["deepseek-r1", "llama3.1:8b", "llama3.1",
+                 "qwen2.5:7b", "qwen2.5:3b", "llama3", "mistral"]
+    elif tier == "llm":
+        # Normal chat — prefer fast models, Qwen is great on CPU
+        prefs = ["qwen2.5:3b", "qwen2.5:7b", "llama3.1:8b", "llama3.1",
+                 "deepseek-r1", "llama3", "mistral"]
+    else:  # llama / micro — casual, prefer smallest fast model
+        prefs = ["qwen2.5:3b", "qwen2.5:1.5b", "qwen2.5:0.5b",
+                 "llama3.2:3b", "llama3.2:1b", "phi3:mini",
+                 "llama3.1:8b", "llama3.1", "llama3", "mistral"]
+
+    # Try exact match first
+    for pref in prefs:
+        if pref in available:
+            return pref
+        # Ollama auto-tags ":latest" — check that too
+        if f"{pref}:latest" in available:
+            return f"{pref}:latest"
+    # Try prefix match (e.g. "qwen2.5" matches "qwen2.5:3b-instruct")
+    for pref in prefs:
+        base = pref.split(":")[0]
+        for avail in available:
+            if avail.startswith(base):
+                return avail
+    # Last resort: use whatever is available
+    return available[0] if available else None
+
+
+def _ollama_chat_completion(
+    user_text: str,
+    system_text: str,
+    max_tokens: int,
+    timeout_sec: float,
+    temperature: float = 0.7,
+    model: Optional[str] = None,
+) -> str:
+    """Call Ollama /api/chat. Returns answer text or empty string."""
+    if model is None:
+        model = _pick_ollama_model("llm")
+    if not model:
+        return ""
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_text},
+        ],
+        "stream": False,
+        "options": {
+            "num_predict": max_tokens,
+            "temperature": temperature,
+        },
+    }).encode()
+    req = urllib.request.Request(
+        f"{OLLAMA_URL}/api/chat", data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            data = json.loads(resp.read().decode())
+            return (data.get("message", {}).get("content") or "").strip()
+    except Exception as e:
+        LOG.debug("Ollama call failed (model=%s): %s", model, e)
+        return ""
+
+
 # ---- ingest helpers ---------------------------------------------------------
 
 def _safe_filename(name: str) -> str:
@@ -512,11 +618,14 @@ def _ensure_ingest_dir() -> Path:
 def health() -> Dict[str, Any]:
     global _last_ts
     _last_ts = time.time()
+    ollama_models = _discover_ollama_models()
     return {
         "ok": True,
         "models": {"rlm": "deepseek-r1", "chat": "qwen2.5-3b"},
         "rlm_up": _is_rlm_up(),
         "chat_llm_up": _is_chat_llm_up(),
+        "ollama_up": len(ollama_models) > 0,
+        "ollama_models": ollama_models,
         "last_model": _last_model,
         "ts": _last_ts,
     }
@@ -600,7 +709,18 @@ def route(req: RouteRequest) -> RouteResponse:
             return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
 
         except Exception as e:
-            LOG.warning(f"Micro-LLM failed ({e}), falling back to LLM (GPU)")
+            LOG.warning(f"Micro-LLM failed ({e}), trying Ollama then LLM (GPU)")
+            # Try Ollama before escalating to GPU
+            ollama_model = _pick_ollama_model("llama")
+            if ollama_model:
+                answer = _ollama_chat_completion(
+                    text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, 0.7, model=ollama_model
+                )
+                if answer:
+                    _last_model = f"ollama/{ollama_model}"
+                    _last_ts = time.time()
+                    LOG.info(f"✅ ANTWORT [ollama/{ollama_model} fallback from llama]: '{answer[:80]}...'")
+                    return RouteResponse(ok=True, model=f"ollama/{ollama_model}", text=answer, ts=_last_ts)
             model_choice = "llm"  # Promote to GPU LLM, not full RLM
 
     if model_choice == "llm":
@@ -648,7 +768,19 @@ def route(req: RouteRequest) -> RouteResponse:
                     return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
             except Exception as e2:
                 LOG.warning(f"Micro-LLM fallback also failed: {e2}")
-            # Fall through to RLM as last resort
+            # Try Ollama before falling through to RLM
+            ollama_model = _pick_ollama_model("llm")
+            if ollama_model:
+                LOG.info(f"🔄 OLLAMA FALLBACK (from llm): {ollama_model}")
+                fb_text, fb_sys, fb_tokens = _prepare_micro_fallback(text, system, caller_n)
+                answer = _ollama_chat_completion(
+                    fb_text, fb_sys, fb_tokens, RLM_HTTP_TIMEOUT_SEC, 0.65, model=ollama_model
+                )
+                if answer:
+                    _last_model = f"ollama/{ollama_model}"
+                    _last_ts = time.time()
+                    LOG.info(f"✅ ANTWORT [ollama/{ollama_model} fallback from llm]: '{answer[:80]}...'")
+                    return RouteResponse(ok=True, model=f"ollama/{ollama_model}", text=answer, ts=_last_ts)
 
     # ---- RLM path (DeepSeek-R1, full reasoning — only philosophical) ----
     max_tokens = max(int(caller_n * RLM_TOKEN_MULTIPLIER), RLM_TOKEN_MIN)
@@ -696,6 +828,21 @@ def route(req: RouteRequest) -> RouteResponse:
                 return RouteResponse(ok=True, model="qwen2.5-3b", text=answer, ts=_last_ts)
         except Exception as e2:
             LOG.debug(f"Micro-LLM fallback unavailable: {e2}")
+
+        # Last resort: try Ollama (if installed)
+        ollama_model = _pick_ollama_model("rlm")
+        if ollama_model:
+            LOG.info(f"🔄 OLLAMA FALLBACK: {ollama_model}")
+            fb_text, fb_sys, fb_tokens = _prepare_micro_fallback(text, system, caller_n)
+            answer = _ollama_chat_completion(
+                fb_text, fb_sys, fb_tokens, RLM_HTTP_TIMEOUT_SEC, 0.65, model=ollama_model
+            )
+            if answer:
+                _last_model = f"ollama/{ollama_model}"
+                _last_ts = time.time()
+                out_preview = answer[:150].replace('\n', ' ')
+                LOG.info(f"✅ ANTWORT [ollama/{ollama_model}]: '{out_preview}...'")
+                return RouteResponse(ok=True, model=f"ollama/{ollama_model}", text=answer, ts=_last_ts)
 
         _last_ts = time.time()
         LOG.error(f"❌ FEHLER: all models failed (rlm: {e})")
@@ -806,7 +953,11 @@ def route_stream(req: RouteRequest):
 def on_startup():
     rlm_up = _is_rlm_up()
     chat_up = _is_chat_llm_up()
-    LOG.info(f"[ROUTER] Dual-model architecture (RLM + Micro-LLM fallback)")
-    LOG.info(f"[RLM]  DeepSeek-R1  @ {RLM_URL} — {'UP' if rlm_up else 'DOWN'}")
-    LOG.info(f"[MICRO] Qwen2.5-3B @ {CHAT_LLM_URL} — {'UP' if chat_up else 'DOWN'}")
+    ollama_models = _discover_ollama_models()
+    LOG.info(f"[ROUTER] 3-tier architecture (RLM + Micro-LLM + Ollama fallback)")
+    LOG.info(f"[RLM]    DeepSeek-R1  @ {RLM_URL} — {'UP' if rlm_up else 'DOWN'}")
+    LOG.info(f"[MICRO]  Qwen2.5-3B  @ {CHAT_LLM_URL} — {'UP' if chat_up else 'DOWN'}")
+    LOG.info(f"[OLLAMA] @ {OLLAMA_URL} — {'UP (' + ', '.join(ollama_models) + ')' if ollama_models else 'DOWN'}")
+    if not rlm_up and not chat_up and ollama_models:
+        LOG.info(f"[ROUTER] CPU-only mode: Ollama will handle all requests")
     LOG.info(f"[ROUTER] Default tokens: {DEFAULT_N_PREDICT}, RLM timeout: {RLM_HTTP_TIMEOUT_SEC}s, Chat timeout: {CHAT_LLM_HTTP_TIMEOUT_SEC}s")

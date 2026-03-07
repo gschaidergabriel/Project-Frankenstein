@@ -789,7 +789,13 @@ class EPQ:
         elif event_type == "reflection_vulnerability":
             changes["empathy"] = delta * 0.3     # Vulnerability builds empathy
             changes["vigilance"] = -delta * 0.2  # Self-acceptance reduces anxiety
-            changes["mood"] = delta * 0.2
+            # Mood direction depends on sentiment: negative idle thoughts
+            # should lower mood, not raise it. Previously delta was always
+            # positive, causing frustrated thoughts to INCREASE mood.
+            if sentiment == "negative":
+                changes["mood"] = -delta * 0.3   # Negative self-reflection lowers mood
+            else:
+                changes["mood"] = delta * 0.2    # Positive vulnerability is grounding
         elif event_type == "reflection_embodiment":
             changes["mood"] = delta * 0.3        # Body awareness is grounding
             changes["vigilance"] = -delta * 0.1  # Less anxious about hardware

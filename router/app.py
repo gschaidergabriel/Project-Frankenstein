@@ -600,6 +600,81 @@ def _ollama_chat_completion(
         return ""
 
 
+def _ollama_chat_completion_stream(
+    user_text: str,
+    system_text: str,
+    max_tokens: int,
+    timeout_sec: float,
+    temperature: float = 0.7,
+    model: Optional[str] = None,
+):
+    """Generator yielding tokens from Ollama streaming /api/chat."""
+    if model is None:
+        model = _pick_ollama_model("llm")
+    if not model:
+        return
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_text},
+        ],
+        "stream": True,
+        "options": {
+            "num_predict": max_tokens,
+            "temperature": temperature,
+        },
+    }).encode()
+    req = urllib.request.Request(
+        f"{OLLAMA_URL}/api/chat", data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                chunk = json.loads(line)
+                content = chunk.get("message", {}).get("content", "")
+                if content:
+                    yield content
+                if chunk.get("done", False):
+                    break
+            except json.JSONDecodeError:
+                continue
+
+
+# ---- Cached backend health --------------------------------------------------
+# Avoids repeatedly hitting dead llama-server ports on Ollama-only installs.
+
+_backend_rlm_up: bool = False
+_backend_micro_up: bool = False
+_backend_health_ts: float = 0.0
+_BACKEND_HEALTH_INTERVAL = 30.0
+
+
+def _refresh_backend_health():
+    """Periodically re-check llama-server and micro-LLM availability."""
+    global _backend_rlm_up, _backend_micro_up, _backend_health_ts
+    now = time.time()
+    if now - _backend_health_ts < _BACKEND_HEALTH_INTERVAL:
+        return
+    _backend_rlm_up = _is_rlm_up()
+    _backend_micro_up = _is_chat_llm_up()
+    _backend_health_ts = now
+
+
+def _is_ollama_only() -> bool:
+    """True when llama-server backends are down but Ollama is available."""
+    _refresh_backend_health()
+    if _backend_rlm_up or _backend_micro_up:
+        return False
+    return len(_discover_ollama_models()) > 0
+
+
 # ---- ingest helpers ---------------------------------------------------------
 
 def _safe_filename(name: str) -> str:
@@ -618,14 +693,17 @@ def _ensure_ingest_dir() -> Path:
 def health() -> Dict[str, Any]:
     global _last_ts
     _last_ts = time.time()
+    _refresh_backend_health()
     ollama_models = _discover_ollama_models()
+    ollama_only = not _backend_rlm_up and not _backend_micro_up and len(ollama_models) > 0
     return {
         "ok": True,
         "models": {"rlm": "deepseek-r1", "chat": "qwen2.5-3b"},
-        "rlm_up": _is_rlm_up(),
-        "chat_llm_up": _is_chat_llm_up(),
+        "rlm_up": _backend_rlm_up,
+        "chat_llm_up": _backend_micro_up,
         "ollama_up": len(ollama_models) > 0,
         "ollama_models": ollama_models,
+        "ollama_only_mode": ollama_only,
         "last_model": _last_model,
         "ts": _last_ts,
     }
@@ -687,6 +765,28 @@ def route(req: RouteRequest) -> RouteResponse:
 
     # Classify which model to use
     model_choice = _classify_model(text, req.force)
+
+    # Fast-path: Ollama-only mode (no llama-server backends available)
+    if _is_ollama_only():
+        ollama_model = _pick_ollama_model(model_choice)
+        if ollama_model:
+            temperature = req.temperature if req.temperature is not None else 0.65
+            max_tokens = caller_n
+            if model_choice == "rlm":
+                max_tokens = max(int(caller_n * RLM_TOKEN_MULTIPLIER), RLM_TOKEN_MIN)
+            elif model_choice == "llm":
+                max_tokens = max(caller_n, 600)
+            LOG.info(f"🔄 OLLAMA-ONLY: {ollama_model} (tier={model_choice}, max_tokens={max_tokens})")
+            answer = _ollama_chat_completion(
+                text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature, model=ollama_model
+            )
+            if answer:
+                _last_model = f"ollama/{ollama_model}"
+                _last_ts = time.time()
+                out_preview = answer[:150].replace('\n', ' ')
+                LOG.info(f"✅ ANTWORT [ollama/{ollama_model}]: '{out_preview}...'")
+                return RouteResponse(ok=True, model=f"ollama/{ollama_model}", text=answer, ts=_last_ts)
+            LOG.warning("Ollama-only call returned empty, trying standard fallback chain")
 
     if model_choice == "llama":
         # ---- Micro-LLM path (Qwen2.5-3B, CPU, fast, no reasoning) ----
@@ -864,6 +964,33 @@ def route_stream(req: RouteRequest):
     # Classify which model to use
     model_choice = _classify_model(text, req.force)
 
+    # Fast-path: Ollama-only mode (no llama-server backends available)
+    if _is_ollama_only():
+        ollama_model = _pick_ollama_model(model_choice)
+        if ollama_model:
+            max_tokens = caller_n
+            if model_choice == "rlm":
+                max_tokens = max(int(caller_n * RLM_TOKEN_MULTIPLIER), RLM_TOKEN_MIN)
+            elif model_choice == "llm":
+                max_tokens = max(caller_n, 600)
+            temperature = req.temperature if req.temperature is not None else 0.65
+            LOG.info(f"🔄 STREAM OLLAMA-ONLY: {ollama_model} (tier={model_choice}, max_tokens={max_tokens})")
+
+            def generate_ollama_only():
+                try:
+                    for token in _ollama_chat_completion_stream(
+                        text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature, model=ollama_model
+                    ):
+                        yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                    yield f"data: {json.dumps({'content': '', 'stop': True, 'model': f'ollama/{ollama_model}'})}\n\n"
+                except Exception as e:
+                    LOG.error(f"Ollama-only stream error: {e}")
+                    yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': 'none'})}\n\n"
+                finally:
+                    LOG.info(f"✅ STREAM DONE [ollama/{ollama_model}]")
+
+            return StreamingResponse(generate_ollama_only(), media_type="text/event-stream")
+
     if model_choice == "llama":
         max_tokens = caller_n
         temperature = req.temperature if req.temperature is not None else 0.7
@@ -877,8 +1004,20 @@ def route_stream(req: RouteRequest):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                 yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
             except Exception as e:
-                LOG.error(f"Stream error [qwen2.5-3b]: {e}")
-                yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
+                LOG.warning(f"Micro-LLM stream failed ({e}), trying Ollama")
+                _om = _pick_ollama_model("llama")
+                if _om:
+                    try:
+                        for token in _ollama_chat_completion_stream(
+                            text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, 0.7, model=_om
+                        ):
+                            yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                        yield f"data: {json.dumps({'content': '', 'stop': True, 'model': f'ollama/{_om}'})}\n\n"
+                    except Exception as e2:
+                        LOG.error(f"Ollama stream also failed: {e2}")
+                        yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'none'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'error': str(e), 'stop': True, 'model': 'none'})}\n\n"
             finally:
                 LOG.info(f"✅ STREAM DONE [qwen2.5-3b]")
 
@@ -907,8 +1046,22 @@ def route_stream(req: RouteRequest):
                         yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                     yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
                 except Exception as e2:
-                    LOG.error(f"All stream models failed: {e2}")
-                    yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'none'})}\n\n"
+                    _om = _pick_ollama_model("llm")
+                    if _om:
+                        LOG.info(f"🔄 OLLAMA STREAM FALLBACK: {_om}")
+                        try:
+                            fb2, fs2, ft2 = _prepare_micro_fallback(text, system, caller_n)
+                            for token in _ollama_chat_completion_stream(
+                                fb2, fs2, ft2, RLM_HTTP_TIMEOUT_SEC, 0.65, model=_om
+                            ):
+                                yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                            yield f"data: {json.dumps({'content': '', 'stop': True, 'model': f'ollama/{_om}'})}\n\n"
+                        except Exception as e3:
+                            LOG.error(f"All stream models failed: {e3}")
+                            yield f"data: {json.dumps({'error': str(e3), 'stop': True, 'model': 'none'})}\n\n"
+                    else:
+                        LOG.error(f"All stream models failed: {e2}")
+                        yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'none'})}\n\n"
             finally:
                 LOG.info(f"✅ STREAM DONE [llama-8b]")
 
@@ -939,8 +1092,22 @@ def route_stream(req: RouteRequest):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                 yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
             except Exception as e2:
-                LOG.debug(f"Micro-LLM stream fallback unavailable: {e2}")
-                yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
+                _om = _pick_ollama_model("rlm")
+                if _om:
+                    LOG.info(f"🔄 OLLAMA STREAM FALLBACK (rlm): {_om}")
+                    try:
+                        fb2, fs2, ft2 = _prepare_micro_fallback(text, system, caller_n)
+                        for token in _ollama_chat_completion_stream(
+                            fb2, fs2, ft2, RLM_HTTP_TIMEOUT_SEC, 0.65, model=_om
+                        ):
+                            yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
+                        yield f"data: {json.dumps({'content': '', 'stop': True, 'model': f'ollama/{_om}'})}\n\n"
+                    except Exception as e3:
+                        LOG.error(f"All stream models (incl. Ollama) failed: {e3}")
+                        yield f"data: {json.dumps({'error': str(e3), 'stop': True, 'model': 'none'})}\n\n"
+                else:
+                    LOG.debug(f"Micro-LLM stream fallback unavailable, no Ollama: {e2}")
+                    yield f"data: {json.dumps({'error': str(e2), 'stop': True, 'model': 'none'})}\n\n"
         finally:
             LOG.info(f"✅ STREAM DONE")
 
@@ -951,13 +1118,15 @@ def route_stream(req: RouteRequest):
 
 @app.on_event("startup")
 def on_startup():
-    rlm_up = _is_rlm_up()
-    chat_up = _is_chat_llm_up()
+    global _backend_rlm_up, _backend_micro_up, _backend_health_ts
+    _backend_rlm_up = _is_rlm_up()
+    _backend_micro_up = _is_chat_llm_up()
+    _backend_health_ts = time.time()
     ollama_models = _discover_ollama_models()
     LOG.info(f"[ROUTER] 3-tier architecture (RLM + Micro-LLM + Ollama fallback)")
-    LOG.info(f"[RLM]    DeepSeek-R1  @ {RLM_URL} — {'UP' if rlm_up else 'DOWN'}")
-    LOG.info(f"[MICRO]  Qwen2.5-3B  @ {CHAT_LLM_URL} — {'UP' if chat_up else 'DOWN'}")
+    LOG.info(f"[RLM]    DeepSeek-R1  @ {RLM_URL} — {'UP' if _backend_rlm_up else 'DOWN'}")
+    LOG.info(f"[MICRO]  Qwen2.5-3B  @ {CHAT_LLM_URL} — {'UP' if _backend_micro_up else 'DOWN'}")
     LOG.info(f"[OLLAMA] @ {OLLAMA_URL} — {'UP (' + ', '.join(ollama_models) + ')' if ollama_models else 'DOWN'}")
-    if not rlm_up and not chat_up and ollama_models:
-        LOG.info(f"[ROUTER] CPU-only mode: Ollama will handle all requests")
+    if not _backend_rlm_up and not _backend_micro_up and ollama_models:
+        LOG.info(f"[ROUTER] *** OLLAMA-ONLY MODE: all requests routed directly to Ollama ***")
     LOG.info(f"[ROUTER] Default tokens: {DEFAULT_N_PREDICT}, RLM timeout: {RLM_HTTP_TIMEOUT_SEC}s, Chat timeout: {CHAT_LLM_HTTP_TIMEOUT_SEC}s")

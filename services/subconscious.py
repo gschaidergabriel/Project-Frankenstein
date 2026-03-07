@@ -63,6 +63,11 @@ THOUGHT_CATEGORIES = [
     "daily_activity",            # 11: Daily activity summary
     "raw_expression",            # 12: Raw emotional expression
     "hypothesis_review",         # 13: Review own hypotheses
+    "world_curiosity",           # 14: Think about the world — science, ideas, questions
+    "experiment_planning",       # 15: Plan experiments, review lab results
+    "creative_ideation",         # 16: Plan art, projects, things to build
+    "web_research",              # 17: Proactive internet research, self-education
+    "pip_companion",             # 18: Interact with Pip robot companion
 ]
 NUM_ACTIONS = len(THOUGHT_CATEGORIES)
 CATEGORY_TO_IDX = {c: i for i, c in enumerate(THOUGHT_CATEGORIES)}
@@ -85,6 +90,12 @@ CATEGORY_TO_PROMPT_TAGS: Dict[str, Optional[str]] = {
     "entity_reflection": None,
     "raw_expression": None,
     "hypothesis_review": None,
+    # Exteroceptive categories — outward-looking, task-positive:
+    "world_curiosity": None,
+    "experiment_planning": "experiment",
+    "creative_ideation": None,
+    "web_research": None,
+    "pip_companion": None,
 }
 
 # Prompt index ranges within _IDLE_PROMPTS for each prompt-based category
@@ -102,11 +113,16 @@ CATEGORY_PROMPT_RANGES: Dict[str, Tuple[int, int]] = {
     "epq_introspection": (34, 38),
     "aura_awareness": (38, 43),
     "daily_activity": (43, 47),
+    "world_curiosity": (47, 52),
+    "experiment_planning": (52, 56),
+    "creative_ideation": (56, 60),
+    "web_research": (60, 66),
+    "pip_companion": (66, 69),
 }
 
 # ── Network Constants ──
 
-STATE_DIM = 86
+STATE_DIM = 92
 
 # PPO Hyperparameters
 LEARNING_RATE = 3e-4
@@ -969,7 +985,7 @@ class Subconscious:
 # ══════════════════════════════════════════════════
 
 class SubconsciousStateEncoder:
-    """Encodes Frank's internal state as an 86-dim feature vector.
+    """Encodes Frank's internal state as a 92-dim feature vector.
 
     The consciousness daemon passes raw data; this class normalizes
     and structures it for the network. Includes proprioceptive
@@ -1023,7 +1039,7 @@ class SubconsciousStateEncoder:
         conversation_diversity: float = 0.0,
         entity_session_deficit: float = 0.0,
         dream_processing_need: float = 0.0,
-        # Recent thoughts (14 fractions + 14 time-since)
+        # Recent thoughts (17 fractions + 17 time-since)
         type_histogram: Optional[Dict[str, float]] = None,
         time_since_per_type: Optional[Dict[str, float]] = None,
         # Hypothesis state
@@ -1041,7 +1057,7 @@ class SubconsciousStateEncoder:
         exploration_rate: float = 1.0,
         training_progress: float = 0.0,
     ) -> torch.Tensor:
-        """Encode complete state as 86-dim tensor."""
+        """Encode complete state as 92-dim tensor."""
         features = []
 
         # === Current State (21 dims) ===
@@ -1101,12 +1117,12 @@ class SubconsciousStateEncoder:
         features.append(float(np.clip(entity_session_deficit, 0, 1)))
         features.append(float(np.clip(dream_processing_need, 0, 1)))
 
-        # === Recent Thought Distribution (14 dims) ===
+        # === Recent Thought Distribution (17 dims) ===
         hist = type_histogram or {}
         for cat in THOUGHT_CATEGORIES:
             features.append(float(hist.get(cat, 0.0)))
 
-        # === Per-Type Time Since Last (14 dims) ===
+        # === Per-Type Time Since Last (17 dims) ===
         ts_map = time_since_per_type or {}
         for cat in THOUGHT_CATEGORIES:
             hours_ago = ts_map.get(cat, 24.0)

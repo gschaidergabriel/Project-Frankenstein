@@ -127,8 +127,8 @@ def _core_chat_stream(
                 if chunk.get("stop", False):
                     break
 
-    except (urllib.error.URLError, ConnectionRefusedError, OSError) as e:
-        # Router streaming not available — fall back to blocking call
+    except (urllib.error.URLError, ConnectionRefusedError, OSError, RuntimeError) as e:
+        # Router streaming not available or returned error — fall back to blocking call
         LOG.warning(f"Streaming unavailable ({e}), falling back to blocking call")
         res = _core_chat(text, max_tokens=max_tokens, force=force)
         if on_token and res.get("text"):

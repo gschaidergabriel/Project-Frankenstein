@@ -116,8 +116,13 @@ def _eb_record_tool_proxy(tool_path: str, payload: dict, result: dict,
         finally:
             conn.close()
         if _fb_process_event:
-            evt = "tool_success" if success else "tool_failure"
-            _fb_process_event(evt, {"tool": tool_name})
+            # Skip E-PQ events for monitoring/polling tools — these fire
+            # every 15-30s and inflate mood_buffer + personality vectors
+            # toward ceiling without reflecting actual user tool usage.
+            _MONITORING_TOOLS = {"sys_summary", "sys_health", "sys_status"}
+            if tool_name not in _MONITORING_TOOLS:
+                evt = "tool_success" if success else "tool_failure"
+                _fb_process_event(evt, {"tool": tool_name})
     except Exception:
         pass
 

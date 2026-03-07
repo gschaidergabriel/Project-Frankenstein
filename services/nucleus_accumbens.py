@@ -608,6 +608,18 @@ class NucleusAccumbens:
             # ── Anhedonia Detection ──────────────────────────
             self._check_anhedonia(now_wall)
 
+            # ── Hedonic Adaptation Decay ───────────────────────
+            # Without periodic recovery, habituation values get permanently
+            # stuck near floor (0.05-0.35) after heavy use, causing complete
+            # anhedonia: nothing feels rewarding anymore.
+            # Recovery: ~10% per hour toward 1.0 (fresh sensitivity).
+            _hab_recovery_per_sec = 0.10 / 3600.0
+            for _ch in list(self._state.channel_habituation):
+                _hab = self._state.channel_habituation[_ch]
+                if _hab < 1.0:
+                    _hab += (1.0 - _hab) * _hab_recovery_per_sec * dt
+                    self._state.channel_habituation[_ch] = min(1.0, _hab)
+
             # ── Intrinsic Curiosity Spark (Pankseppian SEEKING) ──
             # When boredom persists, a tiny internal spark nudges tonic DA
             # upward — just enough to break the cycle. Habituates fast.

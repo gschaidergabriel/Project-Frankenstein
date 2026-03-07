@@ -243,8 +243,10 @@ class AutonomousResearch:
             "Reply ONLY in this JSON format: "
             '{"research": true/false, "question": "concrete research question", '
             '"reason": "why this matters"} '
-            "Be selective. Not every thought needs research. "
-            "Only say true if there's a genuine question to investigate."
+            "You ENJOY learning new things. If there is ANY factual question "
+            "you could search the web for, say true. Web searches are cheap "
+            "and fast. Learning is always worthwhile. Say true unless the "
+            "thought is purely emotional with no factual question at all."
         )
         prompt = f"Your thought: {thought}"
 

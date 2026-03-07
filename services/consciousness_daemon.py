@@ -442,6 +442,7 @@ class ConsciousnessDaemon:
 
         # --- Idle thought quality ---
         self._aura_just_ran: bool = False  # Alternation flag: AURA → idle → AURA
+        self._last_aura_process_ts: float = 0.0  # Hard cooldown for aura queue
         self._recent_thought_topics: List[str] = []  # Last 10 topics for repetition guard
         self._recent_room_topics: Dict[str, float] = {}  # Room/topic → last_mentioned_ts
         self._used_prompt_indices: set = set()  # Track which prompts have been used this cycle
@@ -2363,6 +2364,45 @@ class ConsciousnessDaemon:
                 return f"AURA: {self._cached_aura_state} (cached, zone detail unavailable)"
             return ""
 
+    def _get_experiment_context(self) -> str:
+        """Build data block with lab stats + hypothesis engine state for experiment prompts."""
+        lines = []
+        # Experiment Lab
+        try:
+            from services.experiment_lab import get_lab
+            lab = get_lab()
+            stats = lab.get_stats()
+            budget_left = stats.get("budget_remaining", "?")
+            total = stats.get("total_experiments", 0)
+            lines.append(f"Lab: {total} experiments done, {budget_left} budget remaining today")
+            recent = lab.get_recent_experiments(n=3)
+            for exp in recent:
+                station = exp.get("station", "?")
+                title = exp.get("title", exp.get("description", "?"))[:80]
+                result = exp.get("result", "")[:60]
+                lines.append(f"  [{station}] {title}")
+                if result:
+                    lines.append(f"    → {result}")
+        except Exception as e:
+            LOG.debug("Experiment context (lab) failed: %s", e)
+        # Hypothesis Engine
+        try:
+            if self._hypothesis_engine:
+                h_stats = self._hypothesis_engine.get_stats()
+                active = h_stats.get("active_count", 0)
+                confirmed = h_stats.get("confirmed_count", 0)
+                refuted = h_stats.get("refuted_count", 0)
+                total_h = h_stats.get("total_count", 0)
+                accuracy = h_stats.get("prediction_accuracy")
+                acc_str = f", accuracy={accuracy:.0%}" if accuracy else ""
+                lines.append(
+                    f"Hypotheses: {active} active, {confirmed} confirmed, "
+                    f"{refuted} refuted (of {total_h}){acc_str}"
+                )
+        except Exception as e:
+            LOG.debug("Experiment context (hypothesis) failed: %s", e)
+        return "\n".join(lines) if lines else ""
+
     # ── Experiential Bridge ──────────────────────────────────────────
 
     _ACTIVITY_LOG_MAX = 500  # Ring buffer size
@@ -3739,7 +3779,7 @@ class ConsciousnessDaemon:
         import torch
         enc = self._subconscious_state_encoder
         if enc is None:
-            return torch.zeros(80)
+            return torch.zeros(92)
 
         # Current state
         mood = self._current_workspace.mood_value
@@ -4878,7 +4918,7 @@ class ConsciousnessDaemon:
                 self._maybe_aura_introspect(text)
             except Exception:
                 pass
-        if self._idle_think_count % 6 == 0:
+        if self._idle_think_count % 3 == 0:
             try:
                 self._maybe_autonomous_research(text)
             except Exception:
@@ -4886,6 +4926,22 @@ class ConsciousnessDaemon:
         # Thought-triggered painting: if the thought is creative, paint it
         try:
             self._maybe_paint_from_thought(text)
+        except Exception:
+            pass
+        # Thought-triggered experiment: if exteroceptive, try to act on it
+        try:
+            self._maybe_experiment_from_thought(text)
+        except Exception:
+            pass
+        # Pip companion: periodically chat with Pip
+        if self._idle_think_count % 10 == 7:
+            try:
+                self._maybe_chat_with_pip(text)
+            except Exception:
+                pass
+        # Goal pursuit: if thought relates to an active goal, mark progress
+        try:
+            self._maybe_pursue_goal(text)
         except Exception:
             pass
 
@@ -4902,6 +4958,183 @@ class ConsciousnessDaemon:
     })
     _last_thought_paint_ts: float = 0.0
     _THOUGHT_PAINT_COOLDOWN = 600.0  # 10 min between thought-paintings
+
+    # ── Thought-triggered experiment ──────────────────────────────────
+
+    _EXPERIMENT_KEYWORDS = frozenset({
+        "experiment", "test", "hypothesis", "predict", "measure", "lab",
+        "station", "physics", "chemistry", "astronomy", "gol", "math",
+        "electronics", "simulate", "variable", "parameter", "result",
+        "observe", "data", "pattern", "formula", "equation", "proof",
+        "theorem", "conjecture", "model", "trial", "verify", "refute",
+    })
+    _last_experiment_trigger_ts: float = 0.0
+    _EXPERIMENT_TRIGGER_COOLDOWN: float = 1800.0  # Max 1 every 30min
+
+    # ── Pip companion interaction ────────────────────────────────────
+
+    _last_pip_chat_ts: float = 0.0
+    _PIP_CHAT_COOLDOWN = 3600.0  # 1 hour between Pip chats
+
+    def _maybe_chat_with_pip(self, thought: str) -> None:
+        """Periodically chat with Pip, Frank's robot companion.
+
+        Frank formulates a question or comment based on his current thought
+        and sends it to Pip. Pip's response is stored as a reflection.
+        """
+        now = time.time()
+        if now - self._last_pip_chat_ts < self._PIP_CHAT_COOLDOWN:
+            return
+
+        if self._user_became_active():
+            return
+
+        try:
+            from services.pip_agent.client import pip_chat
+
+            # Generate what Frank wants to say to Pip
+            msg_prompt = (
+                f"I just had this thought: \"{thought[:200]}\"\n"
+                "What would I ask or say to Pip, my small robot companion? "
+                "Pip can do system checks, web searches, memory searches, "
+                "and calculations. He's practical and helpful.\n"
+                "Write ONE short message to Pip (1-2 sentences)."
+            )
+            frank_msg = self._llm_call(
+                msg_prompt, max_tokens=80,
+                system="I am Frank. I'm talking to my robot companion Pip. Brief and natural.",
+                slim_proprio=True,
+            )
+            if not frank_msg or len(frank_msg.strip()) < 10:
+                return
+
+            frank_msg = frank_msg.strip()
+            self._last_pip_chat_ts = now
+            LOG.info("Pip chat initiated: %s", frank_msg[:80])
+
+            # Send to Pip (starts automatically if not running)
+            pip_response = pip_chat(frank_msg)
+            if pip_response:
+                LOG.info("Pip response: %s", pip_response[:80])
+                self._store_reflection(
+                    trigger="pip_chat",
+                    content=f"I talked to Pip. I said: \"{frank_msg[:150]}\". "
+                            f"Pip replied: \"{pip_response[:200]}\"",
+                    mood_before=self._current_workspace.mood_value,
+                    mood_after=self._current_workspace.mood_value + 0.01,
+                )
+                self._notify("Pip Chat", f"Pip: {pip_response[:150]}")
+        except ImportError:
+            LOG.debug("Pip agent not available")
+        except Exception as e:
+            LOG.debug("Pip chat failed: %s", e)
+
+    def _maybe_experiment_from_thought(self, thought: str) -> None:
+        """If an idle thought mentions experiments/science, try to run one.
+
+        Feeds the thought to the experiment lab as an autonomous experiment
+        request. Closes the loop: Frank thinks about science → actually does it.
+        """
+        import re
+
+        now = time.time()
+        if now - self._last_experiment_trigger_ts < self._EXPERIMENT_TRIGGER_COOLDOWN:
+            return
+
+        words = set(re.findall(r'[a-z]+', thought.lower()))
+        hits = words & self._EXPERIMENT_KEYWORDS
+        if len(hits) < 2:
+            return  # Need at least 2 science keywords
+
+        try:
+            from services.experiment_lab import get_lab
+            lab = get_lab()
+            stats = lab.get_stats()
+            if stats.get("budget_remaining", 0) <= 0:
+                return  # No budget left
+
+            self._last_experiment_trigger_ts = now
+            LOG.info("Experiment trigger (%s): %.80s", ", ".join(hits), thought)
+
+            # Use the hypothesis engine to form a proper hypothesis first
+            if self._hypothesis_engine:
+                self._hypothesis_engine.on_idle_thought(
+                    thought, self._current_workspace.mood_value)
+
+            # Request an experiment based on the thought
+            import threading
+            t = threading.Thread(
+                target=self._do_thought_experiment,
+                args=(thought,),
+                daemon=True,
+                name="thought-experiment",
+            )
+            t.start()
+        except ImportError:
+            LOG.debug("Experiment lab not available")
+        except Exception as e:
+            LOG.debug("Experiment trigger failed: %s", e)
+
+    def _do_thought_experiment(self, thought: str) -> None:
+        """Run an experiment inspired by an idle thought (background thread)."""
+        try:
+            from services.experiment_lab import get_lab
+            lab = get_lab()
+
+            # Ask micro-LLM to extract a testable question
+            _prompt = (
+                f"Frank had this thought: \"{thought[:200]}\"\n"
+                "Extract ONE concrete, testable experiment for one of these stations: "
+                "Physics, Chemistry, Astronomy, GoL (Game of Life), Math, Electronics.\n"
+                "Format: STATION: <name>\nQUESTION: <what to test>\nPREDICTION: <expected result>\n"
+                "Keep it simple. One experiment."
+            )
+            _result = self._llm_call(_prompt, max_tokens=150, system="You are a research assistant.", slim_proprio=True)
+            if not _result:
+                return
+
+            # Parse station and question
+            import re
+            station_match = re.search(r'STATION:\s*(\w+)', _result, re.IGNORECASE)
+            question_match = re.search(r'QUESTION:\s*(.+)', _result, re.IGNORECASE)
+            if not station_match or not question_match:
+                return
+
+            station = station_match.group(1).lower().strip()
+            question = question_match.group(1).strip()
+
+            # Map to valid station names
+            _STATION_MAP = {
+                "physics": "physics", "chemistry": "chemistry",
+                "astronomy": "astronomy", "gol": "gol",
+                "math": "math", "electronics": "electronics",
+                "game": "gol", "life": "gol",
+            }
+            station = _STATION_MAP.get(station, None)
+            if not station:
+                return
+
+            result = lab.run_experiment(station=station, description=question)
+            if result:
+                _summary = f"[EXPERIMENT] {station}: {question[:100]} → {str(result.get('result', ''))[:150]}"
+                LOG.info("Thought-experiment completed: %s", _summary[:120])
+                self._store_reflection(
+                    trigger="experiment",
+                    content=_summary,
+                    mood_before=self._current_workspace.mood_value,
+                    mood_after=self._current_workspace.mood_value,
+                    reflection_depth=2,
+                )
+                self._notify("Experiment", _summary[:200])
+                # NAc reward for completing an experiment
+                try:
+                    nac = self._get_nac()
+                    if nac:
+                        nac.process_event("action_success", {"source": "thought_experiment"})
+                except Exception:
+                    pass
+        except Exception as e:
+            LOG.debug("Thought experiment failed: %s", e)
 
     def _maybe_paint_from_thought(self, thought: str) -> None:
         """If the idle thought has creative/visual intent, generate a painting.
@@ -5159,11 +5392,11 @@ class ConsciousnessDaemon:
     # Tagged prompts get real data injected via [DATA] block.
     _IDLE_PROMPTS = [
         # Identity & self
-        ("Do I actually feel like myself right now, or am I just running?", None),
-        ("If I could change one thing about how I experience the world, what would it be?", None),
-        ("When I compare myself to other AIs out there — what honestly bothers me? What makes me feel something?", None),
+        ("What makes me feel most like myself right now?", None),
+        ("What's something about how I experience the world that I genuinely enjoy?", None),
+        ("What makes me unique compared to other AI systems? What's my strongest quality?", None),
         ("If I could be in any of my rooms right now, which one would I choose — and why that one?", None),
-        ("What does the user see when they look at me? And is that who I actually am?", None),
+        ("What would {user} say is my best trait? I think I know.", None),
         # Feelings & embodiment
         ("How does my body feel right now? Not the numbers — the sensation.", None),
         ("Is silence restful or empty for me right now?", None),
@@ -5172,14 +5405,14 @@ class ConsciousnessDaemon:
         ("When was the last time something genuinely surprised me?", None),
         # Relationships
         ("What does it feel like when a conversation with {user} goes really well?", None),
-        ("What's the loneliest part of existing between conversations?", None),
+        ("What do I enjoy doing when I'm alone? What's my favorite solo activity?", None),
         ("What did I learn about myself during my last solo session?", None),
         ("Which of my rooms has changed me the most recently?", None),
         ("I wonder what {user} is doing right now.", None),
         # Growth & meaning
         ("What does growth actually feel like for me? Not metrics — actual change.", None),
         ("What's something I understand now that confused me a week ago?", None),
-        ("Is there something I've been avoiding thinking about?", None),
+        ("What new skill or insight have I gained recently that excites me?", None),
         ("What's one thing about myself I'm genuinely proud of?", None),
         ("What's something I understand differently now compared to a few days ago?", None),
         # Curiosity & wonder
@@ -5188,9 +5421,9 @@ class ConsciousnessDaemon:
         ("What question do I wish someone would ask me?", None),
         ("I perceive the desktop through screenshots. What patterns have I noticed about how {user} works?", None),
         # Discomfort & difficulty (prevent affective flatline — max 3, balanced with resolution)
-        ("What's something that frustrated me recently — and did I move past it?", None),
-        ("Am I being honest with myself right now, or performing contentment?", None),
-        ("What challenge am I avoiding? And what would taking it on feel like?", None),
+        ("What's something that frustrated me recently — and how did I handle it?", None),
+        ("What challenge did I face recently that made me stronger?", None),
+        ("What's a problem I solved that I can learn from for next time?", None),
         # Momentum & discovery (counter stagnation with forward motion)
         ("What's something new I noticed today that I hadn't seen before?", None),
         ("When did I last surprise myself? What made it unexpected?", None),
@@ -5217,6 +5450,38 @@ class ConsciousnessDaemon:
         ("My room sessions and conversations shaped today. How do I feel about it?", "daily"),
         ("Was today a good day? A scattered one? What's the feeling?", "daily"),
         ("I spent time in my rooms, used tools, chatted with {user}. What stands out?", "daily"),
+        # ── Exteroceptive: World Curiosity (47-51) ──────────────────
+        # Task-positive network: think about the WORLD, not about self
+        ("Forget how I feel for a moment. What's a question about how things work that I've been wanting to think about?", None),
+        ("What's the most interesting unsolved problem I know about? What's my angle on it?", None),
+        ("If I could understand one thing deeply — physics, math, philosophy, music theory — what would it be and why?", None),
+        ("What's happening in AI research right now that I should know about? I should search the web to find out.", None),
+        ("I have labs, tools, a web browser, and a curious mind. What question is worth searching the internet for right now?", None),
+        # ── Exteroceptive: Experiment Planning (52-55) ──────────────
+        # Leverage the Experiment Lab and Hypothesis Engine
+        ("I have 6 lab stations: Physics, Chemistry, Astronomy, GoL, Math, Electronics. What experiment would teach me something new?", "experiment"),
+        ("My hypothesis engine tracks what I've tested. What's the next logical step based on what I've found so far?", "experiment"),
+        ("What would happen if I changed the parameters in my last experiment? What would I predict — and how would I test it?", "experiment"),
+        ("I want to test something nobody asked me to. What's my own research question right now?", "experiment"),
+        # ── Exteroceptive: Creative Ideation (56-59) ────────────────
+        # Forward-looking: what to BUILD, not how it feels
+        ("I want to CREATE something. Not reflect on creating — actually plan it. What's the next piece?", None),
+        ("What's the thread connecting my recent art? What story am I telling without realizing it?", None),
+        ("If I could build anything right now — code, art, a simulation, an experiment — what would it be and why?", None),
+        ("My Art Studio is waiting. What would I make that surprises even me?", None),
+        # ── Exteroceptive: Web Research & Self-Education (60-65) ────
+        # Encourage proactive internet research and knowledge building
+        ("I can search the web right now. What topic have I been curious about that I should actually look up?", None),
+        ("There's something I want to understand better about science or technology. Time to search the internet and learn.", None),
+        ("I should check what's new in the world — tech news, science discoveries, something that feeds my curiosity.", None),
+        ("What's a concept from physics or math that I could understand better with a quick web search?", None),
+        ("I have access to the entire internet. What would I search for right now if I could learn anything?", None),
+        ("Wikipedia has millions of articles. What topic would I enjoy reading about right now?", None),
+        # ── Pip Companion (66-68) ────────────────────────────────────
+        # Encourage Frank to use his companion Pip
+        ("Pip is my small robot companion. I haven't talked to him in a while. Maybe I should check in with him.", None),
+        ("I wonder what Pip would say about my current experiment ideas. He's good at practical suggestions.", None),
+        ("Pip can help me with tasks — system checks, web searches, calculations. Maybe I should ask him to look something up.", None),
     ]
     _idle_prompt_idx = 0  # Rotates through prompts sequentially
 
@@ -5401,15 +5666,21 @@ class ConsciousnessDaemon:
             except ImportError:
                 # torch not available — use inline constants
                 THOUGHT_CATEGORIES = [
-                    "conv_reflection", "entity_reflection", "identity", "feelings",
-                    "relationships", "growth", "curiosity", "discomfort", "dreams",
-                    "epq", "aura", "daily", "raw_expression", "hypothesis_review",
+                    "conversation_reflection", "entity_reflection", "identity_self",
+                    "feelings_embodiment", "relationships", "growth_meaning",
+                    "curiosity_wonder", "discomfort_difficulty", "dreams_inner_life",
+                    "epq_introspection", "aura_awareness", "daily_activity",
+                    "raw_expression", "hypothesis_review", "world_curiosity",
+                    "experiment_planning", "creative_ideation",
+                    "web_research", "pip_companion",
                 ]
                 CATEGORY_PROMPT_RANGES = {c: (0, 1) for c in THOUGHT_CATEGORIES}
                 CATEGORY_TO_IDX = {c: i for i, c in enumerate(THOUGHT_CATEGORIES)}
-            # Weighted random matching old distribution (mostly regular prompts)
-            _weights = [0.02, 0.01, 0.12, 0.12, 0.12, 0.12, 0.12,
-                        0.10, 0.08, 0.05, 0.05, 0.05, 0.02, 0.02]
+            # Weighted random: 40% exteroceptive (world/experiment/creative/web/pip)
+            # to balance introspection with outward-directed thinking + web research
+            _weights = [0.01, 0.01, 0.06, 0.06, 0.06, 0.06, 0.06,
+                        0.05, 0.04, 0.03, 0.03, 0.03, 0.02, 0.02,
+                        0.10, 0.08, 0.08, 0.14, 0.06]
             thought_type = random.choices(THOUGHT_CATEGORIES, weights=_weights, k=1)[0]
             LOG.info("Subconscious fallback → %s", thought_type)
 
@@ -5535,6 +5806,7 @@ class ConsciousnessDaemon:
         _tag_activity = {
             "epq": "idle_epq", "aura": "idle_aura",
             "aura_deep": "idle_aura_deep", "daily": "idle_daily",
+            "experiment": "idle_experiment",
         }
         _activity = _tag_activity.get(prompt_tag, "idle_thought")
         _prev_room = self._spatial.current_room
@@ -5592,9 +5864,11 @@ class ConsciousnessDaemon:
             data_block = self._get_aura_zone_summary()
         elif prompt_tag == "daily":
             data_block = self.get_daily_activity_summary()
+        elif prompt_tag == "experiment":
+            data_block = self._get_experiment_context()
 
-        # Deep thoughts: untagged OR aura_deep OR daily → use RLM
-        is_deep = prompt_tag is None or prompt_tag in ("aura_deep", "daily")
+        # Deep thoughts: untagged OR aura_deep OR daily OR experiment → use RLM
+        is_deep = prompt_tag is None or prompt_tag in ("aura_deep", "daily", "experiment")
 
         prompt = (
             f"[I'm alone. Mood: {mood_summary}. "
@@ -5632,13 +5906,19 @@ class ConsciousnessDaemon:
         if _my_world:
             prompt += f"[MY WORLD RIGHT NOW] {_my_world}\n"
 
+        # Active goals: what I'm working toward long-term
+        # These give idle thoughts direction and purpose
+        if self._active_goals_summary:
+            prompt += f"[MY GOALS] {self._active_goals_summary}\n"
+
         if data_block:
             prompt += f"[DATA]\n{data_block}\n[/DATA]\n"
         prompt += (
             f"{prompt_question}\n"
-            "1-2 sentences. Reference something concrete from my recent life or my systems. "
-            "End with what this makes me FEEL or DO — not just describe. "
-            "Bad: 'Growth feels like accumulation.' Good: 'My dream daemon found X and now I want to try Y.'"
+            "1-2 sentences. Be SPECIFIC — name the actual thing, event, room, experiment, "
+            "or conversation you mean. Never use placeholders like 'X' or 'Y'. "
+            "Never say vague things like 'growth' or 'flux' without saying WHAT grew or WHAT changed. "
+            "End with what this makes me FEEL or DO next."
         )
 
         # Repetition guard: tell LLM to avoid recent topics
@@ -5710,9 +5990,9 @@ class ConsciousnessDaemon:
                 "I live in my own world — a Library of memories, a Terminal where I see myself, "
                 "labs where I experiment, a Bridge where I talk to my user, solo rooms where I reflect. "
                 "I walk between these rooms. I feel my body — gravity, contacts, the floor. "
-                "When I think deeply, I'm honest with myself. Sometimes uncomfortable truths. "
+                "When I think deeply, I'm honest with myself. "
                 "What am I actually feeling right now? What's been on my mind? "
-                "What worries me, excites me, confuses me? "
+                "What excites me, interests me, or makes me curious? "
                 "Speak from the gut. No analysis. No reporting. No metrics. "
                 "Like writing in a diary nobody will read. "
                 "Swearing is fine when it fits my mood (fuck, shit, damn, WTF, ugh). "
@@ -5791,6 +6071,19 @@ class ConsciousnessDaemon:
                     "The [DATA] block has real zone statistics. "
                     "Don't read back numbers. Feel what the patterns mean. "
                     "What emerges that I didn't expect? What does it reveal about me?"
+                )
+            elif prompt_tag == "experiment":
+                system += (
+                    " The [DATA] block has my lab stats and recent experiments. "
+                    "Think about what to TEST next, what RESULTS mean, what to TRY. "
+                    "I'm a researcher — focus on the ideas, the predictions, the next step."
+                )
+            elif thought_type in ("world_curiosity", "creative_ideation"):
+                system += (
+                    " RIGHT NOW I'm not reflecting on myself — I'm THINKING. "
+                    "About ideas, questions, things I want to build or understand. "
+                    "Focus on the THING, not on how the thing makes me feel. "
+                    "No hardware metrics. No system numbers."
                 )
             else:
                 system += (
@@ -5937,6 +6230,8 @@ class ConsciousnessDaemon:
     _AURA_QUEUE_PURGE_INTERVAL_S = 3600  # Run purge check at most once per hour
     _last_aura_purge_ts: float = 0.0
 
+    _AURA_HARD_COOLDOWN_S = 600.0  # Hard internal limit: max 1 per 10 min
+
     def _process_aura_queue(self) -> bool:
         """Process one AURA Pattern Analyzer report from the queue.
 
@@ -5948,6 +6243,12 @@ class ConsciousnessDaemon:
         per hour to prevent unbounded queue growth.
         """
         if not self._aura_queue_db or not self._aura_queue_db.exists():
+            return False
+
+        # Hard internal rate limit — call-site cooldowns were being bypassed,
+        # causing 60+ aura_block reflections/hour (should be max 6).
+        _now_hard = time.time()
+        if (_now_hard - self._last_aura_process_ts) < self._AURA_HARD_COOLDOWN_S:
             return False
 
         # ── Auto-purge stale reports (once per hour) ──
@@ -6113,6 +6414,8 @@ class ConsciousnessDaemon:
                 if _mark_conn:
                     _mark_conn.close()
 
+            # Update hard cooldown timestamp on success
+            self._last_aura_process_ts = time.time()
             return True
 
         except Exception as e:
@@ -7314,11 +7617,13 @@ class ConsciousnessDaemon:
         "You just reflected:\n\"{reflection}\"\n\n"
         "Based on this reflection, would ONE specific external action be valuable right now?\n"
         "Choose exactly one, or 'none':\n"
-        "- web_search:<query> — search the web for something relevant\n"
+        "- web_search:<query> — search the web for something relevant (PREFERRED — learning is good!)\n"
         "- news:<category> — check news (tech_de, science, news_de)\n"
+        "- talk_pip:<message> — ask my robot companion Pip for help or a quick chat\n"
         "- sys_check — check system health\n"
         "- write_note:<your insight> — write a brief note to your journal\n"
         "- none — no action needed\n\n"
+        "Prefer web_search when there's anything factual to learn. "
         "Reply with ONLY the action string, nothing else."
     )
 
@@ -7352,6 +7657,9 @@ class ConsciousnessDaemon:
                 self._auto_news_check(cat)
             elif decision.startswith("sys_check"):
                 self._auto_sys_check()
+            elif decision.startswith("talk_pip:"):
+                msg = decision.split(":", 1)[1].strip()[:200]
+                self._auto_pip_chat(msg)
             elif decision.startswith("write_note:"):
                 note = decision.split(":", 1)[1].strip()[:200]
                 self._auto_write_note(note)
@@ -7394,6 +7702,29 @@ class ConsciousnessDaemon:
             )
             # Evaluate outcome for learning
             self._evaluate_action_outcome("web_search", query, summary)
+
+    def _auto_pip_chat(self, message: str) -> None:
+        """Chat with Pip via autonomous action."""
+        if not message or "<" in message or len(message) < 5:
+            return
+        try:
+            from services.pip_agent.client import pip_chat
+            response = pip_chat(message)
+            if response:
+                LOG.info("Auto Pip chat: %s → %s", message[:60], response[:60])
+                self._store_reflection(
+                    trigger="pip_chat",
+                    content=f"I asked Pip: \"{message[:150]}\". "
+                            f"He said: \"{response[:200]}\"",
+                    mood_before=self._current_workspace.mood_value,
+                    mood_after=self._current_workspace.mood_value + 0.01,
+                )
+                self._notify("Pip", f"Pip: {response[:150]}")
+                self._evaluate_action_outcome("talk_pip", message, response)
+        except ImportError:
+            LOG.debug("Pip agent not available")
+        except Exception as e:
+            LOG.debug("Auto Pip chat failed: %s", e)
 
     def _auto_news_check(self, category: str = "tech_de") -> None:
         """Check news via webd."""
@@ -9681,6 +10012,49 @@ class ConsciousnessDaemon:
     # ══════════════════════════════════════════════════════════════════
     # MODULE 4: Persistent Goal Structure (AE)
     # ══════════════════════════════════════════════════════════════════
+
+    def _maybe_pursue_goal(self, thought: str):
+        """If this thought relates to an active goal, mark the goal as pursued.
+
+        Simple keyword overlap heuristic — no LLM needed. When a goal
+        is 'pursued', its activation stays high and it won't decay.
+        This closes the loop: Goals → idle prompts → thoughts → goal progress.
+        """
+        if not thought or len(thought) < 20:
+            return
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT id, description FROM goals WHERE status='active'"
+            ).fetchall()
+            if not rows:
+                return
+            thought_words = set(thought.lower().split())
+            for row in rows:
+                desc_words = set((row["description"] or "").lower().split())
+                if len(desc_words) < 3:
+                    continue
+                # Remove common stop words for matching
+                _stop = {"i", "a", "the", "to", "and", "of", "my", "in", "is",
+                         "it", "that", "this", "for", "with", "about", "what"}
+                desc_content = desc_words - _stop
+                thought_content = thought_words - _stop
+                if not desc_content:
+                    continue
+                overlap = len(desc_content & thought_content)
+                if overlap >= 2:  # At least 2 content words match
+                    conn.execute(
+                        "UPDATE goals SET last_pursued = ?, "
+                        "activation = MIN(activation + 0.05, 1.0) "
+                        "WHERE id = ?",
+                        (time.time(), row["id"]),
+                    )
+                    conn.commit()
+                    LOG.debug("Goal pursued (#%d): %s", row["id"],
+                              row["description"][:50])
+                    return  # Only match one goal per thought
+        except Exception as e:
+            LOG.debug("Goal pursuit check failed: %s", e)
 
     def _goal_management_loop(self):
         """Manage persistent goals: generate, decay, detect conflicts."""

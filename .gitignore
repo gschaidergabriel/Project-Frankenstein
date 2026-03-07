@@ -13,19 +13,26 @@ dist/*
 venv/
 .venv/
 
-# Databases — runtime files never committed
-database/
-*.db
+# Databases — runtime WAL/SHM/journal never committed
 *.db-shm
 *.db-wal
 *.db-journal
 *.db.backup
+
+# Exception: reference databases for recovery tool
+!database/
+!database/*.db
+!database/*.sqlite
+!database/*.json
+!database/*.npz
+!database/invariants/
+
+# Block .db files everywhere EXCEPT database/ dir
+# (prevents accidental commit of live DBs from other dirs)
+*.db
 *.sqlite
 *.sqlite3
-
-# Exception: seed databases for deployment
-!data/seed-db/*.db
-!data/seed-db/*.sqlite
+!database/**
 
 # Runtime state
 *.lock
@@ -67,9 +74,11 @@ sandbox/
 screenshot.png
 error_screenshots/
 
-# Vector data (generated)
+# Vector data (generated, except in database/)
 *_vectors.npz
 *_vector_ids.json
+!database/*_vectors.npz
+!database/*_vector_ids.json
 
 # Temporary files
 /tmp/
@@ -94,3 +103,5 @@ tests/ui test/baseline/
 
 # System info (machine-specific)
 system_info.json
+database/invariants/*.db-shm
+database/invariants/*.db-wal

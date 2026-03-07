@@ -231,9 +231,11 @@ class AuraVisualizerMixin:
             self._aura_open_panel()
 
     def _aura_open_panel(self):
-        # Mutual exclusion: close log panel if open
+        # Mutual exclusion: close log and lab panels if open
         if getattr(self, "_log_open", False) and hasattr(self, "_log_close"):
             self._log_close()
+        if getattr(self, "_lab_open", False) and hasattr(self, "_lab_close"):
+            self._lab_close()
 
         panel_h = self.winfo_height()
         self._aura_panel_size = panel_h  # square

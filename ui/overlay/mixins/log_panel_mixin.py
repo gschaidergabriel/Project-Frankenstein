@@ -154,6 +154,8 @@ class LogPanelMixin:
     def _log_open_panel(self):
         if getattr(self, "_aura_open", False) and hasattr(self, "_aura_close"):
             self._aura_close()
+        if getattr(self, "_lab_open", False) and hasattr(self, "_lab_close"):
+            self._lab_close()
 
         panel_h = self.winfo_height()
         win = tk.Toplevel(self)

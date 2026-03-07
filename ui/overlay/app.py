@@ -63,6 +63,7 @@ from overlay.mixins.printer_mixin import PrinterMixin
 from overlay.mixins.notification_mixin import NotificationMixin
 from overlay.mixins.sanctum_mixin import SanctumMixin
 from overlay.mixins.log_panel_mixin import LogPanelMixin
+from overlay.mixins.lab_panel_mixin import LabPanelMixin
 from overlay.mixins.gol_visualizer_mixin import AuraVisualizerMixin
 
 
@@ -91,6 +92,7 @@ class ChatOverlay(
     NotificationMixin,
     SanctumMixin,             # Inner Sanctum session awareness
     LogPanelMixin,            # Daemon activity log panel
+    LabPanelMixin,            # Experiment lab feed panel
     AuraVisualizerMixin,  # Inner life visualizer
     AppWorkersMixin,
     AnalysisMixin,
@@ -220,6 +222,13 @@ class ChatOverlay(
             LOG.info("Log panel initialized")
         except Exception as e:
             LOG.warning("Log panel init failed: %s", e)
+
+        # Lab Panel — Experiment feed (toggle button + slide-out panel)
+        try:
+            self._init_lab_panel()
+            LOG.info("Lab panel initialized")
+        except Exception as e:
+            LOG.warning("Lab panel init failed: %s", e)
 
         # NOTE: Chat history is loaded AFTER reveal via _deferred_load_history().
         # MessageBubble creation is slow (~250ms each), so we show the window

@@ -2502,6 +2502,45 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, entity_sessions_search(query=query, entity=entity, limit=limit))
             return
 
+        # ── Experiment Lab ─────────────────────────────────────────
+        if p == "/experiment/run":
+            description = str(payload.get("description", ""))
+            if not description:
+                self._send(400, {"ok": False, "error": "missing 'description'"})
+                return
+            try:
+                from services.experiment_lab import get_lab
+                lab = get_lab()
+                narration = lab.run_from_description(description)
+                if narration and not narration.startswith("[LAB"):
+                    self._send(200, {"ok": True, "narration": narration})
+                else:
+                    self._send(200, {"ok": False, "narration": narration or "No matching station."})
+            except Exception as e:
+                self._send(500, {"ok": False, "error": str(e)})
+            return
+
+        if p == "/experiment/recent":
+            limit = int(payload.get("limit", 5))
+            try:
+                from services.experiment_lab import get_lab
+                lab = get_lab()
+                recent = lab.get_recent_experiments(n=limit)
+                self._send(200, {"ok": True, "experiments": recent})
+            except Exception as e:
+                self._send(500, {"ok": False, "error": str(e)})
+            return
+
+        if p == "/experiment/stats":
+            try:
+                from services.experiment_lab import get_lab
+                lab = get_lab()
+                stats = lab.get_stats()
+                self._send(200, {"ok": True, **stats})
+            except Exception as e:
+                self._send(500, {"ok": False, "error": str(e)})
+            return
+
         self._send(404, {"ok": False, "error": "not_found", "path": p})
 
 

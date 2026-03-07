@@ -411,10 +411,12 @@ class ChatMixin:
         messages = [{"role": "system", "content": system_context}]
 
         # Gather conversation turns from SQLite or in-memory history
+        # Fetch up to 150 messages so early-conversation facts are available
+        # for fact extraction even if they don't fit in the context window.
         history_turns = []
         if hasattr(self, '_chat_memory_db'):
             try:
-                recent = self._chat_memory_db.get_recent_messages(limit=60)
+                recent = self._chat_memory_db.get_recent_messages(limit=150)
                 if recent:
                     for m in recent:
                         if m.get("role") == "system":
@@ -479,25 +481,36 @@ class ChatMixin:
             selected.reverse()
 
             # If we dropped early turns, build a structured fact summary
+            # Also extract from heavily-compressed turns (pos >= 30) that lost detail
             n_dropped = n - len(selected)
+
+            # Collect turns whose full content is lost or heavily compressed
+            fact_source_turns = []
             if n_dropped > 0:
-                dropped_turns = history_turns[:n_dropped]  # Use UNCOMPRESSED originals
-                # Extract substantive user statements (facts, not questions)
+                fact_source_turns.extend(history_turns[:n_dropped])
+            # Also add turns that are in context but compressed to ≤100 chars
+            # (their uncompressed originals may contain facts lost by truncation)
+            for i, turn in enumerate(history_turns):
+                pos_from_end = n - 1 - i
+                if pos_from_end >= 30 and i >= n_dropped:
+                    fact_source_turns.append(turn)
+
+            if fact_source_turns:
                 facts = []
-                for dt in dropped_turns:
-                    if dt["role"] != "user":
-                        continue
+                for dt in fact_source_turns:
                     txt = dt["content"].strip()
-                    # Skip short messages and questions
-                    if len(txt) < 20 or txt.endswith("?"):
+                    # Skip very short and pure-question messages
+                    if len(txt) < 20:
                         continue
-                    # Compress to essence: first 120 chars
-                    facts.append(txt[:120])
+                    if dt["role"] == "user" and txt.endswith("?"):
+                        continue
+                    # Tag source role for clarity
+                    prefix = "User said: " if dt["role"] == "user" else "Frank said: "
+                    facts.append(prefix + txt[:150])
                 if facts:
                     summary = ("[CONVERSATION MEMORY — facts from earlier in this chat, "
                                "use these to answer recall questions:]\n"
-                               + "\n".join(f"- {f}" for f in facts[:20]))
-                    # Inject into system message (append to existing)
+                               + "\n".join(f"- {f}" for f in facts[:30]))
                     messages[0]["content"] += "\n\n" + summary
 
             # Ensure alternating roles — merge consecutive same-role messages

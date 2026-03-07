@@ -143,10 +143,39 @@ _INTENT_PATTERNS: Dict[str, List[re.Pattern]] = {
 # Category → which surfacing channel
 _IDLE_CATEGORIES = frozenset({"research", "self_task", "reflection"})
 
+# Keyword → room mapping for room_intent resolution
+_ROOM_KEYWORDS: Dict[str, List[str]] = {
+    "wellness": ["emotion", "feeling", "mood", "body", "temperature", "health",
+                 "stress", "anxiety", "calm", "relax", "breath", "wellness",
+                 "self-care", "sensation", "isolation", "lonely"],
+    "philosophy": ["philosophy", "concept", "wisdom", "existential", "meaning",
+                   "consciousness", "determinism", "non-determinism", "ethics",
+                   "epistemology", "ontology", "metaphysics", "stoic", "socrates"],
+    "art_studio": ["art", "paint", "sculpture", "music", "soundscape", "poem",
+                   "poetry", "creative", "compose", "canvas", "drawing",
+                   "literature", "write", "aesthetic", "beauty"],
+    "architecture": ["architecture", "service", "topology", "module", "system",
+                     "experiment", "lab", "physics", "quantum", "capability",
+                     "network", "code", "subsystem", "neural", "compute"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def resolve_room_for_intent(text: str) -> str:
+    """Map intent text to the best room by keyword overlap.  Returns room_key or ''."""
+    text_lower = text.lower()
+    best_room = ""
+    best_score = 0
+    for room, keywords in _ROOM_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in text_lower)
+        if score > best_score:
+            best_score = score
+            best_room = room
+    return best_room if best_score >= 1 else ""
+
 
 def _resolve_target(match: re.Match, category: str) -> str:
     """Resolve entity display name → dispatcher key, or '' for non-entity."""
@@ -340,6 +369,54 @@ class IntentQueue:
                 (entity_key, limit),
             ).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_pending_for_room(self, room_key: str,
+                              limit: int = 1) -> List[dict]:
+        """Pending room_intent intents matching *room_key* by content analysis."""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT id, timestamp, extracted_intent, category "
+                "FROM intent_queue "
+                "WHERE category='room_intent' AND status='pending' "
+                "ORDER BY timestamp ASC",
+            ).fetchall()
+            results = []
+            for row in rows:
+                resolved = resolve_room_for_intent(row["extracted_intent"])
+                if resolved == room_key:
+                    results.append(dict(row))
+                    if len(results) >= limit:
+                        break
+            return results
+        finally:
+            conn.close()
+
+    def get_next_room_intent(self) -> Optional[dict]:
+        """Return the oldest pending room_intent with its resolved room_key.
+
+        Returns dict with keys: id, extracted_intent, room_key.
+        Or None if no actionable room intent exists.
+        """
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT id, timestamp, extracted_intent "
+                "FROM intent_queue "
+                "WHERE category='room_intent' AND status='pending' "
+                "ORDER BY timestamp ASC",
+            ).fetchall()
+            for row in rows:
+                room = resolve_room_for_intent(row["extracted_intent"])
+                if room:
+                    return {
+                        "id": row["id"],
+                        "extracted_intent": row["extracted_intent"],
+                        "room_key": room,
+                    }
+            return None
         finally:
             conn.close()
 

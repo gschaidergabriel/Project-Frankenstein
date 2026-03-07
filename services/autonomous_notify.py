@@ -32,6 +32,8 @@ def notify_autonomous(
     category: str = "autonomous",
     urgency: str = "low",
     source: str = "",
+    image_path: str = "",
+    **kwargs,
 ) -> None:
     """Write a short overlay notification for an autonomous action.
 
@@ -43,11 +45,15 @@ def notify_autonomous(
         One-line summary of what happened / was found.
     category : str
         Notification category for icon mapping.
-        Supported: autonomous, consciousness, dream, entity, genesis.
+        Supported: autonomous, consciousness, dream, entity, genesis,
+        painting_share (shows image in main chat).
     urgency : str
         "low" (subtle), "normal" (standard), "critical" (highlighted).
     source : str
         Originating service name (for logging), e.g. "consciousness_daemon".
+    image_path : str
+        Optional path to an image file. When set with category="painting_share",
+        the overlay displays the image inline in the chat.
     """
     try:
         _NOTIFY_DIR.mkdir(parents=True, exist_ok=True)
@@ -66,6 +72,10 @@ def notify_autonomous(
             "read": False,
             "source": source or "autonomous",
         }
+        if image_path:
+            notification["image_path"] = str(image_path)
+        if kwargs:
+            notification.update(kwargs)
 
         path = _NOTIFY_DIR / f"{int(time.time())}_{nid}.json"
         path.write_text(json.dumps(notification, ensure_ascii=False))

@@ -26,8 +26,8 @@ LOG = logging.getLogger("context_budget")
 # Channel base priorities (0.0–1.0)
 CHANNEL_PRIORITIES = {
     "recent_conversation": 0.9,
-    "semantic_matches": 0.7,
-    "titan_memory": 0.4,
+    "semantic_matches": 0.8,
+    "titan_memory": 0.6,
     "ego_mood_identity": 0.3,
     "world_experience": 0.2,
     "news_akam": 0.0,

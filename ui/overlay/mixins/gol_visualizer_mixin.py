@@ -35,6 +35,7 @@ from overlay.aura.config import (
 from config.paths import DB_DIR as _DB_DIR
 _DB_CONSCIOUSNESS = _DB_DIR / "consciousness.db"
 _DB_WORLD_EXP = _DB_DIR / "world_experience.db"
+_DB_TITAN = _DB_DIR / "titan.db"
 from overlay.aura.engine import AuraEngine
 from overlay.aura.headless_engine import HeadlessAuraEngine
 from overlay.aura.seeder import seed_grid
@@ -1220,16 +1221,17 @@ class AuraVisualizerMixin:
 
         elif zone == "ego":
             ego = s.get("ego_state", {})
-            emb = ego.get("embodiment_level", 0.5)
-            lines = ["Hardware-to-body identity."]
+            emb = ego.get("embodiment_level", 0.3)
+            agency = ego.get("agency_score", 0.3)
+            affect = ego.get("affective_range", 0.3)
+            qualia = ego.get("qualia_count", 0)
+            lines = ["Self-model construct."]
             lines.append(f"  EMB {emb:.2f}  {_bar(emb)}")
-            if emb > 0.7:
-                lines.append("  Strongly embodied")
-            elif emb < 0.3:
-                lines.append("  Weakly embodied")
-            else:
-                lines.append("  Moderately embodied")
-            lines.append("[0..1] body identification")
+            lines.append(f"  AGN {agency:.2f}  {_bar(agency)}")
+            lines.append(f"  AFF {affect:.2f}  {_bar(affect)}")
+            if qualia:
+                lines.append(f"  {qualia} learned qualia")
+            lines.append("[0..1] ego construct state")
             return lines
 
         elif zone == "quantum":
@@ -1757,6 +1759,23 @@ class AuraVisualizerMixin:
                     # Uptime
                     ul = data.get("uptime_load", {})
                     new_state["uptime_s"] = float(ul.get("uptime_s", 0) or 0)
+            except Exception:
+                pass
+
+            # ── Read ego state from titan.db ──
+            try:
+                row = self._aura_db_query(
+                    _DB_TITAN,
+                    "SELECT embodiment_level, affective_range, agency_score, "
+                    "qualia_count FROM ego_state ORDER BY id DESC LIMIT 1",
+                )
+                if row:
+                    new_state["ego_state"] = {
+                        "embodiment_level": float(row[0] or 0.3),
+                        "affective_range": float(row[1] or 0.3),
+                        "agency_score": float(row[2] or 0.3),
+                        "qualia_count": int(row[3] or 0),
+                    }
             except Exception:
                 pass
 

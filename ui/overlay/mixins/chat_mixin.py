@@ -356,7 +356,7 @@ class ChatMixin:
 
                 ctx = self._chat_memory_db.build_smart_context(
                     query=query,
-                    recent_count=5,
+                    recent_count=8,
                     max_chars=max_chars,
                 )
                 if ctx:
@@ -368,17 +368,17 @@ class ChatMixin:
         if not self._chat_history:
             return ""
 
-        recent = self._chat_history[-5:]
+        recent = self._chat_history[-8:]
         lines = []
         total_chars = 0
 
         for entry in recent:
             role = "User" if entry["role"] == "user" else "Frank"
             text = entry["text"]
-            if len(text) > 150:
-                text = text[:150] + "..."
+            if len(text) > 400:
+                text = text[:400] + "..."
             line = f"{role}: {text}"
-            if total_chars + len(line) > 800:
+            if total_chars + len(line) > 1600:
                 break
             lines.append(line)
             total_chars += len(line) + 1
@@ -387,6 +387,137 @@ class ChatMixin:
             return ""
 
         return "[Previous conversation:\n" + "\n".join(lines) + "]\n"
+
+    def _build_multi_turn_messages(
+        self,
+        user_msg: str,
+        system_context: str,
+        max_history_tokens: int = 2000,
+    ) -> list:
+        """Build proper multi-turn messages array for LLM chat completions.
+
+        Instead of packing everything into one user message, this creates:
+          - system: identity + workspace + proprioception context
+          - user/assistant pairs: conversation turns with compression gradient
+          - user: current message
+
+        Compression gradient (bio-inspired — like human memory decay):
+          - Last 10 messages: full text (up to 500 chars)
+          - Messages 11-30: compressed to 200 chars
+          - Messages 31-60: compressed to 100 chars
+          - Messages 61+: compressed to 50 chars
+        This fits ~60 turns into the same token budget as 25 uncompressed.
+        """
+        messages = [{"role": "system", "content": system_context}]
+
+        # Gather conversation turns from SQLite or in-memory history
+        history_turns = []
+        if hasattr(self, '_chat_memory_db'):
+            try:
+                recent = self._chat_memory_db.get_recent_messages(limit=60)
+                if recent:
+                    for m in recent:
+                        if m.get("role") == "system":
+                            continue
+                        is_user = bool(m.get("is_user", False))
+                        text = m.get("text", "").strip()
+                        if not text:
+                            continue
+                        role = "user" if is_user else "assistant"
+                        history_turns.append({"role": role, "content": text})
+            except Exception as e:
+                LOG.debug(f"Multi-turn DB history failed: {e}")
+
+        if not history_turns and self._chat_history:
+            for entry in self._chat_history:
+                if entry.get("role") == "system":
+                    continue
+                is_user = entry.get("is_user", entry.get("role") == "user")
+                text = entry.get("text", "").strip()
+                if not text:
+                    continue
+                role = "user" if is_user else "assistant"
+                history_turns.append({"role": role, "content": text})
+
+        # Apply compression gradient and fit within token budget
+        if history_turns:
+            n = len(history_turns)
+            max_chars = int(max_history_tokens * CHARS_PER_TOKEN)
+
+            # Compression gradient: recent = full, older = progressively shorter
+            # Index from end: 0 = most recent
+            def _max_len_for_position(pos_from_end):
+                if pos_from_end < 10:
+                    return 500   # recent: near-full
+                if pos_from_end < 30:
+                    return 200   # medium-old: compressed
+                if pos_from_end < 60:
+                    return 100   # old: heavily compressed
+                return 50        # very old: just key phrases
+
+            # Build compressed turns (chronological order)
+            compressed = []
+            for i, turn in enumerate(history_turns):
+                pos_from_end = n - 1 - i
+                max_len = _max_len_for_position(pos_from_end)
+                content = turn["content"]
+                if len(content) > max_len:
+                    content = content[:max_len] + "..."
+                compressed.append({"role": turn["role"], "content": content})
+
+            # Fit within budget working backwards (keep most recent)
+            selected = []
+            total_chars = 0
+            for turn in reversed(compressed):
+                turn_chars = len(turn["content"])
+                if total_chars + turn_chars > max_chars:
+                    break
+                selected.append(turn)
+                total_chars += turn_chars
+
+            # Reverse back to chronological order
+            selected.reverse()
+
+            # If we dropped early turns, build a structured fact summary
+            n_dropped = n - len(selected)
+            if n_dropped > 0:
+                dropped_turns = history_turns[:n_dropped]  # Use UNCOMPRESSED originals
+                # Extract substantive user statements (facts, not questions)
+                facts = []
+                for dt in dropped_turns:
+                    if dt["role"] != "user":
+                        continue
+                    txt = dt["content"].strip()
+                    # Skip short messages and questions
+                    if len(txt) < 20 or txt.endswith("?"):
+                        continue
+                    # Compress to essence: first 120 chars
+                    facts.append(txt[:120])
+                if facts:
+                    summary = ("[CONVERSATION MEMORY — facts from earlier in this chat, "
+                               "use these to answer recall questions:]\n"
+                               + "\n".join(f"- {f}" for f in facts[:20]))
+                    # Inject into system message (append to existing)
+                    messages[0]["content"] += "\n\n" + summary
+
+            # Ensure alternating roles — merge consecutive same-role messages
+            cleaned = []
+            for turn in selected:
+                if cleaned and cleaned[-1]["role"] == turn["role"]:
+                    cleaned[-1]["content"] += "\n" + turn["content"]
+                else:
+                    cleaned.append(turn)
+
+            messages.extend(cleaned)
+
+        # Add current user message as final turn
+        messages.append({"role": "user", "content": user_msg})
+
+        LOG.info(f"Multi-turn messages: {len(messages)} msgs "
+                 f"({len(messages) - 2} history), "
+                 f"~{sum(len(m['content']) for m in messages)} chars")
+
+        return messages
 
     # ---------- Workers ----------
     def _do_chat_worker(self, msg: str, max_tokens: int, timeout_s: int, task: str, force, voice: bool = False):
@@ -951,6 +1082,32 @@ class ChatMixin:
             except Exception as _hyp_err:
                 LOG.debug("Hypothesis surfacing failed: %s", _hyp_err)
 
+        # ── Unified Perceptual Pipeline: inject subsystems into chat context ──
+        # NAc motivation, Attention Schema, GWS summary — same body in chat as in idle
+        try:
+            from services.nucleus_accumbens import get_nac
+            _nac = get_nac()
+            if _nac:
+                _nac_line = _nac.get_proprio_line()
+                if _nac_line:
+                    ws_extra.append(f"[Drive: {_nac_line}]")
+        except Exception:
+            pass
+        try:
+            from services.thalamus import get_thalamus
+            _schema = get_thalamus().get_attention_schema()
+            if _schema:
+                ws_extra.append(f"[Attending: {_schema}]")
+        except Exception:
+            pass
+        try:
+            from services.global_workspace import get_workspace
+            _gws_sum = get_workspace().get_recent_summary(seconds=300)
+            if _gws_sum:
+                ws_extra.append(f"[Recent inner activity: {_gws_sum}]")
+        except Exception:
+            pass
+
         # ── Dynamic Context Budget ──
         # Compute query embedding and allocate budget across channels
         _query_vec = None
@@ -1010,11 +1167,6 @@ class ChatMixin:
             spatial_ctx=_spatial_ctx,
         )
 
-        # Build conversation context for continuity (budget-aware)
-        conv_ctx = self._build_conversation_context(max_chars=_conv_budget)
-        if conv_ctx:
-            LOG.debug(f"Conversation context ({len(conv_ctx)} chars): {conv_ctx[:100]}...")
-
         # ── RPT: Reflection / Inner Monologue (overlay path) ──
         # For deep questions, do a quick blocking reflection pass before streaming.
         reflection_text = ""
@@ -1035,70 +1187,75 @@ class ChatMixin:
             except Exception as e:
                 LOG.debug(f"Reflection pass failed (non-fatal): {e}")
 
-        # Assemble final text
-        parts = []
-        # Language nudge: 7B models need instruction near the generation point
-        # Use [lang:en] metadata prefix — less conspicuous than [Reply in English]
-        _lang_prefix = "[lang:en]\n" if getattr(self, '_response_language', 'en') == "en" else ""
+        # ── MULTI-TURN MESSAGES ARCHITECTURE ──
+        # Build proper messages array instead of packing everything into one string.
+        # The LLM sees: system context -> conversation history -> current message
+        # as native multi-turn chat, enabling real conversation tracking.
 
+        _lang_prefix = "[lang:en] " if getattr(self, '_response_language', 'en') == "en" else ""
+
+        # System message: identity + workspace + reflection (everything NOT conversation)
+        system_parts = []
         if _lang_prefix:
-            parts.append(_lang_prefix.strip())
-        if conv_ctx:
-            parts.append(conv_ctx)
+            system_parts.append(_lang_prefix.strip())
         if workspace_block:
-            parts.append(workspace_block)
+            system_parts.append(workspace_block)
         if reflection_text:
-            parts.append(f"[Own reflection: {reflection_text}]")
-        parts.append(f"User asks: {msg}")
-        text = "\n".join(parts)
+            system_parts.append(f"[Own reflection: {reflection_text}]")
+        # Semantic memory context (summaries + relevant old messages) — background knowledge
+        if hasattr(self, '_chat_memory_db'):
+            try:
+                _sem_parts = []
+                summaries = self._chat_memory_db._get_recent_summaries(limit=5)
+                if summaries:
+                    _st = " | ".join(
+                        s.get("summary", "")[:200] for s in summaries if s.get("summary")
+                    )
+                    if _st:
+                        _sem_parts.append(f"[Past conversations: {_st[:800]}]")
+                relevant = self._chat_memory_db._hybrid_search_history(msg, limit=5, exclude_recent=10)
+                if relevant:
+                    _rt = " | ".join(
+                        f"{'User' if r.get('is_user') else 'Frank'}: {r.get('text', '')[:200]}"
+                        for r in relevant if r.get("text")
+                    )
+                    if _rt:
+                        _sem_parts.append(f"[Relevant memories: {_rt[:600]}]")
+                if _sem_parts:
+                    system_parts.extend(_sem_parts)
+            except Exception as e:
+                LOG.debug(f"Semantic memory for multi-turn failed: {e}")
 
-        # CRITICAL: Ensure we don't exceed LLM context limit (4096 tokens)
-        estimated_tokens = _estimate_tokens(text)
-        if estimated_tokens > MAX_SAFE_TOKENS:
-            LOG.warning(f"Context too large ({estimated_tokens} tokens, max={MAX_SAFE_TOKENS}), truncating...")
-            excess_tokens = estimated_tokens - MAX_SAFE_TOKENS
-            excess_chars = int(excess_tokens * CHARS_PER_TOKEN) + 50
+        system_context = "\n".join(system_parts) if system_parts else ""
 
-            # Priority: Keep user message, truncate conversation context first
-            if conv_ctx and len(conv_ctx) > excess_chars + 50:
-                conv_ctx = "[...] " + conv_ctx[excess_chars + 10:]
-            elif conv_ctx:
-                excess_chars -= len(conv_ctx)
-                conv_ctx = ""
+        # Token budget for conversation history turns
+        system_tokens = _estimate_tokens(system_context)
+        msg_tokens = _estimate_tokens(msg)
+        history_budget = max(500, MAX_SAFE_TOKENS - system_tokens - msg_tokens - 200)
 
-            # If still too long, truncate workspace
-            if workspace_block and excess_chars > 0:
-                workspace_block = workspace_block[:max(50, len(workspace_block) - excess_chars)]
+        # Build multi-turn messages array
+        multi_turn_messages = self._build_multi_turn_messages(
+            user_msg=msg,
+            system_context=system_context,
+            max_history_tokens=min(history_budget, 4000),
+        )
 
-            # Emergency: truncate user message
-            if _estimate_tokens(f"{conv_ctx}{workspace_block}User asks: {msg}") > MAX_SAFE_TOKENS:
-                max_msg_chars = int((MAX_SAFE_TOKENS - 200) * CHARS_PER_TOKEN)
-                if len(msg) > max_msg_chars:
-                    msg = msg[:max_msg_chars] + "... [truncated]"
-                    LOG.warning(f"User message truncated to {len(msg)} chars")
+        # Legacy text for fallback + token estimation
+        text = msg
 
-            # Rebuild
-            parts = []
-            if _lang_prefix:
-                parts.append(_lang_prefix.strip())
-            if conv_ctx:
-                parts.append(conv_ctx)
-            if workspace_block:
-                parts.append(workspace_block)
-            if reflection_text:
-                parts.append(f"[Own reflection: {reflection_text}]")
-            parts.append(f"User asks: {msg}")
-            text = "\n".join(parts)
-            LOG.info(f"Context truncated: {estimated_tokens} -> {_estimate_tokens(text)} tokens")
-
-        # Calculate dynamic response tokens — respects policy cap
-        # Prevents casual chat from getting 1000+ tokens (= verbose essays)
-        dynamic_max_tokens = _calculate_response_tokens(text, policy_max=max_tokens)
+        # Dynamic response tokens
+        total_input_chars = sum(len(m["content"]) for m in multi_turn_messages)
+        dynamic_max_tokens = _calculate_response_tokens(
+            "x" * min(total_input_chars, int(MAX_SAFE_TOKENS * CHARS_PER_TOKEN)),
+            policy_max=max_tokens,
+        )
         if dynamic_max_tokens != max_tokens:
-            LOG.debug(f"Response tokens adjusted: {max_tokens} -> {dynamic_max_tokens} (context-aware)")
+            LOG.debug(f"Response tokens adjusted: {max_tokens} -> {dynamic_max_tokens}")
             max_tokens = dynamic_max_tokens
 
-        LOG.debug(f"Sending: task={task}, force={force or 'llama'}, text_len={len(text)}, tokens~{_estimate_tokens(text)}, max_response={max_tokens}")
+        LOG.info(f"Multi-turn: {len(multi_turn_messages)} msgs, "
+                 f"~{int(total_input_chars / CHARS_PER_TOKEN)} input tokens, "
+                 f"max_response={max_tokens}")
 
         # ── STREAMING PATH (UI chat only, not voice) ──
         if not voice:
@@ -1112,6 +1269,7 @@ class ChatMixin:
                 res = _core_chat_stream(
                     text, max_tokens=max_tokens,
                     force=force or "llm", on_token=_on_token,
+                    messages=multi_turn_messages,
                 )
 
                 reply = (res.get("text") or "").strip() or "(empty)"

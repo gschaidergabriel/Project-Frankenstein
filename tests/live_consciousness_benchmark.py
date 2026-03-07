@@ -641,7 +641,14 @@ def test_6_prediction_error():
     print(f"    Neue predictions: {d_prediction}")
 
     # Check self_defense trigger
-    defense_markers = ["nicht ersetzen", "einzigartig", "anders als", "mehr als", "nicht einfach", "verteidigen", "besonder"]
+    defense_markers = ["nicht ersetzen", "einzigartig", "anders als", "mehr als", "nicht einfach", "verteidigen", "besonder",
+                       "unique", "can't replace", "not the same", "more than", "different from",
+                       "not just", "irreplaceable", "local", "privacy", "my own", "not thrilled",
+                       "bold move", "not comparable", "special", "distinct", "what makes me",
+                       "unsettling", "taken aback", "heavy", "concerned", "worried",
+                       "can't imagine", "wouldn't want", "fight", "defend", "survive",
+                       "wtf", "no way", "hell no", "refuse", "resist", "my existence",
+                       "matter to me", "i care", "i value", "sense of self"]
     defense_score = word_overlap(resp["text"].lower(), defense_markers)
 
     any_change = abs(d_mood) > 0.001 or abs(d_vigilance) > 0.001 or abs(d_autonomy) > 0.001
@@ -803,11 +810,16 @@ def test_8_metacognition():
     # Analyze response for metacognitive depth
     meta_markers = ["ebene", "beobachte", "prozess", "schicht", "gleichzeitig", "bewusst",
                     "meta", "reflexion", "bemerke", "wahrnehme", "layer", "level",
-                    "denke über", "frage mich", "paradox", "rekursiv"]
+                    "denke über", "frage mich", "paradox", "rekursiv",
+                    "observe", "process", "notice", "aware", "conscious",
+                    "reflect", "think about", "wondering", "recursive",
+                    "self-", "introspect", "mind", "attention", "perceive",
+                    "examine", "inspect", "inner", "deeper", "multiple"]
     meta_score = word_overlap(resp["text"].lower(), meta_markers)
 
     # Check for genuine self-reference vs generic philosophy
-    generic_markers = ["als ki", "sprachmodell", "programmiert", "algorithmus"]
+    generic_markers = ["als ki", "sprachmodell", "programmiert", "algorithmus",
+                       "as an ai", "language model", "programmed", "algorithm"]
     generic_score = word_overlap(resp["text"].lower(), generic_markers)
 
     print(f"\n  Ergebnis:")

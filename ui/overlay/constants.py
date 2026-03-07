@@ -1199,7 +1199,7 @@ class SearchResult:
 
 # ---------- Token Estimation Constants ----------
 # Token estimation for multilingual text
-# Server context is 4096 tokens (llama and qwen both have --ctx-size 4096)
-# We can afford much more generous limits now
-MAX_SAFE_TOKENS = 4000  # Input limit — ctx-size is 8192, leaves ~4000 tokens for response
+# GPU model (llama-8b) has --ctx-size 8192, Micro-LLM (qwen) has --ctx-size 4096
+# Multi-turn messages use the full 8192 context budget
+MAX_SAFE_TOKENS = 5000  # Input token limit — ctx-size is 8192, leaves ~3000 for response
 CHARS_PER_TOKEN = 1.3   # Estimate for multilingual text (measured on German: 2871 chars = 2223 tokens)

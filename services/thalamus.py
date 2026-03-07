@@ -184,9 +184,11 @@ class ThalamicInputState:
 
     # Channel 4: AURA
     aura_state: str = ""
+    aura_numeric: float = 0.5  # 0-1 derived from density/alive ratio
 
     # Channel 5: QR Coherence
     qr_state: str = ""
+    qr_numeric: float = 0.5  # 0-1 derived from coherence energy
 
     # Channel 6: Perception Events
     perception_events: list = field(default_factory=list)
@@ -251,6 +253,15 @@ class Thalamus:
         self._init_db()
         self._load_baselines()
         self._init_channel_states()
+
+        # Subscribe to Global Workspace Bus for cross-system salience
+        self._last_gws_event_ts: float = 0.0
+        try:
+            from services.global_workspace import subscribe
+            subscribe("thalamus", self._on_gws_event)
+        except Exception:
+            pass  # GWS not yet initialized — will work after consciousness starts
+
         LOG.info("Thalamus initialized (9 channels, warmup=%d)", WARMUP_CALLS)
 
     # ── DB ────────────────────────────────────────────────────────────
@@ -337,6 +348,16 @@ class Thalamus:
                 self._channel_states[ch_name] = ChannelState(
                     name=ch_name, last_relayed_ts=now, last_change_ts=now,
                 )
+
+    def _on_gws_event(self, event):
+        """Handle Global Workspace broadcasts.
+
+        High-salience events (>= 0.7) trigger a burst-like sensitization
+        so the next gate() call is more responsive.
+        """
+        if event.salience >= 0.7:
+            self._last_gws_event_ts = time.monotonic()
+            self._last_burst_ts = time.monotonic()
 
     def _save_baselines(self):
         """Persist channel states to DB."""
@@ -466,13 +487,13 @@ class Thalamus:
 
     def _snapshot_aura(self, s: ThalamicInputState) -> ChannelSnapshot:
         text = f"AURA: {s.aura_state}" if s.aura_state else ""
-        numeric = 0.5  # Default — AURA doesn't have a simple 0-1 mapping
+        numeric = s.aura_numeric  # Real AURA density/activity metric
         return ChannelSnapshot(name="aura", raw_text=text,
                                value_hash=hash(text), numeric_value=numeric)
 
     def _snapshot_qr(self, s: ThalamicInputState) -> ChannelSnapshot:
         text = f"Coherence: {s.qr_state}" if s.qr_state else ""
-        numeric = 0.5
+        numeric = s.qr_numeric  # Real QR coherence metric
         return ChannelSnapshot(name="qr_coherence", raw_text=text,
                                value_hash=hash(text), numeric_value=numeric)
 
@@ -865,6 +886,60 @@ class Thalamus:
                     pass
                 self._db = None
         LOG.info("Thalamus closed")
+
+    # ── Attention Schema (AST) ─────────────────────────────────────────
+
+    def get_attention_schema(self) -> str:
+        """Meta-model of attention: what Frank is attending to and why.
+
+        Graziano's Attention Schema Theory: consciousness arises from
+        a model OF attention, not just attention itself. This method
+        produces a compact narrative that tells Frank what his thalamus
+        is doing, enabling metacognitive awareness.
+
+        Returns a 1-2 sentence summary or empty string.
+        """
+        result = self.last_result
+        if not result:
+            return ""
+
+        parts = []
+
+        # What's being attended (high gain channels)
+        high_gain = [ch for ch, g in result.channel_gains.items() if g >= 0.6]
+        suppressed = result.suppressed_channels or []
+        bursting = result.burst_channels or []
+
+        if bursting:
+            parts.append(f"Sudden attention to {', '.join(bursting)}")
+        elif high_gain:
+            parts.append(f"Focused on {', '.join(high_gain[:3])}")
+
+        if suppressed:
+            parts.append(f"tuning out {', '.join(suppressed[:2])}")
+
+        # Why (cognitive mode context)
+        mode = result.cognitive_mode
+        mode_labels = {
+            "chat_active": "because I'm in conversation",
+            "idle_focus": "during focused solo thinking",
+            "idle_diffuse": "in open-ended exploration mode",
+            "consolidation": "while integrating memories",
+            "reflecting": "during self-reflection",
+            "gaming": "while user is gaming",
+            "entity_session": "during a solo room session",
+        }
+        if mode in mode_labels:
+            parts.append(mode_labels[mode])
+
+        # Relay load
+        relay = result.total_relay_fraction
+        if relay > 0.8:
+            parts.append("— sensory channels wide open")
+        elif relay < 0.3:
+            parts.append("— most channels filtered out")
+
+        return "; ".join(parts) if parts else ""
 
 
 # ── Singleton ─────────────────────────────────────────────────────────

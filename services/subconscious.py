@@ -122,7 +122,7 @@ CATEGORY_PROMPT_RANGES: Dict[str, Tuple[int, int]] = {
 
 # ── Network Constants ──
 
-STATE_DIM = 92
+STATE_DIM = 100  # 96 + 4 NAc features (tonic_da, boredom, motivation_idx, curiosity_hab)
 
 # PPO Hyperparameters
 LEARNING_RATE = 3e-4
@@ -1056,8 +1056,13 @@ class SubconsciousStateEncoder:
         worst_recent_type_reward: float = 0.0,
         exploration_rate: float = 1.0,
         training_progress: float = 0.0,
+        # NAc reward system state
+        nac_tonic_da: float = 0.5,
+        nac_boredom: bool = False,
+        nac_motivation_idx: float = 0.5,  # 0=anhedonic, 0.25=bored, 0.5=flat, 0.75=engaged, 1.0=energized
+        nac_curiosity_habituation: float = 1.0,
     ) -> torch.Tensor:
-        """Encode complete state as 92-dim tensor."""
+        """Encode complete state as STATE_DIM-dim tensor."""
         features = []
 
         # === Current State (21 dims) ===
@@ -1143,6 +1148,12 @@ class SubconsciousStateEncoder:
         features.append(float(np.clip(worst_recent_type_reward, -7, 7)) / 7.0)
         features.append(float(np.clip(exploration_rate, 0, 2)) / 2.0)
         features.append(float(np.clip(training_progress, 0, 1)))
+
+        # === NAc Reward System (4 dims) ===
+        features.append(float(np.clip(nac_tonic_da, 0, 1)))
+        features.append(1.0 if nac_boredom else 0.0)
+        features.append(float(np.clip(nac_motivation_idx, 0, 1)))
+        features.append(float(np.clip(nac_curiosity_habituation, 0, 1)))
 
         assert len(features) == STATE_DIM, f"State dim mismatch: {len(features)} != {STATE_DIM}"
         return torch.tensor(features, dtype=torch.float32)

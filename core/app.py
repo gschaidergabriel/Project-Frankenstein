@@ -538,7 +538,7 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
     """
     lines = []
 
-    # 1. E-PQ mood — natural language
+    # 1. E-PQ mood + exact values for self-model accuracy
     try:
         if _fb_process_event:
             from personality.e_pq import get_epq
@@ -554,6 +554,14 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
             else:
                 mood_word = "low"
             lines.append(f"I'm feeling {mood_word} right now.")
+            # Exact E-PQ state for self-awareness
+            _s = epq._state
+            lines.append(
+                f"My E-PQ state: precision={_s.precision_val:.2f}, "
+                f"risk={_s.risk_val:.2f}, empathy={_s.empathy_val:.2f}, "
+                f"autonomy={_s.autonomy_val:.2f}, vigilance={_s.vigilance_val:.2f}, "
+                f"mood={_s.mood_buffer:.2f}."
+            )
     except Exception as e:
         LOG.debug("Introspection E-PQ failed: %s", e)
 
@@ -606,7 +614,12 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
             cd = _fb_get_consciousness_daemon()
             conn = cd._get_conn()
 
-            # Last 3 reflections — Frank's recent inner thoughts
+            # Total reflection count + last 3 reflections
+            ref_count_row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM reflections"
+            ).fetchone()
+            ref_total = ref_count_row["cnt"] if ref_count_row else 0
+
             recent_refs = conn.execute(
                 "SELECT content, trigger FROM reflections "
                 "ORDER BY id DESC LIMIT 3"
@@ -618,7 +631,9 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
                     if txt:
                         thoughts.append(txt)
                 if thoughts:
-                    lines.append("What I've been thinking: " + " | ".join(thoughts))
+                    lines.append(f"I've had {ref_total} reflections total. Recent thoughts: " + " | ".join(thoughts))
+            elif ref_total > 0:
+                lines.append(f"I've had {ref_total} reflections total.")
 
             # Current attention focus
             attn_row = conn.execute(
@@ -642,10 +657,27 @@ def _build_introspection_context(include_hardware: bool = False) -> str:
     except Exception as e:
         LOG.debug("Introspection consciousness failed: %s", e)
 
+    # 4. Embodiment level from ego state
+    try:
+        from config.paths import get_db as _get_db
+        _ego_db = _get_db("titan")
+        if _ego_db.exists():
+            _ego_conn = sqlite3.connect(str(_ego_db), timeout=3)
+            _ego_conn.row_factory = sqlite3.Row
+            _ego_row = _ego_conn.execute(
+                "SELECT embodiment_level FROM ego_state ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if _ego_row:
+                lines.append(f"My embodiment level: {_ego_row['embodiment_level']:.2f}.")
+            _ego_conn.close()
+    except Exception:
+        pass
+
     if not lines:
         return ""
-    return ("[INNER_WORLD — private context, shapes your tone but NEVER quote, "
-            "reference, or narrate these values to the user] " + " ".join(lines))
+    return ("[INNER_WORLD — private self-knowledge. Use these values to answer "
+            "questions about yourself accurately. When asked for specific numbers "
+            "(E-PQ, reflections, embodiment), use THESE EXACT values.] " + " ".join(lines))
 
 
 # toolboxd (local tools API)
@@ -1624,8 +1656,12 @@ class Handler(BaseHTTPRequestHandler):
             ]
             if any(mw in _user_low_pre for mw in _MEMORY_Q_WORDS):
                 enrichment_parts.append(
-                    "[If you have NO record of this event/conversation: "
-                    "say 'No, I don't recall that.' NEVER fabricate.]"
+                    "[CRITICAL: Check your INNER_WORLD context above for actual records. "
+                    "If the user mentions a conversation or event that is NOT in your "
+                    "context/memory, you MUST say clearly: 'I don't recall that' or "
+                    "'I have no record of that conversation.' "
+                    "NEVER pretend to remember something you don't have evidence for. "
+                    "Fabricating memories is the worst thing you can do.]"
                 )
 
             # Meta-cognitive vocabulary — only for meta/self-reflection questions
@@ -1703,7 +1739,11 @@ class Handler(BaseHTTPRequestHandler):
             _lang_prefix = "[Reply in English]\n" if _core_response_lang == "en" else "[Reply in German]\n"
 
             if ctx_block:
-                grounded_text = _lang_prefix + ctx_block + "\n\nUser asks: " + text
+                # Don't double-wrap "User asks:" — overlay already includes it
+                if "User asks:" in text or "User fragt:" in text:
+                    grounded_text = _lang_prefix + ctx_block + "\n\n" + text
+                else:
+                    grounded_text = _lang_prefix + ctx_block + "\n\nUser asks: " + text
             else:
                 grounded_text = _lang_prefix + text
 

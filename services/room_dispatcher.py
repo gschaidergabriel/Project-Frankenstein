@@ -110,7 +110,19 @@ def _get_eligible_rooms(quotas: dict) -> List[str]:
 
 
 def _pick_next_room(eligible: List[str], quotas: dict) -> str:
-    """Pick the best room: zero-done first, then longest-waiting."""
+    """Pick the best room: pending intent first, then zero-done, then longest-waiting."""
+    # Priority 0: pending room_intent — if Frank resolved to do something in a room, do it
+    try:
+        from services.intent_queue import get_intent_queue
+        iq = get_intent_queue()
+        intent = iq.get_next_room_intent()
+        if intent and intent["room_key"] in eligible:
+            LOG.info("intent-driven room selection: %s (intent #%d)",
+                     intent["room_key"], intent["id"])
+            return intent["room_key"]
+    except Exception:
+        pass
+
     # Priority 1: rooms with 0 sessions today
     zero_done = [r for r in eligible if quotas["completed"].get(r, 0) == 0]
     if zero_done:

@@ -19,10 +19,13 @@ LOG = logging.getLogger("hypothesis_engine.evaluator")
 class HypothesisEvaluator:
     """Evaluate hypotheses passively and actively."""
 
+    _MAX_EXPERIMENT_FAILURES = 3  # After 3 fails, mark hypothesis as untestable
+
     def __init__(self, store, lab_connector=None):
         self._store = store
         self._lab = lab_connector
         self._on_resolve_cb = None     # Optional callback: f(hyp_id, status, delta)
+        self._experiment_failures: dict = {}  # hypothesis_id -> failure count
 
     # ═══════════════════════════════════════════
     # PASSIVE TESTS
@@ -165,13 +168,28 @@ class HypothesisEvaluator:
         exp_result = self._lab.run_experiment(h)
 
         if not exp_result.get("success"):
-            # Failed — revert to active
-            self._store.update(hypothesis_id, {
-                "status": "active",
-                "experiment_pending": 0,
-            })
-            LOG.warning("Experiment failed for %s: %s",
-                        hypothesis_id, exp_result.get("error"))
+            # Track failures — after _MAX_EXPERIMENT_FAILURES, give up
+            fails = self._experiment_failures.get(hypothesis_id, 0) + 1
+            self._experiment_failures[hypothesis_id] = fails
+            if fails >= self._MAX_EXPERIMENT_FAILURES:
+                # Mark as inconclusive, stop retrying
+                self._store.update(hypothesis_id, {
+                    "status": "active",
+                    "experiment_pending": 0,
+                    "test_method": "passive",  # downgrade to passive-only
+                    "result": f"Experiment failed {fails}x: {exp_result.get('error', '?')}"[:500],
+                })
+                LOG.warning("Hypothesis %s: %d experiment failures, downgraded to passive",
+                            hypothesis_id, fails)
+                del self._experiment_failures[hypothesis_id]
+            else:
+                self._store.update(hypothesis_id, {
+                    "status": "active",
+                    "experiment_pending": 0,
+                })
+                LOG.warning("Experiment failed for %s (%d/%d): %s",
+                            hypothesis_id, fails, self._MAX_EXPERIMENT_FAILURES,
+                            exp_result.get("error"))
             return None
 
         # Interpret result

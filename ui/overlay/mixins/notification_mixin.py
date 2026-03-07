@@ -6,7 +6,9 @@ This mixin picks them up and displays them as chat messages.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tkinter as tk
 from pathlib import Path
 
 from overlay.constants import COLORS, LOG
@@ -24,6 +26,15 @@ _LOG_PANEL_CATEGORIES = frozenset({
     "wellness", "philosophy", "art_studio", "architecture",
     "painting",
 })
+
+# ── Art presentation colors ────────────────────────────────────────
+_ART_GOLD = "#C8A04A"
+_ART_GOLD_DIM = "#8B7D5A"
+_ART_BG = "#0e0c08"
+_ART_BG_INNER = "#12100a"
+_ART_TEXT = "#E8E0D0"
+_ART_TEXT_DIM = "#9B9080"
+_ART_BORDER = "#3D3520"
 
 
 class NotificationMixin:
@@ -88,7 +99,16 @@ class NotificationMixin:
                 sender = data.get("sender", "Frank")
                 filepath = data.get("filepath", "")
 
-                if category == "download" and filepath:
+                image_path = data.get("image_path", "")
+
+                if category == "painting_share" and image_path and Path(image_path).is_file():
+                    caption = body or "I painted something."
+                    style = data.get("style", "")
+                    self._ui_call(
+                        lambda ip=image_path, c=caption, st=style:
+                            self._add_painting_message(ip, c, st)
+                    )
+                elif category == "download" and filepath:
                     self._ui_call(
                         lambda m=msg, s=is_system, sn=sender, fp=filepath:
                             self._add_download_message(sn, m, fp, is_system=s)
@@ -160,6 +180,163 @@ class NotificationMixin:
         link.bind("<Enter>", lambda e: link.configure(fg=COLORS["link_hover"]))
         link.bind("<Leave>", lambda e: link.configure(fg=COLORS["link"]))
 
+        self.messages_frame.update_idletasks()
+        self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
+        self._smart_scroll()
+
+    # ── Art presentation widget ────────────────────────────────────────
+
+    def _add_painting_message(self, image_path: str, caption: str,
+                              style: str = ""):
+        """Show a painting in the chat as an elegant art presentation."""
+        try:
+            from PIL import Image, ImageTk
+            from overlay.widgets.image_viewer import ImageViewer
+        except ImportError:
+            self._add_message("Frank", f"[Painting: {image_path}]", is_system=True)
+            return
+
+        try:
+            pil_img = Image.open(image_path)
+            if pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+        except Exception as e:
+            LOG.error("Failed to load painting: %s", e)
+            return
+
+        # ── Outer frame ──
+        outer = tk.Frame(self.messages_frame, bg=COLORS["bg_chat"])
+        outer.pack(fill="x", padx=6, pady=6)
+
+        # Gold accent border
+        border = tk.Frame(outer, bg=_ART_BORDER, padx=1, pady=1)
+        border.pack(anchor="w", fill="x")
+
+        card = tk.Frame(border, bg=_ART_BG)
+        card.pack(fill="x")
+
+        # ── Header ──
+        header = tk.Frame(card, bg=_ART_BG)
+        header.pack(fill="x", padx=12, pady=(8, 4))
+
+        # Gold top accent line
+        tk.Frame(header, bg=_ART_GOLD, height=1).pack(fill="x", pady=(0, 6))
+
+        header_row = tk.Frame(header, bg=_ART_BG)
+        header_row.pack(fill="x")
+
+        tk.Label(
+            header_row, text="\U0001F3A8", bg=_ART_BG,
+            font=("Segoe UI", 11),
+        ).pack(side="left")
+
+        tk.Label(
+            header_row, text="FRANK'S STUDIO", bg=_ART_BG,
+            fg=_ART_GOLD, font=("Consolas", 9, "bold"),
+        ).pack(side="left", padx=(6, 0))
+
+        # Style tag
+        if style:
+            display_style = style.replace("_", " ").upper()
+            tk.Label(
+                header_row, text=f"\u2022 {display_style}", bg=_ART_BG,
+                fg=_ART_GOLD_DIM, font=("Consolas", 8),
+            ).pack(side="left", padx=(8, 0))
+
+        # ── Image ──
+        img_container = tk.Frame(card, bg=_ART_BG)
+        img_container.pack(fill="x", padx=12, pady=(4, 8))
+
+        # Image with thin gold frame
+        img_border = tk.Frame(img_container, bg=_ART_GOLD_DIM, padx=1, pady=1)
+        img_border.pack(anchor="w")
+
+        # Scale to fill width nicely (max ~320px wide)
+        orig_w, orig_h = pil_img.size
+        max_w = 320
+        scale = min(max_w / orig_w, 1.0)
+        thumb_w = int(orig_w * scale)
+        thumb_h = int(orig_h * scale)
+
+        thumbnail = pil_img.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
+        photo = ImageTk.PhotoImage(thumbnail)
+
+        img_label = tk.Label(img_border, image=photo, bg=_ART_BG_INNER, cursor="hand2")
+        img_label.image = photo  # prevent GC
+        img_label.pack()
+
+        def _open_viewer(event=None):
+            try:
+                geo = self.geometry()
+                ImageViewer(self, image_path, overlay_geometry=geo)
+            except Exception as e:
+                LOG.error("Failed to open image viewer: %s", e)
+
+        img_label.bind("<Button-1>", _open_viewer)
+        img_label.bind("<Enter>", lambda e: img_border.configure(bg=_ART_GOLD))
+        img_label.bind("<Leave>", lambda e: img_border.configure(bg=_ART_GOLD_DIM))
+
+        # ── Caption — full text, wrapped, elegant ──
+        if caption:
+            caption_frame = tk.Frame(card, bg=_ART_BG)
+            caption_frame.pack(fill="x", padx=14, pady=(0, 4))
+
+            # Italic quote marks around the reflection
+            caption_text = f"\u201C{caption.strip()}\u201D"
+
+            cap_label = tk.Label(
+                caption_frame, text=caption_text, bg=_ART_BG,
+                fg=_ART_TEXT, font=("Segoe UI", 9, "italic"),
+                anchor="w", justify="left", wraplength=310,
+            )
+            cap_label.pack(anchor="w")
+
+        # ── Footer: open folder button ──
+        footer = tk.Frame(card, bg=_ART_BG)
+        footer.pack(fill="x", padx=12, pady=(2, 8))
+
+        # Gold bottom accent line
+        tk.Frame(footer, bg=_ART_BORDER, height=1).pack(fill="x", pady=(0, 6))
+
+        footer_row = tk.Frame(footer, bg=_ART_BG)
+        footer_row.pack(fill="x")
+
+        # Click to enlarge hint
+        view_btn = tk.Label(
+            footer_row, text="\u25B8 VIEW", bg=_ART_BG,
+            fg=_ART_GOLD_DIM, font=("Consolas", 8), cursor="hand2",
+        )
+        view_btn.pack(side="left")
+        view_btn.bind("<Button-1>", _open_viewer)
+        view_btn.bind("<Enter>", lambda e: view_btn.configure(fg=_ART_GOLD))
+        view_btn.bind("<Leave>", lambda e: view_btn.configure(fg=_ART_GOLD_DIM))
+
+        # Open folder button
+        def _open_folder(event=None, fp=image_path):
+            try:
+                subprocess.Popen(
+                    ["nautilus", "--select", fp],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                try:
+                    subprocess.Popen(
+                        ["xdg-open", str(Path(fp).parent)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                except Exception as e:
+                    LOG.warning("Could not open folder: %s", e)
+
+        folder_btn = tk.Label(
+            footer_row, text="\U0001F4C2 OPEN FOLDER", bg=_ART_BG,
+            fg=_ART_GOLD_DIM, font=("Consolas", 8), cursor="hand2",
+        )
+        folder_btn.pack(side="left", padx=(12, 0))
+        folder_btn.bind("<Button-1>", _open_folder)
+        folder_btn.bind("<Enter>", lambda e: folder_btn.configure(fg=_ART_GOLD))
+        folder_btn.bind("<Leave>", lambda e: folder_btn.configure(fg=_ART_GOLD_DIM))
+
+        # Scroll to bottom
         self.messages_frame.update_idletasks()
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox("all"))
         self._smart_scroll()

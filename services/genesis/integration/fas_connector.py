@@ -117,10 +117,31 @@ class FASConnector:
         """Write crystal to genesis_proposals table for Frank's idle review."""
         try:
             proposal = crystal.to_proposal_dict()
+            target = getattr(crystal.organism.genome, "target", "")
+
+            # Reject category-string targets (not real file paths)
+            if target and "/" not in target and not target.endswith(".py"):
+                LOG.debug("Rejected non-file target for review: %s", target)
+                return False
+
             db_path = _get_consciousness_db()
             conn = sqlite3.connect(str(db_path), timeout=10.0)
             conn.execute("PRAGMA busy_timeout = 10000")
             try:
+                # Dedup: skip if a proposal with the same file_path+approach
+                # already exists and hasn't been rejected
+                existing = conn.execute(
+                    "SELECT id FROM genesis_proposals "
+                    "WHERE file_path = ? AND approach = ? "
+                    "AND status != 'reject' LIMIT 1",
+                    (target, crystal.approach or ""),
+                ).fetchone()
+                if existing:
+                    LOG.debug("Dedup: proposal for %s/%s already exists (id=%s)",
+                              target, crystal.approach, existing[0])
+                    conn.close()
+                    return False
+
                 conn.execute(
                     "INSERT OR IGNORE INTO genesis_proposals "
                     "(crystal_id, title, description, approach, risk_assessment, "
@@ -136,7 +157,7 @@ class FASConnector:
                         crystal.expected_benefit or "",
                         crystal.resonance,
                         getattr(crystal.organism.genome, "idea_type", "optimization"),
-                        getattr(crystal.organism.genome, "target", ""),
+                        target,
                         proposal.get("code_snippet", ""),
                         json.dumps(proposal),
                         time.time(),

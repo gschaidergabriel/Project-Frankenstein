@@ -105,7 +105,7 @@ SALIENCE_CEIL = 0.40
 
 # E-PQ firing
 EPQ_FIRE_THRESHOLD = 0.3
-EPQ_COOLDOWN_S = 120.0
+EPQ_COOLDOWN_S = 600.0  # 10min — was 120s, caused chronic hypervigilance
 
 # PROPRIO injection
 PROPRIO_INJECT_THRESHOLD = 0.2

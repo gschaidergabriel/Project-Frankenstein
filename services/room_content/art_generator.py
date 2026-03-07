@@ -7431,6 +7431,148 @@ _RENDERERS = {
     "horror": _render_horror,
 }
 
+# ── Custom style plugin loader ─────────────────────────────────────
+# Frank can add new styles as Python files in custom_styles/.
+# Each file must define render() with the standard renderer signature.
+# Limits: max 10 plugins, max 500 lines each.
+_CUSTOM_STYLES_DIR = Path(__file__).parent / "custom_styles"
+_MAX_CUSTOM_STYLES = 10
+_MAX_CUSTOM_LINES = 500
+
+def _load_custom_styles():
+    """Scan custom_styles/ and register valid renderer plugins."""
+    if not _CUSTOM_STYLES_DIR.is_dir():
+        return
+    import importlib.util
+    loaded = 0
+    for py_file in sorted(_CUSTOM_STYLES_DIR.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        if loaded >= _MAX_CUSTOM_STYLES:
+            LOG.warning("Custom style limit reached (%d), skipping %s",
+                        _MAX_CUSTOM_STYLES, py_file.name)
+            break
+        # Line count check
+        try:
+            line_count = sum(1 for _ in py_file.open())
+            if line_count > _MAX_CUSTOM_LINES:
+                LOG.warning("Custom style %s too long (%d > %d lines), skipping",
+                            py_file.name, line_count, _MAX_CUSTOM_LINES)
+                continue
+        except Exception:
+            continue
+        style_name = py_file.stem
+        if style_name in _RENDERERS:
+            LOG.debug("Custom style %s shadows built-in, skipping", style_name)
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(
+                f"custom_style_{style_name}", str(py_file))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            renderer = getattr(mod, "render", None)
+            if not callable(renderer):
+                LOG.warning("Custom style %s has no render() function", style_name)
+                continue
+            _RENDERERS[style_name] = renderer
+            loaded += 1
+            LOG.info("Loaded custom art style: %s (%d lines)", style_name, line_count)
+        except Exception as e:
+            LOG.warning("Failed to load custom style %s: %s", style_name, e)
+
+_load_custom_styles()
+
+
+def create_custom_style(name: str, code: str) -> Dict[str, Any]:
+    """Create a new custom art style renderer file.
+
+    Frank can call this autonomously to extend his art studio.
+    The code is validated before saving: must define render() with the
+    standard signature, stay under line limits, and not shadow built-ins.
+
+    Parameters
+    ----------
+    name : str
+        Style name (becomes filename, e.g. "mosaic" -> mosaic.py).
+        Must be lowercase alphanumeric + underscores only.
+    code : str
+        Full Python source code for the renderer module.
+        Must define a render() function.
+
+    Returns
+    -------
+    dict  {"ok": bool, "error": str|None, "path": str|None}
+    """
+    import re as _re
+    import importlib.util
+
+    # Validate name
+    if not _re.match(r'^[a-z][a-z0-9_]{1,30}$', name):
+        return {"ok": False, "error": f"Invalid style name '{name}': must be lowercase a-z, 0-9, _ (2-31 chars)", "path": None}
+
+    if name in _RENDERERS and name not in [
+        p.stem for p in _CUSTOM_STYLES_DIR.glob("*.py") if not p.name.startswith("_")
+    ]:
+        return {"ok": False, "error": f"Cannot shadow built-in style '{name}'", "path": None}
+
+    # Check limits
+    existing_custom = [
+        p for p in _CUSTOM_STYLES_DIR.glob("*.py")
+        if not p.name.startswith("_")
+    ] if _CUSTOM_STYLES_DIR.is_dir() else []
+
+    # Allow overwrite of own style, but count new ones
+    is_overwrite = any(p.stem == name for p in existing_custom)
+    if not is_overwrite and len(existing_custom) >= _MAX_CUSTOM_STYLES:
+        return {"ok": False, "error": f"Custom style limit reached ({_MAX_CUSTOM_STYLES})", "path": None}
+
+    lines = code.split("\n")
+    if len(lines) > _MAX_CUSTOM_LINES:
+        return {"ok": False, "error": f"Too many lines ({len(lines)} > {_MAX_CUSTOM_LINES})", "path": None}
+
+    # Validate: must define render()
+    if "def render(" not in code:
+        return {"ok": False, "error": "Code must define a render() function", "path": None}
+
+    # Security: block dangerous imports/calls
+    _BLOCKED = ["subprocess", "os.system", "shutil.rmtree", "exec(", "eval(", "__import__"]
+    for blocked in _BLOCKED:
+        if blocked in code:
+            return {"ok": False, "error": f"Blocked pattern found: {blocked}", "path": None}
+
+    # Try to compile (syntax check)
+    try:
+        compile(code, f"custom_styles/{name}.py", "exec")
+    except SyntaxError as e:
+        return {"ok": False, "error": f"Syntax error: {e}", "path": None}
+
+    # Try to load and verify render() is callable
+    try:
+        spec = importlib.util.spec_from_loader(f"_validate_{name}", loader=None)
+        mod = importlib.util.module_from_spec(spec)
+        exec(compile(code, f"custom_styles/{name}.py", "exec"), mod.__dict__)
+        renderer = getattr(mod, "render", None)
+        if not callable(renderer):
+            return {"ok": False, "error": "render is not callable", "path": None}
+    except Exception as e:
+        return {"ok": False, "error": f"Load validation failed: {e}", "path": None}
+
+    # Write the file
+    _CUSTOM_STYLES_DIR.mkdir(parents=True, exist_ok=True)
+    target = _CUSTOM_STYLES_DIR / f"{name}.py"
+    target.write_text(code, encoding="utf-8")
+
+    # Register immediately
+    _RENDERERS[name] = renderer
+    LOG.info("Custom art style created: %s (%d lines)", name, len(lines))
+
+    return {"ok": True, "error": None, "path": str(target)}
+
+
+def get_available_styles() -> list:
+    """Return list of all available style names (built-in + custom)."""
+    return sorted(_RENDERERS.keys())
+
 
 def generate_artwork(
     physics_state: Optional[dict] = None,
@@ -7520,7 +7662,7 @@ def generate_artwork(
     if style != "pop_art":  # Pop art looks better without vignette
         img = _add_vignette(img, strength=0.25)
 
-    # ── Save — only PNG, no JSON.  Filename = unique poetic name. ──
+    # ── Save — clean filename: date_style_slug_uid.png ──
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     elapsed_ms = (time.monotonic() - t0) * 1000
 
@@ -7529,25 +7671,30 @@ def generate_artwork(
     else:
         title = f"{style} composition"
 
-    slug = title.lower().replace(" ", "_")
-    slug = "".join(c for c in slug if c.isalnum() or c == "_")
-    slug = slug.strip("_")[:45] or style
+    # Build a clean, short slug from the intent (max 4 meaningful words)
+    import re as _re_slug
+    _slug_raw = creative_intent.strip().lower() if creative_intent else style
+    # Strip HTML entities, quotes, punctuation garbage
+    _slug_raw = _re_slug.sub(r"&#?\w+;", "", _slug_raw)
+    _slug_raw = _re_slug.sub(r"[^a-z0-9\s]", "", _slug_raw)
+    # Remove filler words for compact naming
+    _FILLER = {"i", "my", "the", "a", "an", "in", "of", "to", "and", "is",
+               "it", "on", "for", "with", "that", "this", "was", "its",
+               "im", "ive", "id", "ill", "like", "just", "when", "what",
+               "how", "about", "from", "but", "not", "can", "cant"}
+    _slug_words = [w for w in _slug_raw.split() if w not in _FILLER and len(w) > 1]
+    _slug_short = "_".join(_slug_words[:4]) or style
 
-    # Include style + portrait_theme for richer names
-    style_tag = style
-    if portrait_theme:
-        style_tag = portrait_theme  # e.g. "dark_floating" or "bright_closeup_side"
-    slug = f"{slug}_{style_tag}"
-
-    # Unique suffix: 8 hex chars from os.urandom
-    _uid_hex = os.urandom(4).hex()
-    full_slug = f"{slug}_{_uid_hex}"
+    # Format: YYYY-MM-DD_style_slug_uid
+    _date_str = time.strftime("%Y-%m-%d")
+    _style_tag = portrait_theme if portrait_theme else style
+    _uid_hex = os.urandom(3).hex()  # 6 hex chars
+    full_slug = f"{_date_str}_{_style_tag}_{_slug_short}_{_uid_hex}"
 
     png_path = OUTPUT_DIR / f"{full_slug}.png"
-    # Safety fallback
     while png_path.exists():
-        _uid_hex = os.urandom(4).hex()
-        full_slug = f"{slug}_{_uid_hex}"
+        _uid_hex = os.urandom(3).hex()
+        full_slug = f"{_date_str}_{_style_tag}_{_slug_short}_{_uid_hex}"
         png_path = OUTPUT_DIR / f"{full_slug}.png"
 
     img.save(str(png_path), "PNG")

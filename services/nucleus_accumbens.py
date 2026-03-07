@@ -57,7 +57,11 @@ CHANNEL_NAMES = [
     "novel_thought",
     "entity_positive",
     "genesis_accepted",
+    "curiosity_spark",
     "curiosity_fulfilled",
+    "room_positive",
+    "room_negative",
+    "prediction_error",
 ]
 
 REWARD_CHANNELS: Dict[str, dict] = {
@@ -133,6 +137,28 @@ REWARD_CHANNELS: Dict[str, dict] = {
         "habituation_rate": 0.06,      # Moderate — stays fresh for a while
         "habituation_floor": 0.05,
         "epq_event": None,
+    },
+    # ── Room Session Rewards ──
+    "room_positive": {
+        "base_magnitude": 0.45,        # Completed room session with positive mood delta
+        "habituation_rate": 0.05,
+        "habituation_floor": 0.12,
+        "epq_event": "dopamine_burst",
+        "epq_sentiment": "positive",
+    },
+    "room_negative": {
+        "base_magnitude": 0.2,         # Low mood delta or interrupted
+        "habituation_rate": 0.04,
+        "habituation_floor": 0.10,
+        "epq_event": "dopamine_dip",
+        "epq_sentiment": "negative",
+    },
+    # ── Prediction Error Rewards ──
+    "prediction_error": {
+        "base_magnitude": 0.20,        # Surprise → salience signal
+        "habituation_rate": 0.08,
+        "habituation_floor": 0.05,
+        "epq_event": None,             # E-PQ handled directly in prediction engine
     },
 }
 
@@ -760,7 +786,7 @@ class NucleusAccumbens:
             return
 
         # Only for flat/bored — anhedonia has its own heavy recovery
-        motivation = self._motivation_label()
+        motivation = self.motivation_label()
         if motivation not in ("flat", "bored"):
             return
 
@@ -912,11 +938,11 @@ class NucleusAccumbens:
                 boredom_active=self._state.boredom_active,
                 anhedonia_risk=anhedonia_risk,
                 seconds_since_reward=since_reward,
-                motivation_level=self._motivation_label(),
+                motivation_level=self.motivation_label(),
                 top_habituated_channels=top_hab,
             )
 
-    def _motivation_label(self) -> str:
+    def motivation_label(self) -> str:
         """Terse motivation label based on tonic DA."""
         da = self._state.tonic_da
         if da > 0.7:
@@ -934,7 +960,7 @@ class NucleusAccumbens:
         """Terse proprioception line for [PROPRIO] block."""
         with self._lock:
             da = self._state.tonic_da
-            label = self._motivation_label()
+            label = self.motivation_label()
         return f"Drive: {label} ({da:.2f})"
 
     def get_summary(self) -> dict:
@@ -944,7 +970,7 @@ class NucleusAccumbens:
                 "tonic_da": round(self._state.tonic_da, 4),
                 "total_events": self._state.total_events,
                 "boredom_active": self._state.boredom_active,
-                "motivation": self._motivation_label(),
+                "motivation": self.motivation_label(),
                 "last_phasic": (
                     round(self._last_phasic.phasic_da, 4)
                     if self._last_phasic else 0.0

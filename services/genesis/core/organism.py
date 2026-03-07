@@ -335,7 +335,9 @@ class IdeaOrganism:
 
         # 1. Target has function name or line number (not just file)?
         target = self.genome.target
-        if ":" in target:
+        if "/" not in target and not target.endswith(".py"):
+            score += 0.0  # Category string, not a real file path
+        elif ":" in target:
             score += 1.0  # e.g. "services/foo.py:bar_func" or "foo.py:123"
         elif "/" in target:
             score += 0.3  # At least has path context
@@ -376,8 +378,10 @@ class IdeaOrganism:
         score = 0
         genome = self.genome
 
-        # 1. Specific target?
-        if ":" in genome.target:
+        # 1. Specific target? (must be a real file path, not a category string)
+        if "/" not in genome.target and not genome.target.endswith(".py"):
+            pass  # Category string like "consciousness:growth:..." — not a file
+        elif ":" in genome.target:
             score += 1
         elif genome.idea_type == "fix" and "/" in genome.target:
             score += 1  # Fix with path context is acceptable

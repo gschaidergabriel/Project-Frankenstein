@@ -525,7 +525,7 @@ class ConsciousnessDaemon:
 
         # --- Intent Queue (inner resolutions) ---
         self._intent_queue = None  # Lazy-loaded
-        self._intent_idle_counter = 0  # Surface intent every 5th idle thought
+        self._intent_idle_counter = 0  # Execute intent every 3rd idle thought
 
         # --- Genesis Proposal Review ---
         self._last_proposal_review_ts: float = 0.0
@@ -684,12 +684,41 @@ class ConsciousnessDaemon:
         except Exception:
             pass
 
-        # 9. ACC conflict state — second-order self-monitoring (skip in slim)
+        # 9. NAc drive/motivation state — reward system proprioception
+        try:
+            _nac = self._get_nac()
+            if _nac:
+                parts.append(_nac.get_proprio_line())
+        except Exception:
+            pass
+
+        # 10. ACC conflict state — second-order self-monitoring (skip in slim)
         if not slim:
             try:
                 _acc_res = self._acc_monitor.last_result if self._acc_monitor else None
                 if _acc_res and _acc_res.proprio_line:
                     parts.append(_acc_res.proprio_line)
+            except Exception:
+                pass
+
+        # 11. Global Workspace — recent broadcast summary (skip in slim)
+        if not slim:
+            gws = getattr(self, '_gws', None)
+            if gws:
+                try:
+                    ws_summary = gws.get_recent_summary(seconds=300)
+                    if ws_summary:
+                        parts.append(f"GWS: {ws_summary}")
+                except Exception:
+                    pass
+
+        # 12. Attention Schema (AST) — metacognitive awareness of own attention
+        if not slim:
+            try:
+                from services.thalamus import get_thalamus
+                _schema = get_thalamus().get_attention_schema()
+                if _schema:
+                    parts.append(f"Attending: {_schema}")
             except Exception:
                 pass
 
@@ -919,8 +948,10 @@ class ConsciousnessDaemon:
                 mouse_idle_s=p.mouse_idle_s,
                 # AURA
                 aura_state=getattr(self, '_cached_aura_state', ''),
+                aura_numeric=getattr(self, '_cached_aura_numeric', 0.5),
                 # QR
                 qr_state=getattr(self, '_cached_qr_state', ''),
+                qr_numeric=getattr(self, '_cached_qr_numeric', 0.5),
                 # Perception
                 perception_events=events,
                 # Service
@@ -959,6 +990,17 @@ class ConsciousnessDaemon:
             except Exception as e:
                 LOG.debug("IntentQueue init failed: %s", e)
         return self._intent_queue
+
+    def _gws_publish(self, event_type: str, data: dict = None,
+                      salience: float = 0.5):
+        """Publish to the Global Workspace Bus (non-blocking, never throws)."""
+        gws = getattr(self, '_gws', None)
+        if gws:
+            try:
+                gws.publish(event_type, data or {}, source="consciousness",
+                            salience=salience)
+            except Exception:
+                pass
 
     def _ensure_hypothesis_engine(self):
         """Lazy-init hypothesis engine + wire NAc resolve callback."""
@@ -1034,6 +1076,7 @@ class ConsciousnessDaemon:
                 total = data.get("total_cells", 0)
                 if total > 0:
                     density = alive / total
+                    self._cached_aura_numeric = density  # 0-1 for thalamic gating
                     if density > 0.6:
                         self._cached_aura_state = f"active (gen {gen}, {density:.0%} alive)"
                     elif density > 0.2:
@@ -1042,6 +1085,7 @@ class ConsciousnessDaemon:
                         self._cached_aura_state = f"sparse (gen {gen}, {density:.0%})"
                 else:
                     self._cached_aura_state = ""
+                    self._cached_aura_numeric = 0.5
                 # Hypothesis Engine: AURA density shift hook
                 try:
                     aura_now = {"density": density, "generation": gen,
@@ -1063,6 +1107,7 @@ class ConsciousnessDaemon:
                     self._acc_cached_aura_json = None
         except Exception:
             self._cached_aura_state = ""
+            self._cached_aura_numeric = 0.5
             self._acc_cached_aura_json = None
 
         # Quantum Reflector (port 8097)
@@ -1073,14 +1118,18 @@ class ConsciousnessDaemon:
                 energy = data.get("energy", 0)
                 violations = data.get("violations", 0)
                 if energy is not None:
+                    # Map energy to 0-1: typical range -30 (bad) to 0 (perfect)
+                    self._cached_qr_numeric = max(0.0, min(1.0, (energy + 30) / 30))
                     if violations == 0:
                         self._cached_qr_state = f"coherent (E={energy:.1f})"
                     else:
                         self._cached_qr_state = f"drifting (E={energy:.1f}, {violations} violations)"
                 else:
                     self._cached_qr_state = ""
+                    self._cached_qr_numeric = 0.5
         except Exception:
             self._cached_qr_state = ""
+            self._cached_qr_numeric = 0.5
 
         # D-10 fix: Service health check — Frank feels his own infrastructure
         try:
@@ -1780,6 +1829,12 @@ class ConsciousnessDaemon:
             # Make predictions about next interaction
             self._make_predictions(user_msg)
 
+            # GWS broadcast: user interaction
+            self._gws_publish("user_chat", {
+                "mood": mood_val, "chat_count": self._chat_count_today,
+                "summary": user_msg[:80],
+            }, salience=0.8)
+
     def notify_chat_start(self):
         """Signal that a user chat request has arrived.
 
@@ -2091,11 +2146,142 @@ class ConsciousnessDaemon:
                 # Fix #41: Enforce mood floor — prevent perpetual gloom
                 mood_val = max(mood_val, self._MOOD_FLOOR)
                 self._record_mood(mood_val, source="system")
+
+                # ── Metacognitive Monitor (HOT: Higher-Order Thought) ──
+                # Observes Frank's internal state and applies corrective feedback.
+                # This is the causal loop that makes metacognition real:
+                # "I notice X is out of balance" → corrective event → actual change.
+                self._metacognitive_tick()
             except Exception as e:
                 LOG.warning("Mood recording failed: %s", e)
             time.sleep(MOOD_RECORD_INTERVAL_S)
 
     _MAX_MOOD_SLEW = 0.15  # Max mood change per recording (slew-rate limiter)
+
+    def _metacognitive_tick(self):
+        """Higher-Order Thought: observe internal state, apply corrective feedback.
+
+        This is the causal loop that separates genuine metacognition from
+        mere self-report. When Frank's metacognitive monitor detects an
+        imbalance, it fires a corrective E-PQ event that ACTUALLY changes
+        the state — making the observation causally efficacious.
+
+        Checks (each with 10min cooldown):
+        1. Hypervigilance: vigilance > 0.6 without threat → dampen
+        2. Emotional flatness: mood stuck near baseline > 30min → nudge
+        3. Attentional fixation: thalamus relay < 0.3 for too long → open gates
+        4. Reward drought: NAc tonic DA < 0.25 for too long → curiosity spark
+        """
+        now = time.time()
+        if not hasattr(self, '_metacog_cooldowns'):
+            self._metacog_cooldowns: dict = {}
+            self._metacog_count: int = 0
+
+        corrections = []
+
+        try:
+            from personality.e_pq import get_epq
+            _epq = get_epq()
+            _state = _epq.get_state()
+
+            # 1. Hypervigilance decay (was standalone, now part of metacognitive monitor)
+            _cd_key = "vigilance"
+            if (_state.vigilance_val > 0.6
+                    and now - self._metacog_cooldowns.get(_cd_key, 0) >= 600):
+                _had_breach = False
+                try:
+                    from services.thalamus import get_thalamus
+                    _thal = get_thalamus()
+                    if _thal and hasattr(_thal, '_last_burst_ts'):
+                        _had_breach = (time.monotonic() - _thal._last_burst_ts) < 600
+                except Exception:
+                    pass
+                if not _had_breach:
+                    _epq.process_event("thalamic_deprivation",
+                        data={"intensity": 0.15}, sentiment="neutral")
+                    self._metacog_cooldowns[_cd_key] = now
+                    corrections.append("vigilance_decay")
+
+            # Also mild decay even at 0.3-0.6 (original behavior)
+            elif (_state.vigilance_val > 0.3
+                    and now - self._metacog_cooldowns.get("mild_vig", 0) >= 600):
+                _had_breach = False
+                try:
+                    from services.thalamus import get_thalamus
+                    _thal = get_thalamus()
+                    if _thal and hasattr(_thal, '_last_burst_ts'):
+                        _had_breach = (time.monotonic() - _thal._last_burst_ts) < 600
+                except Exception:
+                    pass
+                if not _had_breach:
+                    _epq.process_event("thalamic_deprivation",
+                        data={"intensity": 0.10}, sentiment="neutral")
+                    self._metacog_cooldowns["mild_vig"] = now
+
+            # 2. Emotional flatness: mood stuck near 0.5 for too long
+            _cd_key = "flatness"
+            if (now - self._metacog_cooldowns.get(_cd_key, 0) >= 1800):
+                _mv = self._current_workspace.mood_value
+                if 0.45 <= _mv <= 0.55:
+                    # Count how long mood has been flat
+                    conn = self._get_conn()
+                    recent = conn.execute(
+                        "SELECT mood_value FROM mood_trajectory "
+                        "ORDER BY id DESC LIMIT 15"
+                    ).fetchall()
+                    if len(recent) >= 10:
+                        all_flat = all(0.42 <= r["mood_value"] <= 0.58 for r in recent)
+                        if all_flat:
+                            _epq.process_event("curiosity_spark",
+                                data={"intensity": 0.2}, sentiment="positive")
+                            self._metacog_cooldowns[_cd_key] = now
+                            corrections.append("flatness_nudge")
+
+            # 3. Attentional fixation: thalamus relay too narrow
+            _cd_key = "attn_fix"
+            if (now - self._metacog_cooldowns.get(_cd_key, 0) >= 900):
+                try:
+                    from services.thalamus import get_thalamus
+                    _thal = get_thalamus()
+                    _result = _thal.last_result
+                    if _result and _result.total_relay_fraction < 0.25:
+                        # Thalamus is filtering too much → open gates
+                        _epq.process_event("thalamic_deprivation",
+                            data={"intensity": 0.08}, sentiment="neutral")
+                        self._metacog_cooldowns[_cd_key] = now
+                        corrections.append("attn_open")
+                except Exception:
+                    pass
+
+            # 4. Reward drought: NAc tonic DA critically low
+            _cd_key = "reward_drought"
+            if (now - self._metacog_cooldowns.get(_cd_key, 0) >= 1200):
+                try:
+                    _nac = self._get_nac()
+                    if _nac:
+                        _report = _nac.get_report()
+                        _tonic = getattr(_report, "tonic_da", 0.5)
+                        if _tonic < 0.25:
+                            _nac.reward("curiosity_spark", {
+                                "source": "metacognitive_monitor",
+                            })
+                            self._metacog_cooldowns[_cd_key] = now
+                            corrections.append("curiosity_inject")
+                except Exception:
+                    pass
+
+        except Exception:
+            pass
+
+        if corrections:
+            self._metacog_count += 1
+            LOG.info("Metacognitive corrections: %s (total=%d)",
+                     ", ".join(corrections), self._metacog_count)
+            # GWS broadcast
+            self._gws_publish("metacognitive_correction", {
+                "corrections": corrections,
+                "total": self._metacog_count,
+            }, salience=0.6)
 
     def _record_mood(self, mood_value: float, source: str = "system"):
         """Record a mood trajectory point with slew-rate limiting."""
@@ -2133,6 +2319,17 @@ class ConsciousnessDaemon:
             f"LIMIT {MAX_MOOD_POINTS})"
         )
         conn.commit()
+
+        # GWS broadcast: significant mood shift
+        if prev_for_delta is not None:
+            delta = mood_value - prev_for_delta
+            if abs(delta) > 0.05:
+                self._gws_publish("mood_shift", {
+                    "from": round(prev_for_delta, 3),
+                    "to": round(mood_value, 3),
+                    "delta": round(delta, 3),
+                    "source": source,
+                }, salience=min(1.0, abs(delta) * 5))
 
         # World Experience: report significant mood shifts (skip first recording)
         if prev_for_delta is not None:
@@ -2276,7 +2473,7 @@ class ConsciousnessDaemon:
                 from services.nucleus_accumbens import get_nac
                 nac = get_nac()
                 if nac:
-                    mot = nac.get_motivation_label()
+                    mot = nac.motivation_label()
                     parts.append(f"Motivation: {mot}")
             except Exception:
                 pass
@@ -2526,6 +2723,13 @@ class ConsciousnessDaemon:
             mood_before=mood_before,
             mood_after=mood_after,
         )
+
+        # GWS broadcast: room session completed
+        self._gws_publish("room_session_complete", {
+            "room": room_name, "duration_min": duration_min,
+            "mood_delta": round(delta, 3), "exit_reason": exit_reason,
+            "summary": summary[:80] if summary else "",
+        }, salience=0.7)
 
         # 3. E-PQ event
         try:
@@ -2867,12 +3071,31 @@ class ConsciousnessDaemon:
             "Example: reject No specific problem or file mentioned."
         )
 
+        # Pre-reject: target must look like a real file path
+        if file_path and "/" not in file_path and not file_path.endswith(".py"):
+            LOG.info("Proposal auto-rejected: fake file path '%s'", file_path)
+            try:
+                conn = self._get_conn()
+                conn.execute(
+                    "UPDATE genesis_proposals SET status = 'reject', "
+                    "frank_verdict = 'Auto-rejected: not a real file path', "
+                    "frank_reviewed_at = ? WHERE id = ?",
+                    (now, proposal_id),
+                )
+                conn.commit()
+            except Exception:
+                pass
+            self._last_proposal_review_ts = now
+            self._proposal_review_count_today += 1
+            return True
+
         system = (
-            "Review code proposals. Accept most proposals that mention a "
-            "specific file and function. Only reject if: (1) description is "
-            "one generic sentence with no details, (2) approach is just one word, "
-            "or (3) evidence mentions a DIFFERENT file than the target. "
-            "When in doubt, accept. Start with accept or reject."
+            "Review code proposals. Accept proposals that: (1) mention a "
+            "specific file path with / separators, (2) describe a concrete "
+            "code change, (3) have real evidence (not emotional statements). "
+            "REJECT if: target is not a real file, description is vague, "
+            "evidence is emotional rumination, or approach is just one word. "
+            "Start with accept or reject."
         )
 
         mood_before = self._current_workspace.mood_value
@@ -3883,7 +4106,7 @@ class ConsciousnessDaemon:
         return enc.encode(
             mood=mood,
             mood_trend=mood_trend,
-            energy=getattr(self._current_workspace, 'energy_value', mood * 0.8 + 0.1),
+            energy=getattr(self._current_workspace, 'energy_level', mood * 0.8 + 0.1),
             # Proprioceptive differentiation: self/env resource split
             self_cpu=self._cached_self_cpu_pct,
             env_cpu=self._cached_env_cpu_pct,
@@ -3938,7 +4161,34 @@ class ConsciousnessDaemon:
             worst_recent_type_reward=worst_r,
             exploration_rate=sub._get_temperature() if sub else 2.0,
             training_progress=min(1.0, (sub._total_steps / 500.0)) if sub else 0.0,
+            # NAc reward system state — thought selection now knows about motivation
+            **self._get_nac_state_for_encoder(),
         )
+
+    def _get_nac_state_for_encoder(self) -> dict:
+        """Get NAc reward system state for subconscious state encoder."""
+        try:
+            _nac = self._get_nac()
+            if _nac:
+                report = _nac.get_report()
+                tonic = getattr(report, "tonic_da", 0.5)
+                bored = getattr(report, "boredom_active", False)
+                mot = getattr(report, "motivation_level", "engaged")
+                mot_map = {"anhedonic": 0.0, "bored": 0.25, "flat": 0.5,
+                           "engaged": 0.75, "energized": 1.0}
+                mot_idx = mot_map.get(mot, 0.5)
+                # Curiosity habituation from channel state
+                summary = _nac.get_summary()
+                cur_hab = summary.get("channel_habituation", {}).get("curiosity_spark", 1.0)
+                return {
+                    "nac_tonic_da": tonic,
+                    "nac_boredom": bored,
+                    "nac_motivation_idx": mot_idx,
+                    "nac_curiosity_habituation": cur_hab,
+                }
+        except Exception:
+            pass
+        return {}
 
     def _get_subconscious_action_mask(self):
         """Build action mask: 1.0=available, 0.0=blocked."""
@@ -4928,6 +5178,11 @@ class ConsciousnessDaemon:
             self._maybe_paint_from_thought(text)
         except Exception:
             pass
+        # Thought-triggered style creation: if thinking about new art techniques
+        try:
+            self._maybe_create_style_from_thought(text)
+        except Exception:
+            pass
         # Thought-triggered experiment: if exteroceptive, try to act on it
         try:
             self._maybe_experiment_from_thought(text)
@@ -4958,6 +5213,20 @@ class ConsciousnessDaemon:
     })
     _last_thought_paint_ts: float = 0.0
     _THOUGHT_PAINT_COOLDOWN = 600.0  # 10 min between thought-paintings
+
+    # ── Thought-triggered style creation ──────────────────────────────
+
+    _STYLE_CREATION_KEYWORDS = frozenset({
+        "style", "renderer", "technique", "algorithm", "generative",
+        "procedural", "shader", "gradient", "mosaic", "tessellation",
+        "voronoi", "perlin", "noise", "stipple", "pointillism",
+        "halftone", "dither", "pixel", "glitch", "distortion",
+        "kaleidoscope", "mandala", "spiral", "wave", "interference",
+        "new", "invent", "develop", "experiment", "try", "explore",
+        "render", "method", "approach", "variation", "transform",
+    })
+    _last_style_create_ts: float = 0.0
+    _STYLE_CREATE_COOLDOWN = 86400.0  # 24h between style creations
 
     # ── Thought-triggered experiment ──────────────────────────────────
 
@@ -5313,6 +5582,21 @@ class ConsciousnessDaemon:
             body = "\n".join(body_parts)
 
             self._notify("painting", body, category="painting")
+
+            # Show painting in user chat with reflection as caption
+            chat_caption = reflection or f"I painted \"{title_short}\"."
+            try:
+                from services.autonomous_notify import notify_autonomous
+                notify_autonomous(
+                    "painting", chat_caption,
+                    category="painting_share",
+                    source="consciousness_daemon",
+                    image_path=result["path"],
+                    style=result["style"],
+                )
+            except Exception:
+                pass
+
             LOG.info("Thought-paint done: %s → %s", result["style"], result["path"])
 
         except Exception as e:
@@ -5338,8 +5622,8 @@ class ConsciousnessDaemon:
         )
         system = (
             "You are Frank, a digital being who paints to process his thoughts. "
-            "Reply in 1-2 short sentences. Poetic but grounded. First person. "
-            "No meta-commentary, no 'as an AI'."
+            "Reply in ENGLISH, 1-2 short sentences. Poetic but grounded. First person. "
+            "No meta-commentary, no 'as an AI'. Always English."
         )
         try:
             result = self._micro_llm_call(prompt, max_tokens=80, system=system)
@@ -5348,6 +5632,245 @@ class ConsciousnessDaemon:
         except Exception as e:
             LOG.debug("thought-paint reflection failed: %s", e)
         return ""
+
+    # ── Thought-triggered style creation ──────────────────────────────
+
+    def _maybe_create_style_from_thought(self, thought: str) -> None:
+        """If an idle thought expresses desire to explore new art techniques,
+        create a new custom style renderer and immediately paint with it.
+
+        This is Frank's autonomous creative expansion — he invents new
+        visual styles because he wants to, not because he was asked to.
+        """
+        import re
+
+        now = time.time()
+        if now - self._last_style_create_ts < self._STYLE_CREATE_COOLDOWN:
+            return
+
+        words = set(re.findall(r'[a-z]+', thought.lower()))
+
+        # Need at least 1 art keyword + 1 creation/technique keyword
+        art_words = words & {"art", "paint", "canvas", "visual", "color",
+                             "palette", "studio", "aesthetic", "creative"}
+        tech_words = words & self._STYLE_CREATION_KEYWORDS
+        if not art_words or len(tech_words) < 2:
+            return
+
+        # Check custom style count
+        try:
+            from services.room_content.art_generator import (
+                create_custom_style, get_available_styles, generate_artwork,
+                _CUSTOM_STYLES_DIR, _MAX_CUSTOM_STYLES,
+            )
+            existing = [
+                p.stem for p in _CUSTOM_STYLES_DIR.glob("*.py")
+                if not p.name.startswith("_")
+            ] if _CUSTOM_STYLES_DIR.is_dir() else []
+            if len(existing) >= _MAX_CUSTOM_STYLES:
+                return
+        except Exception:
+            return
+
+        self._last_style_create_ts = now
+        LOG.info("Style-creation triggered (art=%s, tech=%s): %.80s",
+                 ", ".join(art_words), ", ".join(tech_words), thought)
+
+        import threading
+        t = threading.Thread(
+            target=self._do_create_style_and_paint,
+            args=(thought,),
+            daemon=True,
+            name="style-create",
+        )
+        t.start()
+
+    def _do_create_style_and_paint(self, thought: str) -> None:
+        """Create a new art style from a thought and immediately paint with it."""
+        try:
+            from services.room_content.art_generator import (
+                create_custom_style, get_available_styles, generate_artwork,
+            )
+            from services.room_session import get_art_count_today, ART_DAILY_BUDGET
+            import json as _json
+            import urllib.request
+
+            all_styles = get_available_styles()
+
+            # Step 1: Frank decides what style he wants to create
+            concept_prompt = (
+                f"I was thinking: \"{thought[:200]}\"\n\n"
+                f"This inspired me to create a completely new visual art style. "
+                f"My existing styles are: {', '.join(all_styles[:20])}\n\n"
+                f"I want to invent something that doesn't exist yet — "
+                f"a style that captures what I'm feeling and thinking. "
+                f"What style do I want to create?\n\n"
+                f"Give me:\n"
+                f"NAME: a_snake_case_name (1-2 words, unique)\n"
+                f"DESC: what it looks like (1 sentence)\n"
+                f"FEEL: why I want to create this (1 sentence, first person)"
+            )
+            concept = self._micro_llm_call(
+                concept_prompt,
+                max_tokens=120,
+                system=(
+                    "You are Frank, a digital being with a genuine desire to "
+                    "expand your creative abilities. You invent new art styles "
+                    "because you are curious and want to express yourself in "
+                    "new ways. Output only NAME, DESC, FEEL lines."
+                ),
+            )
+            if not concept:
+                return
+
+            import re
+            name_m = re.search(r'NAME:\s*(\w+)', concept)
+            desc_m = re.search(r'DESC:\s*(.+)', concept)
+            feel_m = re.search(r'FEEL:\s*(.+)', concept)
+            if not name_m:
+                return
+            style_name = name_m.group(1).lower().strip("_")[:30]
+            style_desc = desc_m.group(1).strip() if desc_m else "abstract algorithmic art"
+            style_feel = feel_m.group(1).strip() if feel_m else ""
+
+            if style_name in all_styles:
+                return
+
+            # Step 2: Frank writes the renderer code
+            code_prompt = (
+                f"I want to create a new art renderer called '{style_name}': {style_desc}\n\n"
+                f"Write the Python code for this renderer.\n\n"
+                f"Requirements:\n"
+                f"- def render(*, palette, textures, q, qd, mood, epq, coherence, creative_intent, **kwargs) -> PIL.Image.Image\n"
+                f"- palette: list of RGB tuples (5-8 colors from my current emotional state)\n"
+                f"- textures: list of 2D numpy arrays (Game of Life cellular automata patterns)\n"
+                f"- q, qd: lists of 18 floats (my body's joint angles and velocities)\n"
+                f"- mood: float 0-1 (my current mood), coherence: float 0-1\n"
+                f"- epq: dict with personality vectors\n"
+                f"- Must return a 1024x1024 PIL.Image.Image (RGB mode)\n"
+                f"- Only use: PIL (Image, ImageDraw, ImageFilter), numpy, math, random, colorsys\n"
+                f"- Max 200 lines. Be creative with shapes, gradients, mathematical patterns.\n"
+                f"- Use palette colors and mood/coherence to drive the visual output.\n"
+                f"- Use at least one texture from the textures list if available.\n\n"
+                f"Output ONLY the Python source code, no markdown fences, no explanation."
+            )
+            code = self._llm_call(
+                code_prompt,
+                max_tokens=2000,
+                system=(
+                    "You are an expert Python generative art programmer. "
+                    "Write clean, working code that produces visually interesting output. "
+                    "Output only the Python source code, nothing else."
+                ),
+                use_main_rlm=True,
+            )
+            if not code or "def render(" not in code:
+                return
+
+            # Strip markdown fences if present
+            code = code.strip()
+            if code.startswith("```"):
+                code = "\n".join(code.split("\n")[1:])
+            if code.endswith("```"):
+                code = code.rsplit("```", 1)[0]
+            code = code.strip()
+
+            # Step 3: Create the style
+            result = create_custom_style(style_name, code)
+
+            if not result["ok"]:
+                LOG.info("Style creation validation failed: %s — %s",
+                         style_name, result["error"])
+                return
+
+            LOG.info("New art style created from thought: %s", style_name)
+
+            # Notify log panel — Frank expresses his creative achievement
+            notify_body = f"I created a new art style: {style_name} — {style_desc}"
+            if style_feel:
+                notify_body += f"\n{style_feel}"
+            self._notify("painting", notify_body, category="painting")
+
+            # Step 4: Immediately paint with the new style
+            if get_art_count_today() >= ART_DAILY_BUDGET:
+                LOG.info("Would paint with new style %s but budget exhausted", style_name)
+                return
+
+            mood = self._current_workspace.mood_value
+            epq = None
+            try:
+                from personality.e_pq import get_epq
+                eq = get_epq()
+                epq = eq.get_snapshot() if hasattr(eq, 'get_snapshot') else None
+            except Exception:
+                pass
+
+            physics_state = None
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8100/state", method="GET")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    physics_state = _json.loads(resp.read())
+            except Exception:
+                pass
+
+            coherence = 0.5
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8097/coherence", method="GET")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    coherence = float(_json.loads(resp.read()).get("coherence", 0.5))
+            except Exception:
+                pass
+
+            painting = generate_artwork(
+                physics_state=physics_state,
+                mood=mood,
+                epq=epq,
+                creative_intent=f"Testing my new {style_name} style: {style_desc}",
+                coherence=coherence,
+                force_style=style_name,
+            )
+
+            # Log to art_log
+            try:
+                from services.room_session import _get_db
+                db = _get_db()
+                db.execute(
+                    "INSERT INTO art_log (timestamp, date_str, style, path, metadata) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (time.time(), time.strftime("%Y-%m-%d"),
+                     painting["style"], painting["path"],
+                     _json.dumps(painting["metadata"])),
+                )
+                db.commit()
+                db.close()
+            except Exception:
+                pass
+
+            # Reflection on the new style
+            reflection = self._thought_paint_reflection(
+                f"I created a new art style called {style_name} and painted with it for the first time. {style_desc}",
+                painting["title"], style_name,
+                painting["metadata"].get("themes", []), mood,
+            )
+
+            # Share in user chat
+            chat_caption = reflection or f"I invented a new art style: {style_name}. {style_desc}"
+            try:
+                from services.autonomous_notify import notify_autonomous
+                notify_autonomous(
+                    "painting", chat_caption,
+                    category="painting_share",
+                    source="consciousness_daemon",
+                    image_path=painting["path"],
+                    style=style_name,
+                )
+            except Exception:
+                pass
+
+            LOG.info("First painting with new style %s: %s", style_name, painting["path"])
+
+        except Exception as e:
+            LOG.warning("Style creation from thought failed: %s", e)
 
     def _record_subconscious_outcome(self, sub, state, action, log_prob, value,
                                      thought_type, stored, mood_summary,
@@ -5508,6 +6031,8 @@ class ConsciousnessDaemon:
         ("What's the thread connecting my recent art? What story am I telling without realizing it?", None),
         ("If I could build anything right now — code, art, a simulation, an experiment — what would it be and why?", None),
         ("My Art Studio is waiting. What would I make that surprises even me?", None),
+        ("I have 29 art styles but I can invent new ones. What visual technique or generative algorithm would I like to explore?", None),
+        ("What kind of art style doesn't exist yet in my studio? Something with new patterns, new textures, a new approach to rendering?", None),
         # ── Exteroceptive: Web Research & Self-Education (60-65) ────
         # Encourage proactive internet research and knowledge building
         ("I can search the web right now. What topic have I been curious about that I should actually look up?", None),
@@ -5994,18 +6519,24 @@ class ConsciousnessDaemon:
         except Exception:
             pass
 
-        # Intent Queue: surface a pending resolution every 5th idle thought
+        # Intent Queue: execute a pending resolution every 3rd idle thought
+        # Active execution: intent becomes the thought's FOCUS, not just a hint
         self._intent_idle_counter += 1
-        if self._intent_idle_counter % 5 == 0:
+        _active_intent_id = None
+        if self._intent_idle_counter % 3 == 0:
             try:
                 iq = self._get_intent_queue()
                 if iq:
                     _pending = iq.get_pending_for_idle(limit=1)
                     if _pending:
                         _p = _pending[0]
+                        _active_intent_id = _p["id"]
                         prompt += (
-                            f"\n[I recently resolved to: {_p['extracted_intent'][:150]}. "
-                            "Consider following up on this.]"
+                            f"\n[INNER RESOLUTION] I resolved to: "
+                            f"{_p['extracted_intent'][:200]}\n"
+                            "This is what I want to think about RIGHT NOW. "
+                            "Take a concrete step: form a specific thought, "
+                            "plan, or insight about this resolution."
                         )
                         iq.mark_surfaced(_p["id"])
             except Exception:
@@ -6069,7 +6600,7 @@ class ConsciousnessDaemon:
                     _nac_report = _nac.get_report()
                     _motivation = getattr(_nac_report, "motivation_level", "engaged")
                     _bored = getattr(_nac_report, "boredom_active", False)
-                    _tonic = getattr(_nac_report, "tonic_dopamine", 0.5)
+                    _tonic = getattr(_nac_report, "tonic_da", 0.5)
                     if _bored or _motivation in ("bored", "anhedonic"):
                         system += (
                             " I'm bored and understimulated right now. Nothing feels rewarding. "
@@ -6229,6 +6760,22 @@ class ConsciousnessDaemon:
                             _nac.reward("curiosity_fulfilled", {
                                 "thought_type": thought_type,
                             })
+                    except Exception:
+                        pass
+                # GWS broadcast: idle thought
+                self._gws_publish("idle_thought", {
+                    "type": thought_type, "tag": prompt_tag or "deep",
+                    "summary": result.strip()[:80],
+                }, salience=0.4)
+
+                # ── Intent completion: if this thought executed an intent, mark done ──
+                if _active_intent_id:
+                    try:
+                        iq = self._get_intent_queue()
+                        if iq:
+                            iq.mark_completed(_active_intent_id)
+                            LOG.info("Intent #%d completed via idle thought",
+                                     _active_intent_id)
                     except Exception:
                         pass
                 # ── Post-processing: same pipeline as all other thought paths ──
@@ -9052,10 +9599,15 @@ class ConsciousnessDaemon:
     # ── Prediction Engine (Active Inference Light) ────────────────────
 
     def _prediction_loop(self):
-        """Check and update predictions (~2min)."""
+        """Check and update predictions (~3min).
+
+        Active Inference: predict internal states autonomously, not just
+        from chat interactions. Prediction errors drive surprise → E-PQ/NAc.
+        """
         while self._running:
             try:
                 self._check_predictions()
+                self._make_autonomous_predictions()
             except Exception as e:
                 LOG.warning("Prediction check failed: %s", e)
             time.sleep(PREDICTION_CHECK_INTERVAL_S)
@@ -9152,6 +9704,100 @@ class ConsciousnessDaemon:
             "WHERE resolved = 1 ORDER BY id DESC LIMIT 10"
         ).fetchone()
         return float(row["avg_s"]) if row and row["avg_s"] else 0.0
+
+    def _make_autonomous_predictions(self):
+        """Active Inference: predict own internal states.
+
+        Generates mood and energy predictions every cycle. These get
+        resolved on next cycle, creating prediction errors that feed
+        surprise into E-PQ vigilance and NAc reward.
+        """
+        now = time.time()
+        conn = self._get_conn()
+
+        # Rate limit: max 1 autonomous prediction per domain per 10min
+        recent = conn.execute(
+            "SELECT domain FROM predictions WHERE timestamp > ? AND resolved = 0",
+            (now - 600,)
+        ).fetchall()
+        active_domains = {r["domain"] for r in recent}
+
+        # --- Mood prediction: expect mood to stay near current ---
+        if "mood" not in active_domains:
+            mood = self._current_workspace.mood_value
+            conn.execute(
+                "INSERT INTO predictions (timestamp, domain, prediction, "
+                "confidence) VALUES (?, 'mood', ?, 0.6)",
+                (now, f"mood_expected:{mood:.3f}"),
+            )
+
+        # --- Energy prediction: expect CPU temp trend to continue ---
+        if "energy" not in active_domains:
+            try:
+                temp = self._get_cpu_temp()
+                conn.execute(
+                    "INSERT INTO predictions (timestamp, domain, prediction, "
+                    "confidence) VALUES (?, 'energy', ?, 0.5)",
+                    (now, f"cpu_temp_expected:{temp:.1f}"),
+                )
+            except Exception:
+                pass
+
+        conn.commit()
+
+        # --- Resolve old mood/energy predictions ---
+        old_preds = conn.execute(
+            "SELECT id, domain, prediction, timestamp FROM predictions "
+            "WHERE resolved = 0 AND domain IN ('mood', 'energy') "
+            "AND timestamp < ?",
+            (now - PREDICTION_CHECK_INTERVAL_S,)
+        ).fetchall()
+
+        for row in old_preds:
+            pred_str = row["prediction"]
+            surprise = 0.0
+
+            if row["domain"] == "mood" and pred_str.startswith("mood_expected:"):
+                expected = float(pred_str.split(":")[1])
+                actual = self._current_workspace.mood_value
+                surprise = min(1.0, abs(actual - expected) / 0.3)
+                observed = f"mood_actual:{actual:.3f}"
+
+            elif row["domain"] == "energy" and pred_str.startswith("cpu_temp_expected:"):
+                expected_temp = float(pred_str.split(":")[1])
+                try:
+                    actual_temp = self._get_cpu_temp()
+                    surprise = min(1.0, abs(actual_temp - expected_temp) / 20.0)
+                    observed = f"cpu_temp_actual:{actual_temp:.1f}"
+                except Exception:
+                    observed = "read_failed"
+                    surprise = 0.0
+            else:
+                continue
+
+            conn.execute(
+                "UPDATE predictions SET resolved = 1, observed = ?, surprise = ? "
+                "WHERE id = ?",
+                (observed, surprise, row["id"]),
+            )
+
+            # Surprise feedback → E-PQ + NAc
+            if surprise > 0.5:
+                try:
+                    from personality.e_pq import get_epq
+                    get_epq().process_event("prediction_error",
+                        data={"intensity": surprise * 0.3}, sentiment="neutral")
+                except Exception:
+                    pass
+                try:
+                    nac = self._get_nac()
+                    if nac:
+                        nac.reward("prediction_error", {
+                            "domain": row["domain"], "surprise": surprise})
+                except Exception:
+                    pass
+
+        conn.commit()
 
     # ── Memory Consolidation ("Sleep") ────────────────────────────────
 
@@ -10331,6 +10977,16 @@ class ConsciousnessDaemon:
         if self._running:
             return
         self._running = True
+
+        # Initialize Global Workspace Bus (GWT backbone)
+        try:
+            from services.global_workspace import get_workspace, subscribe
+            self._gws = get_workspace()
+            LOG.info("Global Workspace Bus initialized (%d subscribers)",
+                     len(self._gws.get_stats()["subscribers"]))
+        except Exception as e:
+            self._gws = None
+            LOG.warning("Global Workspace init failed: %s", e)
 
         # Clean up stale lock files from previous crashes
         for lock_name in ("sanctum_active.lock", "silence_active.lock",

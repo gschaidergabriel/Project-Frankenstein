@@ -126,6 +126,7 @@ class RouteRequest(BaseModel):
     n_predict: Optional[int] = Field(default=None, ge=16, le=8192)
     system: Optional[str] = Field(default=None, description="optional system prompt override")
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0, description="sampling temperature")
+    messages: Optional[list] = Field(default=None, description="Multi-turn messages array [{role, content}, ...]. When provided, used directly instead of building [system, user].")
 
 class RouteResponse(BaseModel):
     ok: bool
@@ -311,15 +312,21 @@ def _rlm_chat_completion(
     max_tokens: int,
     timeout_sec: float,
     temperature: float = 0.6,
+    messages: Optional[list] = None,
 ) -> Tuple[str, str]:
     """Call llama-server /v1/chat/completions.
     Returns (answer_text, reasoning_text)."""
     url = f"{RLM_URL}/v1/chat/completions"
-    payload: Dict[str, Any] = {
-        "messages": [
+    # Multi-turn: use provided messages array, otherwise build 2-message format
+    if messages:
+        _msgs = messages
+    else:
+        _msgs = [
             {"role": "system", "content": system_text},
             {"role": "user", "content": user_text},
-        ],
+        ]
+    payload: Dict[str, Any] = {
+        "messages": _msgs,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "repeat_penalty": 1.1,
@@ -373,14 +380,19 @@ def _chat_llm_completion(
     max_tokens: int,
     timeout_sec: float,
     temperature: float = 0.7,
+    messages: Optional[list] = None,
 ) -> str:
     """Call Micro-LLM (Qwen2.5-3B) /v1/chat/completions. Returns answer text."""
     url = f"{CHAT_LLM_URL}/v1/chat/completions"
-    payload: Dict[str, Any] = {
-        "messages": [
+    if messages:
+        _msgs = messages
+    else:
+        _msgs = [
             {"role": "system", "content": system_text},
             {"role": "user", "content": user_text},
-        ],
+        ]
+    payload: Dict[str, Any] = {
+        "messages": _msgs,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "top_p": 0.9,
@@ -400,14 +412,19 @@ def _chat_llm_completion_stream(
     max_tokens: int,
     timeout_sec: float,
     temperature: float = 0.7,
+    messages: Optional[list] = None,
 ):
     """Generator yielding tokens from Micro-LLM (Qwen2.5-3B) streaming."""
     url = f"{CHAT_LLM_URL}/v1/chat/completions"
-    payload: Dict[str, Any] = {
-        "messages": [
+    if messages:
+        _msgs = messages
+    else:
+        _msgs = [
             {"role": "system", "content": system_text},
             {"role": "user", "content": user_text},
-        ],
+        ]
+    payload: Dict[str, Any] = {
+        "messages": _msgs,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "top_p": 0.9,
@@ -451,15 +468,20 @@ def _rlm_chat_completion_stream(
     max_tokens: int,
     timeout_sec: float,
     temperature: float = 0.6,
+    messages: Optional[list] = None,
 ):
     """Generator yielding answer tokens from llama-server streaming chat completions.
     Reasoning tokens (reasoning_content) are suppressed — only answer content is yielded."""
     url = f"{RLM_URL}/v1/chat/completions"
-    payload: Dict[str, Any] = {
-        "messages": [
+    if messages:
+        _msgs = messages
+    else:
+        _msgs = [
             {"role": "system", "content": system_text},
             {"role": "user", "content": user_text},
-        ],
+        ]
+    payload: Dict[str, Any] = {
+        "messages": _msgs,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "repeat_penalty": 1.1,
@@ -762,6 +784,7 @@ def route(req: RouteRequest) -> RouteResponse:
 
     # System prompt
     system = req.system if req.system else RLM_SYSTEM_PROMPT
+    _multi_turn = req.messages  # Multi-turn messages array (or None)
 
     # Classify which model to use
     model_choice = _classify_model(text, req.force)
@@ -796,7 +819,8 @@ def route(req: RouteRequest) -> RouteResponse:
 
         try:
             answer = _chat_llm_completion(
-                text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature
+                text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature,
+                messages=_multi_turn,
             )
             if not answer:
                 LOG.warning("Micro-LLM returned empty, falling back to LLM (GPU)")
@@ -833,7 +857,8 @@ def route(req: RouteRequest) -> RouteResponse:
 
         try:
             answer, reasoning = _rlm_chat_completion(
-                text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature
+                text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature,
+                messages=_multi_turn,
             )
             if not answer:
                 if reasoning:
@@ -890,7 +915,8 @@ def route(req: RouteRequest) -> RouteResponse:
 
     try:
         answer, reasoning = _rlm_chat_completion(
-            text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature
+            text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature,
+            messages=_multi_turn,
         )
 
         if not answer:
@@ -960,6 +986,7 @@ def route_stream(req: RouteRequest):
     text = req.text.strip()
     caller_n = int(req.n_predict or DEFAULT_N_PREDICT)
     system = req.system if req.system else RLM_SYSTEM_PROMPT
+    _multi_turn = req.messages  # Multi-turn messages array (or None)
 
     # Classify which model to use
     model_choice = _classify_model(text, req.force)
@@ -999,7 +1026,8 @@ def route_stream(req: RouteRequest):
         def generate_llama():
             try:
                 for token in _chat_llm_completion_stream(
-                    text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature
+                    text, system, max_tokens, CHAT_LLM_HTTP_TIMEOUT_SEC, temperature,
+                    messages=_multi_turn,
                 ):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                 yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'qwen2.5-3b'})}\n\n"
@@ -1032,7 +1060,8 @@ def route_stream(req: RouteRequest):
         def generate_llm():
             try:
                 for token in _rlm_chat_completion_stream(
-                    text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature
+                    text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature,
+                    messages=_multi_turn,
                 ):
                     yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
                 yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'llama-8b'})}\n\n"
@@ -1076,7 +1105,8 @@ def route_stream(req: RouteRequest):
     def generate_rlm():
         try:
             for token in _rlm_chat_completion_stream(
-                text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature
+                text, system, max_tokens, RLM_HTTP_TIMEOUT_SEC, temperature,
+                messages=_multi_turn,
             ):
                 yield f"data: {json.dumps({'content': token, 'stop': False})}\n\n"
             yield f"data: {json.dumps({'content': '', 'stop': True, 'model': 'deepseek-r1'})}\n\n"

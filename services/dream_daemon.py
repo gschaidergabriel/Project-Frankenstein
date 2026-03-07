@@ -81,7 +81,7 @@ def _dream_notify(action: str, detail: str = "") -> None:
 # ---------------------------------------------------------------------------
 
 DREAM_BUDGET_SEC = 3600             # 60 min total daily budget
-IDLE_THRESHOLD_SEC = 45 * 60        # 45 min idle before dreaming
+IDLE_THRESHOLD_SEC = 20 * 60        # 20min idle — was 45min, dreams are too rare and too valuable
 COOLDOWN_BETWEEN_DREAMS_SEC = 20 * 3600  # 20h between complete dreams
 BUDGET_RESET_INTERVAL_SEC = 24 * 3600    # 24h rolling budget reset
 CPU_LOAD_THRESHOLD = 30.0           # Max CPU load % to start dreaming (Fix #49 was wrong: 50→30)
@@ -1157,13 +1157,63 @@ class DreamDaemon:
         except Exception as e:
             LOG.warning("Memory consolidation failed: %s", e)
 
-        # --- Neural Cortex: training cycle ---
+        # --- Neural Cortex: training cycle + CG gating ---
         try:
             from tools.titan.neural_cortex import get_cortex
             _cortex = get_cortex()
             if _cortex:
                 _cortex.train_cycle()
                 LOG.info("Titan Neural Cortex: training cycle completed")
+
+                # CG gating: apply consolidation gate to old low-confidence memories
+                try:
+                    from tools.titan.storage import get_storage
+                    import numpy as np
+                    store = get_storage()
+                    if store:
+                        _conn = store._get_conn()
+                        # Query candidate memories: old (>7 days), low confidence, not protected
+                        candidates = _conn.execute(
+                            "SELECT id, created_at, metadata, embedding FROM nodes "
+                            "WHERE protected = 0 AND created_at < ? "
+                            "ORDER BY created_at ASC LIMIT 50",
+                            (time.time() - 7 * 86400,)
+                        ).fetchall()
+
+                        gated = {"keep": 0, "compress": 0, "forget": 0}
+                        for row in candidates:
+                            node_id, created_at, meta_json, emb_blob = row
+                            if not emb_blob:
+                                continue
+                            try:
+                                meta = json.loads(meta_json) if meta_json else {}
+                                emb = np.frombuffer(emb_blob, dtype=np.float32)
+                                age_days = (time.time() - created_at) / 86400
+                                access_count = meta.get("access_count", 0)
+                                confidence = meta.get("confidence", 0.5)
+                                degree = meta.get("degree", 0)
+                                emotional = meta.get("emotional_charge",
+                                                     abs(meta.get("valence", 0)))
+                                decision = _cortex.gate_memory(
+                                    emb, age_days, access_count,
+                                    confidence, degree, emotional)
+                                gated[decision] = gated.get(decision, 0) + 1
+                                if decision == "forget":
+                                    store.delete_node(node_id)
+                                elif decision == "compress":
+                                    # Lower confidence to reduce retrieval priority
+                                    new_conf = max(0.1, confidence * 0.5)
+                                    _conn.execute(
+                                        "UPDATE nodes SET metadata = json_set(metadata, '$.confidence', ?) WHERE id = ?",
+                                        (new_conf, node_id))
+                            except Exception:
+                                continue
+                        _conn.commit()
+                        if any(v > 0 for v in gated.values()):
+                            LOG.info("CG gating: keep=%d compress=%d forget=%d",
+                                     gated["keep"], gated["compress"], gated["forget"])
+                except Exception as e:
+                    LOG.debug("CG gating skipped: %s", e)
         except Exception as e:
             LOG.debug("Cortex training skipped: %s", e)
 

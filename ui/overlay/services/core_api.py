@@ -69,12 +69,16 @@ def _core_chat_stream(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     force: Optional[str] = None,
     on_token: Optional[Callable[[str], None]] = None,
+    messages: Optional[list] = None,
 ) -> Dict[str, Any]:
     """Stream tokens from LLM via router SSE endpoint.
 
     Calls on_token(chunk_text) for each received token.
     Returns dict with 'ok', 'text', 'model' when done.
     Falls back to non-streaming _core_chat on connection error.
+
+    When `messages` is provided, sends multi-turn messages array directly
+    to the router instead of packing everything into a single user text.
     """
     # CRITICAL: Pass Frank's identity as system prompt so Router uses it
     # instead of its generic fallback. Without this, the LLM loses Frank's
@@ -89,6 +93,8 @@ def _core_chat_stream(
     }
     if force:
         payload["force"] = force
+    if messages:
+        payload["messages"] = messages
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(

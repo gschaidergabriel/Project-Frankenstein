@@ -263,7 +263,7 @@ class ChatMemoryDB:
         parts = []
         budget = max_chars
 
-        # 1) Recent messages (up to 800 chars)
+        # 1) Recent messages — conversation continuity is critical
         recent = self._get_recent_context(recent_count)
         if recent:
             lines = []
@@ -271,10 +271,10 @@ class ChatMemoryDB:
             for m in recent:
                 role = "User" if m["is_user"] else (m.get("sender") or "Frank")
                 text = m["text"]
-                if len(text) > 200:
-                    text = text[:200] + "..."
+                if len(text) > 400:
+                    text = text[:400] + "..."
                 line = f"{role}: {text}"
-                if chars + len(line) > 800:
+                if chars + len(line) > 1600:
                     break
                 lines.append(line)
                 chars += len(line) + 1
@@ -283,9 +283,9 @@ class ChatMemoryDB:
                 parts.append(block)
                 budget -= len(block)
 
-        # 2) Hybrid FTS5 + vector search from older messages (up to 600 chars)
+        # 2) Hybrid FTS5 + vector search from older messages (up to 1200 chars)
         if query and budget > 200:
-            relevant = self._hybrid_search_history(query, limit=5, exclude_recent=recent_count)
+            relevant = self._hybrid_search_history(query, limit=8, exclude_recent=recent_count)
             if relevant:
                 lines = []
                 chars = 0
@@ -293,28 +293,28 @@ class ChatMemoryDB:
                     age = self._format_age(m["timestamp"])
                     role = "User" if m["is_user"] else (m.get("sender") or "Frank")
                     text = m["text"]
-                    if len(text) > 150:
-                        text = text[:150] + "..."
+                    if len(text) > 300:
+                        text = text[:300] + "..."
                     line = f"- [{age}] {role}: {text}"
-                    if chars + len(line) > min(600, budget - 100):
+                    if chars + len(line) > min(1200, budget - 100):
                         break
                     lines.append(line)
                     chars += len(line) + 1
                 if lines:
-                    block = "[Relevant context from previous conversations:\n" + "\n".join(lines) + "]"
+                    block = "[Relevant from earlier conversations:\n" + "\n".join(lines) + "]"
                     parts.append(block)
                     budget -= len(block)
 
-        # 3) Session summaries (up to 400 chars)
+        # 3) Session summaries (up to 800 chars, last 5 sessions)
         if budget > 100:
-            summaries = self._get_recent_summaries(limit=3)
+            summaries = self._get_recent_summaries(limit=5)
             if summaries:
                 lines = []
                 chars = 0
                 for s in summaries:
                     date = s["started_at"][:10] if s.get("started_at") else "?"
                     line = f"- {date}: {s['summary']}"
-                    if chars + len(line) > min(400, budget - 20):
+                    if chars + len(line) > min(800, budget - 20):
                         break
                     lines.append(line)
                     chars += len(line) + 1
@@ -717,7 +717,7 @@ class ChatMemoryDB:
             self._conn.execute(
                 """UPDATE sessions SET summary = ?
                    WHERE session_id = ?""",
-                (summary[:500], session_id),
+                (summary[:1000], session_id),
             )
             self._conn.commit()
 

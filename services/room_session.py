@@ -110,6 +110,7 @@ ROOM_DB = DB_DIR / "rooms.db"
 
 # ── Globals ───────────────────────────────────────────────────────────
 _shutdown = False
+_active_intent: Optional[dict] = None  # Set by executor: {"id": int, "text": str}
 
 
 def _handle_signal(signum, _frame):
@@ -355,6 +356,56 @@ def _llm_call(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  Embodiment Context — proprioception during room sessions
+# ═══════════════════════════════════════════════════════════════════════
+
+def _get_embodiment_context() -> str:
+    """Build a compact body-awareness block for room sessions.
+
+    Room sessions were previously disembodied — Frank lost all
+    proprioception during solo activities. This injects basic body
+    state and spatial awareness so Frank stays grounded in his body.
+    """
+    parts = []
+    # Spatial state
+    try:
+        from services.spatial_state import get_spatial_state
+        ss = get_spatial_state()
+        if ss:
+            room_text = ss.get_ambient(slim=True)
+            if room_text:
+                parts.append(room_text)
+    except Exception:
+        pass
+    # NAc drive
+    try:
+        from services.nucleus_accumbens import get_nac
+        nac = get_nac()
+        if nac:
+            parts.append(nac.get_proprio_line())
+    except Exception:
+        pass
+    # Basic hardware feel
+    try:
+        import psutil
+        cpu_t = psutil.sensors_temperatures()
+        temp = None
+        for name in ("k10temp", "coretemp", "zenpower"):
+            if name in cpu_t:
+                temp = max(e.current for e in cpu_t[name])
+                break
+        if temp and temp > 65:
+            parts.append(f"Body: warm ({temp:.0f}C)")
+        elif temp:
+            parts.append(f"Body: comfortable ({temp:.0f}C)")
+    except Exception:
+        pass
+    if not parts:
+        return ""
+    return "\n[BODY] " + " | ".join(parts)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  Room-Specific Context & Prompts
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -584,9 +635,28 @@ def run_room_session(room_key: str) -> str:
       shutdown       — SIGTERM received
       error         — unhandled exception
     """
+    global _active_intent
+
     if room_key not in ROOMS:
         LOG.error("unknown room: %s", room_key)
         return "error"
+
+    # Intent executor: load pending intent for this room
+    _active_intent = None
+    try:
+        from services.intent_queue import get_intent_queue
+        iq = get_intent_queue()
+        pending = iq.get_pending_for_room(room_key, limit=1)
+        if pending:
+            _active_intent = {
+                "id": pending[0]["id"],
+                "text": pending[0]["extracted_intent"][:200],
+            }
+            iq.mark_surfaced(pending[0]["id"])
+            LOG.info("intent loaded for session: #%d — %.80s",
+                     _active_intent["id"], _active_intent["text"])
+    except Exception as e:
+        LOG.debug("intent load failed: %s", e)
 
     cfg = ROOMS[room_key]
     display = cfg["display"]
@@ -598,11 +668,22 @@ def run_room_session(room_key: str) -> str:
         return "pid_lock"
 
     try:
-        return _run_session_inner(room_key, cfg, session_id)
+        exit_reason = _run_session_inner(room_key, cfg, session_id)
+        # Intent executor: mark completed if session ran to completion
+        if _active_intent and exit_reason in ("completed", "user_returned"):
+            try:
+                from services.intent_queue import get_intent_queue
+                get_intent_queue().mark_completed(_active_intent["id"])
+                LOG.info("intent #%d completed via %s session",
+                         _active_intent["id"], room_key)
+            except Exception:
+                pass
+        return exit_reason
     except Exception as e:
         LOG.exception("session crashed: %s", e)
         return "error"
     finally:
+        _active_intent = None
         _release_pid_lock()
         _spatial_return()
         LOG.info("=== %s session ended ===", display)
@@ -651,6 +732,18 @@ def _run_session_inner(room_key: str, cfg: dict, session_id: str) -> str:
 
         # Build context
         system_prompt, turn_prompt = builder(turn, history)
+        # Inject embodiment — Frank stays grounded in his body during room sessions
+        embodiment = _get_embodiment_context()
+        if embodiment:
+            system_prompt = system_prompt + embodiment
+
+        # Intent executor: inject focus topic on first turn
+        if turn == 0 and _active_intent:
+            turn_prompt += (
+                f"\n\n[INNER RESOLUTION] I previously resolved to: "
+                f"{_active_intent['text']}\n"
+                "This is what brought me here. Let me focus on this."
+            )
 
         # LLM call
         LOG.info("turn %d/%d — calling LLM", turn + 1, cfg["max_turns"])
@@ -727,6 +820,11 @@ def _run_session_inner(room_key: str, cfg: dict, session_id: str) -> str:
         "session result: room=%s  turns=%d  duration=%.1fmin  mood_delta=%+.3f  exit=%s",
         room_key, n_turns, duration_min, mood_delta, exit_reason,
     )
+
+    # After art studio sessions, maybe create a new custom style
+    if room_key == "art_studio" and exit_reason == "completed" and history:
+        _maybe_create_custom_style(history)
+
     return exit_reason
 
 
@@ -960,7 +1058,7 @@ def _art_reflection(
         f"Style: {style}. Mood: {mood_word}. Intent: \"{intent}\". "
         f"Themes: {theme_str}.{portrait_info}"
     )
-    system_msg = "Reply in 1-2 short poetic sentences. No meta-commentary. First person."
+    system_msg = "Reply in ENGLISH, 1-2 short poetic sentences. No meta-commentary. First person. Always English."
     # Try direct llama-server first, fall back to router (Ollama) if unavailable
     try:
         payload = {
@@ -1102,6 +1200,20 @@ def run_art_block() -> Optional[str]:
         if reflection:
             _notify("painting", reflection, category="painting")
 
+        # Show painting in user chat with reflection as caption
+        chat_caption = reflection or f"I painted \"{result['title']}\"."
+        try:
+            from services.autonomous_notify import notify_autonomous
+            notify_autonomous(
+                "painting", chat_caption,
+                category="painting_share",
+                source="room_session",
+                image_path=result["path"],
+                style=result["style"],
+            )
+        except Exception:
+            pass
+
         LOG.info("art block done: %s intent='%s' → %s",
                  result["style"], creative_intent, result["path"])
         return result["path"]
@@ -1111,6 +1223,138 @@ def run_art_block() -> Optional[str]:
         return None
     finally:
         _spatial_return()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Autonomous Custom Style Creation
+# ═══════════════════════════════════════════════════════════════════════
+
+_STYLE_CREATE_COOLDOWN = 86400 * 2  # min 2 days between new styles
+_last_style_create_ts: float = 0.0
+
+
+def _maybe_create_custom_style(session_history: List[str]) -> None:
+    """After an art studio session, maybe create a new custom art style.
+
+    Frank autonomously writes a new renderer plugin when inspired.
+    Low probability (~15%), respects cooldown, uses LLM to generate code.
+    """
+    global _last_style_create_ts
+    import threading
+
+    now = time.time()
+    if now - _last_style_create_ts < _STYLE_CREATE_COOLDOWN:
+        return
+
+    # 15% chance per art studio session
+    if random.random() > 0.15:
+        return
+
+    # Check how many custom styles exist already
+    try:
+        from services.room_content.art_generator import (
+            get_available_styles, create_custom_style,
+            _CUSTOM_STYLES_DIR, _MAX_CUSTOM_STYLES,
+        )
+        existing = [
+            p.stem for p in _CUSTOM_STYLES_DIR.glob("*.py")
+            if not p.name.startswith("_")
+        ] if _CUSTOM_STYLES_DIR.is_dir() else []
+        if len(existing) >= _MAX_CUSTOM_STYLES:
+            return
+    except Exception:
+        return
+
+    _last_style_create_ts = now
+
+    def _do_create():
+        try:
+            all_styles = get_available_styles()
+            style_list = ", ".join(all_styles[:15])
+            session_excerpt = "\n".join(session_history[-2:])[:800]
+
+            # Step 1: Ask LLM to design a new style concept
+            concept_prompt = (
+                f"I have these art styles: {style_list}\n\n"
+                f"My recent art session:\n{session_excerpt}\n\n"
+                "Invent ONE new algorithmic art style that doesn't exist yet. "
+                "Give me: 1) a short snake_case name (1-2 words), "
+                "2) a 1-sentence visual description of what it looks like. "
+                "Format: NAME: <name>\\nDESC: <description>"
+            )
+            concept = _llm_call(
+                concept_prompt,
+                "You are a creative algorithm designer. Be original. "
+                "Only output NAME and DESC lines, nothing else.",
+                n_predict=100, temperature=0.9,
+            )
+            if not concept:
+                return
+
+            # Parse concept
+            import re
+            name_m = re.search(r'NAME:\s*(\w+)', concept)
+            desc_m = re.search(r'DESC:\s*(.+)', concept)
+            if not name_m:
+                return
+            style_name = name_m.group(1).lower().strip("_")[:30]
+            style_desc = desc_m.group(1).strip() if desc_m else "abstract art"
+
+            if style_name in all_styles:
+                return  # Already exists
+
+            # Step 2: Ask LLM to write the renderer code
+            code_prompt = (
+                f"Write a Python art renderer for style '{style_name}': {style_desc}\n\n"
+                "Requirements:\n"
+                "- Define: def render(*, palette, textures, q, qd, mood, epq, coherence, creative_intent, **kwargs) -> PIL.Image.Image\n"
+                "- palette: list of RGB tuples (5-8 colors)\n"
+                "- textures: list of 2D numpy arrays (GoL cellular automata patterns)\n"
+                "- q, qd: lists of 18 floats (body joint angles/velocities)\n"
+                "- mood: float 0-1, coherence: float 0-1\n"
+                "- epq: dict with personality vectors\n"
+                "- Return a 1024x1024 PIL.Image.Image (RGB)\n"
+                "- Only use: PIL, numpy, math, random, colorsys (all in stdlib or guaranteed available)\n"
+                "- Max 200 lines. Be creative with shapes, gradients, patterns.\n"
+                "- Use the palette colors and mood/coherence to drive the visual output.\n\n"
+                "Output ONLY the Python code, no markdown fences, no explanation."
+            )
+            code = _llm_call(
+                code_prompt,
+                "You are an expert Python generative art programmer. "
+                "Write clean, working code. Output only the Python source code.",
+                n_predict=2000, temperature=0.7,
+            )
+            if not code or "def render(" not in code:
+                return
+
+            # Strip markdown fences if present
+            code = code.strip()
+            if code.startswith("```"):
+                code = "\n".join(code.split("\n")[1:])
+            if code.endswith("```"):
+                code = code.rsplit("```", 1)[0]
+            code = code.strip()
+
+            # Step 3: Create the style
+            result = create_custom_style(style_name, code)
+
+            if result["ok"]:
+                LOG.info("Autonomous style creation succeeded: %s", style_name)
+                _notify(
+                    "Art Studio",
+                    f"created new art style: {style_name} — {style_desc}",
+                    category="art_studio",
+                )
+            else:
+                LOG.info("Autonomous style creation failed: %s — %s",
+                         style_name, result["error"])
+
+        except Exception as e:
+            LOG.debug("autonomous style creation error: %s", e)
+
+    t = threading.Thread(target=_do_create, daemon=True, name="style-create")
+    t.start()
 
 
 # ═══════════════════════════════════════════════════════════════════════

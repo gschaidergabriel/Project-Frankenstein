@@ -149,7 +149,7 @@ class PersistenceMixin:
             if hasattr(self, '_chat_memory_db'):
                 # 1. Close idle sessions (>30 min without activity)
                 try:
-                    closed = self._chat_memory_db.close_idle_sessions(idle_minutes=30)
+                    closed = self._chat_memory_db.close_idle_sessions(idle_minutes=15)
                     if closed > 0:
                         LOG.info(f"Memory maintenance: closed {closed} idle sessions")
                 except Exception as e:
@@ -159,11 +159,21 @@ class PersistenceMixin:
                 self._batch_session_summaries(max_sessions=3)
 
                 # 3. Archive old messages
-                archived = self._chat_memory_db.cleanup_old_messages(retention_days=30)
+                archived = self._chat_memory_db.cleanup_old_messages(retention_days=180)
                 if archived > 0:
                     LOG.info(f"Memory maintenance: archived {archived} old messages")
 
-                # 4. Memory consistency check (runs max 1x/day)
+                # 4. Backfill missing embeddings (max 30s per cycle)
+                try:
+                    count = self._chat_memory_db.backfill_embeddings(
+                        batch_size=32, max_seconds=30,
+                    )
+                    if count > 0:
+                        LOG.info(f"Memory maintenance: backfilled {count} embeddings")
+                except Exception as e:
+                    LOG.debug(f"Embedding backfill skipped: {e}")
+
+                # 5. Memory consistency check (runs max 1x/day)
                 try:
                     from services.memory_consistency import get_consistency_daemon
                     cd = get_consistency_daemon()
@@ -198,24 +208,26 @@ class PersistenceMixin:
                     continue
 
                 conv_text = "\n".join(
-                    f"{'User' if m['is_user'] else 'Frank'}: {m['text'][:200]}"
-                    for m in messages[:20]
+                    f"{'User' if m['is_user'] else 'Frank'}: {m['text'][:400]}"
+                    for m in messages[:25]
                 )
 
-                # Try LLM summarization
+                # Try LLM summarization (GPU model for quality)
                 summary = None
                 try:
                     prompt = (
-                        f"Fasse das folgende Gespraech in 2-3 Saetzen zusammen. "
-                        f"Nenne die Hauptthemen und wichtige Fakten.\n\n"
+                        f"Summarize this conversation in 3-5 sentences. "
+                        f"Include: main topics discussed, key decisions or facts mentioned, "
+                        f"any promises or plans made, and the emotional tone. "
+                        f"Be specific — use names, dates, and details.\n\n"
                         f"{conv_text}\n\n"
-                        f"Zusammenfassung (2-3 Saetze, Deutsch):"
+                        f"Summary:"
                     )
                     from overlay.services.core_api import _core_chat
-                    res = _core_chat(prompt, max_tokens=200, timeout_s=30,
-                                     task="chat.fast", force="llama")
+                    res = _core_chat(prompt, max_tokens=300, timeout_s=45,
+                                     task="chat.fast", force="llm")
                     if res.get("ok") and res.get("text"):
-                        summary = res["text"].strip()[:500]
+                        summary = res["text"].strip()[:1000]
                 except Exception as e:
                     LOG.debug(f"LLM summary failed, trying keyword fallback: {e}")
 
@@ -228,6 +240,14 @@ class PersistenceMixin:
                         session["session_id"], summary,
                     )
                     LOG.info(f"Session {session['session_id']} summarized: {summary[:80]}...")
+
+                    # Ingest summary into Titan for long-term episodic memory
+                    try:
+                        self._ingest_conversation_to_titan(
+                            session["session_id"], summary, messages,
+                        )
+                    except Exception as te:
+                        LOG.debug(f"Titan episodic ingest failed: {te}")
 
             except Exception as e:
                 LOG.warning(f"Session summary failed for {session.get('session_id')}: {e}")
@@ -264,3 +284,40 @@ class PersistenceMixin:
 
         topics = ", ".join(w for w, _ in top)
         return f"Themen: {topics} ({len(messages)} Nachrichten)"
+
+    @staticmethod
+    def _ingest_conversation_to_titan(session_id: str, summary: str, messages: list):
+        """Store conversation episode in Titan for long-term retrieval.
+
+        Ingests the session summary as a conversation claim and stores
+        key user statements as individual claims for semantic search.
+        """
+        try:
+            from tools.titan.titan_core import TitanMemory
+        except ImportError:
+            return
+
+        from tools.titan.titan_core import get_titan
+        titan = get_titan()
+        from datetime import datetime
+
+        # 1) Ingest conversation summary as episodic memory
+        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        episode_text = f"[Conversation {date_str}] {summary}"
+        titan.ingest(episode_text, origin="memory")
+
+        # 2) Ingest significant user statements as individual claims
+        user_ingested = 0
+        for m in messages:
+            if not m.get("is_user"):
+                continue
+            text = m.get("text", "").strip()
+            # Only ingest substantive messages (>30 chars, not just "ok" or "yes")
+            if len(text) < 30:
+                continue
+            if user_ingested >= 10:  # cap per session
+                break
+            titan.ingest(f"User said: {text[:500]}", origin="user")
+            user_ingested += 1
+
+        LOG.info(f"Titan episodic ingest: session {session_id[:8]}...")

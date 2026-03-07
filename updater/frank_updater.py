@@ -410,6 +410,7 @@ class FrankUpdater:
         ("service_files", "Service Files",     "Reloading systemd if needed"),
         ("start",       "Start Services",      "Restarting affected services"),
         ("health",      "Health Check",        "Verifying services are running"),
+        ("overlay_env", "Overlay Display",     "Ensuring overlay has display access"),
         ("models",      "Model Verification",  "Checking LLM models are loaded and responding"),
     ]
 
@@ -760,7 +761,151 @@ class FrankUpdater:
         self._print_step(sid, "done" if all_ok else "done", "All services verified" if all_ok else "Some services need attention")
         return True
 
-    # ── Step 11: Model Verification & Auto-Repair ─────────────────────
+    # ── Step 11: Overlay Display Environment ──────────────────────────
+    def step_overlay_env(self) -> bool:
+        """Ensure frank-overlay.service has correct DISPLAY/XAUTHORITY for this system."""
+        sid = "overlay_env"
+        self._print_step(sid, "running")
+
+        svc_dir = Path.home() / ".config" / "systemd" / "user"
+        svc_file = svc_dir / "frank-overlay.service"
+
+        if not svc_file.exists():
+            self._print_step(sid, "skipped", "frank-overlay.service not found")
+            return True
+
+        content = svc_file.read_text()
+
+        # --- Detect current display environment ---
+        display = os.environ.get("DISPLAY", "")
+        xauthority = os.environ.get("XAUTHORITY", "")
+
+        # If DISPLAY not available (e.g. SSH session), try common defaults
+        if not display:
+            display = ":0"
+
+        # Find a valid XAUTHORITY file
+        xauth_resolved = ""
+        if xauthority and Path(xauthority).exists():
+            xauth_resolved = xauthority
+        else:
+            # Search for valid Xauthority files (Wayland + X11 locations)
+            uid = os.getuid()
+            run_user = Path(f"/run/user/{uid}")
+            candidates = []
+            # Wayland: mutter-Xwaylandauth files (ephemeral, created by GNOME)
+            if run_user.exists():
+                try:
+                    for f in run_user.iterdir():
+                        if "Xwaylandauth" in f.name or "xauth" in f.name.lower():
+                            candidates.append(f)
+                except PermissionError:
+                    pass
+            # X11 / GDM locations
+            candidates.extend([
+                run_user / "gdm" / "Xauthority",
+                Path.home() / ".Xauthority",
+            ])
+            for c in candidates:
+                if c.exists():
+                    xauth_resolved = str(c)
+                    break
+
+        # Fallback: use %h/.Xauthority (systemd expands %h to $HOME)
+        if not xauth_resolved:
+            xauth_resolved = "%h/.Xauthority"
+
+        # --- Check current service file ---
+        lines = content.splitlines()
+        has_display = False
+        has_xauth = False
+        current_display = ""
+        current_xauth = ""
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("Environment=DISPLAY="):
+                has_display = True
+                current_display = stripped.split("=", 2)[2]
+            elif stripped.startswith("Environment=XAUTHORITY="):
+                has_xauth = True
+                current_xauth = stripped.split("=", 2)[2]
+
+        # Check if XAUTHORITY path actually exists (resolve %h)
+        xauth_check = current_xauth.replace("%h", str(Path.home()))
+        xauth_exists = Path(xauth_check).exists() if xauth_check else False
+
+        if has_display and has_xauth and xauth_exists:
+            self._print_step(sid, "done", f"DISPLAY={current_display} XAUTHORITY=.../{Path(xauth_check).name}")
+            return True
+
+        # --- Need to fix the service file ---
+        needs_restart = False
+
+        # Determine best XAUTHORITY value for the service file
+        # Prefer %h/.Xauthority if it exists (works across sessions)
+        # Otherwise use the resolved absolute path
+        home_xauth = Path.home() / ".Xauthority"
+        if home_xauth.exists():
+            svc_xauth = "%h/.Xauthority"
+        elif xauth_resolved and xauth_resolved != "%h/.Xauthority":
+            svc_xauth = xauth_resolved
+        else:
+            svc_xauth = "%h/.Xauthority"
+
+        new_lines = []
+        display_written = False
+        xauth_written = False
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("Environment=DISPLAY="):
+                new_lines.append(f"Environment=DISPLAY={display}")
+                display_written = True
+                if stripped != f"Environment=DISPLAY={display}":
+                    needs_restart = True
+            elif stripped.startswith("Environment=XAUTHORITY="):
+                new_lines.append(f"Environment=XAUTHORITY={svc_xauth}")
+                xauth_written = True
+                if stripped != f"Environment=XAUTHORITY={svc_xauth}":
+                    needs_restart = True
+            else:
+                new_lines.append(line)
+                # Insert DISPLAY/XAUTHORITY before ExecStart if not found yet
+                if stripped.startswith("ExecStart="):
+                    insert_before = len(new_lines) - 1
+                    if not display_written:
+                        new_lines.insert(insert_before, f"Environment=DISPLAY={display}")
+                        display_written = True
+                        needs_restart = True
+                    if not xauth_written:
+                        new_lines.insert(insert_before + (1 if not has_display else 0),
+                                         f"Environment=XAUTHORITY={svc_xauth}")
+                        xauth_written = True
+                        needs_restart = True
+
+        if needs_restart:
+            svc_file.write_text("\n".join(new_lines))
+            _run(["systemctl", "--user", "daemon-reload"])
+
+            # Also import current session's display env into systemd user manager
+            if os.environ.get("DISPLAY"):
+                _run(["systemctl", "--user", "import-environment", "DISPLAY", "XAUTHORITY"])
+
+            # Restart overlay to pick up new env
+            _run(["systemctl", "--user", "restart", "frank-overlay"], timeout=10)
+
+            detail = f"Fixed: DISPLAY={display}"
+            if svc_xauth != "%h/.Xauthority":
+                detail += f" XAUTHORITY={svc_xauth}"
+            console.print(f"    [{MATRIX_GREEN}]Patched frank-overlay.service and restarted[/]", highlight=False)
+            self._print_step(sid, "done", detail)
+        else:
+            self._print_step(sid, "done", "DISPLAY/XAUTHORITY OK")
+
+        return True
+
+    # ── Step 12: Model Verification & Auto-Repair ─────────────────────
     def step_models(self) -> bool:
         sid = "models"
         self._print_step(sid, "running")
@@ -939,6 +1084,7 @@ class FrankUpdater:
                     f"[bold {MATRIX_GREEN}]System is already up to date ({self.local_sha})[/]"
                 ))
                 console.print()
+                self.step_overlay_env()
                 self.step_models()
                 return True
             elif not result:
@@ -975,7 +1121,10 @@ class FrankUpdater:
             # Step 10: Health check
             self.step_health_check()
 
-            # Step 11: Model verification & auto-repair
+            # Step 11: Overlay display environment
+            self.step_overlay_env()
+
+            # Step 12: Model verification & auto-repair
             self.step_models()
 
             # Success banner

@@ -44,8 +44,27 @@ MATRIX_YELLOW = "#FFAA00"
 console = Console(highlight=False)
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-REPO_ROOT = Path(__file__).resolve().parent.parent
-REFERENCE_DB_DIR = REPO_ROOT / "database"
+def _find_reference_db_dir() -> Path:
+    """Find reference database directory. Searches multiple locations."""
+    candidates = [
+        # Running from repo source (updater/ -> repo root)
+        Path(__file__).resolve().parent.parent / "database",
+        # Standard install location
+        Path.home() / "aicore" / "opt" / "aicore" / "database",
+        # Env override
+        Path(os.environ.get("AICORE_REPO", "")) / "database",
+        # Binary placed next to database/ dir
+        Path(sys.executable).resolve().parent / "database",
+        # Binary in dist/ -> repo root
+        Path(sys.executable).resolve().parent.parent / "database",
+    ]
+    for p in candidates:
+        if p.is_dir() and any(p.glob("*.db")):
+            return p
+    # Fallback (will fail later with a clear error)
+    return Path.home() / "aicore" / "opt" / "aicore" / "database"
+
+REFERENCE_DB_DIR = _find_reference_db_dir()
 LIVE_DB_DIR = Path(os.environ.get(
     "AICORE_DATA", str(Path.home() / ".local" / "share" / "frank")
 )) / "db"

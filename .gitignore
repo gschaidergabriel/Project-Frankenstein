@@ -10,6 +10,7 @@ build/
 # Dist (PyInstaller output) — keep the installer binary
 dist/*
 !dist/frank-installer
+!dist/frank-recovery
 venv/
 .venv/
 

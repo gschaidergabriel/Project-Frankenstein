@@ -8862,33 +8862,61 @@ class ConsciousnessDaemon:
 
     def _micro_llm_call(self, text: str, max_tokens: int,
                         system: str) -> str:
-        """Direct call to micro-LLM via /v1/chat/completions."""
-        url = f"{MICRO_LLM_URL}/v1/chat/completions"
-        payload = json.dumps({
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": text},
-            ],
-            "max_tokens": max_tokens,
-            "temperature": 0.7,
-            "top_p": 0.9,
-        }).encode()
-        req = urllib.request.Request(
-            url, data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=MICRO_LLM_TIMEOUT_S) as resp:
-            data = json.loads(resp.read().decode())
-            choices = data.get("choices", [])
-            if choices:
-                msg = choices[0].get("message", {})
-                result = (msg.get("content") or "").strip()
-                # Strip <think> blocks (shouldn't happen with Qwen but safety net)
-                if "<think>" in result:
-                    import re
-                    result = re.sub(r"<think>.*?</think>", "", result, flags=re.DOTALL).strip()
-                return result
+        """Call micro-LLM (8105) with router/Ollama fallback for CPU-only setups."""
+        # Try direct llama-server first (fast path for GPU setups)
+        try:
+            url = f"{MICRO_LLM_URL}/v1/chat/completions"
+            payload = json.dumps({
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": text},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.7,
+                "top_p": 0.9,
+            }).encode()
+            req = urllib.request.Request(
+                url, data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=MICRO_LLM_TIMEOUT_S) as resp:
+                data = json.loads(resp.read().decode())
+                choices = data.get("choices", [])
+                if choices:
+                    msg = choices[0].get("message", {})
+                    result = (msg.get("content") or "").strip()
+                    if "<think>" in result:
+                        result = re.sub(r"<think>.*?</think>", "", result, flags=re.DOTALL).strip()
+                    return result
+            return ""
+        except (urllib.error.URLError, ConnectionRefusedError, OSError):
+            # llama-server not running (Ollama-only / CPU-only setup)
+            pass
+
+        # Fallback: route through router with force="llama" (has Ollama fallback)
+        try:
+            payload = json.dumps({
+                "text": text,
+                "n_predict": max_tokens,
+                "system": system,
+                "force": "llama",
+            }).encode()
+            req = urllib.request.Request(
+                f"{ROUTER_BASE}/route",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=MICRO_LLM_TIMEOUT_S) as resp:
+                data = json.loads(resp.read().decode())
+                if data.get("ok"):
+                    result = (data.get("text") or "").strip()
+                    if "<think>" in result:
+                        result = re.sub(r"<think>.*?</think>", "", result, flags=re.DOTALL).strip()
+                    return result
+        except Exception as e:
+            LOG.debug("Router fallback for micro-LLM also failed: %s", e)
         return ""
 
     # D-12 fix: Identity regression patterns — discard thoughts that contradict

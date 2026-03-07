@@ -960,16 +960,18 @@ def _art_reflection(
         f"Style: {style}. Mood: {mood_word}. Intent: \"{intent}\". "
         f"Themes: {theme_str}.{portrait_info}"
     )
-    payload = {
-        "model": "qwen",
-        "messages": [
-            {"role": "system", "content": "Reply in 1-2 short poetic sentences. No meta-commentary. First person."},
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 150,
-        "temperature": 0.8,
-    }
+    system_msg = "Reply in 1-2 short poetic sentences. No meta-commentary. First person."
+    # Try direct llama-server first, fall back to router (Ollama) if unavailable
     try:
+        payload = {
+            "model": "qwen",
+            "messages": [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": 150,
+            "temperature": 0.8,
+        }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             f"{MICRO_LLM_URL}/v1/chat/completions",
@@ -979,11 +981,32 @@ def _art_reflection(
         with urllib.request.urlopen(req, timeout=60) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             text = result["choices"][0]["message"]["content"].strip()
-            # Strip <think> blocks
             import re
             text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
             if text and len(text) > 10:
                 return text[:400]
+    except (urllib.error.URLError, ConnectionRefusedError, OSError):
+        # llama-server not running — fall back to router (has Ollama fallback)
+        try:
+            data = json.dumps({
+                "text": prompt,
+                "system": system_msg,
+                "n_predict": 150,
+                "force": "llama",
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                ROUTER_URL, data=data,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                text = (result.get("text") or "").strip()
+                import re
+                text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+                if text and len(text) > 10:
+                    return text[:400]
+        except Exception as e:
+            LOG.debug("art reflection router fallback failed: %s", e)
     except Exception as e:
         LOG.debug("art reflection failed: %s", e)
     return None

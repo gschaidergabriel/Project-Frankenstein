@@ -18,7 +18,7 @@ from .tasks import execute_task, AVAILABLE_TASKS
 LOG = logging.getLogger("pip_agent.core")
 
 MICRO_LLM_URL = "http://127.0.0.1:8105/v1/chat/completions"
-ROUTER_URL = "http://127.0.0.1:8091/v1/chat/completions"
+ROUTER_URL = "http://127.0.0.1:8091/route"
 LLM_TIMEOUT = 90
 
 # Auto-shutdown after 5 min idle
@@ -256,30 +256,60 @@ class PipAgent:
 
     def _llm_call(self, messages: List[Dict],
                   max_tokens: int = 256) -> str:
-        payload = json.dumps({
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": 0.7,
-        }).encode()
+        # Try direct llama-server first (fast path)
+        try:
+            payload = json.dumps({
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": 0.7,
+            }).encode()
+            headers = {"Content-Type": "application/json"}
+            req = urllib.request.Request(
+                MICRO_LLM_URL, data=payload, headers=headers, method="POST")
+            resp = urllib.request.urlopen(req, timeout=LLM_TIMEOUT)
+            data = json.loads(resp.read())
+            text = data["choices"][0]["message"]["content"].strip()
+            for cut in ("Frank:", "User:", "\n\n"):
+                text = text.split(cut)[0].strip()
+            if text.startswith("Pip:"):
+                text = text[4:].strip()
+            if text:
+                return text
+        except (urllib.error.URLError, ConnectionRefusedError, OSError) as e:
+            LOG.warning("Micro-LLM unavailable: %s — trying router", e)
+        except Exception as e:
+            LOG.warning("Micro-LLM failed: %s — trying router", e)
 
-        for url in [MICRO_LLM_URL, ROUTER_URL]:
-            try:
-                headers = {"Content-Type": "application/json"}
-                req = urllib.request.Request(
-                    url, data=payload, headers=headers, method="POST")
-                resp = urllib.request.urlopen(req, timeout=LLM_TIMEOUT)
-                data = json.loads(resp.read())
-                text = data["choices"][0]["message"]["content"].strip()
-                # Clean artifacts
+        # Fallback: router /route (has Ollama fallback for CPU-only setups)
+        try:
+            user_text = ""
+            system_text = ""
+            for m in messages:
+                if m.get("role") == "user":
+                    user_text = m.get("content", "")
+                elif m.get("role") == "system":
+                    system_text = m.get("content", "")
+            payload = json.dumps({
+                "text": user_text,
+                "system": system_text,
+                "n_predict": max_tokens,
+                "force": "llama",
+            }).encode()
+            headers = {"Content-Type": "application/json"}
+            req = urllib.request.Request(
+                ROUTER_URL, data=payload, headers=headers, method="POST")
+            resp = urllib.request.urlopen(req, timeout=LLM_TIMEOUT)
+            data = json.loads(resp.read())
+            if data.get("ok"):
+                text = (data.get("text") or "").strip()
                 for cut in ("Frank:", "User:", "\n\n"):
                     text = text.split(cut)[0].strip()
                 if text.startswith("Pip:"):
                     text = text[4:].strip()
                 if text:
                     return text
-            except Exception as e:
-                LOG.warning("LLM %s failed: %s", url, e)
-                continue
+        except Exception as e:
+            LOG.warning("Router fallback also failed: %s", e)
 
         return "Systems nominal. Ready for your next request, Frank."
 
